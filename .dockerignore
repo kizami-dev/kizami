@@ -1,0 +1,28 @@
+# Dependencies / build output (reinstalled / rebuilt inside the image)
+node_modules
+**/node_modules
+**/dist
+**/.waku
+**/.wrangler
+
+# VCS / editor
+.git
+.gitignore
+.github
+.vscode
+.DS_Store
+
+# Note: docs/ is intentionally NOT excluded — it is a pnpm workspace member
+# (see pnpm-workspace.yaml) and must be present for `pnpm install
+# --frozen-lockfile` to see a workspace layout matching pnpm-lock.yaml.
+# Its content is not copied into the final runtime image (see Dockerfiles).
+
+# Local data / secrets
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+.env
+.env.*
+!.env.example
+*.log

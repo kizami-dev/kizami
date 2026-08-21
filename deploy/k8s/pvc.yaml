@@ -1,0 +1,17 @@
+# SQLite の DB ファイル(kizami.db)を永続化する PVC。
+# local-path は ReadWriteOnce のみサポートし、Pod が起動したノードに
+# ローカルディスクとしてバインドされる。Deployment 側を replicas:1 +
+# strategy:Recreate にしているのはこのため(RWX ではないので複数ノード
+# 同時マウント不可、ローリング更新で新旧 Pod が同時に走ると衝突する)。
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: kizami-data
+  namespace: kizami
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 1Gi

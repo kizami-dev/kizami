@@ -1,0 +1,76 @@
+# api + web を同一 Pod にまとめたシングル Deployment。
+# SQLite ファイルDB + RWO の PVC のため replicas は 1 固定、更新戦略も
+# Recreate(RollingUpdate だと新旧 Pod が同時に same PVC を掴もうとして
+# 片方が Pending のまま詰まる)。
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kizami
+  namespace: kizami
+  labels:
+    app: kizami
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: kizami
+  template:
+    metadata:
+      labels:
+        app: kizami
+    spec:
+      # local-path が新規プロビジョニングする PVC はデフォルト root 所有
+      # になるため、api コンテナ内の非 root ユーザー(uid/gid 1001,
+      # docker/api.Dockerfile 参照)から /data に書き込めるよう
+      # fsGroup を合わせておく(k8s がマウント時にグループ所有権を付け替える)。
+      securityContext:
+        fsGroup: 1001
+      containers:
+        - name: api
+          image: ghcr.io/sasagar/kizami-api:latest
+          ports:
+            - name: http
+              containerPort: 3001
+          env:
+            - name: DATABASE_URL
+              value: file:/data/kizami.db
+            # COOKIE_SECURE は未設定=既定 true(Secure Cookie)のまま。
+            # Cloudflare Tunnel 経由(HTTPS)前提のため既定を維持する。
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 3001
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
+        - name: web
+          image: ghcr.io/sasagar/kizami-web:latest
+          ports:
+            - name: http
+              containerPort: 3000
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 3000
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: kizami-data

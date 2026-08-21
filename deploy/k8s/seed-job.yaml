@@ -1,0 +1,53 @@
+# 開発/初期構築用シード投入 Job。
+#
+# 自動適用の対象外(deployment/service とは違い、実行するたびに管理者
+# ユーザー作成を試みるため)。README.md の手順に従い、Secret 作成後に
+# 手動で `kubectl apply -f seed-job.yaml` すること。
+# 既に SEED_EMAIL のユーザーが存在する場合 apps/api/src/seed.ts 側で
+# 冪等にスキップされるので、再実行自体は安全。
+# Job 名が固定のため再実行前に `kubectl delete job -n kizami kizami-seed` が要る点に注意。
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: kizami-seed
+  namespace: kizami
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      # deployment.yaml と同じ理由(local-path PVC の既定 root 所有 vs.
+      # api イメージの非 root ユーザー uid/gid 1001)で fsGroup を揃える。
+      securityContext:
+        fsGroup: 1001
+      containers:
+        - name: seed
+          image: ghcr.io/sasagar/kizami-api:latest
+          command: ["node_modules/.bin/tsx", "src/seed.ts"]
+          env:
+            - name: DATABASE_URL
+              value: file:/data/kizami.db
+            - name: SEED_EMAIL
+              valueFrom:
+                secretKeyRef:
+                  name: kizami-seed
+                  key: SEED_EMAIL
+            - name: SEED_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: kizami-seed
+                  key: SEED_PASSWORD
+            # SEED_TENANT_NAME は省略時 "dev"。変えたい場合は Secret に
+            # SEED_TENANT_NAME キーを足して下のブロックのコメントを外す。
+            # - name: SEED_TENANT_NAME
+            #   valueFrom:
+            #     secretKeyRef:
+            #       name: kizami-seed
+            #       key: SEED_TENANT_NAME
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: kizami-data

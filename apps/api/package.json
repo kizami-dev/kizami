@@ -14,10 +14,10 @@
     "@kizami/db": "workspace:*",
     "@kizami/engine": "workspace:*",
     "drizzle-orm": "0.45.2",
-    "hono": "^4.13.3"
+    "hono": "^4.13.3",
+    "tsx": "^4.23.12"
   },
   "devDependencies": {
-    "@types/node": "^26.2.0",
-    "tsx": "^4.23.12"
+    "@types/node": "^26.2.0"
   }
 }

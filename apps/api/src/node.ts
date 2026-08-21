@@ -1,4 +1,5 @@
 import { serve } from "@hono/node-server";
+import { Hono } from "hono";
 import { migrateDb } from "@kizami/db";
 import { createApp } from "./app.js";
 
@@ -15,5 +16,11 @@ const corsOrigin = process.env.CORS_ORIGIN ?? "http://localhost:3000";
 const { db } = await migrateDb({ url: databaseUrl });
 const app = createApp({ db, secureCookies, corsOrigin });
 
-serve({ fetch: app.fetch, port });
+// リバースプロキシ/トンネルのパス振り分け(kizami.example.com/api/* → ここ)を
+// パス書き換えなしで受けられるよう、/api プレフィクス付きでも同じアプリを提供する
+const root = new Hono();
+root.route("/api", app);
+root.route("/", app);
+
+serve({ fetch: root.fetch, port });
 console.log(`kizami api listening on :${port}`);
