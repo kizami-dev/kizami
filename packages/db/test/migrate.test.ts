@@ -12,6 +12,7 @@ describe("migrate", () => {
       [
         "audit_logs",
         "auth_credentials",
+        "correction_requests",
         "departments",
         "memberships",
         "permission_presets",

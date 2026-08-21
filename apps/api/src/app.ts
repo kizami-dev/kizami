@@ -5,6 +5,7 @@ import { authMiddleware, type AppEnv } from "./auth/middleware.js";
 import { ForbiddenError } from "./authz.js";
 import { createAttendanceRoutes } from "./routes/attendance.js";
 import { createAuthRoutes } from "./routes/auth.js";
+import { createCorrectionsRoutes } from "./routes/corrections.js";
 import { createMeRoutes } from "./routes/me.js";
 import { createPunchesRoutes } from "./routes/punches.js";
 
@@ -46,6 +47,7 @@ export function createApp(deps: CreateAppDeps) {
   authed.route("/me", createMeRoutes());
   authed.route("/punches", createPunchesRoutes(db));
   authed.route("/attendance", createAttendanceRoutes(db));
+  authed.route("/corrections", createCorrectionsRoutes(db));
   app.route("/", authed);
 
   app.onError((err, c) => {

@@ -9,6 +9,14 @@ import * as schema from "./schema/index.js";
 
 export type Database = LibSQLDatabase<typeof schema>;
 
+/**
+ * `db.transaction(async (tx) => ...)` のコールバック引数の型。
+ * 複数テーブルへの書き込みをアトミックに行うクエリ関数(insertAuditLog 等)は
+ * `Database | Transaction` を受け取れるようにして、通常呼び出しとトランザクション内
+ * 呼び出しの両方に対応する。
+ */
+export type Transaction = Parameters<Parameters<Database["transaction"]>[0]>[0];
+
 const DEFAULT_MIGRATIONS_FOLDER = new URL("../migrations", import.meta.url).pathname;
 
 /**

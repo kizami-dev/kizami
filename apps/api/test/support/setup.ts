@@ -3,6 +3,9 @@
  * フレックス月清算(標準1日480分)・ユーザー1件を最小限で投入する。
  */
 
+import { randomUUID } from "node:crypto";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   authCredentials,
   migrateDb,
@@ -27,7 +30,12 @@ export interface SeededTenant {
 }
 
 export async function setupTestDb(): Promise<SeededTenant> {
-  const { db } = await migrateDb();
+  // @libsql/client のローカル sqlite3 ドライバは `db.transaction()` 実行後、client 側の
+  // ネイティブ接続を手放し次回アクセス時に遅延再接続する。`:memory:` だとその再接続が
+  // 新規の空DBになりデータが失われる(修正申請の承認処理が db.transaction を使うため、
+  // このテスト DB でそれ以降のリクエストが軒並み失敗する)。ファイルバックエンドにして回避する。
+  const dbPath = join(tmpdir(), `kizami-api-test-${randomUUID()}.db`);
+  const { db } = await migrateDb({ url: `file:${dbPath}` });
   const now = 0;
   const tenantId = uuidv7();
   const userId = uuidv7();
@@ -81,6 +89,36 @@ export async function setupTestDb(): Promise<SeededTenant> {
   });
 
   return { db, tenantId, userId, email, password, displayName };
+}
+
+export interface SeededSecondUser {
+  userId: string;
+  email: string;
+  password: string;
+}
+
+/**
+ * `setupTestDb()` が作った同一テナントへ、もう1人ユーザーを追加する(修正申請の
+ * 「他人のイベント」バリデーションテスト用)。work_policy 割当は行わない
+ * (打刻・修正申請のテストのみが対象で、勤怠集計は使わないため)。
+ */
+export async function setupSecondUser(db: Database, tenantId: string): Promise<SeededSecondUser> {
+  const now = 0;
+  const userId = uuidv7();
+  const email = "second@example.com";
+  const password = "another horse battery staple";
+
+  await db.insert(users).values({ id: userId, tenantId, email, name: "Second User", isActive: true, createdAt: now });
+  await db.insert(authCredentials).values({
+    id: uuidv7(),
+    tenantId,
+    userId,
+    passwordHash: await hashPassword(password),
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  return { userId, email, password };
 }
 
 export function extractCookie(res: Response): string {

@@ -7,6 +7,7 @@
  */
 
 export * from "./audit.js";
+export * from "./corrections.js";
 export * from "./org.js";
 export * from "./permissions.js";
 export * from "./punches.js";

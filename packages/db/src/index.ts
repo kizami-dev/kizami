@@ -6,6 +6,7 @@
  * - packages/engine への依存・逆依存は禁止(独立レイヤ)
  */
 
+export * from "./errors.js";
 export * from "./migrate.js";
 export * from "./queries/index.js";
 export * from "./schema/index.js";

@@ -8,15 +8,18 @@
 
 import { and, asc, eq, gte, lte, ne, notExists } from "drizzle-orm";
 import { alias } from "drizzle-orm/sqlite-core";
-import type { Database } from "../migrate.js";
+import type { Database, Transaction } from "../migrate.js";
 import { punchEvents } from "../schema/index.js";
 import { uuidv7 } from "../uuid.js";
 
 export type NewPunchEvent = Omit<typeof punchEvents.$inferInsert, "id"> & { id?: string };
 export type PunchEvent = typeof punchEvents.$inferSelect;
 
-/** punch_events へ1件追記する。id を渡さなければ UUIDv7 を生成する。 */
-export async function insertPunchEvent(db: Database, event: NewPunchEvent): Promise<PunchEvent> {
+/**
+ * punch_events へ1件追記する。id を渡さなければ UUIDv7 を生成する。
+ * トランザクション内(修正申請の承認反映等)からも呼べるよう `Database | Transaction` を受け取る。
+ */
+export async function insertPunchEvent(db: Database | Transaction, event: NewPunchEvent): Promise<PunchEvent> {
   const id = event.id ?? uuidv7();
   const [row] = await db
     .insert(punchEvents)
@@ -60,4 +63,43 @@ export async function listValidPunches(db: Database, params: ListValidPunchesPar
       ),
     )
     .orderBy(asc(punchEvents.occurredAt));
+}
+
+/** id で1件取得する(有効性は問わない)。修正申請の「取消」承認時に対象の occurred_at を読むために使う。 */
+export async function getPunchEventById(db: Database, id: string): Promise<PunchEvent | null> {
+  const rows = await db.select().from(punchEvents).where(eq(punchEvents.id, id)).limit(1);
+  return rows[0] ?? null;
+}
+
+export interface GetValidPunchEventParams {
+  tenantId: string;
+  userId: string;
+  id: string;
+}
+
+/**
+ * (tenantId, userId) にスコープした「有効打刻」を id 指定で1件取得する。
+ * 存在しない・他人のもの・既に無効化(supersede/void)済みのいずれかなら null。
+ * 修正申請の作成時、target_event_id が「自分の有効打刻」であることの検証に使う。
+ */
+export async function getValidPunchEvent(db: Database, params: GetValidPunchEventParams): Promise<PunchEvent | null> {
+  const superseding = alias(punchEvents, "superseding");
+
+  const rows = await db
+    .select()
+    .from(punchEvents)
+    .where(
+      and(
+        eq(punchEvents.id, params.id),
+        eq(punchEvents.tenantId, params.tenantId),
+        eq(punchEvents.userId, params.userId),
+        ne(punchEvents.kind, "void"),
+        notExists(
+          db.select({ id: superseding.id }).from(superseding).where(eq(superseding.supersedesId, punchEvents.id)),
+        ),
+      ),
+    )
+    .limit(1);
+
+  return rows[0] ?? null;
 }

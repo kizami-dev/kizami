@@ -9,18 +9,19 @@ import type { AppEnv } from "../auth/middleware.js";
 import { requireSelf } from "../authz.js";
 import { nowMinutes } from "../lib/time.js";
 
-const VALID_KINDS: readonly PunchKind[] = ["clock_in", "clock_out", "break_start", "break_end"];
+/** 打刻として受け付ける kind。'void'(取消)はシステム内部専用のため申請者は直接指定できない。 */
+export const VALID_PUNCH_KINDS: readonly PunchKind[] = ["clock_in", "clock_out", "break_start", "break_end"];
 
-/** サーバー現在時刻を超えて何分先までを許容するか。 */
-const FUTURE_TOLERANCE_MINUTES = 5;
+/** サーバー現在時刻を超えて何分先までを許容するか。修正申請の proposedOccurredAt にも流用する。 */
+export const FUTURE_TOLERANCE_MINUTES = 5;
 
 interface PunchBody {
   kind?: unknown;
   occurredAt?: unknown;
 }
 
-function isValidKind(value: unknown): value is PunchKind {
-  return typeof value === "string" && (VALID_KINDS as readonly string[]).includes(value);
+export function isValidPunchKind(value: unknown): value is PunchKind {
+  return typeof value === "string" && (VALID_PUNCH_KINDS as readonly string[]).includes(value);
 }
 
 /** クエリ文字列を整数(UTC エポック分)としてパースする。不正・非整数は null。 */
@@ -71,7 +72,7 @@ export function createPunchesRoutes(db: Database) {
     }
     const { kind, occurredAt } = body as PunchBody;
 
-    if (!isValidKind(kind)) {
+    if (!isValidPunchKind(kind)) {
       return c.json({ error: "invalid_kind" }, 400);
     }
 
