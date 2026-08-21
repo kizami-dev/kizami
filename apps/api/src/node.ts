@@ -2,6 +2,7 @@ import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { migrateDb } from "@kizami/db";
 import { createApp } from "./app.js";
+import { nodemailerSendFn } from "./lib/smtp.js";
 
 const port = Number(process.env.PORT ?? 3001);
 const databaseUrl = process.env.DATABASE_URL ?? "file:./kizami.db";
@@ -14,7 +15,7 @@ const secureCookies = process.env.COOKIE_SECURE !== "false";
 const corsOrigin = process.env.CORS_ORIGIN ?? "http://localhost:3000";
 
 const { db } = await migrateDb({ url: databaseUrl });
-const app = createApp({ db, secureCookies, corsOrigin });
+const app = createApp({ db, secureCookies, corsOrigin, notify: { smtpSendFn: nodemailerSendFn } });
 
 // リバースプロキシ/トンネルのパス振り分け(kizami.example.com/api/* → ここ)を
 // パス書き換えなしで受けられるよう、/api プレフィクス付きでも同じアプリを提供する

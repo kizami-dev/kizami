@@ -20,6 +20,7 @@ describe("migrate", () => {
         "preset_assignments",
         "punch_events",
         "sessions",
+        "tenant_notification_settings",
         "tenant_setting_versions",
         "tenants",
         "user_policy_assignments",

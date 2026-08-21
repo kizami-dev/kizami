@@ -20,6 +20,9 @@ importers:
       '@hono/node-server':
         specifier: ^2.1.1
         version: 2.1.1(hono@4.13.3)
+      '@kizami/authz':
+        specifier: workspace:*
+        version: link:../../packages/authz
       '@kizami/db':
         specifier: workspace:*
         version: link:../../packages/db
@@ -41,6 +44,9 @@ importers:
       ioredis:
         specifier: ^6.0.0
         version: 6.0.0
+      nodemailer:
+        specifier: ^9.0.5
+        version: 9.0.5
       tsx:
         specifier: ^4.23.12
         version: 4.23.12
@@ -48,6 +54,9 @@ importers:
       '@types/node':
         specifier: ^26.2.0
         version: 26.2.0
+      '@types/nodemailer':
+        specifier: ^8.0.1
+        version: 8.0.1
 
   apps/web:
     dependencies:
@@ -73,6 +82,8 @@ importers:
       vitepress:
         specifier: ^1.6.4
         version: 1.6.4(@algolia/client-search@5.57.0)(@types/node@26.2.0)(lightningcss@1.33.0)(postcss@8.5.26)(search-insights@2.17.3)(terser@5.50.0)(typescript@7.0.2)
+
+  packages/authz: {}
 
   packages/db:
     dependencies:
@@ -1236,6 +1247,9 @@ packages:
   '@types/node@26.2.0':
     resolution: {integrity: sha512-5IviulTZeRNp2vAJ514cc/HUlY5nZ9fCbq9DMyC52BrhFZACo3nI0R7qBxhQmo/d27NFe96ur/b7Wwxklda+kg==}
 
+  '@types/nodemailer@8.0.1':
+    resolution: {integrity: sha512-PxpaInm8V1JQDd4j0ds5HfvWQk8JupS1C0Picb96QJsrrRDjBH+DlK7L4ZdNSqNULhiZRQHc40nLVShaGxXAMw==}
+
   '@types/react-dom@19.2.4':
     resolution: {integrity: sha512-Bsc+QHgp+P/F02XDzNCY9jnZNCUuLki36KT7VKrTXXLdHf+vHMNZnW1rVu5DNW/rCK+fya3DATySbLM4yhtKUw==}
     peerDependencies:
@@ -2146,6 +2160,10 @@ packages:
   node-releases@2.0.53:
     resolution: {integrity: sha512-D9UOmYG3UH1V+ENW56t5QXBwJw1YEY18ruVeus89Rw+SyIgjPkCO84bRzO3uNIYosJbNwiabWVn48o3uJLjxFQ==}
     engines: {node: '>=18'}
+
+  nodemailer@9.0.5:
+    resolution: {integrity: sha512-wvjiKvjczmsN7U/8006JOdXubgBk2XFAbioDMbT+sM7cPs0QrhJTa6KBRX7P5REGGkDcLUz/EarWidb8G8C1jQ==}
+    engines: {node: '>=6.0.0'}
 
   obug@2.1.4:
     resolution: {integrity: sha512-4a+OsYv9UktOJKE+l1A4OufDgdRF9PifWj+tJnHURo/P+WOxpG4GzUFL9qCalmWauao6ogiG+QvnCovwPoyAWA==}
@@ -3341,6 +3359,10 @@ snapshots:
     dependencies:
       undici-types: 8.3.0
 
+  '@types/nodemailer@8.0.1':
+    dependencies:
+      '@types/node': 26.2.0
+
   '@types/react-dom@19.2.4(@types/react@19.2.18)':
     dependencies:
       '@types/react': 19.2.18
@@ -4157,6 +4179,8 @@ snapshots:
     optional: true
 
   node-releases@2.0.53: {}
+
+  nodemailer@9.0.5: {}
 
   obug@2.1.4: {}
 

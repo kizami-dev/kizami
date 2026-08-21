@@ -3,11 +3,17 @@
  *
  * Cookie → sessions 検索(revoked_at null かつ未失効)→ c.set("user", …)。
  * 未認証は 401 { error: "unauthorized" }。
+ *
+ * v0.2: 認証に続けて実効権限(preset_assignments → permission_presets.grants を合成・
+ * 展開したもの)もリクエストごとに1回だけ評価し、`c.set("permissions", …)` にキャッシュする
+ * (apps/api/src/authz.ts の loadEffectivePermissions / requirePermission を参照)。
  */
 
 import { and, eq, isNull } from "drizzle-orm";
 import type { Context, MiddlewareHandler, Next } from "hono";
+import type { PermissionKey, Scope } from "@kizami/authz";
 import { sessions, users, type Database } from "@kizami/db";
+import { loadEffectivePermissions } from "../authz.js";
 import {
   getSessionTokenFromCookie,
   renewSession,
@@ -24,7 +30,7 @@ export interface AuthUser {
 }
 
 export interface AppEnv {
-  Variables: { user: AuthUser };
+  Variables: { user: AuthUser; permissions: Map<PermissionKey, Scope> };
 }
 
 export function authMiddleware(db: Database, options: { secureCookies: boolean }): MiddlewareHandler<AppEnv> {
@@ -62,6 +68,7 @@ export function authMiddleware(db: Database, options: { secureCookies: boolean }
       displayName: row.user.name,
     };
     c.set("user", authUser);
+    c.set("permissions", await loadEffectivePermissions(db, authUser));
     await next();
   };
 }

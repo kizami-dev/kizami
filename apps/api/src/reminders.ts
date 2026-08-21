@@ -10,6 +10,10 @@
  * - 出勤忘れは検知しない(稼働日カレンダー未実装のため誤検知になる)
  * - 通知はアプリ内通知(notifications テーブル)が既定。外部チャネル(メール/Webhook)は
  *   「新規に作成できた通知」だけに送る(= 重複防止と同じ判定を外部送信のガードにも流用する)
+ * - 外部チャネルはテナントごとに異なりうる(tenant_notification_settings)。呼び出し元が
+ *   `resolveChannels(tenantId)` を渡すことで、ユーザーごとに所属テナントの設定へ差し替える
+ *   (このファイル自体は DB の tenant_notification_settings を一切知らない — 組み立ては
+ *   apps/api/src/lib/notification-channels.ts + 呼び出し元の責務)
  *
  * BullMQ/Valkey には一切依存しない(node:* も使わない)。呼び出し元(src/worker.ts、将来の
  * Cloudflare Cron エントリ)がキュー層・スケジューラ層を差し替えられるよう、
@@ -35,8 +39,14 @@ const PREVIOUS_MONTH_LOOKBACK_DAYS = 3;
 export interface RunReminderScanOptions {
   /** 現在時刻(UTC エポック分)。テストで固定できるよう明示的に渡す */
   nowMinutes: number;
-  /** 新規作成できた通知だけに送る外部チャネル。省略時はアプリ内通知のみ(既定挙動) */
-  channels?: NotificationChannel[];
+  /**
+   * テナントIDを受け取り、そのテナントの外部チャネル(新規作成できた通知だけに送る)を
+   * 返す。省略時はアプリ内通知のみ(既定挙動、どの通知も外部送信しない)。
+   * スキャン対象ユーザー1人につき1回呼ばれる(同一テナントに複数ユーザーがいれば複数回)。
+   * DB 設定の再取得コストが気になる場合は呼び出し側でテナントIDをキーにメモ化すること
+   * (apps/api/src/worker.ts の実装を参照)。
+   */
+  resolveChannels?: (tenantId: string) => Promise<NotificationChannel[]>;
 }
 
 export interface CreatedReminder {
@@ -177,13 +187,15 @@ function missingClockOutNotificationContent(date: string): { title: string; body
  * BullMQ/Valkey・Cloudflare Queues などスケジューラの実体には一切依存しない。
  */
 export async function runReminderScan(db: Database, options: RunReminderScanOptions): Promise<RunReminderScanResult> {
-  const { nowMinutes, channels = [] } = options;
+  const { nowMinutes, resolveChannels } = options;
   const targetMonths = resolveTargetMonths(nowMinutes);
   const activeUsers = await listActiveUsers(db);
 
   const created: CreatedReminder[] = [];
 
   for (const user of activeUsers) {
+    const channels = resolveChannels ? await resolveChannels(user.tenantId) : [];
+
     for (const { year, month } of targetMonths) {
       let result: MonthlyCalcResult;
       try {

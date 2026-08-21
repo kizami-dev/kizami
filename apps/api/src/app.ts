@@ -9,6 +9,7 @@ import { createCorrectionsRoutes } from "./routes/corrections.js";
 import { createMeRoutes } from "./routes/me.js";
 import { createNotificationsRoutes } from "./routes/notifications.js";
 import { createPunchesRoutes } from "./routes/punches.js";
+import { createSettingsRoutes, type SettingsRoutesDeps } from "./routes/settings.js";
 
 export interface CreateAppDeps {
   db: Database;
@@ -22,6 +23,11 @@ export interface CreateAppDeps {
    * 省略時は CORS ヘッダを付けない(本番は同一オリジン配信が前提)。
    */
   corsOrigin?: string;
+  /**
+   * POST /settings/notifications/test が使う通知チャネルの依存差し替え
+   * (実際の送信を行う Node 実装は node.ts が渡す。テストは偽実装を注入して実送信しない)。
+   */
+  notify?: SettingsRoutesDeps;
 }
 
 /**
@@ -32,7 +38,7 @@ export interface CreateAppDeps {
  * テストは :memory: DB を、Node ランタイムは env から作った DB をそれぞれ渡せるようにする。
  */
 export function createApp(deps: CreateAppDeps) {
-  const { db, secureCookies = false, corsOrigin } = deps;
+  const { db, secureCookies = false, corsOrigin, notify } = deps;
   const app = new Hono<AppEnv>();
 
   if (corsOrigin) {
@@ -50,6 +56,7 @@ export function createApp(deps: CreateAppDeps) {
   authed.route("/attendance", createAttendanceRoutes(db));
   authed.route("/corrections", createCorrectionsRoutes(db));
   authed.route("/notifications", createNotificationsRoutes(db));
+  authed.route("/settings", createSettingsRoutes(db, notify ?? {}));
   app.route("/", authed);
 
   app.onError((err, c) => {

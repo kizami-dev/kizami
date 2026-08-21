@@ -9,6 +9,8 @@ import { join } from "node:path";
 import {
   authCredentials,
   migrateDb,
+  permissionPresets,
+  presetAssignments,
   tenantSettingVersions,
   tenants,
   userPolicyAssignments,
@@ -148,4 +150,31 @@ export async function loginAndGetCookie(app: RequestLike, email: string, passwor
 /** ローカル JST の日時から UTC エポック分を計算する(テスト専用、tzOffset=540 固定)。 */
 export function jstMinutes(year: number, month: number, day: number, hour: number, minute: number): number {
   return Math.floor(Date.UTC(year, month - 1, day, hour - 9, minute) / 60_000);
+}
+
+/**
+ * requirePermission のテスト用: 単一の権限を1件だけ持つ使い捨てプリセットを作り、
+ * 指定ユーザーに割り当てる(@kizami/authz の Grant 形式ではなく DB の grants JSON 形式
+ * `{ key, scope }[]` — apps/api/src/seed.ts と同じ形)。
+ */
+export async function grantPermission(
+  db: Database,
+  params: { tenantId: string; userId: string; permission: string; scope: string },
+): Promise<void> {
+  const presetId = uuidv7();
+  await db.insert(permissionPresets).values({
+    id: presetId,
+    tenantId: params.tenantId,
+    name: `test-grant:${params.permission}`,
+    grants: JSON.stringify([{ key: params.permission, scope: params.scope }]),
+    isSystem: false,
+    createdAt: 0,
+  });
+  await db.insert(presetAssignments).values({
+    id: uuidv7(),
+    tenantId: params.tenantId,
+    userId: params.userId,
+    presetId,
+    createdAt: 0,
+  });
 }

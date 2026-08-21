@@ -148,14 +148,40 @@ describe("runReminderScan", () => {
       },
     };
 
-    const first = await runReminderScan(db, { nowMinutes: FIXED_NOW_MINUTES, channels: [fakeChannel] });
+    const resolveChannels = async () => [fakeChannel];
+
+    const first = await runReminderScan(db, { nowMinutes: FIXED_NOW_MINUTES, resolveChannels });
     expect(first.created).toHaveLength(1);
     expect(sent).toHaveLength(1);
     expect(first.created[0]?.dispatchResults).toEqual([{ channel: "fake", ok: true }]);
 
-    const second = await runReminderScan(db, { nowMinutes: FIXED_NOW_MINUTES + 5, channels: [fakeChannel] });
+    const second = await runReminderScan(db, { nowMinutes: FIXED_NOW_MINUTES + 5, resolveChannels });
     expect(second.created).toHaveLength(0);
     expect(sent).toHaveLength(1); // 重複時は再送しない
+  });
+
+  it("resolveChannels receives the scanned user's own tenantId", async () => {
+    const { db, tenantId, userId } = await setupTestDb();
+
+    const clockInAt = jstMinutes(2026, 4, 1, 9, 0);
+    await insertPunchEvent(db, {
+      tenantId,
+      userId,
+      kind: "clock_in",
+      occurredAt: clockInAt,
+      recordedAt: clockInAt,
+      source: "web",
+      actorId: userId,
+    });
+
+    const seenTenantIds: string[] = [];
+    const resolveChannels = async (id: string): Promise<NotificationChannel[]> => {
+      seenTenantIds.push(id);
+      return [];
+    };
+
+    await runReminderScan(db, { nowMinutes: FIXED_NOW_MINUTES, resolveChannels });
+    expect(seenTenantIds).toEqual([tenantId]);
   });
 
   it("skips a user without a resolvable settings timeline instead of throwing, and still scans the rest", async () => {

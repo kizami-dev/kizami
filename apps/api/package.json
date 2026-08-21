@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@hono/node-server": "^2.1.1",
+    "@kizami/authz": "workspace:*",
     "@kizami/db": "workspace:*",
     "@kizami/engine": "workspace:*",
     "@kizami/notify": "workspace:*",
@@ -18,9 +19,11 @@
     "drizzle-orm": "0.45.2",
     "hono": "^4.13.3",
     "ioredis": "^6.0.0",
+    "nodemailer": "^9.0.5",
     "tsx": "^4.23.12"
   },
   "devDependencies": {
-    "@types/node": "^26.2.0"
+    "@types/node": "^26.2.0",
+    "@types/nodemailer": "^8.0.1"
   }
 }

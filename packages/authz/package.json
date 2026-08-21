@@ -1,0 +1,14 @@
+{
+  "name": "@kizami/authz",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "権限エンジン — 純粋ロジック・ランタイム非依存・DB非依存(docs/design/permission-catalog.md)",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  }
+}

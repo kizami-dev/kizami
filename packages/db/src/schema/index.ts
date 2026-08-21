@@ -8,6 +8,7 @@
 
 export * from "./audit.js";
 export * from "./corrections.js";
+export * from "./notification-settings.js";
 export * from "./notifications.js";
 export * from "./org.js";
 export * from "./permissions.js";
