@@ -6,8 +6,11 @@ import { ForbiddenError } from "./authz.js";
 import { createAttendanceRoutes } from "./routes/attendance.js";
 import { createAuthRoutes } from "./routes/auth.js";
 import { createCorrectionsRoutes } from "./routes/corrections.js";
+import { createDepartmentsRoutes } from "./routes/departments.js";
 import { createMeRoutes } from "./routes/me.js";
+import { createMembersRoutes } from "./routes/members.js";
 import { createNotificationsRoutes } from "./routes/notifications.js";
+import { createPresetsRoutes } from "./routes/presets.js";
 import { createPunchesRoutes } from "./routes/punches.js";
 import { createSettingsRoutes, type SettingsRoutesDeps } from "./routes/settings.js";
 
@@ -57,6 +60,9 @@ export function createApp(deps: CreateAppDeps) {
   authed.route("/corrections", createCorrectionsRoutes(db));
   authed.route("/notifications", createNotificationsRoutes(db));
   authed.route("/settings", createSettingsRoutes(db, notify ?? {}));
+  authed.route("/departments", createDepartmentsRoutes(db));
+  authed.route("/members", createMembersRoutes(db));
+  authed.route("/presets", createPresetsRoutes(db));
   app.route("/", authed);
 
   app.onError((err, c) => {

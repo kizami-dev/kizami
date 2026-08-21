@@ -1,3 +1,4 @@
+export * from "./catalog.js";
 export * from "./implied.js";
 export * from "./resolve.js";
 export * from "./scope.js";
