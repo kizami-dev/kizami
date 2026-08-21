@@ -1,0 +1,14 @@
+{
+  "name": "@kizami/notify",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "通知チャネル抽象 — ランタイム非依存(fetch と設定注入のみ、node:* 不使用)",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  }
+}

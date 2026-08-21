@@ -15,6 +15,7 @@ describe("migrate", () => {
         "correction_requests",
         "departments",
         "memberships",
+        "notifications",
         "permission_presets",
         "preset_assignments",
         "punch_events",

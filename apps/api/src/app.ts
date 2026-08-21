@@ -7,6 +7,7 @@ import { createAttendanceRoutes } from "./routes/attendance.js";
 import { createAuthRoutes } from "./routes/auth.js";
 import { createCorrectionsRoutes } from "./routes/corrections.js";
 import { createMeRoutes } from "./routes/me.js";
+import { createNotificationsRoutes } from "./routes/notifications.js";
 import { createPunchesRoutes } from "./routes/punches.js";
 
 export interface CreateAppDeps {
@@ -48,6 +49,7 @@ export function createApp(deps: CreateAppDeps) {
   authed.route("/punches", createPunchesRoutes(db));
   authed.route("/attendance", createAttendanceRoutes(db));
   authed.route("/corrections", createCorrectionsRoutes(db));
+  authed.route("/notifications", createNotificationsRoutes(db));
   app.route("/", authed);
 
   app.onError((err, c) => {

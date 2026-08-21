@@ -1,4 +1,5 @@
-# api + web を同一 Pod にまとめたシングル Deployment。
+# api + web + worker(打刻忘れリマインドの定期スキャン, apps/api/src/worker.ts)を
+# 同一 Pod にまとめたシングル Deployment。
 # SQLite ファイルDB + RWO の PVC のため replicas は 1 固定、更新戦略も
 # Recreate(RollingUpdate だと新旧 Pod が同時に same PVC を掴もうとして
 # 片方が Pending のまま詰まる)。
@@ -64,6 +65,36 @@ spec:
               port: 3000
             initialDelaySeconds: 3
             periodSeconds: 10
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
+        - name: worker
+          # api と同じイメージ(tsx でソースを直接実行する構成は api と共通、
+          # docker/api.Dockerfile 参照)。エントリポイントだけ worker.ts に差し替える。
+          image: ghcr.io/sasagar/kizami-api:latest
+          command: ["node_modules/.bin/tsx", "src/worker.ts"]
+          env:
+            # api コンテナと同じ PVC 上の SQLite ファイルを見る(打刻忘れ検知は
+            # DB の定期スキャンなので api と同じデータを読む必要がある)。
+            - name: DATABASE_URL
+              value: file:/data/kizami.db
+            - name: REDIS_URL
+              value: redis://kizami-valkey:6379
+            # REMINDER_INTERVAL_MINUTES は未設定=既定 15 分のまま。
+            # WEBHOOK_URL は任意。Secret 未作成でも起動できるよう optional 参照にする
+            # (deploy/k8s/README.md の手順で kizami-notify Secret を作ると有効になる)。
+            - name: WEBHOOK_URL
+              valueFrom:
+                secretKeyRef:
+                  name: kizami-notify
+                  key: webhookUrl
+                  optional: true
+          volumeMounts:
+            - name: data
+              mountPath: /data
           resources:
             requests:
               cpu: 50m

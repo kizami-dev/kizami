@@ -1,0 +1,63 @@
+# リマインドワーカー(apps/api/src/worker.ts, BullMQ)用の Valkey。
+#
+# 永続化なし(emptyDir): ジョブキューの中身は「定期スキャンの起動トリガー」でしかなく、
+# 正しさは DB の定期スキャン(runReminderScan の毎回の再計算+重複防止 UNIQUE 制約)に
+# 依存しているため(docs/requirements.md §8, apps/api/src/reminders.ts の設計方針参照)、
+# Valkey 自体が再起動で消えても実害はない(次回スキャン起動時に repeatable job が
+# 再登録され、通知の重複は notifications テーブルの UNIQUE 制約が防ぐ)。
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kizami-valkey
+  namespace: kizami
+  labels:
+    app: kizami-valkey
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: kizami-valkey
+  template:
+    metadata:
+      labels:
+        app: kizami-valkey
+    spec:
+      containers:
+        - name: valkey
+          image: valkey/valkey:8-alpine
+          ports:
+            - name: valkey
+              containerPort: 6379
+          readinessProbe:
+            tcpSocket:
+              port: 6379
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              memory: 256Mi
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kizami-valkey
+  namespace: kizami
+spec:
+  type: ClusterIP
+  selector:
+    app: kizami-valkey
+  ports:
+    - name: valkey
+      port: 6379
+      targetPort: 6379

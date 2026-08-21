@@ -13,6 +13,7 @@
 ```sh
 kubectl apply -f deploy/k8s/namespace.yaml
 kubectl apply -f deploy/k8s/pvc.yaml
+kubectl apply -f deploy/k8s/valkey.yaml
 kubectl apply -f deploy/k8s/deployment.yaml
 kubectl apply -f deploy/k8s/service.yaml
 ```
@@ -20,8 +21,44 @@ kubectl apply -f deploy/k8s/service.yaml
 Pod が Running/Ready になるまで待つ:
 
 ```sh
+kubectl -n kizami rollout status deployment/kizami-valkey
 kubectl -n kizami rollout status deployment/kizami
 ```
+
+## 通知基盤・打刻忘れリマインド(v0.2 第二弾)
+
+`deployment.yaml` の `kizami` Deployment には `api` / `web` に加えて `worker` コンテナが
+含まれる(`apps/api/src/worker.ts`。api と同じイメージで `tsx src/worker.ts` を実行するだけの
+差分)。`worker` は BullMQ の repeatable job で `REMINDER_INTERVAL_MINUTES`(既定15分)おきに
+`runReminderScan`(`apps/api/src/reminders.ts`)を起動し、打刻忘れ(退勤)を検知してアプリ内通知
+(`notifications` テーブル)を作成する。ジョブキューには `valkey.yaml` の Valkey(永続化なし・
+`kizami-valkey:6379`)を使う。
+
+- 通知の正しさは DB の定期スキャン(engine の `missing_clock_out` 警告の再計算)と
+  `notifications` テーブルの UNIQUE 制約(重複防止)に依存しているため、Valkey は
+  「起動トリガー」に過ぎず永続化していない。Pod 再起動で repeatable job の登録がリセットされても、
+  worker 起動時に `upsertJobScheduler` が再登録するので実害はない
+- `worker` は `api` と同じ PVC 上の SQLite ファイル(`DATABASE_URL=file:/data/kizami.db`)を見る
+
+外部チャネル(Slack/Discord 互換 Webhook)へも送りたい場合は、`kizami-notify` Secret に
+`webhookUrl` キーを作成する(未作成でも `worker` は起動でき、アプリ内通知のみが動作する
+— `optional: true` 参照):
+
+```sh
+kubectl -n kizami create secret generic kizami-notify \
+  --from-literal=webhookUrl='https://hooks.slack.com/services/xxx/yyy/zzz'
+```
+
+Secret を後から作成/変更した場合は `worker` コンテナだけ再起動すれば反映される:
+
+```sh
+kubectl -n kizami rollout restart deployment/kizami
+```
+
+(単一 Deployment の全コンテナが再起動するため `api` / `web` も再起動される点に注意。
+コンテナ単位の再起動は k8s にはないため、影響を避けたい場合は反映を次回の通常デプロイに合わせること。)
+
+メール(SMTP)チャネルは v0.2 時点で未実装(`packages/notify/src/smtp.ts` はスタブ)。
 
 ## 初期シード(管理者ユーザー作成)
 
