@@ -73,10 +73,11 @@
   font-size: 1.6rem;
   letter-spacing: 0.08em;
   color: var(--stamp-color, var(--k-key));
+  /* 静止時の版ズレはインキの気配程度に薄く(メイン色の可読性を優先) */
   text-shadow:
-    2.5px 2px 0 var(--k-cyan),
-    -2.5px -2px 0 var(--k-magenta),
-    2px -2.5px 0 var(--k-yellow);
+    2px 1.5px 0 color-mix(in srgb, var(--k-cyan) 30%, transparent),
+    -2px -1.5px 0 color-mix(in srgb, var(--k-magenta) 30%, transparent),
+    1.5px -2px 0 color-mix(in srgb, var(--k-yellow) 40%, transparent);
 }
 
 .stamp--out {
@@ -91,7 +92,7 @@
   --stamp-color: var(--k-yellow-ink);
 }
 
-/* シグネチャ演出: 打刻成功時、CMYK 4版がズレて現れピタッと見当が合う(約300ms) */
+/* シグネチャ演出: 打刻成功時、濃い版ズレで現れて静止状態(薄い版ズレ)へ収束する(約300ms) */
 @keyframes stamp-register {
   0% {
     text-shadow:
@@ -109,9 +110,9 @@
   }
   100% {
     text-shadow:
-      2.5px 2px 0 var(--k-cyan),
-      -2.5px -2px 0 var(--k-magenta),
-      2px -2.5px 0 var(--k-yellow);
+      2px 1.5px 0 color-mix(in srgb, var(--k-cyan) 30%, transparent),
+      -2px -1.5px 0 color-mix(in srgb, var(--k-magenta) 30%, transparent),
+      1.5px -2px 0 color-mix(in srgb, var(--k-yellow) 40%, transparent);
     transform: scale(1);
   }
 }
