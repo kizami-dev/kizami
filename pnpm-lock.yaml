@@ -20,6 +20,15 @@ importers:
       '@hono/node-server':
         specifier: ^2.1.1
         version: 2.1.1(hono@4.13.3)
+      '@kizami/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@kizami/engine':
+        specifier: workspace:*
+        version: link:../../packages/engine
+      drizzle-orm:
+        specifier: 0.45.2
+        version: 0.45.2(@libsql/client@0.17.4)
       hono:
         specifier: ^4.13.3
         version: 4.13.3
