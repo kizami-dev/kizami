@@ -8,7 +8,13 @@
 import { and, eq, isNull } from "drizzle-orm";
 import type { Context, MiddlewareHandler, Next } from "hono";
 import { sessions, users, type Database } from "@kizami/db";
-import { getSessionTokenFromCookie, sessionIdFromToken } from "./session.js";
+import {
+  getSessionTokenFromCookie,
+  renewSession,
+  sessionIdFromToken,
+  setSessionCookie,
+  shouldRenew,
+} from "./session.js";
 
 export interface AuthUser {
   id: string;
@@ -21,7 +27,7 @@ export interface AppEnv {
   Variables: { user: AuthUser };
 }
 
-export function authMiddleware(db: Database): MiddlewareHandler<AppEnv> {
+export function authMiddleware(db: Database, options: { secureCookies: boolean }): MiddlewareHandler<AppEnv> {
   return async (c: Context<AppEnv>, next: Next) => {
     const token = getSessionTokenFromCookie(c);
     if (!token) {
@@ -41,6 +47,12 @@ export function authMiddleware(db: Database): MiddlewareHandler<AppEnv> {
     const row = rows[0];
     if (!row || row.session.expiresAt <= nowMinutes || !row.user.isActive) {
       return c.json({ error: "unauthorized" }, 401);
+    }
+
+    // 使い続けている限りログアウトさせない(残り期限が半分を切ったら延長)
+    if (shouldRenew(row.session.expiresAt, nowMinutes)) {
+      await renewSession(db, { sessionId, nowMinutes });
+      setSessionCookie(c, token, { secure: options.secureCookies });
     }
 
     const authUser: AuthUser = {

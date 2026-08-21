@@ -42,7 +42,7 @@ export function createApp(deps: CreateAppDeps) {
   app.route("/auth", createAuthRoutes(db, { secureCookies }));
 
   const authed = new Hono<AppEnv>();
-  authed.use("*", authMiddleware(db));
+  authed.use("*", authMiddleware(db, { secureCookies }));
   authed.route("/me", createMeRoutes());
   authed.route("/punches", createPunchesRoutes(db));
   authed.route("/attendance", createAttendanceRoutes(db));

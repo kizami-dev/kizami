@@ -8,6 +8,7 @@
  *   Secure はデプロイ設定で付与(node.ts 既定 ON、COOKIE_SECURE=false で無効化)
  */
 
+import { eq } from "drizzle-orm";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import type { Context } from "hono";
 import { sessions, type Database } from "@kizami/db";
@@ -65,7 +66,25 @@ export function setSessionCookie(c: Context, token: string, options: { secure: b
     sameSite: "Lax",
     path: "/",
     secure: options.secure,
+    // Max-Age を付けないとブラウザセッション限りの Cookie になり、
+    // DB のセッション(30日)が生きていてもブラウザを閉じるだけでログアウトする
+    maxAge: SESSION_TTL_MINUTES * 60,
   });
+}
+
+/** 有効期限の残りが TTL の半分を切ったら延長する(スライディング期限)。 */
+export function shouldRenew(expiresAt: number, nowMinutes: number): boolean {
+  return expiresAt - nowMinutes < SESSION_TTL_MINUTES / 2;
+}
+
+/** セッションの有効期限を now + TTL に延長する。 */
+export async function renewSession(
+  db: Database,
+  params: { sessionId: string; nowMinutes: number },
+): Promise<number> {
+  const expiresAt = params.nowMinutes + SESSION_TTL_MINUTES;
+  await db.update(sessions).set({ expiresAt }).where(eq(sessions.id, params.sessionId));
+  return expiresAt;
 }
 
 export function clearSessionCookie(c: Context): void {
