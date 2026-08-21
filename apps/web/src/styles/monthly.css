@@ -1,0 +1,208 @@
+.monthly {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+.monthly__main {
+  flex: 1;
+  padding: var(--space-5) var(--space-4) var(--space-7);
+  max-width: 56rem;
+  margin: 0 auto;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.monthly__nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.monthly__nav-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-s);
+  border: var(--border-hair);
+  text-decoration: none;
+  color: var(--k-key);
+  font-size: 0.9rem;
+}
+
+.monthly__nav-link:hover {
+  background: rgba(26, 26, 26, 0.04);
+}
+
+.monthly__title {
+  font-family: var(--font-display);
+  font-size: 1.4rem;
+  letter-spacing: 0.04em;
+}
+
+/* フレックス収支: C 濃度バー */
+.flex-balance {
+  border: var(--border-hair);
+  border-radius: var(--radius-m);
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.flex-balance__label {
+  font-size: 0.85rem;
+  color: var(--k-ink-soft);
+}
+
+.flex-balance__track {
+  height: 1.1rem;
+  border-radius: 999px;
+  background: repeating-linear-gradient(
+    90deg,
+    rgba(0, 163, 217, 0.12),
+    rgba(0, 163, 217, 0.12) 6px,
+    rgba(0, 163, 217, 0.2) 6px,
+    rgba(0, 163, 217, 0.2) 12px
+  );
+  border: 1px solid rgba(0, 110, 153, 0.3);
+  overflow: hidden;
+  position: relative;
+}
+
+.flex-balance__fill {
+  height: 100%;
+  background: var(--k-cyan);
+  border-radius: 999px 0 0 999px;
+}
+
+.flex-balance__numbers {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+}
+
+.flex-balance__diff--negative {
+  color: var(--k-magenta-ink);
+}
+
+.flex-balance__diff--positive {
+  color: var(--k-cyan-ink);
+}
+
+/* 区分別合計チップ */
+.totals-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.totals-chip {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-1);
+  border: 2px solid var(--chip-color, var(--k-key));
+  border-radius: var(--radius-m);
+  padding: var(--space-2) var(--space-3);
+  font-size: 0.85rem;
+}
+
+.totals-chip__label {
+  color: var(--chip-color, var(--k-key));
+  font-weight: 700;
+}
+
+.totals-chip__value {
+  font-family: var(--font-mono);
+}
+
+.totals-chip--statutory {
+  --chip-color: var(--k-key);
+}
+
+.totals-chip--overtime,
+.totals-chip--overtime60h {
+  --chip-color: var(--k-magenta-ink);
+}
+
+.totals-chip--lateNight {
+  --chip-color: var(--k-yellow-ink);
+}
+
+.totals-chip--statutoryHoliday {
+  --chip-color: var(--k-cyan-ink);
+}
+
+/* 日次テーブル: K 主体の静かな見た目 */
+.monthly-table-wrap {
+  overflow-x: auto;
+  border: var(--border-hair);
+  border-radius: var(--radius-m);
+}
+
+.monthly-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+  min-width: 34rem;
+}
+
+.monthly-table th,
+.monthly-table td {
+  padding: var(--space-2) var(--space-3);
+  text-align: right;
+  border-bottom: 1px solid rgba(26, 26, 26, 0.08);
+  white-space: nowrap;
+}
+
+.monthly-table th {
+  color: var(--k-ink-soft);
+  font-weight: 400;
+  font-size: 0.78rem;
+  text-align: right;
+}
+
+.monthly-table th:first-child,
+.monthly-table td:first-child {
+  text-align: left;
+}
+
+.monthly-table td.monthly-table__num {
+  font-family: var(--font-mono);
+}
+
+.monthly-table tr.monthly-table__row--holiday td:first-child {
+  color: var(--k-magenta-ink);
+}
+
+.monthly-table__warning {
+  text-align: left !important;
+  color: var(--k-yellow-ink);
+  font-size: 0.78rem;
+  white-space: normal;
+  min-width: 10rem;
+}
+
+.monthly-table__warning-mark {
+  display: inline-block;
+  margin-right: 4px;
+}
+
+.monthly-empty {
+  color: var(--k-ink-soft);
+  font-size: 0.85rem;
+  padding: var(--space-3);
+}
+
+.monthly-loading,
+.monthly-error {
+  color: var(--k-ink-soft);
+  font-size: 0.9rem;
+  padding: var(--space-6) 0;
+  text-align: center;
+}

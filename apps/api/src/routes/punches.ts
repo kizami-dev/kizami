@@ -1,9 +1,9 @@
 /**
- * POST /punches
+ * GET /punches, POST /punches
  */
 
 import { Hono } from "hono";
-import { insertPunchEvent, type Database } from "@kizami/db";
+import { insertPunchEvent, listValidPunches, type Database } from "@kizami/db";
 import type { PunchKind } from "@kizami/engine";
 import type { AppEnv } from "../auth/middleware.js";
 import { requireSelf } from "../authz.js";
@@ -23,8 +23,38 @@ function isValidKind(value: unknown): value is PunchKind {
   return typeof value === "string" && (VALID_KINDS as readonly string[]).includes(value);
 }
 
+/** クエリ文字列を整数(UTC エポック分)としてパースする。不正・非整数は null。 */
+function parseRangeParam(value: string | undefined): number | null {
+  if (value === undefined || !/^-?\d+$/.test(value)) {
+    return null;
+  }
+  return Number(value);
+}
+
 export function createPunchesRoutes(db: Database) {
   const app = new Hono<AppEnv>();
+
+  app.get("/", async (c) => {
+    const user = c.get("user");
+    requireSelf(c, user.id);
+
+    const from = parseRangeParam(c.req.query("from"));
+    const to = parseRangeParam(c.req.query("to"));
+    if (from === null || to === null || from > to) {
+      return c.json({ error: "invalid_range" }, 400);
+    }
+
+    const punches = await listValidPunches(db, {
+      tenantId: user.tenantId,
+      userId: user.id,
+      fromMinutes: from,
+      toMinutes: to,
+    });
+
+    return c.json({
+      punches: punches.map((p) => ({ id: p.id, kind: p.kind, occurredAt: p.occurredAt })),
+    });
+  });
 
   app.post("/", async (c) => {
     const user = c.get("user");

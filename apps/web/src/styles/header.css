@@ -1,0 +1,109 @@
+.k-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-5);
+  border-bottom: var(--border-hair);
+}
+
+.k-header__brand {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  text-decoration: none;
+  color: var(--k-key);
+}
+
+.k-header__logo {
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  letter-spacing: 0.06em;
+}
+
+.k-header__tombo {
+  color: var(--k-cyan-ink);
+  font-size: 0.9rem;
+}
+
+.k-header__nav {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.k-header__navlink {
+  font-size: 0.9rem;
+  color: var(--k-ink-soft);
+  text-decoration: none;
+  padding: var(--space-2) var(--space-1);
+  border-bottom: 2px solid transparent;
+}
+
+.k-header__navlink[aria-current="page"] {
+  color: var(--k-key);
+  border-bottom-color: var(--k-cyan);
+  font-weight: 700;
+}
+
+.k-header__user {
+  position: relative;
+}
+
+.k-header__user summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-m);
+  border: var(--border-hair);
+  font-size: 0.85rem;
+  color: var(--k-ink-soft);
+  background: transparent;
+}
+
+.k-header__user summary::-webkit-details-marker {
+  display: none;
+}
+
+.k-header__user summary:hover {
+  background: rgba(26, 26, 26, 0.04);
+}
+
+.k-header__menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + var(--space-2));
+  min-width: 10rem;
+  background: var(--k-paper);
+  border: var(--border-hair);
+  border-radius: var(--radius-m);
+  box-shadow: var(--shadow-card);
+  padding: var(--space-2);
+  z-index: 20;
+}
+
+.k-header__menu-email {
+  display: block;
+  padding: var(--space-2) var(--space-3);
+  font-size: 0.8rem;
+  color: var(--k-ink-soft);
+  word-break: break-all;
+}
+
+.k-header__logout {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-s);
+  font-size: 0.9rem;
+  color: var(--k-magenta-ink);
+}
+
+.k-header__logout:hover {
+  background: rgba(229, 0, 126, 0.08);
+}

@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { cors } from "hono/cors";
 import type { Database } from "@kizami/db";
 import { authMiddleware, type AppEnv } from "./auth/middleware.js";
 import { ForbiddenError } from "./authz.js";
@@ -14,6 +15,11 @@ export interface CreateAppDeps {
    * 実行環境のエントリポイント(node.ts 等)は明示的に渡すこと(既定 ON)。
    */
   secureCookies?: boolean;
+  /**
+   * 許可する CORS オリジン(開発時の Waku dev サーバー用)。
+   * 省略時は CORS ヘッダを付けない(本番は同一オリジン配信が前提)。
+   */
+  corsOrigin?: string;
 }
 
 /**
@@ -24,8 +30,12 @@ export interface CreateAppDeps {
  * テストは :memory: DB を、Node ランタイムは env から作った DB をそれぞれ渡せるようにする。
  */
 export function createApp(deps: CreateAppDeps) {
-  const { db, secureCookies = false } = deps;
+  const { db, secureCookies = false, corsOrigin } = deps;
   const app = new Hono<AppEnv>();
+
+  if (corsOrigin) {
+    app.use("*", cors({ origin: corsOrigin, credentials: true }));
+  }
 
   app.get("/healthz", (c) => c.json({ ok: true, name: "kizami" }));
 

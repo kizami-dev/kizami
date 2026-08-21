@@ -9,8 +9,11 @@ const databaseUrl = process.env.DATABASE_URL ?? "file:./kizami.db";
 // (localhost は secure context 扱いのため開発時も既定のままでよい)
 const secureCookies = process.env.COOKIE_SECURE !== "false";
 
+// 開発時は Waku dev サーバー(別オリジン)からの呼び出しを許可する
+const corsOrigin = process.env.CORS_ORIGIN ?? "http://localhost:3000";
+
 const { db } = await migrateDb({ url: databaseUrl });
-const app = createApp({ db, secureCookies });
+const app = createApp({ db, secureCookies, corsOrigin });
 
 serve({ fetch: app.fetch, port });
 console.log(`kizami api listening on :${port}`);

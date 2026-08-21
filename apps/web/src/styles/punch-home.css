@@ -1,0 +1,324 @@
+.punch-home {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+.punch-home__main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-6);
+  padding: var(--space-6) var(--space-4) var(--space-7);
+  max-width: 32rem;
+  margin: 0 auto;
+  width: 100%;
+}
+
+/* 現在時刻: IBM Plex Mono、分を大きく、秒は小さく添える */
+.punch-clock {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-1);
+  font-family: var(--font-mono);
+  color: var(--k-key);
+  margin-top: var(--space-4);
+}
+
+.punch-clock__main {
+  font-size: clamp(3rem, 12vw, 4.5rem);
+  font-weight: 600;
+  line-height: 1;
+}
+
+.punch-clock__seconds {
+  font-size: 1.25rem;
+  color: var(--k-ink-soft);
+  min-width: 2.4ch;
+}
+
+.punch-clock__date {
+  font-size: 0.85rem;
+  color: var(--k-ink-soft);
+  text-align: center;
+  margin-top: calc(-1 * var(--space-3));
+}
+
+/* 状態スタンプ: 円形印影、わずかな回転、CMYK 版ズレ風の二重影 */
+.stamp {
+  --stamp-rotate: -5deg;
+  width: 10rem;
+  height: 10rem;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 3px solid var(--stamp-color, var(--k-key));
+  transform: rotate(var(--stamp-rotate));
+  position: relative;
+}
+
+.stamp::before {
+  content: "";
+  position: absolute;
+  inset: 6px;
+  border-radius: 50%;
+  border: 1px solid var(--stamp-color, var(--k-key));
+  opacity: 0.5;
+}
+
+.stamp__label {
+  font-family: var(--font-display);
+  font-size: 1.6rem;
+  letter-spacing: 0.08em;
+  color: var(--stamp-color, var(--k-key));
+  text-shadow:
+    2.5px 2px 0 var(--k-cyan),
+    -2.5px -2px 0 var(--k-magenta),
+    2px -2.5px 0 var(--k-yellow);
+}
+
+.stamp--out {
+  --stamp-color: var(--k-ink-soft);
+}
+
+.stamp--working {
+  --stamp-color: var(--k-cyan-ink);
+}
+
+.stamp--onBreak {
+  --stamp-color: var(--k-yellow-ink);
+}
+
+/* シグネチャ演出: 打刻成功時、CMYK 4版がズレて現れピタッと見当が合う(約300ms) */
+@keyframes stamp-register {
+  0% {
+    text-shadow:
+      11px -12px 0 var(--k-cyan),
+      -12px 10px 0 var(--k-magenta),
+      9px 12px 0 var(--k-yellow);
+    transform: scale(1.1);
+  }
+  70% {
+    text-shadow:
+      2.5px 2px 0 var(--k-cyan),
+      -2.5px -2px 0 var(--k-magenta),
+      2px -2.5px 0 var(--k-yellow);
+    transform: scale(0.97);
+  }
+  100% {
+    text-shadow:
+      2.5px 2px 0 var(--k-cyan),
+      -2.5px -2px 0 var(--k-magenta),
+      2px -2.5px 0 var(--k-yellow);
+    transform: scale(1);
+  }
+}
+
+@keyframes stamp-ring {
+  0% {
+    box-shadow: 0 0 0 0 var(--stamp-color, var(--k-key));
+    opacity: 0.7;
+  }
+  100% {
+    box-shadow: 0 0 0 14px transparent;
+    opacity: 0;
+  }
+}
+
+.stamp--stamping .stamp__label {
+  animation: stamp-register 300ms ease-out;
+}
+
+.stamp--stamping::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  animation: stamp-ring 300ms ease-out;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stamp--stamping .stamp__label {
+    animation: none;
+  }
+  .stamp--stamping::after {
+    animation: none;
+  }
+}
+
+/* 打刻ボタン: インキパッド風、親指で押せる大きさ */
+.punch-pad {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-3);
+  width: 100%;
+}
+
+.punch-button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  min-height: 6rem;
+  border-radius: var(--radius-l);
+  border: none;
+  font-family: var(--font-body);
+  font-weight: 700;
+  font-size: 1.1rem;
+  color: var(--k-key);
+  box-shadow: var(--shadow-card);
+  transition:
+    transform 120ms ease-out,
+    box-shadow 120ms ease-out;
+}
+
+.punch-button:active:not(:disabled) {
+  transform: translateY(2px) scale(0.98);
+}
+
+.punch-button__kana {
+  font-size: 0.7rem;
+  font-weight: 400;
+  letter-spacing: 0.1em;
+}
+
+.punch-button--in {
+  background: var(--k-cyan);
+}
+
+.punch-button--break {
+  background: var(--k-yellow);
+}
+
+.punch-button--out {
+  background: var(--k-magenta);
+  color: var(--k-paper);
+}
+
+.punch-button:disabled {
+  background: #e7e7e3;
+  color: var(--k-ink-soft);
+  box-shadow: none;
+  opacity: 0.75;
+}
+
+.punch-pad__hint {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-3);
+  margin-top: calc(-1 * var(--space-2));
+}
+
+.punch-pad__hint span {
+  font-size: 0.72rem;
+  color: var(--k-ink-soft);
+  text-align: center;
+  line-height: 1.3;
+}
+
+.punch-error {
+  width: 100%;
+  color: var(--k-magenta-ink);
+  font-size: 0.85rem;
+  border: 1px solid var(--k-magenta);
+  background: rgba(229, 0, 126, 0.06);
+  border-radius: var(--radius-s);
+  padding: var(--space-3);
+  text-align: center;
+}
+
+/* 今日のトンボ列 */
+.tombo-row {
+  width: 100%;
+}
+
+.tombo-row__title {
+  font-size: 0.8rem;
+  color: var(--k-ink-soft);
+  margin-bottom: var(--space-2);
+}
+
+.tombo-row__list {
+  display: flex;
+  gap: var(--space-2);
+  overflow-x: auto;
+  padding: var(--space-2) var(--space-1) var(--space-3);
+  list-style: none;
+  margin: 0;
+  scrollbar-width: thin;
+}
+
+.tombo-row__empty {
+  color: var(--k-ink-soft);
+  font-size: 0.85rem;
+  padding: var(--space-3) 0;
+}
+
+.tombo-chip {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-m);
+  border: 2px solid var(--chip-color, var(--k-key));
+  background: #fff;
+  min-width: 4.5rem;
+}
+
+.tombo-chip__kind {
+  font-size: 0.7rem;
+  color: var(--chip-color, var(--k-key));
+  font-weight: 700;
+}
+
+.tombo-chip__time {
+  font-family: var(--font-mono);
+  font-size: 0.95rem;
+}
+
+.tombo-chip--in {
+  --chip-color: var(--k-cyan-ink);
+}
+
+.tombo-chip--break {
+  --chip-color: var(--k-yellow-ink);
+}
+
+.tombo-chip--out {
+  --chip-color: var(--k-magenta-ink);
+}
+
+@keyframes chip-arrive {
+  0% {
+    opacity: 0;
+    transform: translateY(6px) scale(0.9);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.tombo-chip--new {
+  animation: chip-arrive 260ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tombo-chip--new {
+    animation: none;
+  }
+}
+
+@media (max-width: 420px) {
+  .punch-button {
+    min-height: 5.25rem;
+    font-size: 1rem;
+  }
+}

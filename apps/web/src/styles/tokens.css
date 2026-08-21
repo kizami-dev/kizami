@@ -1,0 +1,45 @@
+/**
+ * デザイントークン(docs/design/ui-direction.md 準拠)。
+ *
+ * インキ原色(--k-cyan 等)は塗り・大型要素専用。テキストには AA を満たす
+ * ink 変種(--k-*-ink)を使う。--k-yellow はテキスト使用禁止(コントラスト不足)。
+ * ダーク対応は v0.1 スコープ外(トークンの意味は崩さない)。
+ */
+:root {
+  /* 地・キー */
+  --k-paper: #fbfbf9;
+  --k-key: #1a1a1a;
+  --k-ink-soft: #55565a;
+
+  /* CMY: 塗り・マーク用(原色) */
+  --k-cyan: #00a3d9;
+  --k-magenta: #e5007e;
+  --k-yellow: #ffd400;
+
+  /* CMY: テキスト・アイコン線用(AA 準拠 ink 変種) */
+  --k-cyan-ink: #006e99;
+  --k-magenta-ink: #b80065;
+  --k-yellow-ink: #8a6d00;
+
+  /* 書体 */
+  --font-display: "Shippori Antique B1", serif;
+  --font-body: "Zen Kaku Gothic New", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+
+  /* 形状・間隔の共通単位 */
+  --radius-s: 6px;
+  --radius-m: 12px;
+  --radius-l: 20px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+
+  --shadow-card: 0 1px 2px rgba(26, 26, 26, 0.08), 0 8px 24px rgba(26, 26, 26, 0.06);
+  --border-hair: 1px solid rgba(26, 26, 26, 0.14);
+
+  --focus-ring: 0 0 0 3px rgba(0, 110, 153, 0.45);
+}
