@@ -160,7 +160,6 @@ export function PunchHome() {
             onClick={() => handlePunch("clock_in")}
           >
             <span>{messages.punchButtons.clockIn}</span>
-            <span className="punch-button__kana">C</span>
           </button>
           <button
             type="button"
@@ -169,7 +168,6 @@ export function PunchHome() {
             onClick={() => handlePunch(breakKind)}
           >
             <span>{breakLabel}</span>
-            <span className="punch-button__kana">Y</span>
           </button>
           <button
             type="button"
@@ -178,7 +176,6 @@ export function PunchHome() {
             onClick={() => handlePunch("clock_out")}
           >
             <span>{messages.punchButtons.clockOut}</span>
-            <span className="punch-button__kana">M</span>
           </button>
           <div className="punch-pad__hint" aria-hidden="true">
             <span>{!canClockIn ? messages.punchHints.clockInDisabled : " "}</span>
