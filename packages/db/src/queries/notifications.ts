@@ -57,6 +57,41 @@ export async function createNotificationIfAbsent(db: Database, input: NewNotific
   }
 }
 
+export interface FindNotificationByTypeAndDateParams {
+  tenantId: string;
+  userId: string;
+  type: string;
+  /** ローカル日付 "YYYY-MM-DD"。null 相当("subject_date を持たない")の検索はサポートしない
+   * (SQLite の NULL 比較は `=` では成立しないため、必要になった時点で専用関数を足す) */
+  subjectDate: string;
+}
+
+/**
+ * (tenantId, userId, type, subjectDate) に一致する通知が既にあるか調べる。
+ *
+ * 36協定アラート(overtime-alerts.ts)が「reached 通知が既にある月には projected を作らない」
+ * を判定するために使う — createNotificationIfAbsent の UNIQUE 違反捕捉だけでは
+ * 「別の type の通知が既にあるか」は分からないため、事前の存在確認として別関数にした。
+ */
+export async function findNotificationByTypeAndDate(
+  db: Database,
+  params: FindNotificationByTypeAndDateParams,
+): Promise<Notification | null> {
+  const [row] = await db
+    .select()
+    .from(notifications)
+    .where(
+      and(
+        eq(notifications.tenantId, params.tenantId),
+        eq(notifications.userId, params.userId),
+        eq(notifications.type, params.type),
+        eq(notifications.subjectDate, params.subjectDate),
+      ),
+    )
+    .limit(1);
+  return row ?? null;
+}
+
 export interface ListNotificationsParams {
   tenantId: string;
   userId: string;

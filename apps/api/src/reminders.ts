@@ -114,15 +114,20 @@ function attendanceDayEndUtcMinutes(date: string, settings: CalcSettings): numbe
   return localMidnightUtcMinutes(epochDay + 1, settings.tzOffsetMinutes) + settings.dayBoundaryMinutes;
 }
 
-interface ActiveUserRow {
+export interface ActiveUserRow {
   id: string;
   tenantId: string;
   email: string;
   name: string;
 }
 
-/** is_active なユーザーを全テナント横断で走査する。 */
-async function listActiveUsers(db: Database): Promise<ActiveUserRow[]> {
+/**
+ * is_active なユーザーを全テナント横断で走査する。
+ *
+ * apps/api/src/overtime-alerts.ts からも再利用する(「全テナントの is_active ユーザーを
+ * 走査する」対象集合は打刻忘れリマインドと36協定アラートで完全に同一であるため)。
+ */
+export async function listActiveUsers(db: Database): Promise<ActiveUserRow[]> {
   const rows = await db
     .select({ id: users.id, tenantId: users.tenantId, email: users.email, name: users.name })
     .from(users)
@@ -130,13 +135,19 @@ async function listActiveUsers(db: Database): Promise<ActiveUserRow[]> {
   return rows;
 }
 
-interface MonthlyCalcResult {
+export interface MonthlyCalcResult {
   output: ReturnType<typeof calculate>;
   settingsTimeline: SettingsSpan[];
 }
 
-/** 1人・1ヶ月分の EngineInput を組み立てて calculate() する(GET /attendance/monthly と同じ手順)。 */
-async function calculateMonthlyForUser(
+/**
+ * 1人・1ヶ月分の EngineInput を組み立てて calculate() する(GET /attendance/monthly と同じ手順)。
+ *
+ * apps/api/src/overtime-alerts.ts からも再利用する(36協定アラートも「1人・1ヶ月分の
+ * calculate() 結果」を土台にする点は打刻忘れリマインドと同じであるため、月次集計の
+ * 組み立てロジックを二重管理しない)。
+ */
+export async function calculateMonthlyForUser(
   db: Database,
   params: { tenantId: string; userId: string; year: number; month: number },
 ): Promise<MonthlyCalcResult> {
