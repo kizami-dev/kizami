@@ -49,13 +49,23 @@ interface DecisionBody {
   note?: unknown;
 }
 
-function serializeCorrectionRequest(row: CorrectionRequest) {
+/**
+ * 対象打刻のスナップショット。承認後に対象が supersede されると有効打刻から
+ * 消えるため、クライアントが後から引き直せない。申請の表示に必要な最小限を返す。
+ */
+interface TargetPunchSnapshot {
+  kind: string;
+  occurredAt: number;
+}
+
+function serializeCorrectionRequest(row: CorrectionRequest, target?: TargetPunchSnapshot | null) {
   return {
     id: row.id,
     userId: row.userId,
     requestedBy: row.requestedBy,
     status: row.status,
     targetEventId: row.targetEventId,
+    targetPunch: target ?? null,
     proposedKind: row.proposedKind,
     proposedOccurredAt: row.proposedOccurredAt,
     reason: row.reason,
@@ -105,7 +115,18 @@ export function createCorrectionsRoutes(db: Database) {
       userId: user.id,
       ...(status !== undefined ? { status } : {}),
     });
-    return c.json({ requests: requests.map(serializeCorrectionRequest) });
+    // 対象打刻は superseded 後も参照できるよう、ここで解決して同梱する
+    const targets = new Map<string, TargetPunchSnapshot>();
+    for (const id of new Set(requests.map((r) => r.targetEventId).filter((id): id is string => id !== null))) {
+      const event = await getPunchEventById(db, id);
+      if (event) targets.set(id, { kind: event.kind, occurredAt: event.occurredAt });
+    }
+
+    return c.json({
+      requests: requests.map((r) =>
+        serializeCorrectionRequest(r, r.targetEventId ? (targets.get(r.targetEventId) ?? null) : null),
+      ),
+    });
   });
 
   app.post("/", async (c) => {

@@ -16,6 +16,7 @@ import {
 } from "../lib/time";
 import { useAuthGuard } from "../lib/useAuthGuard";
 import { AppHeader } from "./AppHeader";
+import { CorrectionForm } from "./CorrectionForm";
 
 const TOTAL_CATEGORIES: TimeCategory[] = ["statutory", "overtime", "overtime60h", "lateNight", "statutoryHoliday"];
 
@@ -29,6 +30,8 @@ export function MonthlyView() {
   const [data, setData] = useState<MonthlyAttendance | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+  const [correctionDate, setCorrectionDate] = useState<string | null>(null);
 
   useEffect(() => {
     if (guard.status !== "authed") return;
@@ -55,7 +58,7 @@ export function MonthlyView() {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [guard.status, monthParam]);
+  }, [guard.status, monthParam, reloadKey]);
 
   if (guard.status === "loading") {
     return <p className="monthly-loading">{messages.loading}</p>;
@@ -149,11 +152,13 @@ export function MonthlyView() {
                       <th>{messages.monthly.columnBreak}</th>
                       <th>{messages.monthly.columnLateNight}</th>
                       <th>{messages.monthly.columnWarning}</th>
+                      <th>{messages.monthly.columnActions}</th>
                     </tr>
                   </thead>
                   <tbody>
                     {data.days.map((day) => {
                       const warnings = warningsByDate.get(day.date);
+                      const hasWarning = !!warnings && warnings.length > 0;
                       return (
                         <tr key={day.date} className={day.isLegalHoliday ? "monthly-table__row--holiday" : undefined}>
                           <td>{formatDateLabel(day.date)}</td>
@@ -173,6 +178,15 @@ export function MonthlyView() {
                                 ))
                               : null}
                           </td>
+                          <td className="monthly-table__actions">
+                            <button
+                              type="button"
+                              className={`monthly-table__correct-btn${hasWarning ? " monthly-table__correct-btn--warn" : ""}`}
+                              onClick={() => setCorrectionDate(day.date)}
+                            >
+                              {messages.monthly.correctionAction}
+                            </button>
+                          </td>
                         </tr>
                       );
                     })}
@@ -183,6 +197,21 @@ export function MonthlyView() {
           </>
         ) : null}
       </main>
+
+      {correctionDate ? (
+        <CorrectionForm
+          date={correctionDate}
+          onClose={() => setCorrectionDate(null)}
+          onSubmitted={() => {
+            setCorrectionDate(null);
+            setReloadKey((k) => k + 1);
+          }}
+          onUnauthorized={() => {
+            setCorrectionDate(null);
+            router.push("/login");
+          }}
+        />
+      ) : null}
     </div>
   );
 }

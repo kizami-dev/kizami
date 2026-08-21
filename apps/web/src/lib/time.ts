@@ -32,6 +32,47 @@ export function formatTimeJst(occurredAtMinutes: number): string {
   return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
 }
 
+/** "YYYY-MM-DD" の JST 日窓を UTC エポック分(inclusive)で返す(jstTodayWindow の任意日付版)。 */
+export function dateWindowJst(dateStr: string): { from: number; to: number } {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr);
+  if (!match) {
+    throw new Error(`dateWindowJst: invalid date "${dateStr}"`);
+  }
+  const [, y, m, d] = match;
+  const utcMidnightMinutes = Date.UTC(Number(y), Number(m) - 1, Number(d)) / 60_000;
+  const from = utcMidnightMinutes - JST_OFFSET_MINUTES;
+  const to = from + MINUTES_PER_DAY - 1;
+  return { from, to };
+}
+
+/** "YYYY-MM-DD" + "HH:mm"(input type="time" の値)→ UTC エポック分。不正な形式は null。 */
+export function toEpochMinutesJst(dateStr: string, hhmm: string): number | null {
+  const dateMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr);
+  const timeMatch = /^(\d{2}):(\d{2})$/.exec(hhmm);
+  if (!dateMatch || !timeMatch) return null;
+  const [, y, m, d] = dateMatch;
+  const [, hh, mm] = timeMatch;
+  const utcMidnightMinutes = Date.UTC(Number(y), Number(m) - 1, Number(d)) / 60_000;
+  const localMinuteOfDay = Number(hh) * 60 + Number(mm);
+  return utcMidnightMinutes - JST_OFFSET_MINUTES + localMinuteOfDay;
+}
+
+/** UTC エポック分 → JST "YYYY-MM-DD"。 */
+export function dateStrFromEpochMinutesJst(minutes: number): string {
+  const localMin = minutes + JST_OFFSET_MINUTES;
+  const dayIndex = Math.floor(localMin / MINUTES_PER_DAY);
+  const date = new Date(dayIndex * 86_400_000);
+  const y = date.getUTCFullYear();
+  const m = date.getUTCMonth() + 1;
+  const d = date.getUTCDate();
+  return `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+}
+
+/** UTC エポック分 → JST "M/D(曜) HH:mm"(申請一覧の対象日時表示用)。 */
+export function formatDateTimeJst(minutes: number): string {
+  return `${formatDateLabel(dateStrFromEpochMinutesJst(minutes))} ${formatTimeJst(minutes)}`;
+}
+
 /** 分数 → "H:MM" (tabular-nums 表示用)。 */
 export function formatDurationHm(minutes: number): string {
   const sign = minutes < 0 ? "-" : "";

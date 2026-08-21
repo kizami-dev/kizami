@@ -8,7 +8,7 @@ import { messages } from "../lib/messages";
 export interface AppHeaderProps {
   displayName: string;
   email: string;
-  active: "home" | "monthly";
+  active: "home" | "monthly" | "corrections";
 }
 
 export function AppHeader({ displayName, email, active }: AppHeaderProps) {
@@ -38,6 +38,13 @@ export function AppHeader({ displayName, email, active }: AppHeaderProps) {
         </Link>
         <Link to="/monthly" className="k-header__navlink" aria-current={active === "monthly" ? "page" : undefined}>
           {messages.nav.monthly}
+        </Link>
+        <Link
+          to="/corrections"
+          className="k-header__navlink"
+          aria-current={active === "corrections" ? "page" : undefined}
+        >
+          {messages.nav.corrections}
         </Link>
         <details className="k-header__user">
           <summary>{displayName} ▾</summary>

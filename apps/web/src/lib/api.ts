@@ -121,6 +121,40 @@ export interface MonthlyAttendance {
   warnings: CalcWarning[];
 }
 
+export type CorrectionStatus = "pending" | "approved" | "rejected" | "withdrawn";
+
+/**
+ * 打刻修正申請(v0.2)。target系/proposed系の組み合わせで3ケースを表す
+ * (apps/api/src/routes/corrections.ts のコメント参照):
+ * - targetEventId === null かつ proposedKind/proposedOccurredAt あり → 追加
+ * - targetEventId あり かつ proposedKind/proposedOccurredAt あり → 訂正
+ * - targetEventId のみ → 取消
+ */
+export interface CorrectionRequestDto {
+  id: string;
+  userId: string;
+  requestedBy: string;
+  status: CorrectionStatus;
+  targetEventId: string | null;
+  /** 対象打刻のスナップショット。承認で supersede された後も表示できるようAPIが同梱する */
+  targetPunch: { kind: PunchKind; occurredAt: number } | null;
+  proposedKind: PunchKind | null;
+  proposedOccurredAt: number | null;
+  reason: string;
+  decidedBy: string | null;
+  decidedAt: number | null;
+  decisionNote: string | null;
+  createdAt: number;
+}
+
+export interface CreateCorrectionInput {
+  targetEventId?: string;
+  proposedKind?: PunchKind;
+  /** UTC エポック分 */
+  proposedOccurredAt?: number;
+  reason: string;
+}
+
 export const api = {
   async login(email: string, password: string): Promise<{ user: AuthUser }> {
     return request("/auth/login", { method: "POST", body: JSON.stringify({ email, password }) });
@@ -150,5 +184,28 @@ export const api = {
   /** month は "YYYY-MM"。 */
   async monthly(month: string): Promise<MonthlyAttendance> {
     return request(`/attendance/monthly?month=${encodeURIComponent(month)}`);
+  },
+
+  async listCorrections(status: "pending" | "all" = "all"): Promise<{ requests: CorrectionRequestDto[] }> {
+    return request(`/corrections?status=${status}`);
+  },
+
+  async createCorrection(input: CreateCorrectionInput): Promise<{ request: CorrectionRequestDto }> {
+    return request("/corrections", { method: "POST", body: JSON.stringify(input) });
+  },
+
+  async approveCorrection(
+    id: string,
+    note?: string,
+  ): Promise<{ request: CorrectionRequestDto; appliedEvent: { id: string; kind: PunchKind; occurredAt: number } }> {
+    return request(`/corrections/${id}/approve`, { method: "POST", body: JSON.stringify(note ? { note } : {}) });
+  },
+
+  async rejectCorrection(id: string, note?: string): Promise<{ request: CorrectionRequestDto }> {
+    return request(`/corrections/${id}/reject`, { method: "POST", body: JSON.stringify(note ? { note } : {}) });
+  },
+
+  async withdrawCorrection(id: string): Promise<{ request: CorrectionRequestDto }> {
+    return request(`/corrections/${id}/withdraw`, { method: "POST" });
   },
 };

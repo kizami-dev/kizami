@@ -12,6 +12,7 @@ export const messages = {
   nav: {
     home: "打刻",
     monthly: "月次",
+    corrections: "申請",
     logout: "ログアウト",
   },
 
@@ -74,6 +75,8 @@ export const messages = {
     columnBreak: "休憩",
     columnLateNight: "深夜",
     columnWarning: "警告",
+    columnActions: "操作",
+    correctionAction: "修正",
     empty: "この月の打刻データはありません",
     flexBalanceLabel: "フレックス収支",
     flexBalanceUnit: "分",
@@ -106,4 +109,96 @@ export const messages = {
     | "clock_out_during_break",
     string
   >,
+
+  corrections: {
+    title: "打刻修正申請",
+    tagline: "打刻の追加・訂正・取消を申請します。承認されると勤怠記録に反映されます。",
+
+    formTitle: "の修正申請",
+    formHint: "申請は承認されると打刻に反映され、月次集計に反映されます。",
+    close: "閉じる",
+    cancel: "キャンセル",
+    submit: "申請する",
+    submitting: "送信中…",
+    submitted: "申請を送信しました。承認されると打刻に反映されます。",
+
+    currentPunchesTitle: "この日の打刻",
+    currentPunchesEmpty: "この日の打刻はまだありません",
+
+    modeAdd: "打刻を追加",
+    modeCorrect: "既存打刻を訂正",
+    modeCancel: "既存打刻を取消",
+
+    kindLabel: "種別",
+    timeLabel: "時刻",
+    targetLabel: "対象の打刻",
+    targetPlaceholder: "対象を選択してください",
+    targetEmpty: "対象にできる打刻がありません",
+    reasonLabel: "理由",
+    reasonPlaceholder: "修正が必要な理由を入力してください",
+
+    typeAdd: "追加",
+    typeCorrect: "訂正",
+    typeCancel: "取消",
+    targetUnavailable: "対象の打刻情報を取得できませんでした(反映済みなど)",
+
+    statusLabel: {
+      pending: "申請中",
+      approved: "承認済",
+      rejected: "却下",
+      withdrawn: "取下げ",
+    } satisfies Record<"pending" | "approved" | "rejected" | "withdrawn", string>,
+
+    columnTarget: "対象日時",
+    columnContent: "内容",
+    columnReason: "理由",
+    columnDecision: "決裁",
+
+    approve: "承認",
+    reject: "却下",
+    withdraw: "取下げ",
+
+    decidedByLabel: "決裁者",
+    decidedAtLabel: "決裁日時",
+    decisionNoteLabel: "決裁メモ",
+    decisionNotePlaceholder: "メモ(任意)",
+    decidedBySelf: "本人",
+
+    confirmApproveTitle: "この申請を承認しますか",
+    confirmApproveMessage:
+      "承認すると勤怠記録に反映され、月次集計が変わります。この操作は監査ログに記録されます。",
+    confirmApproveSelfNote: "自己承認として記録されます。",
+    confirmRejectTitle: "この申請を却下しますか",
+    confirmRejectMessage: "却下すると申請は却下済みとして記録され、打刻には反映されません。",
+    confirmWithdrawTitle: "この申請を取り下げますか",
+    confirmWithdrawMessage: "取り下げると申請中の状態が解除されます。必要であれば再度申請できます。",
+    confirmProceed: "実行する",
+
+    empty: "申請はまだありません",
+
+    errors: {
+      already_superseded: "対象の打刻は別の申請で既に修正されています",
+      not_pending: "この申請は既に処理されています",
+      not_found: "対象の申請が見つかりません",
+      invalid_reason: "理由を1〜500文字で入力してください",
+      invalid_target_event: "対象の打刻が見つかりません。選び直してください",
+      invalid_proposed_kind: "打刻の種別を確認してください",
+      invalid_proposed_occurred_at: "時刻の形式を確認してください",
+      proposed_occurred_at_in_future: "未来の時刻は指定できません",
+      invalid_request_shape: "入力内容を確認してください",
+      invalid_body: "入力内容を確認してください",
+      invalid_status: "表示できない状態が指定されました",
+      default: "処理に失敗しました。もう一度お試しください",
+    },
+  },
 } as const;
+
+/** apps/api のエラーコード({ error: string })を日本語文言へマッピングする(§10 コンテキストヘルプ・messages.ts 集約方針)。 */
+export function mapCorrectionErrorMessage(body: unknown): string {
+  const errors = messages.corrections.errors as Record<string, string | undefined>;
+  if (body && typeof body === "object" && "error" in body && typeof (body as { error: unknown }).error === "string") {
+    const code = (body as { error: string }).error;
+    return errors[code] ?? messages.corrections.errors.default;
+  }
+  return messages.corrections.errors.default;
+}

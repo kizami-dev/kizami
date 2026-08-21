@@ -1,0 +1,444 @@
+/**
+ * 打刻修正申請(申請フォーム・承認一覧)のスタイル。
+ *
+ * docs/design/ui-direction.md の方針どおり、遊びは打刻画面(punch-home.css)に閉じ、
+ * ここは K 主体で静かに保つ。状態バッジのみ意味色(C/M/ink-soft)を使う。
+ */
+
+/* ---- 共通モーダル(申請フォーム・確認ダイアログで共有) ---- */
+
+.k-modal__backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(26, 26, 26, 0.42);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+  z-index: 100;
+}
+
+.k-modal {
+  width: 100%;
+  max-width: 30rem;
+  max-height: min(90dvh, 44rem);
+  background: var(--k-paper);
+  border-radius: var(--radius-l);
+  box-shadow: var(--shadow-card);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.k-modal--confirm {
+  max-width: 26rem;
+}
+
+.k-modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  border-bottom: var(--border-hair);
+}
+
+.k-modal__title {
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  letter-spacing: 0.02em;
+}
+
+.k-modal__close {
+  background: none;
+  border: none;
+  font-size: 1.4rem;
+  line-height: 1;
+  color: var(--k-ink-soft);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-s);
+}
+
+.k-modal__close:hover {
+  background: rgba(26, 26, 26, 0.06);
+}
+
+.k-modal__body {
+  padding: var(--space-4) var(--space-5);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.k-modal__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  border-top: var(--border-hair);
+}
+
+.k-modal__cancel {
+  background: none;
+  border: var(--border-hair);
+  border-radius: var(--radius-m);
+  padding: var(--space-3) var(--space-4);
+  font-size: 0.9rem;
+  color: var(--k-key);
+}
+
+.k-modal__cancel:hover:not(:disabled) {
+  background: rgba(26, 26, 26, 0.04);
+}
+
+.k-modal__confirm {
+  border: none;
+  border-radius: var(--radius-m);
+  padding: var(--space-3) var(--space-5);
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--k-paper);
+}
+
+.k-modal__confirm--neutral {
+  background: var(--k-key);
+}
+
+.k-modal__confirm--neutral:hover:not(:disabled) {
+  background: #000;
+}
+
+.k-modal__confirm--caution {
+  background: var(--k-magenta-ink);
+}
+
+.k-modal__confirm--caution:hover:not(:disabled) {
+  background: #8a004c;
+}
+
+.k-modal__confirm:disabled,
+.k-modal__cancel:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.confirm-dialog__message {
+  font-size: 0.95rem;
+  line-height: 1.7;
+}
+
+.confirm-dialog__extra-note {
+  font-size: 0.85rem;
+  color: var(--k-ink-soft);
+  border-left: 3px solid var(--k-key);
+  padding-left: var(--space-3);
+}
+
+/* ---- 申請フォーム(月次画面から開く) ---- */
+
+.correction-form__hint {
+  font-size: 0.82rem;
+  color: var(--k-ink-soft);
+}
+
+.correction-form__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.correction-form__section-title {
+  font-size: 0.85rem;
+  color: var(--k-ink-soft);
+}
+
+.correction-form__loading,
+.correction-form__empty {
+  font-size: 0.85rem;
+  color: var(--k-ink-soft);
+}
+
+.correction-punch-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.correction-punch-list__item {
+  display: flex;
+  gap: var(--space-2);
+  border: var(--border-hair);
+  border-radius: var(--radius-s);
+  padding: var(--space-2) var(--space-3);
+  font-size: 0.85rem;
+}
+
+.correction-mode {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-2);
+}
+
+.correction-mode__btn {
+  border: var(--border-hair);
+  border-radius: var(--radius-m);
+  padding: var(--space-3) var(--space-2);
+  font-size: 0.82rem;
+  background: transparent;
+  color: var(--k-ink-soft);
+  text-align: center;
+}
+
+.correction-mode__btn--active {
+  border-color: var(--k-key);
+  color: var(--k-key);
+  font-weight: 700;
+  background: rgba(26, 26, 26, 0.04);
+}
+
+.correction-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  position: relative;
+}
+
+.correction-field label {
+  font-size: 0.82rem;
+  color: var(--k-ink-soft);
+}
+
+.correction-field select,
+.correction-field input,
+.correction-field textarea {
+  border: var(--border-hair);
+  border-radius: var(--radius-s);
+  padding: var(--space-3);
+  font-size: 0.95rem;
+  background: #fff;
+  font-family: inherit;
+}
+
+.correction-field textarea {
+  min-height: 5.5rem;
+  resize: vertical;
+}
+
+.correction-field__counter {
+  align-self: flex-end;
+  font-size: 0.75rem;
+  color: var(--k-ink-soft);
+}
+
+.correction-field-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+}
+
+@media (max-width: 420px) {
+  .correction-field-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.correction-error {
+  color: var(--k-magenta-ink);
+  font-size: 0.85rem;
+  border: 1px solid var(--k-magenta);
+  background: rgba(229, 0, 126, 0.06);
+  border-radius: var(--radius-s);
+  padding: var(--space-3);
+}
+
+/* ---- 申請一覧・承認画面(/corrections) ---- */
+
+.corrections {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+.corrections__main {
+  flex: 1;
+  padding: var(--space-5) var(--space-4) var(--space-7);
+  max-width: 48rem;
+  margin: 0 auto;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.corrections__title {
+  font-family: var(--font-display);
+  font-size: 1.4rem;
+  letter-spacing: 0.04em;
+}
+
+.corrections__tagline {
+  font-size: 0.85rem;
+  color: var(--k-ink-soft);
+}
+
+.corrections__empty {
+  color: var(--k-ink-soft);
+  font-size: 0.9rem;
+  padding: var(--space-6) 0;
+  text-align: center;
+}
+
+.corrections__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.correction-card {
+  border: var(--border-hair);
+  border-radius: var(--radius-m);
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.correction-card__header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.correction-card__type {
+  font-size: 0.85rem;
+  color: var(--k-ink-soft);
+}
+
+.correction-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: var(--space-1) var(--space-3);
+  font-size: 0.75rem;
+  font-weight: 700;
+  border: 2px solid var(--k-key);
+  color: var(--k-key);
+}
+
+.correction-badge--pending {
+  border-color: var(--k-key);
+  color: var(--k-key);
+}
+
+.correction-badge--approved {
+  border-color: var(--k-cyan-ink);
+  color: var(--k-cyan-ink);
+}
+
+.correction-badge--rejected {
+  border-color: var(--k-magenta-ink);
+  color: var(--k-magenta-ink);
+}
+
+.correction-badge--withdrawn {
+  border-color: var(--k-ink-soft);
+  color: var(--k-ink-soft);
+}
+
+.correction-card__body {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.correction-card__row {
+  display: grid;
+  grid-template-columns: 6rem 1fr;
+  gap: var(--space-3);
+  font-size: 0.88rem;
+}
+
+.correction-card__row dt {
+  color: var(--k-ink-soft);
+}
+
+.correction-card__row dd {
+  margin: 0;
+}
+
+.correction-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: var(--border-hair);
+}
+
+.correction-card__btn {
+  border-radius: var(--radius-s);
+  padding: var(--space-2) var(--space-4);
+  font-size: 0.85rem;
+  font-weight: 700;
+  border: var(--border-hair);
+  background: transparent;
+  color: var(--k-key);
+}
+
+.correction-card__btn--approve {
+  border-color: var(--k-cyan-ink);
+  color: var(--k-cyan-ink);
+}
+
+.correction-card__btn--approve:hover {
+  background: rgba(0, 163, 217, 0.08);
+}
+
+.correction-card__btn--reject {
+  border-color: var(--k-magenta-ink);
+  color: var(--k-magenta-ink);
+}
+
+.correction-card__btn--reject:hover {
+  background: rgba(229, 0, 126, 0.08);
+}
+
+.correction-card__btn--withdraw {
+  color: var(--k-ink-soft);
+}
+
+.correction-card__btn--withdraw:hover {
+  background: rgba(26, 26, 26, 0.04);
+}
+
+/* ---- 月次テーブル: 修正導線 ---- */
+
+.monthly-table__actions {
+  text-align: right;
+}
+
+.monthly-table__correct-btn {
+  border: var(--border-hair);
+  border-radius: var(--radius-s);
+  background: transparent;
+  color: var(--k-ink-soft);
+  padding: var(--space-1) var(--space-3);
+  font-size: 0.78rem;
+}
+
+.monthly-table__correct-btn:hover {
+  background: rgba(26, 26, 26, 0.05);
+}
+
+.monthly-table__correct-btn--warn {
+  border-color: var(--k-yellow-ink);
+  color: var(--k-yellow-ink);
+  font-weight: 700;
+}
