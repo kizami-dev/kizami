@@ -9,6 +9,11 @@ import { createPunchesRoutes } from "./routes/punches.js";
 
 export interface CreateAppDeps {
   db: Database;
+  /**
+   * セッション Cookie に Secure を付けるか。省略時 false(テスト用)。
+   * 実行環境のエントリポイント(node.ts 等)は明示的に渡すこと(既定 ON)。
+   */
+  secureCookies?: boolean;
 }
 
 /**
@@ -19,12 +24,12 @@ export interface CreateAppDeps {
  * テストは :memory: DB を、Node ランタイムは env から作った DB をそれぞれ渡せるようにする。
  */
 export function createApp(deps: CreateAppDeps) {
-  const { db } = deps;
+  const { db, secureCookies = false } = deps;
   const app = new Hono<AppEnv>();
 
   app.get("/healthz", (c) => c.json({ ok: true, name: "kizami" }));
 
-  app.route("/auth", createAuthRoutes(db));
+  app.route("/auth", createAuthRoutes(db, { secureCookies }));
 
   const authed = new Hono<AppEnv>();
   authed.use("*", authMiddleware(db));

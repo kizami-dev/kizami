@@ -8,7 +8,7 @@
 import { and, eq, isNull } from "drizzle-orm";
 import type { Context, MiddlewareHandler, Next } from "hono";
 import { sessions, users, type Database } from "@kizami/db";
-import { getSessionIdFromCookie } from "./session.js";
+import { getSessionTokenFromCookie, sessionIdFromToken } from "./session.js";
 
 export interface AuthUser {
   id: string;
@@ -23,10 +23,11 @@ export interface AppEnv {
 
 export function authMiddleware(db: Database): MiddlewareHandler<AppEnv> {
   return async (c: Context<AppEnv>, next: Next) => {
-    const sessionId = getSessionIdFromCookie(c);
-    if (!sessionId) {
+    const token = getSessionTokenFromCookie(c);
+    if (!token) {
       return c.json({ error: "unauthorized" }, 401);
     }
+    const sessionId = await sessionIdFromToken(token);
 
     const nowMinutes = Math.floor(Date.now() / 60_000);
 

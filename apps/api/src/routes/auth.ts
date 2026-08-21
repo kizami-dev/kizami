@@ -6,7 +6,13 @@ import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { authCredentials, sessions, users, type Database } from "@kizami/db";
 import { verifyPassword } from "../auth/password.js";
-import { clearSessionCookie, createSession, getSessionIdFromCookie, setSessionCookie } from "../auth/session.js";
+import {
+  clearSessionCookie,
+  createSession,
+  getSessionTokenFromCookie,
+  sessionIdFromToken,
+  setSessionCookie,
+} from "../auth/session.js";
 import { nowMinutes } from "../lib/time.js";
 
 interface LoginBody {
@@ -14,7 +20,14 @@ interface LoginBody {
   password?: unknown;
 }
 
-export function createAuthRoutes(db: Database) {
+/**
+ * ユーザー列挙対策のダミーハッシュ。メール不存在・無効ユーザーでも
+ * これに対する検証を実行し、応答時間を実在ユーザーと揃える。
+ * (値は破棄するため中身は任意の well-formed な文字列でよい)
+ */
+const DUMMY_HASH = "pbkdf2-sha256$600000$AAAAAAAAAAAAAAAAAAAAAA==$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+
+export function createAuthRoutes(db: Database, options: { secureCookies: boolean }) {
   const app = new Hono();
 
   app.post("/login", async (c) => {
@@ -34,30 +47,35 @@ export function createAuthRoutes(db: Database) {
 
     const userRows = await db.select().from(users).where(eq(users.email, email)).limit(1);
     const user = userRows[0];
-    if (!user || !user.isActive) {
-      return c.json({ error: "invalid_credentials" }, 401);
+
+    let cred: { passwordHash: string } | undefined;
+    if (user) {
+      const credRows = await db.select().from(authCredentials).where(eq(authCredentials.userId, user.id)).limit(1);
+      cred = credRows[0];
     }
 
-    const credRows = await db.select().from(authCredentials).where(eq(authCredentials.userId, user.id)).limit(1);
-    const cred = credRows[0];
-    if (!cred) {
+    // ユーザー不存在・無効・資格情報なしでも必ず1回ハッシュ検証を行い、応答時間を揃える
+    const usable = user !== undefined && user.isActive && cred !== undefined;
+    const ok = await verifyPassword(password, usable ? (cred as { passwordHash: string }).passwordHash : DUMMY_HASH);
+    if (!usable || !ok) {
       return c.json({ error: "invalid_credentials" }, 401);
     }
+    const activeUser = user as NonNullable<typeof user>;
 
-    const ok = await verifyPassword(password, cred.passwordHash);
-    if (!ok) {
-      return c.json({ error: "invalid_credentials" }, 401);
-    }
+    const session = await createSession(db, {
+      tenantId: activeUser.tenantId,
+      userId: activeUser.id,
+      nowMinutes: nowMinutes(),
+    });
+    setSessionCookie(c, session.token, { secure: options.secureCookies });
 
-    const session = await createSession(db, { tenantId: user.tenantId, userId: user.id, nowMinutes: nowMinutes() });
-    setSessionCookie(c, session.id);
-
-    return c.json({ user: { id: user.id, email: user.email, displayName: user.name } }, 200);
+    return c.json({ user: { id: activeUser.id, email: activeUser.email, displayName: activeUser.name } }, 200);
   });
 
   app.post("/logout", async (c) => {
-    const sessionId = getSessionIdFromCookie(c);
-    if (sessionId) {
+    const token = getSessionTokenFromCookie(c);
+    if (token) {
+      const sessionId = await sessionIdFromToken(token);
       await db.update(sessions).set({ revokedAt: nowMinutes() }).where(eq(sessions.id, sessionId));
     }
     clearSessionCookie(c);
