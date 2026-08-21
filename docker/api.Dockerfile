@@ -3,7 +3,7 @@
 # Build context MUST be the repository root, e.g.:
 #   docker build -f docker/api.Dockerfile -t ghcr.io/sasagar/kizami-api:latest .
 #
-# NOTE: apps/api and packages/db/packages/engine/packages/notify ship as
+# NOTE: apps/api and the workspace packages ship as
 # TypeScript source (their package.json "exports" point directly at
 # src/*.ts) — there is no bundling/build step for the API yet. This image
 # therefore runs the app with `tsx` instead of a compiled `node`
@@ -54,9 +54,9 @@ RUN groupadd --system --gid 1001 kizami \
 
 COPY --from=deps --chown=kizami:kizami /app/package.json /app/pnpm-workspace.yaml /app/pnpm-lock.yaml /app/tsconfig.base.json ./
 COPY --from=deps --chown=kizami:kizami /app/apps/api ./apps/api
-COPY --from=deps --chown=kizami:kizami /app/packages/db ./packages/db
-COPY --from=deps --chown=kizami:kizami /app/packages/engine ./packages/engine
-COPY --from=deps --chown=kizami:kizami /app/packages/notify ./packages/notify
+# packages はまとめてコピーする。個別に列挙すると新しいワークスペースパッケージを
+# 足したときに漏れて実行時 ERR_MODULE_NOT_FOUND になる(2026-08-22 に @kizami/authz で発生)
+COPY --from=deps --chown=kizami:kizami /app/packages ./packages
 COPY --from=deps --chown=kizami:kizami /app/node_modules ./node_modules
 
 USER kizami
