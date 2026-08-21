@@ -209,6 +209,74 @@ export interface NotificationTestResult {
   error?: string;
 }
 
+/** 権限のスコープ(狭い→広い: self < department < department_and_descendants < tenant)。packages/authz/src/types.ts と一致。 */
+export type Scope = "self" | "department" | "department_and_descendants" | "tenant";
+
+/** 部署(apps/api/src/routes/departments.ts の serialize と一致)。 */
+export interface DepartmentDto {
+  id: string;
+  name: string;
+  parentId: string | null;
+  createdAt: number;
+}
+
+export interface CreateDepartmentInput {
+  name: string;
+  parentId?: string;
+}
+
+/** name/parentId は省略時「変更しない」。parentId: null はトップレベル化。 */
+export interface UpdateDepartmentInput {
+  name?: string;
+  parentId?: string | null;
+}
+
+/** メンバー(apps/api/src/routes/members.ts の GET / のレスポンス要素と一致)。 */
+export interface MemberDto {
+  id: string;
+  name: string;
+  email: string;
+  isActive: boolean;
+  department: { id: string; name: string } | null;
+  presetNames: string[];
+}
+
+export interface PermissionGrantDto {
+  key: string;
+  scope: Scope;
+}
+
+/** 権限プリセット(apps/api/src/routes/presets.ts の serializePreset と一致)。 */
+export interface PermissionPresetDto {
+  id: string;
+  name: string;
+  description: string | null;
+  isSystem: boolean;
+  grants: PermissionGrantDto[];
+}
+
+/** GET /presets/catalog(packages/authz/src/catalog.ts の PERMISSION_CATALOG そのまま)。 */
+export interface PermissionCatalogEntryDto {
+  key: string;
+  labelJa: string;
+  descriptionJa: string;
+  scopes: Scope[];
+  dangerous: boolean;
+  impliesView: string[];
+}
+
+export interface CreatePresetInput {
+  name: string;
+  description?: string | null;
+  grants: PermissionGrantDto[];
+}
+
+export interface UpdatePresetInput {
+  name?: string;
+  description?: string | null;
+  grants?: PermissionGrantDto[];
+}
+
 export const api = {
   async login(email: string, password: string): Promise<{ user: AuthUser }> {
     return request("/auth/login", { method: "POST", body: JSON.stringify({ email, password }) });
@@ -286,5 +354,53 @@ export const api = {
 
   async testNotificationSettings(): Promise<{ results: NotificationTestResult[] }> {
     return request("/settings/notifications/test", { method: "POST" });
+  },
+
+  async listDepartments(): Promise<{ departments: DepartmentDto[] }> {
+    return request("/departments");
+  },
+
+  async createDepartment(input: CreateDepartmentInput): Promise<{ department: DepartmentDto }> {
+    return request("/departments", { method: "POST", body: JSON.stringify(input) });
+  },
+
+  async updateDepartment(id: string, input: UpdateDepartmentInput): Promise<{ department: DepartmentDto }> {
+    return request(`/departments/${id}`, { method: "PATCH", body: JSON.stringify(input) });
+  },
+
+  async deleteDepartment(id: string): Promise<{ ok: true }> {
+    return request(`/departments/${id}`, { method: "DELETE" });
+  },
+
+  async listMembers(): Promise<{ members: MemberDto[] }> {
+    return request("/members");
+  },
+
+  async updateMemberDepartment(id: string, departmentId: string): Promise<{ member: { id: string; departmentId: string } }> {
+    return request(`/members/${id}`, { method: "PATCH", body: JSON.stringify({ departmentId }) });
+  },
+
+  async assignMemberPresets(id: string, presetIds: string[]): Promise<{ presetIds: string[] }> {
+    return request(`/members/${id}/presets`, { method: "PUT", body: JSON.stringify({ presetIds }) });
+  },
+
+  async listPresets(): Promise<{ presets: PermissionPresetDto[] }> {
+    return request("/presets");
+  },
+
+  async getPresetCatalog(): Promise<{ catalog: PermissionCatalogEntryDto[] }> {
+    return request("/presets/catalog");
+  },
+
+  async createPreset(input: CreatePresetInput): Promise<{ preset: PermissionPresetDto }> {
+    return request("/presets", { method: "POST", body: JSON.stringify(input) });
+  },
+
+  async updatePreset(id: string, input: UpdatePresetInput): Promise<{ preset: PermissionPresetDto }> {
+    return request(`/presets/${id}`, { method: "PATCH", body: JSON.stringify(input) });
+  },
+
+  async deletePreset(id: string): Promise<{ ok: true }> {
+    return request(`/presets/${id}`, { method: "DELETE" });
   },
 };

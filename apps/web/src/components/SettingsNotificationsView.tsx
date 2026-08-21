@@ -14,6 +14,7 @@ import { mapNotificationSettingsErrorMessage, messages } from "../lib/messages";
 import { useAuthGuard } from "../lib/useAuthGuard";
 import { AppHeader } from "./AppHeader";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { SettingsNav } from "./SettingsNav";
 
 interface FormState {
   webhookEnabled: boolean;
@@ -178,6 +179,7 @@ export function SettingsNotificationsView() {
     <div className="settings-notif">
       <AppHeader displayName={guard.user.displayName} email={guard.user.email} active="settings" />
       <main className="settings-notif__main">
+        <SettingsNav active="notifications" />
         <h1 className="settings-notif__title">{messages.settingsNotifications.title}</h1>
         <p className="settings-notif__tagline">{messages.settingsNotifications.tagline}</p>
 

@@ -17,6 +17,14 @@ export const messages = {
     logout: "ログアウト",
   },
 
+  /** スコープの日本語名(要件 §4)。狭い→広い: self < department < department_and_descendants < tenant。 */
+  scopeLabel: {
+    self: "本人のみ",
+    department: "自部署",
+    department_and_descendants: "自部署+配下部署",
+    tenant: "テナント全体",
+  } satisfies Record<"self" | "department" | "department_and_descendants" | "tenant", string>,
+
   login: {
     title: "KIZAMI",
     tagline: "1分単位で時を刻む勤怠管理",
@@ -264,6 +272,174 @@ export const messages = {
       default: "処理に失敗しました。もう一度お試しください",
     },
   },
+
+  /** 設定サブナビ(/settings/* 間の行き来。アクセス可能な項目のみ表示)。 */
+  settingsNav: {
+    label: "設定メニュー",
+    /** 自己批評での改善: 単なる「設定」だと他のタブと同格の項目に見えてしまうため、
+     * 「一覧に戻る」操作だと分かる文言にする(非エンジニアが迷わないための平易さの要件)。 */
+    hubLink: "設定メニュー一覧",
+    notifications: "通知",
+    departments: "部署",
+    members: "メンバー",
+    presets: "権限プリセット",
+  },
+
+  settingsHub: {
+    title: "設定",
+    tagline: "テナントの設定・組織・権限を管理します。アクセスできる項目のみ表示されます。",
+    empty: "利用できる設定項目がありません。管理者にお問い合わせください。",
+    notificationsTitle: "通知",
+    notificationsDesc: "Webhook・メール(SMTP)の通知チャネルを設定します。",
+    departmentsTitle: "部署",
+    departmentsDesc: "部署ツリーの作成・名称変更・異動・削除を行います。",
+    membersTitle: "メンバー",
+    membersDesc: "メンバーの所属変更、権限プリセットの割当、実効権限の確認を行います。",
+    presetsTitle: "権限プリセット",
+    presetsDesc: "権限のON/OFFとスコープを組み合わせたプリセットを作成・編集します。",
+  },
+
+  departments: {
+    title: "部署管理",
+    tagline: "部署ツリーの作成・名称変更・異動・削除を行います。",
+    noPermission: "この画面を利用する権限がありません",
+    loadFailed: "部署一覧の取得に失敗しました。もう一度お試しください",
+    empty: "まだ部署がありません。「部署を追加」から作成してください。",
+    topLevel: "トップレベル",
+    addRoot: "部署を追加",
+    addChild: "配下に追加",
+    rename: "名前・親を変更",
+    delete: "削除",
+
+    formTitleCreate: "部署を追加",
+    formTitleEdit: "部署を編集",
+    nameLabel: "部署名",
+    namePlaceholder: "例: 営業部",
+    parentLabel: "親部署",
+    parentNone: "なし(トップレベル)",
+    save: "保存",
+    saving: "保存中…",
+    cancel: "キャンセル",
+
+    confirmDeleteTitle: "この部署を削除しますか",
+    confirmDeleteMessage: "削除すると元に戻せません。配下の部署やメンバーが残っている場合は削除できません。",
+    confirmDeleteLabel: "削除する",
+
+    errors: {
+      invalid_name: "部署名を1〜200文字で入力してください",
+      invalid_parent_id: "指定した親部署が見つかりません",
+      invalid_body: "入力内容を確認してください",
+      circular_reference: "自分自身や配下の部署は親にできません",
+      not_found: "対象の部署が見つかりません",
+      department_not_empty: "配下の部署またはメンバーが残っています",
+      default: "処理に失敗しました。もう一度お試しください",
+    },
+  },
+
+  members: {
+    title: "メンバー管理",
+    tagline: "所属部署の変更、権限プリセットの割当、実効権限(できること)の確認を行います。",
+    noPermission: "この画面を利用する権限がありません",
+    loadFailed: "メンバー一覧の取得に失敗しました。もう一度お試しください",
+    empty: "メンバーがいません",
+
+    columnName: "氏名",
+    columnEmail: "メールアドレス",
+    columnDepartment: "所属部署",
+    columnPresets: "割当プリセット",
+    columnActions: "操作",
+    noDepartment: "未所属",
+    noPresets: "割当なし",
+
+    detailToggleOpen: "詳細を開く",
+    detailToggleClose: "詳細を閉じる",
+
+    departmentChangeLabel: "所属部署を変更",
+    departmentChangeSaved: "所属部署を変更しました",
+
+    presetAssignTitle: "割り当てるプリセット",
+    presetAssignHint: "チェックを変更すると、下の「できること」にすぐ反映されます。保存するまで実際の割当は変わりません。",
+    presetAssignSave: "割当を保存",
+    presetAssignSaving: "保存中…",
+    presetAssignSaved: "権限プリセットの割当を保存しました",
+    presetAssignUnsaved: "保存されていない変更があります",
+    noPresetsAvailable: "利用できる権限プリセットがありません",
+
+    effectiveTitle: "このメンバーができること",
+    effectiveHint: "常に本人の打刻・申請の起票・自分の記録の閲覧ができます(全員共通、設定変更不可)。",
+    effectiveEmpty: "上記の基本操作以外に割り当てられている権限はありません。",
+    effectiveScopeLabel: "適用範囲",
+    effectiveSourceLabel: "由来",
+    /** 自己批評での改善: プリセット名に直接続けて括弧書きしていたため密度が高く読みづらかった。
+     * 先頭に句読点を足して文として区切り、平易な言い回しにした。 */
+    effectiveViaImplication: "。他の権限に自動的に含まれる閲覧です",
+
+    errors: {
+      invalid_body: "入力内容を確認してください",
+      invalid_department_id: "指定した部署が見つかりません",
+      not_found: "対象のメンバーが見つかりません",
+      invalid_preset_id: "指定した権限プリセットが見つかりません",
+      self_escalation: "自分自身に新しい権限を付けることはできません",
+      self_demotion: "自分から権限管理の権限を外すことはできません",
+      last_admin: "権限管理ができる最後のメンバーからこの権限を外すことはできません",
+      default: "処理に失敗しました。もう一度お試しください",
+    },
+  },
+
+  presets: {
+    title: "権限プリセット管理",
+    tagline: "権限のON/OFFとスコープを組み合わせたプリセットを作成・編集します。1人に複数割り当てると合算されます。",
+    noPermission: "この画面を利用する権限がありません",
+    loadFailed: "権限プリセットの取得に失敗しました。もう一度お試しください",
+    empty: "権限プリセットがありません",
+
+    columnName: "名前",
+    columnDescription: "説明",
+    columnType: "種別",
+    columnAssignedCount: "割当人数",
+    columnActions: "操作",
+    systemBadge: "標準",
+    customBadge: "カスタム",
+    noDescription: "(説明なし)",
+    assignedCountUnit: "人",
+
+    addNew: "プリセットを新規作成",
+    edit: "編集",
+    duplicate: "複製して編集",
+    delete: "削除",
+
+    formTitleCreate: "権限プリセットを新規作成",
+    formTitleEdit: "権限プリセットを編集",
+    formReadonlyNote: "標準プリセットは編集できません。内容を変更したい場合は「複製して編集」から新しいプリセットを作成してください。",
+    nameLabel: "名前",
+    namePlaceholder: "例: 経理マネージャー",
+    descriptionLabel: "説明(任意)",
+    descriptionPlaceholder: "このプリセットの用途を書いておくと迷わず選べます",
+    permissionsLabel: "権限",
+    scopeLabel: "適用範囲",
+    dangerousBadge: "重要",
+    dangerousNote: "この権限は影響が大きい操作です。付与する相手をよく確認してください。",
+    impliesViewPrefix: "この権限には次の閲覧が含まれます: ",
+    save: "保存",
+    saving: "保存中…",
+    cancel: "キャンセル",
+    close: "閉じる",
+
+    confirmDeleteTitle: "この権限プリセットを削除しますか",
+    confirmDeleteMessage: "削除すると元に戻せません。メンバーに割り当てられている場合は削除できません。",
+    confirmDeleteLabel: "削除する",
+
+    errors: {
+      invalid_name: "名前を1〜100文字で入力してください",
+      invalid_description: "説明は500文字以内で入力してください",
+      invalid_grants: "選択した権限の内容を確認してください",
+      invalid_body: "入力内容を確認してください",
+      not_found: "対象の権限プリセットが見つかりません",
+      system_preset: "標準プリセットは編集・削除できません",
+      preset_in_use: "このプリセットは現在メンバーに割り当てられているため削除できません",
+      default: "処理に失敗しました。もう一度お試しください",
+    },
+  },
 } as const;
 
 /** apps/api のエラーコード({ error: string })を日本語文言へマッピングする(§10 コンテキストヘルプ・messages.ts 集約方針)。 */
@@ -284,4 +460,37 @@ export function mapNotificationSettingsErrorMessage(body: unknown): string {
     return errors[code] ?? messages.settingsNotifications.errors.default;
   }
   return messages.settingsNotifications.errors.default;
+}
+
+function errorCodeOf(body: unknown): string | null {
+  if (body && typeof body === "object" && "error" in body && typeof (body as { error: unknown }).error === "string") {
+    return (body as { error: string }).error;
+  }
+  return null;
+}
+
+export function mapDepartmentErrorMessage(body: unknown): string {
+  const errors = messages.departments.errors as Record<string, string | undefined>;
+  const code = errorCodeOf(body);
+  return (code && errors[code]) ?? messages.departments.errors.default;
+}
+
+/** メンバーの所属変更(PATCH /members/:id)のエラーマッピング。 */
+export function mapMemberErrorMessage(body: unknown): string {
+  const errors = messages.members.errors as Record<string, string | undefined>;
+  const code = errorCodeOf(body);
+  return (code && errors[code]) ?? messages.members.errors.default;
+}
+
+/** 権限プリセット割当(PUT /members/:id/presets)のエラーマッピング。固定原則(自己昇格・自己降格・最後の権限管理保持者)を含む。 */
+export function mapAssignmentErrorMessage(body: unknown): string {
+  const errors = messages.members.errors as Record<string, string | undefined>;
+  const code = errorCodeOf(body);
+  return (code && errors[code]) ?? messages.members.errors.default;
+}
+
+export function mapPresetErrorMessage(body: unknown): string {
+  const errors = messages.presets.errors as Record<string, string | undefined>;
+  const code = errorCodeOf(body);
+  return (code && errors[code]) ?? messages.presets.errors.default;
 }

@@ -1,0 +1,619 @@
+/**
+ * 部署管理・メンバー管理・権限プリセット管理(/settings/departments, /settings/members,
+ * /settings/presets)のスタイル。
+ *
+ * docs/design/ui-direction.md の方針どおり、管理画面は K 主体で静かに保つ。
+ * 意味色は状態と危険表示のみに絞る: 危険=M(--k-magenta-ink)、有効/成功=C(--k-cyan-ink)。
+ */
+
+/* ---- 設定サブナビ(/settings/* 共通) ---- */
+
+.settings-nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  padding-bottom: var(--space-3);
+  border-bottom: var(--border-hair);
+  font-size: 0.85rem;
+}
+
+/* 「一覧に戻る」操作であることが分かるよう、タブ群とは視覚的に分けて薄く表示する
+ * (自己批評での改善: 単なる「設定」表記だと他のタブと同格に見えていた)。 */
+.settings-nav__hub-link {
+  color: var(--k-ink-soft);
+  text-decoration: none;
+  padding: var(--space-1) 0;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.settings-nav__hub-link:hover {
+  color: var(--k-key);
+  text-decoration: underline;
+}
+
+.settings-nav__divider {
+  width: 1px;
+  align-self: stretch;
+  background: rgba(26, 26, 26, 0.14);
+}
+
+.settings-nav__tabs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.settings-nav__link {
+  color: var(--k-ink-soft);
+  text-decoration: none;
+  padding: var(--space-1) 0;
+  border-bottom: 2px solid transparent;
+}
+
+.settings-nav__link[aria-current="page"] {
+  color: var(--k-key);
+  border-bottom-color: var(--k-cyan);
+  font-weight: 700;
+}
+
+.settings-nav__link:hover {
+  color: var(--k-key);
+}
+
+/* ---- 設定ハブ(/settings) ---- */
+
+.settings-hub {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+.settings-hub__main {
+  flex: 1;
+  padding: var(--space-5) var(--space-4) var(--space-7);
+  max-width: 48rem;
+  margin: 0 auto;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.settings-hub__title {
+  font-family: var(--font-display);
+  font-size: 1.4rem;
+  letter-spacing: 0.04em;
+}
+
+.settings-hub__tagline {
+  font-size: 0.85rem;
+  color: var(--k-ink-soft);
+}
+
+.settings-hub__empty {
+  color: var(--k-ink-soft);
+  font-size: 0.9rem;
+  padding: var(--space-6) 0;
+  text-align: center;
+}
+
+.settings-hub__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+  gap: var(--space-4);
+}
+
+.settings-hub__card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  border: var(--border-hair);
+  border-radius: var(--radius-m);
+  padding: var(--space-4);
+  text-decoration: none;
+  color: var(--k-key);
+}
+
+.settings-hub__card:hover {
+  border-color: var(--k-key);
+  background: rgba(26, 26, 26, 0.03);
+}
+
+.settings-hub__card-title {
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+}
+
+.settings-hub__card-desc {
+  font-size: 0.82rem;
+  color: var(--k-ink-soft);
+}
+
+/* ---- 共通レイアウト(部署・メンバー・プリセット管理) ---- */
+
+.org-settings {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+.org-settings__main {
+  flex: 1;
+  padding: var(--space-5) var(--space-4) var(--space-7);
+  max-width: 48rem;
+  margin: 0 auto;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.org-settings__main--wide {
+  max-width: 72rem;
+}
+
+.org-settings__title {
+  font-family: var(--font-display);
+  font-size: 1.4rem;
+  letter-spacing: 0.04em;
+}
+
+.org-settings__tagline {
+  font-size: 0.85rem;
+  color: var(--k-ink-soft);
+}
+
+.org-settings__forbidden {
+  border: 1px solid var(--k-magenta);
+  color: var(--k-magenta-ink);
+  background: rgba(229, 0, 126, 0.06);
+  border-radius: var(--radius-s);
+  padding: var(--space-4);
+  font-size: 0.92rem;
+}
+
+.org-settings__empty {
+  color: var(--k-ink-soft);
+  font-size: 0.9rem;
+  padding: var(--space-6) 0;
+  text-align: center;
+}
+
+.org-settings__toolbar {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.org-settings__primary-btn {
+  border: none;
+  border-radius: var(--radius-m);
+  padding: var(--space-3) var(--space-5);
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--k-paper);
+  background: var(--k-key);
+}
+
+.org-settings__primary-btn:hover {
+  background: #000;
+}
+
+.org-settings__table-wrap {
+  overflow-x: auto;
+  border: var(--border-hair);
+  border-radius: var(--radius-m);
+}
+
+.org-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+  min-width: 42rem;
+}
+
+.org-table th,
+.org-table td {
+  padding: var(--space-3);
+  text-align: left;
+  border-bottom: 1px solid rgba(26, 26, 26, 0.08);
+  vertical-align: top;
+}
+
+.org-table th {
+  color: var(--k-ink-soft);
+  font-weight: 400;
+  font-size: 0.78rem;
+}
+
+.org-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.org-table__muted {
+  color: var(--k-ink-soft);
+}
+
+.org-table select {
+  border: var(--border-hair);
+  border-radius: var(--radius-s);
+  padding: var(--space-2);
+  font-size: 0.85rem;
+  background: #fff;
+  font-family: inherit;
+  max-width: 12rem;
+}
+
+.org-table__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.org-table__link-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 0.85rem;
+  color: var(--k-cyan-ink);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.org-table__link-btn:hover {
+  color: var(--k-key);
+}
+
+.org-table__link-btn--danger {
+  color: var(--k-magenta-ink);
+}
+
+.org-table__detail-cell {
+  background: rgba(26, 26, 26, 0.02);
+  padding: var(--space-5) !important;
+}
+
+/* ---- 部署ツリー ---- */
+
+.dept-tree,
+.dept-tree__children {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.dept-tree {
+  border: var(--border-hair);
+  border-radius: var(--radius-m);
+  overflow: hidden;
+}
+
+.dept-tree__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid rgba(26, 26, 26, 0.08);
+}
+
+.dept-tree__item:last-child > .dept-tree__row {
+  border-bottom: none;
+}
+
+.dept-tree__name {
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.dept-tree__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.dept-tree__btn {
+  border: var(--border-hair);
+  border-radius: var(--radius-s);
+  background: transparent;
+  color: var(--k-ink-soft);
+  padding: var(--space-1) var(--space-3);
+  font-size: 0.78rem;
+}
+
+.dept-tree__btn:hover {
+  background: rgba(26, 26, 26, 0.05);
+  color: var(--k-key);
+}
+
+.dept-tree__btn--danger {
+  border-color: var(--k-magenta-ink);
+  color: var(--k-magenta-ink);
+}
+
+.dept-tree__btn--danger:hover {
+  background: rgba(229, 0, 126, 0.08);
+}
+
+/* ---- チップ(割当プリセット・種別バッジ共通) ---- */
+
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 2px var(--space-3);
+  font-size: 0.75rem;
+  border: 1px solid var(--k-ink-soft);
+  color: var(--k-ink-soft);
+}
+
+.chip--system {
+  border-color: var(--k-key);
+  color: var(--k-key);
+  font-weight: 700;
+}
+
+/* ---- メンバー詳細(プリセット割当+実効権限ビュー) ---- */
+
+.member-detail {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-6);
+}
+
+@media (max-width: 760px) {
+  .member-detail {
+    grid-template-columns: 1fr;
+  }
+}
+
+.member-detail__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.member-detail__section-title {
+  font-family: var(--font-display);
+  font-size: 1rem;
+}
+
+.member-detail__hint {
+  font-size: 0.78rem;
+  color: var(--k-ink-soft);
+}
+
+.member-detail__unsaved {
+  font-size: 0.82rem;
+  color: var(--k-yellow-ink);
+}
+
+.preset-checkbox-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  max-height: 16rem;
+  overflow-y: auto;
+  border: var(--border-hair);
+  border-radius: var(--radius-s);
+  padding: var(--space-3);
+}
+
+.preset-checkbox-list__item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-size: 0.88rem;
+}
+
+.preset-checkbox-list__item input[type="checkbox"] {
+  accent-color: var(--k-key);
+  width: 1.05rem;
+  height: 1.05rem;
+}
+
+.preset-checkbox-list__desc {
+  font-size: 0.78rem;
+  color: var(--k-ink-soft);
+  flex-basis: 100%;
+  padding-left: 1.65rem;
+}
+
+/* ---- 実効権限ビュー ---- */
+
+.effective-perms {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.effective-perms__empty {
+  color: var(--k-ink-soft);
+  font-size: 0.88rem;
+}
+
+.effective-perms__group-title {
+  font-size: 0.82rem;
+  color: var(--k-ink-soft);
+  margin-bottom: var(--space-2);
+}
+
+.effective-perms__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.effective-perms__item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-left: 3px solid var(--k-cyan-ink);
+  padding-left: var(--space-3);
+  font-size: 0.85rem;
+}
+
+.effective-perms__item-label {
+  font-weight: 700;
+}
+
+.effective-perms__item-scope,
+.effective-perms__item-source {
+  font-size: 0.78rem;
+  color: var(--k-ink-soft);
+}
+
+/* ---- 権限プリセット編集フォーム ---- */
+
+.k-modal--preset {
+  max-width: 42rem;
+}
+
+.preset-form__readonly-note {
+  font-size: 0.85rem;
+  color: var(--k-ink-soft);
+  border: var(--border-hair);
+  border-radius: var(--radius-s);
+  padding: var(--space-3);
+}
+
+.preset-form__permissions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.preset-form__permissions-label {
+  font-size: 0.82rem;
+  color: var(--k-ink-soft);
+}
+
+.preset-form__group {
+  border: var(--border-hair);
+  border-radius: var(--radius-m);
+  padding: var(--space-3) var(--space-4);
+}
+
+.preset-form__group-title {
+  font-family: var(--font-display);
+  font-size: 0.95rem;
+  margin-bottom: var(--space-2);
+}
+
+.preset-form__entry-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.preset-form__entry {
+  border-top: 1px solid rgba(26, 26, 26, 0.08);
+  padding-top: var(--space-3);
+}
+
+.preset-form__entry-list > .preset-form__entry:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+
+.preset-form__entry--dangerous {
+  border-left: 3px solid var(--k-magenta-ink);
+  padding-left: var(--space-3);
+}
+
+.preset-form__entry-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.preset-form__entry-header input[type="checkbox"] {
+  accent-color: var(--k-key);
+  width: 1.05rem;
+  height: 1.05rem;
+}
+
+.preset-form__entry-label {
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.preset-form__dangerous-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 1px var(--space-2);
+  font-size: 0.7rem;
+  font-weight: 700;
+  border: 1px solid var(--k-magenta-ink);
+  color: var(--k-magenta-ink);
+}
+
+.preset-form__entry-desc {
+  font-size: 0.8rem;
+  color: var(--k-ink-soft);
+  padding-left: 1.65rem;
+  margin-top: 2px;
+}
+
+.preset-form__entry-details {
+  padding-left: 1.65rem;
+  margin-top: var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.preset-form__scope-select {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.82rem;
+  color: var(--k-ink-soft);
+}
+
+.preset-form__scope-select select {
+  border: var(--border-hair);
+  border-radius: var(--radius-s);
+  padding: var(--space-1) var(--space-2);
+  font-size: 0.85rem;
+  background: #fff;
+  font-family: inherit;
+}
+
+.preset-form__scope-fixed {
+  font-size: 0.82rem;
+  color: var(--k-ink-soft);
+}
+
+.preset-form__implies {
+  font-size: 0.78rem;
+  color: var(--k-cyan-ink);
+}
+
+.preset-form__dangerous-note {
+  font-size: 0.8rem;
+  color: var(--k-magenta-ink);
+  background: rgba(229, 0, 126, 0.06);
+  border-radius: var(--radius-s);
+  padding: var(--space-2) var(--space-3);
+}

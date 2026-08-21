@@ -8,6 +8,7 @@ import "../styles/monthly.css";
 import "../styles/corrections.css";
 import "../styles/notifications.css";
 import "../styles/settings.css";
+import "../styles/org-settings.css";
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
   return (
