@@ -1,0 +1,23 @@
+{
+  "name": "@kizami/db",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "DB レイヤ — Drizzle ORM(SQLite) スキーマ・マイグレーション・クエリ",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "generate": "drizzle-kit generate",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@libsql/client": "^0.17.4",
+    "drizzle-orm": "^0.45.2"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "drizzle-kit": "^0.31.10"
+  }
+}

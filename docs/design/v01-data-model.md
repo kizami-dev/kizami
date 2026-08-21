@@ -64,7 +64,7 @@
 
 - **tenants**: 名称などの不変属性のみ。計算に影響する設定は持たない
 - **tenant_setting_versions**(追記専用): 計算に影響するテナント設定の版。`effective_from`(ローカル日付)+型付きカラム(day_boundary_minutes, legal_holiday_rule, break_rule, gps_enabled, gps_retention_days null=勤怠と同一)。ある日の計算にはその日時点で最新の版を適用。編集UIは「新しい版を追加」しかできない
-- **work_policies / work_policy_versions**: 労働時間制の定義(v0.1はフレックス設定のみ: settlement_period, core=null)。テナント設定と同様に版管理
+- **work_policies / work_policy_versions**: 労働時間制の定義(v0.1はフレックス設定のみ: settlement_period, core=null, standard_day_minutes — 有給日の枠算入に使う標準労働時間。エンジンの `FlexSettings` に対応)。テナント設定と同様に版管理
 - **user_policy_assignments**: user × work_policy × `effective_from`。従業員がいつからどの制度に属すかも effective-dated(将来、固定時間制⇔フレックスの移動が発生しても過去分に影響しない)
 - **users / auth_credentials / sessions**: 自前認証(email+パスワード)。パスワードは argon2id。OIDC 用の外部 ID テーブルは v1.0 で追加
 - **departments**(parent_id による木)+ **memberships**(user×department×役職)— v0.1 ではフラット1部署で運用可
