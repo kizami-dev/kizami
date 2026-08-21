@@ -1,0 +1,34 @@
+# day_boundary "05:00" で深夜1:00まで勤務する日。深夜時間と日跨ぎ配賦を固定する。
+name: 日界05:00・深夜1時までの勤務
+law_reference: 労働基準法37条(深夜割増)/ v01-data-model.md 勤怠日の定義
+settings:
+  tz_offset: 540
+  day_boundary: "05:00"
+  legal_holiday: { weekday: sunday }
+  flex: { settlement: monthly, core: null, standard_day: "08:00" }
+  break_rule: { mode: punch }
+period: 2026-04
+paid_leave_days: []
+punches:
+  # 2026-04-06(月)21:00 出勤 → 2026-04-07(火)01:00 退勤。休憩なし。
+  - { kind: clock_in,  at: "2026-04-06T21:00" }
+  - { kind: clock_out, at: "2026-04-07T01:00" }
+expected:
+  # 手計算:
+  # 勤怠日の窓は [D 00:00+05:00, 翌日00:00+05:00) = [D 05:00, D+1 05:00)。
+  # 04-06 21:00 は 04-06 05:00〜04-07 05:00 の窓に含まれ、04-07 01:00 も同じ窓に含まれる
+  # → 区間全体(21:00〜翌01:00)は単一の勤怠日 2026-04-06 に配賦される(日跨ぎでも分割なし)。
+  # 実労働 = 21:00〜翌01:00 = 4時間 = 240分。すべて 2026-04-06 に計上。
+  # 深夜(22:00-24:00 ∪ 00:00-05:00, 暦日ごと)との重なり:
+  #   21:00-24:00(04-06) ∩ 22:00-24:00 = 120分
+  #   00:00-01:00(04-07) ∩ 00:00-05:00 = 60分
+  #   合計 = 180分
+  # frame = 10285(2026-04, flex-basicと同じ月)
+  # actual = 240(worked) + 0(有給なし) = 240
+  # diff = 240 - 10285 = -10045
+  totals: { statutory: 240, overtime: 0, overtime60h: 0, lateNight: 180, statutoryHoliday: 0 }
+  flex_balance: { frame: 10285, actual: 240, diff: -10045 }
+  warnings: []
+  days:
+    - { date: "2026-04-06", worked: 240, break: 0, late_night: 180, legal_holiday: false }
+    - { date: "2026-04-07", worked: 0, break: 0, late_night: 0, legal_holiday: false }

@@ -1,0 +1,39 @@
+# 重複 clock_in・勤務外 break を含む列。無効化と警告の内容・区分別合計を固定する。
+name: 不正打刻列 — 重複clock_in・勤務外break・対応しないbreak_end・無在籍clock_out
+law_reference: v01-data-model.md 不正打刻列の解釈ルール(保守的解釈)
+settings:
+  tz_offset: 540
+  day_boundary: "00:00"
+  legal_holiday: { weekday: sunday }
+  flex: { settlement: monthly, core: null, standard_day: "08:00" }
+  break_rule: { mode: punch }
+period: 2026-04
+paid_leave_days: []
+punches:
+  # 2026-04-06(月) の1日に不正打刻を詰め込んだケース
+  - { kind: break_start, at: "2026-04-06T08:00" } # out中のbreak_start → break_outside_work(無効化)
+  - { kind: clock_in,    at: "2026-04-06T09:00" } # out→working
+  - { kind: clock_in,    at: "2026-04-06T10:00" } # working中の再clock_in → duplicate_clock_in(無効化・先勝ち)
+  - { kind: break_start, at: "2026-04-06T12:00" } # working→onBreak(区間 09:00-12:00 確定)
+  - { kind: break_start, at: "2026-04-06T12:30" } # onBreak中の再break_start → duplicate_break_start(無効化)
+  - { kind: break_end,   at: "2026-04-06T13:00" } # onBreak→working(休憩 12:00-13:00 確定)
+  - { kind: break_end,   at: "2026-04-06T13:30" } # working中のbreak_end → unmatched_break_end(無効化)
+  - { kind: clock_out,   at: "2026-04-06T18:00" } # working→out(区間 13:00-18:00 確定)
+  - { kind: clock_out,   at: "2026-04-06T19:00" } # out中のclock_out → clock_out_without_in(無効化)
+expected:
+  # 手計算:
+  # 有効な区間のみ集計: [09:00,12:00) + [13:00,18:00) = 180 + 300 = 480分。休憩 [12:00,13:00) = 60分。
+  # 無効化された打刻(break_start 08:00 / clock_in 10:00 / break_start 12:30 / break_end 13:30 / clock_out 19:00)
+  # はいずれも警告のみで labor time に影響しない。
+  # 2026-04-06(月)は法定休日ではない。深夜帯(22-24,0-5)にも掛からない。
+  # actual = 480 + 0(有給なし) = 480 / frame = 10285 / diff = 480 - 10285 = -9805
+  totals: { statutory: 480, overtime: 0, overtime60h: 0, lateNight: 0, statutoryHoliday: 0 }
+  flex_balance: { frame: 10285, actual: 480, diff: -9805 }
+  warnings:
+    - break_outside_work
+    - duplicate_clock_in
+    - duplicate_break_start
+    - unmatched_break_end
+    - clock_out_without_in
+  days:
+    - { date: "2026-04-06", worked: 480, break: 60, late_night: 0, legal_holiday: false }

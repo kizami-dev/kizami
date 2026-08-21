@@ -1,0 +1,48 @@
+# 平日5日、休憩1hずつ、超過なし。フレックスの基本ケース(月枠に余裕がある通常週)。
+name: フレックス基本 — 平日5日勤務・超過なし
+law_reference: 労働基準法32条の3(フレックスタイム制)
+settings:
+  tz_offset: 540
+  day_boundary: "00:00"
+  legal_holiday: { weekday: sunday }
+  flex: { settlement: monthly, core: null, standard_day: "08:00" }
+  break_rule: { mode: punch }
+period: 2026-04
+paid_leave_days: []
+punches:
+  # 2026-04-06(月)〜04-10(金) 全5日、09:00-18:00・休憩12:00-13:00 の同一パターン
+  - { kind: clock_in,    at: "2026-04-06T09:00" }
+  - { kind: break_start, at: "2026-04-06T12:00" }
+  - { kind: break_end,   at: "2026-04-06T13:00" }
+  - { kind: clock_out,   at: "2026-04-06T18:00" }
+  - { kind: clock_in,    at: "2026-04-07T09:00" }
+  - { kind: break_start, at: "2026-04-07T12:00" }
+  - { kind: break_end,   at: "2026-04-07T13:00" }
+  - { kind: clock_out,   at: "2026-04-07T18:00" }
+  - { kind: clock_in,    at: "2026-04-08T09:00" }
+  - { kind: break_start, at: "2026-04-08T12:00" }
+  - { kind: break_end,   at: "2026-04-08T13:00" }
+  - { kind: clock_out,   at: "2026-04-08T18:00" }
+  - { kind: clock_in,    at: "2026-04-09T09:00" }
+  - { kind: break_start, at: "2026-04-09T12:00" }
+  - { kind: break_end,   at: "2026-04-09T13:00" }
+  - { kind: clock_out,   at: "2026-04-09T18:00" }
+  - { kind: clock_in,    at: "2026-04-10T09:00" }
+  - { kind: break_start, at: "2026-04-10T12:00" }
+  - { kind: break_end,   at: "2026-04-10T13:00" }
+  - { kind: clock_out,   at: "2026-04-10T18:00" }
+expected:
+  # 手計算:
+  # 1日の実労働 = (12:00-09:00) + (18:00-13:00) = 180 + 300 = 480分。休憩=60分。深夜なし。
+  # いずれも平日(月〜金)なので法定休日なし。
+  # 5日分: worked合計 = 480 * 5 = 2400分
+  # frame = floor(2400分/週 * 30暦日 / 7) = floor(72000/7) = floor(10285.714...) = 10285分
+  # actual = 2400(worked) + 0(有給なし) = 2400
+  # diff = 2400 - 10285 = -7885(枠に余裕、超過なし)
+  # overtime = max(0, 2400-10285) = 0 / overtime60h = max(0, 0-3600) = 0
+  totals: { statutory: 2400, overtime: 0, overtime60h: 0, lateNight: 0, statutoryHoliday: 0 }
+  flex_balance: { frame: 10285, actual: 2400, diff: -7885 }
+  warnings: []
+  days:
+    - { date: "2026-04-06", worked: 480, break: 60, late_night: 0, legal_holiday: false }
+    - { date: "2026-04-10", worked: 480, break: 60, late_night: 0, legal_holiday: false }

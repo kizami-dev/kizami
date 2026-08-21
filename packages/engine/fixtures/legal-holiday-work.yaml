@@ -1,0 +1,34 @@
+# 日曜労働。statutoryHoliday に入り flex actual(実労働)から除外されることを固定する。
+name: 法定休日(日曜)労働 — statutoryHolidayへの計上とactualからの除外
+law_reference: 労働基準法35条(法定休日)
+settings:
+  tz_offset: 540
+  day_boundary: "00:00"
+  legal_holiday: { weekday: sunday }
+  flex: { settlement: monthly, core: null, standard_day: "08:00" }
+  break_rule: { mode: punch }
+period: 2026-04
+paid_leave_days: []
+punches:
+  # 2026-04-05(日) 休憩なしで9:00-17:00勤務(法定休日労働)
+  - { kind: clock_in,  at: "2026-04-05T09:00" }
+  - { kind: clock_out, at: "2026-04-05T17:00" }
+  # 2026-04-06(月) 通常勤務(休憩1h)。対比のため同月に平日分も含める。
+  - { kind: clock_in,    at: "2026-04-06T09:00" }
+  - { kind: break_start, at: "2026-04-06T12:00" }
+  - { kind: break_end,   at: "2026-04-06T13:00" }
+  - { kind: clock_out,   at: "2026-04-06T18:00" }
+expected:
+  # 手計算:
+  # 04-05(日、法定休日): 実労働 09:00-17:00 = 480分。isLegalHoliday=true のため
+  #   workedMinutes=0 / legalHolidayMinutes=480 に計上(法定休日の実労働は所定労働に数えない)。
+  # 04-06(月、平日): worked = (12:00-09:00)+(18:00-13:00) = 180+300 = 480分、休憩60分。
+  # actual(フレックス実績) = 04-05のworkedMinutes(0) + 04-06のworkedMinutes(480) + 有給0 = 480
+  # statutoryHoliday(総合計) = legalHolidayMinutesの合計 = 480(04-05分のみ)
+  # frame = 10285 / diff = 480 - 10285 = -9805
+  totals: { statutory: 480, overtime: 0, overtime60h: 0, lateNight: 0, statutoryHoliday: 480 }
+  flex_balance: { frame: 10285, actual: 480, diff: -9805 }
+  warnings: []
+  days:
+    - { date: "2026-04-05", worked: 0, break: 0, late_night: 0, legal_holiday: true }
+    - { date: "2026-04-06", worked: 480, break: 60, late_night: 0, legal_holiday: false }

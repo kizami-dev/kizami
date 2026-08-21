@@ -7,21 +7,30 @@
  * - 入力は打刻列+テナント設定、出力は区分別時間数(分単位)
  */
 
-/** 労働時間の区分。金額計算はスコープ外(要件 §2)。 */
-export type TimeCategory =
-  | "statutory" // 法定内労働
-  | "overtime" // 法定時間外
-  | "overtime60h" // 月60時間超の法定時間外
-  | "lateNight" // 深夜(22時〜5時)
-  | "statutoryHoliday"; // 法定休日労働
+import { buildDailyBreakdown } from "./daily.js";
+import { deriveSegments } from "./derive.js";
+import { calculateFlexBalance } from "./flex.js";
+import type { EngineInput, EngineOutput } from "./types.js";
 
-/** 集計結果: 区分ごとの分数。 */
-export type CategorizedMinutes = Readonly<Record<TimeCategory, number>>;
+export type * from "./types.js";
 
-export const EMPTY_RESULT: CategorizedMinutes = Object.freeze({
-  statutory: 0,
-  overtime: 0,
-  overtime60h: 0,
-  lateNight: 0,
-  statutoryHoliday: 0,
-});
+export function calculate(input: EngineInput): EngineOutput {
+  const { workedSegments, breakSegments, warnings } = deriveSegments(input.punches, input.settingsTimeline);
+
+  const days = buildDailyBreakdown(
+    workedSegments,
+    breakSegments,
+    input.settingsTimeline,
+    input.period,
+    input.paidLeaveDays,
+  );
+
+  const { totals, flexBalance } = calculateFlexBalance(
+    days,
+    input.settingsTimeline,
+    input.period,
+    input.paidLeaveDays,
+  );
+
+  return { days, totals, flexBalance, warnings };
+}
