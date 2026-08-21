@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.wrangler/
+.waku/
+docs/.vitepress/dist/
+docs/.vitepress/cache/
+*.log
+.env
+.env.*
+!.env.example
+.DS_Store

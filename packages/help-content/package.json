@@ -1,0 +1,7 @@
+{
+  "name": "@kizami/help-content",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "コンテキストヘルプ文言の単一ソース(UI ツールチップ+ドキュメント)"
+}

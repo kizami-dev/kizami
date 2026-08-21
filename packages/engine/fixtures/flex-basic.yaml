@@ -1,0 +1,17 @@
+# サンプル(スキーマは v0.1 設計で確定 — まだテストからは読み込まれない)
+name: フレックス基本 — 清算期間内で総枠ちょうど
+law_reference: 労働基準法32条の3(フレックスタイム制)
+tenant:
+  day_boundary: "00:00"
+  flex:
+    settlement_period: monthly
+    core_time: null
+period: 2026-04
+# 所定労働日数22日・総枠 40h × (30/7) = 171h25m の月を想定
+punches: []  # TODO: v0.1 データモデル設計時に打刻列の形式を確定して記述
+expected:
+  statutory: 0
+  overtime: 0
+  overtime60h: 0
+  lateNight: 0
+  statutoryHoliday: 0

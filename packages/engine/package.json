@@ -1,0 +1,14 @@
+{
+  "name": "@kizami/engine",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "労働時間集計エンジン — 純関数・ランタイム非依存・DB非依存",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  }
+}
