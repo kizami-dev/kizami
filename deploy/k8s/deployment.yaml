@@ -81,8 +81,11 @@ spec:
             # DB の定期スキャンなので api と同じデータを読む必要がある)。
             - name: DATABASE_URL
               value: file:/data/kizami.db
+            # Valkey は同一 Pod 内のサイドカー(下記)。Service 経由にしないのは、
+            # クラスタDNS/ClusterIP がノードをまたぐと解決できない環境でも動かすため
+            # (キューは起動トリガーでしかなく、正しさは DB の定期スキャンが担保する)
             - name: REDIS_URL
-              value: redis://kizami-valkey:6379
+              value: redis://127.0.0.1:6379
             # REMINDER_INTERVAL_MINUTES は未設定=既定 15 分のまま。
             # WEBHOOK_URL は任意。Secret 未作成でも起動できるよう optional 参照にする
             # (deploy/k8s/README.md の手順で kizami-notify Secret を作ると有効になる)。
@@ -101,6 +104,21 @@ spec:
               memory: 128Mi
             limits:
               memory: 512Mi
+
+        # ワーカー用のキュー。永続化なし(再起動で消えても、次のスキャンで
+        # repeatable job が貼り直され、通知の重複は notifications の UNIQUE が防ぐ)
+        - name: valkey
+          image: valkey/valkey:8-alpine
+          args: ["--save", "", "--appendonly", "no"]
+          ports:
+            - name: valkey
+              containerPort: 6379
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              memory: 256Mi
       volumes:
         - name: data
           persistentVolumeClaim:

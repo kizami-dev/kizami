@@ -1,3 +1,10 @@
+# 【この構成は現在使っていません】
+# Valkey は deploy/k8s/deployment.yaml の Pod 内サイドカーとして動かしています。
+# 独立した Deployment + Service にすると Service DNS / ClusterIP 経由の通信になり、
+# クラスタDNSがノードをまたいで解決できない環境で worker が起動できないためです
+# (2026-08-22 に実環境で遭遇: CoreDNS が別ノードにあり EAI_AGAIN)。
+# 複数レプリカ構成やキューの共有が必要になったらこのマニフェストを使ってください。
+#
 # リマインドワーカー(apps/api/src/worker.ts, BullMQ)用の Valkey。
 #
 # 永続化なし(emptyDir): ジョブキューの中身は「定期スキャンの起動トリガー」でしかなく、
