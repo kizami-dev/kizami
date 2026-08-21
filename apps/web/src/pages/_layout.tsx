@@ -6,6 +6,8 @@ import "../styles/login.css";
 import "../styles/punch-home.css";
 import "../styles/monthly.css";
 import "../styles/corrections.css";
+import "../styles/notifications.css";
+import "../styles/settings.css";
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
   return (

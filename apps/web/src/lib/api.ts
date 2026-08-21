@@ -155,6 +155,60 @@ export interface CreateCorrectionInput {
   reason: string;
 }
 
+/** アプリ内通知(v0.2 第二弾)。apps/api/src/routes/notifications.ts の serializeNotification と一致。 */
+export interface NotificationDto {
+  id: string;
+  type: string;
+  subjectDate: string | null;
+  title: string;
+  body: string;
+  /** UTC エポック分 */
+  createdAt: number;
+  /** UTC エポック分。未読なら null */
+  readAt: number | null;
+}
+
+/**
+ * テナント単位の通知チャネル設定(apps/api/src/routes/settings.ts の serialize と一致)。
+ * webhookUrl と smtpPassword は秘密情報のためマスクして返る(configured/preview, smtpPasswordSet のみ)。
+ */
+export interface NotificationSettingsDto {
+  webhookEnabled: boolean;
+  webhookUrl: { configured: boolean; preview: string | null };
+  smtpEnabled: boolean;
+  smtpHost: string | null;
+  smtpPort: number | null;
+  smtpUser: string | null;
+  smtpFrom: string | null;
+  smtpPasswordSet: boolean;
+  updatedAt: number | null;
+  updatedBy: string | null;
+}
+
+/**
+ * PUT /settings/notifications の入力(3値ルール、apps/api/src/routes/settings.ts 参照):
+ * フィールド省略=既存値維持、null/""=クリア、それ以外の文字列=置換。
+ * webhookUrl/smtpPassword はマスクされて返ってくるため、Web側は「空欄なら省略(維持)・
+ * 入力があれば新しい値として送る」という規約でこの3値ルールの一部だけを使う
+ * (このUIからは明示的なクリア操作は提供しない。実装Bのコメント参照)。
+ */
+export interface UpdateNotificationSettingsInput {
+  webhookEnabled: boolean;
+  webhookUrl?: string;
+  smtpEnabled: boolean;
+  smtpHost?: string;
+  smtpPort?: number | null;
+  smtpUser?: string;
+  smtpFrom?: string;
+  smtpPassword?: string;
+}
+
+export interface NotificationTestResult {
+  channel: string;
+  ok: boolean;
+  error?: string;
+}
+
 export const api = {
   async login(email: string, password: string): Promise<{ user: AuthUser }> {
     return request("/auth/login", { method: "POST", body: JSON.stringify({ email, password }) });
@@ -207,5 +261,30 @@ export const api = {
 
   async withdrawCorrection(id: string): Promise<{ request: CorrectionRequestDto }> {
     return request(`/corrections/${id}/withdraw`, { method: "POST" });
+  },
+
+  async unreadNotificationCount(): Promise<{ count: number }> {
+    return request("/notifications/unread-count");
+  },
+
+  async listNotifications(unreadOnly?: boolean): Promise<{ notifications: NotificationDto[] }> {
+    const query = unreadOnly !== undefined ? `?unreadOnly=${unreadOnly}` : "";
+    return request(`/notifications${query}`);
+  },
+
+  async markNotificationRead(id: string): Promise<{ notification: NotificationDto }> {
+    return request(`/notifications/${id}/read`, { method: "POST" });
+  },
+
+  async getNotificationSettings(): Promise<NotificationSettingsDto> {
+    return request("/settings/notifications");
+  },
+
+  async updateNotificationSettings(input: UpdateNotificationSettingsInput): Promise<NotificationSettingsDto> {
+    return request("/settings/notifications", { method: "PUT", body: JSON.stringify(input) });
+  },
+
+  async testNotificationSettings(): Promise<{ results: NotificationTestResult[] }> {
+    return request("/settings/notifications/test", { method: "POST" });
   },
 };

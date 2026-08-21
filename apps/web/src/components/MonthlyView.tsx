@@ -24,14 +24,22 @@ export function MonthlyView() {
   const router = useRouter();
   const guard = useAuthGuard();
 
-  const ym: YearMonth = parseMonthParam(new URLSearchParams(router.query).get("month")) ?? currentYearMonthJst();
+  const queryParams = new URLSearchParams(router.query);
+  const ym: YearMonth = parseMonthParam(queryParams.get("month")) ?? currentYearMonthJst();
   const monthParam = formatMonthParam(ym);
+  /** 通知(打刻忘れ)からの導線: ?date=YYYY-MM-DD が付いていれば該当日の修正フォームを自動で開く。 */
+  const autoOpenDate = queryParams.get("date");
 
   const [data, setData] = useState<MonthlyAttendance | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [correctionDate, setCorrectionDate] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (autoOpenDate) setCorrectionDate(autoOpenDate);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoOpenDate]);
 
   useEffect(() => {
     if (guard.status !== "authed") return;

@@ -11,13 +11,16 @@ import type { getConfig as File_Index_getConfig } from './pages/index';
 import type { getConfig as File_Login_getConfig } from './pages/login';
 // prettier-ignore
 import type { getConfig as File_Monthly_getConfig } from './pages/monthly';
+// prettier-ignore
+import type { getConfig as File_SettingsNotifications_getConfig } from './pages/settings/notifications';
 
 // prettier-ignore
 type Page =
 | ({ path: '/corrections' } & GetConfigResponse<typeof File_Corrections_getConfig>)
 | ({ path: '/' } & GetConfigResponse<typeof File_Index_getConfig>)
 | ({ path: '/login' } & GetConfigResponse<typeof File_Login_getConfig>)
-| ({ path: '/monthly' } & GetConfigResponse<typeof File_Monthly_getConfig>);
+| ({ path: '/monthly' } & GetConfigResponse<typeof File_Monthly_getConfig>)
+| ({ path: '/settings/notifications' } & GetConfigResponse<typeof File_SettingsNotifications_getConfig>);
 
 // prettier-ignore
 type Layout =

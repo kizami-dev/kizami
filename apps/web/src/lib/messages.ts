@@ -13,6 +13,7 @@ export const messages = {
     home: "打刻",
     monthly: "月次",
     corrections: "申請",
+    settings: "設定",
     logout: "ログアウト",
   },
 
@@ -191,6 +192,78 @@ export const messages = {
       default: "処理に失敗しました。もう一度お試しください",
     },
   },
+
+  notifications: {
+    bellLabel: "通知",
+    title: "通知",
+    empty: "通知はありません",
+    unread: "未読",
+    markRead: "既読にする",
+    markReadFailed: "既読にできませんでした。もう一度お試しください",
+    subjectDateLabel: "対象日",
+    receivedAtLabel: "受信",
+    openCorrection: "この日の修正申請を開く",
+    loadFailed: "通知の取得に失敗しました。もう一度お試しください",
+  },
+
+  settingsNotifications: {
+    title: "通知設定",
+    tagline: "テナント全体の通知チャネル(Webhook・メール)を設定します。",
+    noPermission: "この設定を変更する権限がありません",
+
+    webhookSectionTitle: "Webhook",
+    webhookEnabledLabel: "Webhook通知を有効にする",
+    webhookUrlLabel: "Webhook URL",
+    webhookUrlPlaceholder: "https://hooks.example.com/...",
+    webhookUrlConfigured: "設定済み",
+    webhookUrlNotConfigured: "未設定",
+    keepIfBlankHint: "変更しない場合は空のままにしてください",
+
+    smtpSectionTitle: "メール(SMTP)",
+    smtpEnabledLabel: "メール通知を有効にする",
+    smtpHostLabel: "SMTPホスト",
+    smtpPortLabel: "ポート",
+    smtpUserLabel: "ユーザー名",
+    smtpFromLabel: "差出人メールアドレス",
+    smtpPasswordLabel: "パスワード",
+    smtpPasswordConfigured: "設定済み",
+    smtpPasswordNotConfigured: "未設定",
+
+    save: "保存",
+    saving: "保存中…",
+    saveNote: "この設定はテナント全体に適用されます。変更は監査ログに記録されます。",
+    saveSuccess: "設定を保存しました。",
+
+    testSend: "テスト送信",
+    testSendConfirmTitle: "テスト通知を送信しますか",
+    testSendConfirmMessage: "保存されている設定で実際に1通送信します。",
+    testSendConfirmLabel: "送信する",
+    testSendResultTitle: "テスト送信結果",
+    testSendOk: "成功",
+    testSendFailed: "失敗",
+    testSendChannelLabel: {
+      webhook: "Webhook",
+      smtp: "メール(SMTP)",
+    } as Record<string, string>,
+
+    loading: "読み込み中…",
+    loadFailed: "設定の取得に失敗しました。もう一度お試しください",
+
+    errors: {
+      invalid_webhook_enabled: "入力内容を確認してください",
+      invalid_smtp_enabled: "入力内容を確認してください",
+      invalid_webhook_url: "Webhook URLの形式を確認してください(http/httpsで有効なURLを入力してください)",
+      invalid_smtp_host: "SMTPホストを確認してください",
+      invalid_smtp_user: "ユーザー名を確認してください",
+      invalid_smtp_from: "差出人メールアドレスを確認してください",
+      invalid_smtp_password: "パスワードを確認してください",
+      invalid_smtp_port: "ポート番号は1〜65535の範囲で入力してください",
+      invalid_smtp_config: "メール通知を有効にする場合は、ホスト・ポート・差出人をすべて入力してください",
+      invalid_body: "入力内容を確認してください",
+      not_configured: "有効なチャネルが設定されていません",
+      default: "処理に失敗しました。もう一度お試しください",
+    },
+  },
 } as const;
 
 /** apps/api のエラーコード({ error: string })を日本語文言へマッピングする(§10 コンテキストヘルプ・messages.ts 集約方針)。 */
@@ -201,4 +274,14 @@ export function mapCorrectionErrorMessage(body: unknown): string {
     return errors[code] ?? messages.corrections.errors.default;
   }
   return messages.corrections.errors.default;
+}
+
+/** apps/api の通知設定エラーコード({ error: string })を日本語文言へマッピングする(messages.ts 集約方針)。 */
+export function mapNotificationSettingsErrorMessage(body: unknown): string {
+  const errors = messages.settingsNotifications.errors as Record<string, string | undefined>;
+  if (body && typeof body === "object" && "error" in body && typeof (body as { error: unknown }).error === "string") {
+    const code = (body as { error: string }).error;
+    return errors[code] ?? messages.settingsNotifications.errors.default;
+  }
+  return messages.settingsNotifications.errors.default;
 }
