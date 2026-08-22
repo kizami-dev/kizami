@@ -37,6 +37,14 @@ export interface SettingsAccess {
    * どちらか一方でも通れば画面自体は表示する(画面側は各セクションを個別に出し分ける)。
    */
   attendance: boolean;
+  /**
+   * /settings/api-keys(公開打刻APIキーの管理。v0.4 追加)。
+   *
+   * 判断点: 依頼どおり「自分用なので権限不要」— 自分のキーの発行・一覧・失効は全認証済み
+   * ユーザーが行える(GET /api-keys は自分のキーだけなら常に200)ため、他の項目のような
+   * 権限プローブは不要で常に true。
+   */
+  apiKeys: boolean;
 }
 
 const INITIAL: SettingsAccess = {
@@ -50,6 +58,7 @@ const INITIAL: SettingsAccess = {
   help: false,
   privacy: false,
   attendance: false,
+  apiKeys: true,
 };
 
 /**
@@ -96,6 +105,7 @@ export function useSettingsAccess(): SettingsAccess {
         help: notifications,
         privacy: notifications,
         attendance: attendanceSettings || workPolicySettings,
+        apiKeys: true,
       });
     });
 

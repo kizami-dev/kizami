@@ -19,7 +19,8 @@ type SettingsRoute =
   | "/settings/leave"
   | "/settings/help"
   | "/settings/privacy"
-  | "/settings/attendance";
+  | "/settings/attendance"
+  | "/settings/api-keys";
 
 export function SettingsHubView() {
   const guard = useAuthGuard();
@@ -88,6 +89,13 @@ export function SettingsHubView() {
       to: "/settings/privacy" as const,
       title: messages.settingsHub.privacyTitle,
       desc: messages.settingsHub.privacyDesc,
+    },
+    {
+      key: "apiKeys",
+      enabled: access.apiKeys,
+      to: "/settings/api-keys" as const,
+      title: messages.settingsHub.apiKeysTitle,
+      desc: messages.settingsHub.apiKeysDesc,
     },
   ].filter((c) => c.enabled);
 

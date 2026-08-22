@@ -2,9 +2,11 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import type { Database } from "@kizami/db";
 import type { Encryptor } from "./lib/encryption.js";
-import { authMiddleware, type AppEnv } from "./auth/middleware.js";
+import { apiKeyScopeGuardMiddleware } from "./auth/api-key-scope-guard.js";
+import { authOrApiKeyMiddleware, type AppEnv } from "./auth/middleware.js";
 import { ForbiddenError } from "./authz.js";
 import { MonthClosedError, MonthClosedRequiresUnlockError } from "./lib/closing-guard.js";
+import { createApiKeysRoutes } from "./routes/api-keys.js";
 import { createAttendanceRoutes } from "./routes/attendance.js";
 import { createAuthRoutes } from "./routes/auth.js";
 import { createClosingsRoutes } from "./routes/closings.js";
@@ -66,8 +68,12 @@ export function createApp(deps: CreateAppDeps) {
   app.route("/auth", createAuthRoutes(db, { secureCookies }));
 
   const authed = new Hono<AppEnv>();
-  authed.use("*", authMiddleware(db, { secureCookies }));
+  // セッションCookie / 公開打刻APIキーの両方を受け付ける(v0.4)。認証後、APIキー認証のみ
+  // エンドポイント許可表(apiKeyScopeGuardMiddleware)でさらに絞り込む。
+  authed.use("*", authOrApiKeyMiddleware(db, { secureCookies }));
+  authed.use("*", apiKeyScopeGuardMiddleware());
   authed.route("/me", createMeRoutes());
+  authed.route("/api-keys", createApiKeysRoutes(db));
   authed.route("/punches", createPunchesRoutes(db));
   authed.route("/attendance", createAttendanceRoutes(db));
   authed.route("/corrections", createCorrectionsRoutes(db));

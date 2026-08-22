@@ -6,6 +6,7 @@
  * このディレクトリはテーブル定義のみを置き、クエリ層(src/queries/)からは切り離している。
  */
 
+export * from "./api-keys.js";
 export * from "./audit.js";
 export * from "./closings.js";
 export * from "./corrections.js";

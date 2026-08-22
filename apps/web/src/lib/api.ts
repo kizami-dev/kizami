@@ -552,6 +552,43 @@ export interface StockConversionCandidateDto {
   truncatedDays: number;
 }
 
+/**
+ * 公開打刻APIキー(v0.4)のスコープ。apps/api/src/auth/api-key-scopes.ts の ApiKeyScope と一致させる。
+ * punch: 自分の打刻の作成・参照。read: 自分の勤怠の参照のみ。
+ */
+export type ApiKeyScope = "punch" | "read";
+
+/**
+ * APIキー一覧・単体の DTO(apps/api/src/routes/api-keys.ts の serialize と一致)。
+ * 平文トークンも key_hash も含まない(発行直後のレスポンスのみ token を別途持つ、IssuedApiKeyDto 参照)。
+ */
+export interface ApiKeyDto {
+  id: string;
+  userId: string;
+  name: string;
+  scopes: ApiKeyScope[];
+  /** UTC エポック分。null = 無期限 */
+  expiresAt: number | null;
+  /** UTC エポック分。未使用なら null */
+  lastUsedAt: number | null;
+  /** UTC エポック分。null = 有効 */
+  revokedAt: number | null;
+  createdBy: string;
+  createdAt: number;
+}
+
+/** POST /api-keys のレスポンスのみ、平文トークンを含む(この後は二度と取得できない)。 */
+export interface IssuedApiKeyDto extends ApiKeyDto {
+  token: string;
+}
+
+export interface CreateApiKeyInput {
+  name: string;
+  scopes: ApiKeyScope[];
+  /** UTC エポック分。省略/null = 無期限 */
+  expiresAt?: number | null;
+}
+
 export const api = {
   async login(email: string, password: string): Promise<{ user: AuthUser }> {
     return request("/auth/login", { method: "POST", body: JSON.stringify({ email, password }) });
@@ -833,6 +870,21 @@ export const api = {
   /** PUT /settings/privacy-contact。省略=維持、null/""=クリア、文字列=置換。 */
   async updatePrivacyContact(input: { recordRetentionDescription?: string | null; privacyContactPoint?: string | null }): Promise<PrivacyContactDto> {
     return request("/settings/privacy-contact", { method: "PUT", body: JSON.stringify(input) });
+  },
+
+  /** GET /api-keys(権限不要、自分のキーのみ)。v0.4。 */
+  async listApiKeys(): Promise<{ apiKeys: ApiKeyDto[] }> {
+    return request("/api-keys");
+  },
+
+  /** POST /api-keys(権限不要、自分用に発行)。レスポンスの token は発行直後のみ取得できる。 */
+  async createApiKey(input: CreateApiKeyInput): Promise<{ apiKey: IssuedApiKeyDto }> {
+    return request("/api-keys", { method: "POST", body: JSON.stringify(input) });
+  },
+
+  /** DELETE /api-keys/:id(権限不要、自分のキーのみ失効可)。 */
+  async revokeApiKey(id: string): Promise<{ apiKey: ApiKeyDto }> {
+    return request(`/api-keys/${encodeURIComponent(id)}`, { method: "DELETE" });
   },
 };
 

@@ -15,6 +15,7 @@ import "../styles/help.css";
 import "../styles/help-settings.css";
 import "../styles/privacy-settings.css";
 import "../styles/attendance-settings.css";
+import "../styles/api-keys-settings.css";
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
   return (

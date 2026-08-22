@@ -168,7 +168,10 @@ export default defineConfig({
   // リンクも既存文言に含まれているため、ビルドを壊さないよう死リンクチェックは無効化する
   // (§10 該当の4ファイルは文章を書き換えない方針のため、リンク切れの修正はスコープ外)。
   themeConfig: {
-    nav: [{ text: "要件定義", link: "/requirements" }],
+    nav: [
+      { text: "要件定義", link: "/requirements" },
+      { text: "外部連携", link: "/external-api/" },
+    ],
     sidebar: [
       {
         text: "プロジェクト",
@@ -184,6 +187,10 @@ export default defineConfig({
       {
         text: "導入ガイド",
         items: [{ text: "個人情報まわりの導入対応", link: "/onboarding/privacy-setup" }],
+      },
+      {
+        text: "外部連携",
+        items: [{ text: "公開打刻API(APIキー認証)", link: "/external-api/" }],
       },
       ...buildGuideSidebar(),
       ...buildCompanyDocsSidebar(),

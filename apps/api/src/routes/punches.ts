@@ -100,13 +100,17 @@ export function createPunchesRoutes(db: Database) {
     const metaIp = forwardedFor ? (forwardedFor.split(",")[0] as string).trim() : null;
     const metaUa = c.req.header("user-agent") ?? null;
 
+    // APIキー認証(公開打刻API、v0.4)で通ったリクエストは source="api" にする
+    // (c.get("apiKeyScopes") はセッションCookie認証では undefined のまま)。
+    const source = c.get("apiKeyScopes") !== undefined ? "api" : "web";
+
     const event = await insertPunchEvent(db, {
       tenantId: user.tenantId,
       userId: user.id,
       kind,
       occurredAt: occurredAtMinutes,
       recordedAt: now,
-      source: "web",
+      source,
       actorId: user.id,
       metaIp,
       metaUa,

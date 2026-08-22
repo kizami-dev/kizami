@@ -10,6 +10,7 @@ describe("migrate", () => {
     const names = tableNames.rows.map((row) => row.name).sort();
     expect(names).toEqual(
       [
+        "api_keys",
         "audit_logs",
         "auth_credentials",
         "closing_events",

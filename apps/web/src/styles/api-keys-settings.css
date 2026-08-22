@@ -1,0 +1,96 @@
+/* /settings/api-keys(公開打刻APIキー管理、v0.4)専用のスタイル。
+   一覧・発行フォームの本体は settings.css(.settings-notif__*)と org-settings.css(.org-table 等)
+   を流用し、ここでは発行直後のトークン表示・使い方の例・状態バッジなど固有の見た目だけを持つ。 */
+
+.api-keys__status {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 2px var(--space-2);
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.api-keys__status--active {
+  border: 1px solid var(--k-cyan-ink);
+  color: var(--k-cyan-ink);
+}
+
+.api-keys__status--revoked,
+.api-keys__status--expired {
+  border: 1px solid var(--k-ink-soft);
+  color: var(--k-ink-soft);
+}
+
+.api-keys__scopes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.api-keys__scope-chip {
+  display: inline-flex;
+  font-size: 0.76rem;
+  padding: 1px var(--space-2);
+  border-radius: 999px;
+  border: 1px solid rgba(26, 26, 26, 0.2);
+  color: var(--k-ink-soft);
+  white-space: nowrap;
+}
+
+/* 発行直後の平文トークン表示。二度と表示されないことを強調する枠。 */
+.api-keys__reveal {
+  border: 2px solid var(--k-magenta-ink);
+  border-radius: var(--radius-m);
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  background: rgba(229, 0, 126, 0.04);
+}
+
+.api-keys__reveal-warning {
+  color: var(--k-magenta-ink);
+  font-weight: 700;
+  margin: 0;
+}
+
+.api-keys__token-row {
+  display: flex;
+  align-items: stretch;
+  gap: var(--space-2);
+}
+
+.api-keys__token {
+  flex: 1;
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+  padding: var(--space-2) var(--space-3);
+  border: var(--border-hair);
+  border-radius: var(--radius-s);
+  background: var(--k-paper);
+  overflow-x: auto;
+  white-space: nowrap;
+  user-select: all;
+}
+
+.api-keys__usage-example {
+  margin-top: var(--space-2);
+}
+
+.api-keys__usage-example pre {
+  font-family: var(--font-mono);
+  font-size: 0.84rem;
+  padding: var(--space-3);
+  border: var(--border-hair);
+  border-radius: var(--radius-s);
+  background: var(--k-paper);
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.api-keys__name-muted {
+  color: var(--k-ink-soft);
+  font-size: 0.85rem;
+}

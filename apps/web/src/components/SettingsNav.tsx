@@ -13,7 +13,8 @@ export type SettingsSection =
   | "leave"
   | "help"
   | "privacy"
-  | "attendance";
+  | "attendance"
+  | "apiKeys";
 
 type SettingsRoute =
   | "/settings/notifications"
@@ -24,7 +25,8 @@ type SettingsRoute =
   | "/settings/leave"
   | "/settings/help"
   | "/settings/privacy"
-  | "/settings/attendance";
+  | "/settings/attendance"
+  | "/settings/api-keys";
 
 /**
  * /settings/* 画面間の行き来用サブナビ(要件: 既存の設定ナビから各画面へ辿れること)。
@@ -54,6 +56,7 @@ export function SettingsNav({ active }: { active: SettingsSection }) {
     { key: "leave", to: "/settings/leave", label: messages.settingsNav.leave, enabled: access.leave },
     { key: "help", to: "/settings/help", label: messages.settingsNav.help, enabled: access.help },
     { key: "privacy", to: "/settings/privacy", label: messages.settingsNav.privacy, enabled: access.privacy },
+    { key: "apiKeys", to: "/settings/api-keys", label: messages.settingsNav.apiKeys, enabled: access.apiKeys },
   ];
   const visible = items.filter((i) => i.enabled);
   if (visible.length === 0) return null;

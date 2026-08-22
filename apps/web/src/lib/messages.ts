@@ -289,6 +289,7 @@ export const messages = {
     help: "社内規定",
     privacy: "個人情報",
     attendance: "勤怠ルール",
+    apiKeys: "APIキー",
   },
 
   settingsHub: {
@@ -313,6 +314,8 @@ export const messages = {
     helpDesc: "ヘルプに表示する自社のルールと、就業規則へのリンクを設定します。",
     privacyTitle: "個人情報",
     privacyDesc: "従業員向けプライバシー通知・社内利用規約の雛形を、現在の設定から確認します。",
+    apiKeysTitle: "APIキー",
+    apiKeysDesc: "ICカードリーダー・Slack bot・MCPサーバーなど外部クライアントから打刻するためのAPIキーを発行・失効します。",
   },
 
   /** 月次締め・CSVエクスポート(/monthly 画面、v0.3)。要件 §6(締めと出口)・§10(コンテキストヘルプ)。 */
@@ -973,6 +976,70 @@ export const messages = {
     registerSuccess: "社内規定として登録しました。「設定 > 社内規定」から編集できます。",
     registerFailed: "登録に失敗しました。もう一度お試しください",
   },
+
+  /**
+   * APIキー(公開打刻API、v0.4)の管理画面(/settings/api-keys)。
+   * 権限は不要(自分のキーは誰でも発行・失効できる、依頼「自分用なので権限不要」)。
+   */
+  settingsApiKeys: {
+    title: "APIキー",
+    tagline: "ICカードリーダー・Slack bot・MCPサーバーなど、セッションCookieを持てない外部クライアントから打刻するためのキーです。",
+    loadFailed: "情報の取得に失敗しました。もう一度お試しください",
+
+    listTitle: "発行済みのキー",
+    empty: "発行済みのAPIキーはありません。",
+    columnName: "名前",
+    columnScopes: "スコープ",
+    columnCreated: "作成日",
+    columnLastUsed: "最終使用",
+    columnExpires: "有効期限",
+    columnStatus: "状態",
+    columnActions: "操作",
+    neverUsed: "未使用",
+    noExpiry: "無期限",
+    statusActive: "有効",
+    statusRevoked: "失効済み",
+    statusExpired: "期限切れ",
+    revoke: "失効させる",
+    revoking: "失効させています…",
+
+    revokeConfirmTitle: "APIキーを失効させる",
+    revokeConfirmMessage: "このキーを使っている連携(ICカードリーダー・Slack bot・MCPサーバー等)は動作しなくなります。この操作は取り消せません。",
+
+    scopePunch: "打刻(punch) — 自分の打刻の作成・参照",
+    scopeRead: "参照(read) — 自分の勤怠の参照のみ",
+
+    createTitle: "新しいキーを発行",
+    nameLabel: "名前(用途がわかるもの)",
+    namePlaceholder: "例: 2F入口ICカードリーダー",
+    scopesLabel: "スコープ(複数選択可)",
+    expiresLabel: "有効期限(任意)",
+    expiresHint: "空欄のままにすると無期限になります。",
+    issue: "発行する",
+    issuing: "発行しています…",
+
+    createdTitle: "キーを発行しました",
+    createdWarning: "この値は二度と表示されません。安全な場所に保管してください。",
+    createdTokenLabel: "APIキー",
+    copy: "コピー",
+    copied: "コピーしました",
+    copyFailed: "コピーに失敗しました。手動で選択してコピーしてください",
+    createdDone: "閉じる",
+
+    usageExampleTitle: "使い方の例",
+    usageExampleDesc: "発行したキーを Authorization ヘッダに Bearer トークンとして付けてリクエストしてください。",
+    usageExampleCurlComment: "# 出勤打刻",
+
+    errors: {
+      invalid_name: "名前を1〜100文字で入力してください",
+      invalid_scopes: "スコープを1つ以上選択してください",
+      invalid_expires_at: "有効期限の形式を確認してください",
+      not_found: "対象のキーが見つかりません",
+      already_revoked: "このキーは既に失効しています",
+      forbidden: "この操作を行う権限がありません",
+      default: "処理に失敗しました。もう一度お試しください",
+    },
+  },
 } as const;
 
 /** apps/api のエラーコード({ error: string })を日本語文言へマッピングする(§10 コンテキストヘルプ・messages.ts 集約方針)。 */
@@ -1071,4 +1138,11 @@ export function mapAttendanceSettingsErrorMessage(body: unknown): string {
   const errors = messages.settingsAttendance.errors as Record<string, string | undefined>;
   const code = errorCodeOf(body);
   return (code && errors[code]) ?? messages.settingsAttendance.errors.default;
+}
+
+/** APIキー発行/失効(POST・DELETE /api-keys)のエラーマッピング(v0.4 追加)。 */
+export function mapApiKeysErrorMessage(body: unknown): string {
+  const errors = messages.settingsApiKeys.errors as Record<string, string | undefined>;
+  const code = errorCodeOf(body);
+  return (code && errors[code]) ?? messages.settingsApiKeys.errors.default;
 }
