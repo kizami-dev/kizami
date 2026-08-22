@@ -12,6 +12,7 @@
   "dependencies": {
     "@hono/node-server": "^2.1.1",
     "@kizami/authz": "workspace:*",
+    "@kizami/crypto": "workspace:*",
     "@kizami/db": "workspace:*",
     "@kizami/engine": "workspace:*",
     "@kizami/notify": "workspace:*",

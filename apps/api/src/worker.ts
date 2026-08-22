@@ -28,6 +28,7 @@ import { Queue, Worker } from "bullmq";
 import IORedis from "ioredis";
 import { migrateDb } from "@kizami/db";
 import type { NotificationChannel } from "@kizami/notify";
+import { buildEncryptorFromEnv } from "./lib/encryption.js";
 import { buildNotificationChannels } from "./lib/notification-channels.js";
 import { runOvertimeAlertScan } from "./overtime-alerts.js";
 import { nodemailerSendFn } from "./lib/smtp.js";
@@ -42,6 +43,9 @@ const redisUrl = process.env.REDIS_URL ?? "redis://localhost:6379";
 const reminderIntervalMinutes = Number(process.env.REMINDER_INTERVAL_MINUTES ?? "15");
 const webhookUrl = process.env.WEBHOOK_URL;
 const databaseUrl = process.env.DATABASE_URL ?? "file:./kizami.db";
+// 秘密情報(webhookUrl・smtpPassword)の復号に使う。未設定/不正なら null
+// (復号できないチャネルは無効化されるだけで、スキャン自体は止めない — notification-channels.ts 参照)。
+const encryptor = buildEncryptorFromEnv();
 
 if (!Number.isFinite(reminderIntervalMinutes) || reminderIntervalMinutes <= 0) {
   throw new Error(`REMINDER_INTERVAL_MINUTES must be a positive number, got: ${process.env.REMINDER_INTERVAL_MINUTES}`);
@@ -74,6 +78,7 @@ async function main(): Promise<void> {
           cached = buildNotificationChannels(db, tenantId, {
             smtpSendFn: nodemailerSendFn,
             ...(webhookUrl ? { webhookUrlFallback: webhookUrl } : {}),
+            encryptor,
           });
           channelCache.set(tenantId, cached);
         }

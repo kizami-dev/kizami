@@ -1,0 +1,14 @@
+{
+  "name": "@kizami/crypto",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "保存時秘密情報の暗号化 — AES-256-GCM を WebCrypto (crypto.subtle) で実装。ランタイム非依存(node:crypto 不使用、Node / workerd 両対応)",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  }
+}

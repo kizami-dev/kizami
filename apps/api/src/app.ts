@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import type { Database } from "@kizami/db";
+import type { Encryptor } from "./lib/encryption.js";
 import { authMiddleware, type AppEnv } from "./auth/middleware.js";
 import { ForbiddenError } from "./authz.js";
 import { createAttendanceRoutes } from "./routes/attendance.js";
@@ -31,6 +32,13 @@ export interface CreateAppDeps {
    * (実際の送信を行う Node 実装は node.ts が渡す。テストは偽実装を注入して実送信しない)。
    */
   notify?: SettingsRoutesDeps;
+  /**
+   * 秘密情報(webhookUrl・smtpPassword)の暗号化・復号に使う Encryptor。
+   * 未設定/null の場合、settings.ts の PUT は秘密情報を含む更新を 503 で拒否する
+   * (平文フォールバックはしない)。node.ts / worker.ts は環境変数 KIZAMI_ENCRYPTION_KEY から
+   * apps/api/src/lib/encryption.ts の buildEncryptorFromEnv() で組み立てて渡す。
+   */
+  encryptor?: Encryptor | null;
 }
 
 /**
@@ -41,7 +49,7 @@ export interface CreateAppDeps {
  * テストは :memory: DB を、Node ランタイムは env から作った DB をそれぞれ渡せるようにする。
  */
 export function createApp(deps: CreateAppDeps) {
-  const { db, secureCookies = false, corsOrigin, notify } = deps;
+  const { db, secureCookies = false, corsOrigin, notify, encryptor } = deps;
   const app = new Hono<AppEnv>();
 
   if (corsOrigin) {
@@ -59,7 +67,7 @@ export function createApp(deps: CreateAppDeps) {
   authed.route("/attendance", createAttendanceRoutes(db));
   authed.route("/corrections", createCorrectionsRoutes(db));
   authed.route("/notifications", createNotificationsRoutes(db));
-  authed.route("/settings", createSettingsRoutes(db, notify ?? {}));
+  authed.route("/settings", createSettingsRoutes(db, { ...(notify ?? {}), encryptor: encryptor ?? null }));
   authed.route("/departments", createDepartmentsRoutes(db));
   authed.route("/members", createMembersRoutes(db));
   authed.route("/presets", createPresetsRoutes(db));

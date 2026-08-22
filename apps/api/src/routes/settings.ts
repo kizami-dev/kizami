@@ -16,6 +16,17 @@
  * - null または空文字 "" = クリア(null にする)
  * - それ以外の文字列 = その値に置き換える
  * smtpPassword も同じ3値ルールに従う(依頼の「未指定は保持・空文字はクリア」を満たす)。
+ *
+ * 保存時暗号化(webhookUrl・smtpPassword、詳細は apps/api/src/lib/encryption.ts):
+ * - この PUT で新たに(空でない)値が「指定」された場合のみ暗号化して保存する。
+ *   フィールド省略時(=既存値を維持)は、DBに入っている値(平文/暗号文どちらもありうる)を
+ *   そのまま引き継ぐだけで再暗号化はしない(encryptor が無くても既存値の維持はできる)。
+ *   → 既存の平文値は、その値を含む PUT が来るたびに暗号化される(後方互換からの移行経路)。
+ * - encryptor が無い状態でこの PUT が新しい秘密情報(webhookUrl・smtpPassword)を含む場合は
+ *   503 { error: "encryption_unavailable" } を返し、保存自体を拒否する(平文フォールバックはしない)。
+ *   秘密情報を含まない更新(有効/無効の切り替え・ホスト名変更など)は encryptor が無くても通す。
+ * - GET の webhookUrl.preview は復号できて初めて表示できる。復号できない(鍵未設定・鍵不一致・
+ *   破損)場合は configured: true のまま preview だけ null にする。
  */
 
 import { Hono } from "hono";
@@ -29,6 +40,7 @@ import {
 import { dispatch, type NotificationMessage, type SmtpSendFn } from "@kizami/notify";
 import type { AppEnv } from "../auth/middleware.js";
 import { requirePermission } from "../authz.js";
+import { decryptSecret, type Encryptor } from "../lib/encryption.js";
 import { buildNotificationChannels, isNotificationConfigUsable } from "../lib/notification-channels.js";
 import { nowMinutes } from "../lib/time.js";
 
@@ -41,6 +53,11 @@ export interface SettingsRoutesDeps {
   fetchImpl?: typeof fetch;
   /** smtp 送信関数。省略時 smtp チャネルは常に「未設定」扱いになる(テスト送信も 400) */
   smtpSendFn?: SmtpSendFn;
+  /**
+   * webhookUrl・smtpPassword の暗号化・復号に使う。null/未設定の場合、PUT は秘密情報を
+   * 含む更新を 503 encryption_unavailable で拒否する(平文フォールバックはしない)。
+   */
+  encryptor?: Encryptor | null;
 }
 
 function webhookPreview(url: string): string | null {
@@ -52,7 +69,7 @@ function webhookPreview(url: string): string | null {
   }
 }
 
-function serialize(settings: TenantNotificationSettings | null) {
+async function serialize(settings: TenantNotificationSettings | null, encryptor: Encryptor | null | undefined) {
   if (!settings) {
     return {
       webhookEnabled: false,
@@ -67,10 +84,20 @@ function serialize(settings: TenantNotificationSettings | null) {
       updatedBy: null as string | null,
     };
   }
+
+  // configured は「値が保存されているか」で決まる(復号できるかどうかとは独立)。
+  // preview は復号できて初めて出せるので、復号できない(鍵未設定・鍵不一致・破損)場合は
+  // configured: true のまま null にする。
+  let webhookPreviewValue: string | null = null;
+  if (settings.webhookUrl) {
+    const decrypted = await decryptSecret(encryptor, settings.webhookUrl);
+    webhookPreviewValue = decrypted ? webhookPreview(decrypted) : null;
+  }
+
   return {
     webhookEnabled: settings.webhookEnabled,
     webhookUrl: settings.webhookUrl
-      ? { configured: true, preview: webhookPreview(settings.webhookUrl) }
+      ? { configured: true, preview: webhookPreviewValue }
       : { configured: false, preview: null as string | null },
     smtpEnabled: settings.smtpEnabled,
     smtpHost: settings.smtpHost,
@@ -131,7 +158,7 @@ export function createSettingsRoutes(db: Database, deps: SettingsRoutesDeps = {}
     requirePermission(c, NOTIFICATION_SETTINGS_PERMISSION, "tenant");
     const user = c.get("user");
     const settings = await getNotificationSettings(db, user.tenantId);
-    return c.json(serialize(settings));
+    return c.json(await serialize(settings, deps.encryptor));
   });
 
   app.put("/notifications", async (c) => {
@@ -148,6 +175,9 @@ export function createSettingsRoutes(db: Database, deps: SettingsRoutesDeps = {}
     const webhookUrlResult = resolveStringField(body.webhookUrl, existing?.webhookUrl ?? null);
     if (!webhookUrlResult.ok) return c.json({ error: "invalid_webhook_url" }, 400);
     const webhookUrl = webhookUrlResult.value;
+    // 「この PUT で新しい webhookUrl が指定されたか」(既存値の維持・クリアとは区別する)。
+    // 指定された場合のみ暗号化の対象になる(下記 encryption_unavailable チェック参照)。
+    const webhookUrlProvided = body.webhookUrl !== undefined;
     if (webhookUrl !== null && !isValidHttpUrl(webhookUrl)) return c.json({ error: "invalid_webhook_url" }, 400);
     if (body.webhookEnabled && webhookUrl === null) return c.json({ error: "invalid_webhook_url" }, 400);
 
@@ -184,17 +214,33 @@ export function createSettingsRoutes(db: Database, deps: SettingsRoutesDeps = {}
       return c.json({ error: "invalid_smtp_config" }, 400);
     }
 
+    // 暗号化の対象は「この PUT で新たに(空でない)値が指定された」秘密情報のみ。
+    // フィールド省略時(=既存値の維持)は再暗号化せず DB の値をそのまま引き継ぐため、
+    // encryptor が無くても既存値の維持・他フィールドの更新は行える。
+    const webhookUrlNeedsEncryption = webhookUrlProvided && webhookUrl !== null;
+    const smtpPasswordNeedsEncryption = smtpPasswordChanged && smtpPasswordResult.value !== null;
+    if ((webhookUrlNeedsEncryption || smtpPasswordNeedsEncryption) && !deps.encryptor) {
+      return c.json({ error: "encryption_unavailable" }, 503);
+    }
+
+    const webhookUrlToStore = webhookUrlNeedsEncryption
+      ? await (deps.encryptor as Encryptor).encrypt(webhookUrl as string)
+      : webhookUrl;
+    const smtpPasswordToStore = smtpPasswordNeedsEncryption
+      ? await (deps.encryptor as Encryptor).encrypt(smtpPasswordResult.value as string)
+      : smtpPasswordResult.value;
+
     const now = nowMinutes();
     const updated = await upsertNotificationSettings(db, {
       tenantId: user.tenantId,
       webhookEnabled: body.webhookEnabled,
-      webhookUrl,
+      webhookUrl: webhookUrlToStore,
       smtpEnabled: body.smtpEnabled,
       smtpHost,
       smtpPort,
       smtpUser: smtpUserResult.value,
       smtpFrom,
-      smtpPassword: smtpPasswordResult.value,
+      smtpPassword: smtpPasswordToStore,
       updatedAt: now,
       updatedBy: user.id,
     });
@@ -207,7 +253,9 @@ export function createSettingsRoutes(db: Database, deps: SettingsRoutesDeps = {}
       targetId: user.tenantId,
       detail: JSON.stringify({
         webhookEnabled: updated.webhookEnabled,
-        webhookUrlChanged: (existing?.webhookUrl ?? null) !== webhookUrl,
+        // 暗号化により保存値そのものでの比較はできない(平文 vs 暗号文になりうる)ため、
+        // 「この PUT で webhookUrl フィールドが指定されたか」を changed の代理指標として使う。
+        webhookUrlChanged: webhookUrlProvided,
         smtpEnabled: updated.smtpEnabled,
         smtpHost: updated.smtpHost,
         smtpPort: updated.smtpPort,
@@ -218,7 +266,7 @@ export function createSettingsRoutes(db: Database, deps: SettingsRoutesDeps = {}
       occurredAt: now,
     });
 
-    return c.json(serialize(updated));
+    return c.json(await serialize(updated, deps.encryptor));
   });
 
   app.post("/notifications/test", async (c) => {
@@ -233,6 +281,7 @@ export function createSettingsRoutes(db: Database, deps: SettingsRoutesDeps = {}
     const channels = await buildNotificationChannels(db, user.tenantId, {
       ...(deps.fetchImpl ? { fetchImpl: deps.fetchImpl } : {}),
       ...(deps.smtpSendFn ? { smtpSendFn: deps.smtpSendFn } : {}),
+      encryptor: deps.encryptor ?? null,
     });
 
     const message: NotificationMessage = {

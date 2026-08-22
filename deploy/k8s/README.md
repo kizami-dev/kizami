@@ -10,13 +10,58 @@
 
 ## 適用手順
 
+`deployment.yaml` の `api` / `worker` コンテナは起動に `kizami-encryption` Secret を必須で
+参照する(`optional: false`)ため、**先に「秘密情報の暗号化鍵」の Secret を作成してから**
+`deployment.yaml` を適用すること(未作成のまま適用すると Pod が `CreateContainerConfigError` で起動しない)。
+
 ```sh
 kubectl apply -f deploy/k8s/namespace.yaml
 kubectl apply -f deploy/k8s/pvc.yaml
 kubectl apply -f deploy/k8s/valkey.yaml
+# ↓ このあと「秘密情報の暗号化鍵」節の手順で kizami-encryption Secret を作成する
 kubectl apply -f deploy/k8s/deployment.yaml
 kubectl apply -f deploy/k8s/service.yaml
 ```
+
+## 秘密情報の暗号化鍵(KIZAMI_ENCRYPTION_KEY)
+
+テナント通知設定の SMTP パスワードと Webhook URL は、DB には平文ではなく AES-256-GCM で
+暗号化して保存する(`packages/crypto`、保存形式 `enc:v1:<iv>:<ciphertext>`)。鍵は
+32バイトを base64 で表現した文字列を環境変数 `KIZAMI_ENCRYPTION_KEY` として `api` / `worker`
+両コンテナに渡す(**鍵は必須運用** — 未設定のまま Pod を起動することはできない。上記の通り
+Secret 参照は `optional: false`)。
+
+鍵を生成する:
+
+```sh
+openssl rand -base64 32
+```
+
+生成した値で Secret を作成する(**この鍵はクラスタ外で安全に保管しておくこと**。紛失すると
+既存の暗号化済み秘密情報は復号できなくなる — その場合もシステム全体は止まらず、該当の通知
+チャネルが自動的に無効化されるだけで済む設計になっている):
+
+```sh
+kubectl -n kizami create secret generic kizami-encryption \
+  --from-literal=key='<openssl rand -base64 32 の出力>'
+```
+
+鍵を後から作成/変更(ローテーション)した場合は `api` / `worker` 両コンテナの再起動が必要:
+
+```sh
+kubectl -n kizami rollout restart deployment/kizami
+```
+
+鍵をローテーションすると、**それまでに暗号化済みだった webhookUrl / smtpPassword は旧鍵でしか
+復号できなくなる**(新鍵では「復号できない値」として扱われ、該当の通知チャネルが自動的に
+無効化される。エラーにはならず、アプリ内通知など他の機能は動き続ける)。ローテーション後に
+テナント側で通知設定画面から webhookUrl / smtpPassword を一度保存し直せば新鍵で再暗号化される。
+
+既存データの移行(この機能をまだ入れていない環境からのアップグレード時):
+`tenant_notification_settings` に平文で保存されている既存の webhookUrl / smtpPassword は、
+`KIZAMI_ENCRYPTION_KEY` を設定するだけでそのまま読める(`enc:` プレフィクスが無い値は平文と
+みなす後方互換)。明示的な一括移行バッチは不要で、各テナントが通知設定を次に保存したタイミング
+で自動的に暗号化される。
 
 Pod が Running/Ready になるまで待つ:
 
