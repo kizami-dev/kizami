@@ -124,7 +124,7 @@ describe("API key scope enforcement", () => {
     expect(await res.json()).toEqual({ error: "insufficient_api_key_scope" });
   });
 
-  it("a 'read'-scoped key CAN GET /punches and GET /attendance/status and GET /attendance/monthly and GET /leave/balance", async () => {
+  it("a 'read'-scoped key CAN GET /punches and GET /attendance/status and GET /attendance/monthly and GET /leave/balance and GET /corrections", async () => {
     const { db, email, password } = await setupTestDb();
     const app = createApp({ db });
     const cookie = await loginAndGetCookie(app, email, password);
@@ -136,6 +136,35 @@ describe("API key scope enforcement", () => {
     expect((await app.request("/attendance/status", { headers: auth })).status).toBe(200);
     expect((await app.request("/attendance/monthly?month=2026-06", { headers: auth })).status).toBe(200);
     expect((await app.request("/leave/balance", { headers: auth })).status).toBe(200);
+    expect((await app.request("/corrections", { headers: auth })).status).toBe(200);
+  });
+
+  it("a 'punch'-scoped key CANNOT GET /corrections (read-only, requires 'read' scope)", async () => {
+    const { db, email, password } = await setupTestDb();
+    const app = createApp({ db });
+    const cookie = await loginAndGetCookie(app, email, password);
+    const issued = await issueApiKey(app, cookie, { name: "punch only", scopes: ["punch"] });
+    const token = issued.json.apiKey.token;
+
+    const res = await app.request("/corrections", { headers: { authorization: `Bearer ${token}` } });
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: "insufficient_api_key_scope" });
+  });
+
+  it("a 'read'-scoped key CANNOT POST /corrections (write operations are never exposed to API keys)", async () => {
+    const { db, email, password } = await setupTestDb();
+    const app = createApp({ db });
+    const cookie = await loginAndGetCookie(app, email, password);
+    const issued = await issueApiKey(app, cookie, { name: "read only", scopes: ["read"] });
+    const token = issued.json.apiKey.token;
+
+    const res = await app.request("/corrections", {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+      body: JSON.stringify({ proposedKind: "clock_in", proposedOccurredAt: 0, reason: "test" }),
+    });
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: "insufficient_api_key_scope" });
   });
 
   it("a 'punch'-scoped key cannot change settings (403 insufficient_api_key_scope, not 401/200)", async () => {

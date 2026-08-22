@@ -68,6 +68,32 @@ export const messages = {
     empty: "まだ打刻がありません",
   },
 
+  /**
+   * GPS付き打刻(v0.4、docs/requirements.md §3)。
+   * 「有効化時は従業員に取得中であることを明示する」を満たすため、GPSが有効なテナントでは
+   * 打刻ボタンの近くに常時 noticeAlways を表示する(トグルやツールチップの奥に隠さない)。
+   */
+  punchGps: {
+    noticeAlways: "この打刻には位置情報が記録されます",
+    detailToggle: "詳しく",
+    reason: "直行直帰などの打刻場所を確認できるよう、会社の設定でGPSでの記録が有効になっています。",
+    retentionPrefix: "保持期間: ",
+    retentionSameAsAttendance: "勤怠データと同一",
+    retentionDaysSuffix: "日",
+    locating: "位置情報を取得中…",
+    unavailableNote: "位置情報を取得できなかったため、位置情報なしで記録しました",
+  },
+
+  /**
+   * オフライン時の打刻(v0.4)。依頼どおり、v0.4ではオフラインでの打刻キューイングを
+   * 実装しない(実際の打刻時刻と記録時刻がずれるため)。画面(アプリシェル)は
+   * Service Worker のキャッシュで開けるが、打刻はネットワーク接続が必要なことを明示する。
+   */
+  offline: {
+    banner: "オフラインです。画面は表示できますが、正確な時刻を記録するため打刻には接続が必要です。",
+    punchDisabledHint: "オフラインのため打刻できません",
+  },
+
   errors: {
     punchFailed: "打刻に失敗しました。もう一度お試しください",
     loadFailed: "データの取得に失敗しました。もう一度お試しください",

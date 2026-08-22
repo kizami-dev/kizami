@@ -4,6 +4,11 @@
   justify-content: space-between;
   gap: var(--space-4);
   padding: var(--space-4) var(--space-5);
+  /* PWA(standalone起動)のセーフエリア対応: iPhoneのノッチ/ステータスバーの下にヘッダーが
+     隠れないよう、上端と左右にセーフエリア分の余白を足す(viewport-fit=cover 前提)。 */
+  padding-top: max(var(--space-4), env(safe-area-inset-top));
+  padding-left: max(var(--space-5), env(safe-area-inset-left));
+  padding-right: max(var(--space-5), env(safe-area-inset-right));
   border-bottom: var(--border-hair);
 }
 

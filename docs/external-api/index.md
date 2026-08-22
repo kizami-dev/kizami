@@ -26,7 +26,7 @@ ICカードリーダー・Slack bot・MCPサーバー・自作クライアント
 | スコープ | できること |
 |---|---|
 | `punch` | 自分の打刻の作成・参照 |
-| `read` | 自分の勤怠(打刻・月次集計・有給残高)の参照のみ |
+| `read` | 自分の勤怠(打刻・月次集計・有給残高・修正申請一覧)の参照のみ |
 
 ## 3. エンドポイント一覧
 
@@ -42,6 +42,7 @@ APIキーでアクセスできるのは次のエンドポイントのみです�
 | `GET` | `/attendance/status` | `punch` または `read` |
 | `GET` | `/attendance/monthly` | `read` |
 | `GET` | `/leave/balance` | `read` |
+| `GET` | `/corrections` | `read` |
 
 スコープが不足している、またはこの一覧に無いエンドポイントにアクセスすると
 `403 { "error": "insufficient_api_key_scope" }` が返ります。
@@ -105,3 +106,9 @@ APIキーで作成された打刻は、記録上の `source`(打刻手段)が `a
 権限プリセットの `api_key.manage`(テナント全体スコープのみ)が必要です。退職者のキーを一括で
 確認・失効させたい場合などに使います。権限カタログの詳細は
 [権限カタログ](/design/permission-catalog)を参照してください。
+
+## 7. MCPサーバー(Claude Desktop / Claude Code から使う)
+
+この公開打刻APIの上に薄く実装した MCP サーバー(`@kizami/mcp`)を同梱しています。
+Claude Desktop / Claude Code から打刻・勤怠照会・修正申請の参照ができます。設定方法は
+`apps/mcp/README.md` を参照してください(APIキーの発行が前提です)。

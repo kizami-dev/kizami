@@ -2,10 +2,22 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "waku";
-import { api, ApiError, UnauthorizedError, type AttendanceState, type AttendanceStatus, type Punch, type PunchKind } from "../lib/api";
+import {
+  api,
+  ApiError,
+  UnauthorizedError,
+  type AttendanceCapabilitiesDto,
+  type AttendanceState,
+  type AttendanceStatus,
+  type Punch,
+  type PunchGpsInput,
+  type PunchKind,
+} from "../lib/api";
+import { getCurrentPositionSafe } from "../lib/geolocation";
 import { messages } from "../lib/messages";
 import { formatTimeJst, jstTodayWindow } from "../lib/time";
 import { useAuthGuard } from "../lib/useAuthGuard";
+import { useOnlineStatus } from "../lib/useOnlineStatus";
 import { AppHeader } from "./AppHeader";
 
 const clockFormatter = new Intl.DateTimeFormat("ja-JP", {
@@ -37,6 +49,7 @@ function chipVariant(kind: PunchKind): "in" | "break" | "out" {
 export function PunchHome() {
   const router = useRouter();
   const guard = useAuthGuard();
+  const isOnline = useOnlineStatus();
 
   const [now, setNow] = useState(() => new Date());
   const [status, setStatus] = useState<AttendanceStatus | null>(null);
@@ -47,6 +60,11 @@ export function PunchHome() {
   const [stamping, setStamping] = useState(false);
   const [newChipId, setNewChipId] = useState<string | null>(null);
   const knownPunchIdsRef = useRef<Set<string> | null>(null);
+
+  // GPS付き打刻(v0.4)。テナント設定は打刻ごとに変わるものではないため、マウント時に1回だけ取得する。
+  const [capabilities, setCapabilities] = useState<AttendanceCapabilitiesDto | null>(null);
+  const [gpsLocating, setGpsLocating] = useState(false);
+  const [gpsUnavailableNote, setGpsUnavailableNote] = useState(false);
 
   useEffect(() => {
     const id = window.setInterval(() => setNow(new Date()), 1000);
@@ -88,6 +106,16 @@ export function PunchHome() {
       }
       setLoadError(true);
     });
+    // GPSが有効かどうかは打刻の可否を左右しないため、失敗しても読み込みエラー扱いにはしない
+    // (取得できなければ「GPSは無効」として扱い、通常どおり打刻できる)。
+    api
+      .getAttendanceCapabilities()
+      .then((caps) => {
+        if (!cancelled) setCapabilities(caps);
+      })
+      .catch(() => {
+        if (!cancelled) setCapabilities({ gpsEnabled: false, gpsRetentionDays: null });
+      });
     return () => {
       cancelled = true;
     };
@@ -95,10 +123,24 @@ export function PunchHome() {
   }, [guard.status]);
 
   async function handlePunch(kind: PunchKind) {
+    if (!isOnline) return; // ボタンは disabled のはずだが、念のための二重ガード
     setPending(true);
     setPunchError(null);
+    setGpsUnavailableNote(false);
     try {
-      await api.punch(kind);
+      let gps: PunchGpsInput | undefined;
+      if (capabilities?.gpsEnabled) {
+        setGpsLocating(true);
+        const position = await getCurrentPositionSafe();
+        setGpsLocating(false);
+        if (position) {
+          gps = { gpsLat: position.lat, gpsLng: position.lng };
+        } else {
+          // 許可されなかった/取得できなかった場合でも打刻自体は止めない(依頼どおり)。
+          setGpsUnavailableNote(true);
+        }
+      }
+      await api.punch(kind, gps);
       await refresh();
       setStamping(true);
       window.setTimeout(() => setStamping(false), 320);
@@ -110,6 +152,7 @@ export function PunchHome() {
       setPunchError(err instanceof ApiError ? messages.errors.punchFailed : messages.errors.network);
     } finally {
       setPending(false);
+      setGpsLocating(false);
     }
   }
 
@@ -151,12 +194,39 @@ export function PunchHome() {
             {punchError}
           </p>
         ) : null}
+        {!isOnline ? (
+          <p className="punch-offline-banner" role="status">
+            {messages.offline.banner}
+          </p>
+        ) : null}
+
+        {/* GPS取得中であることの明示(要件§3: 有効化時は従業員に取得中であることを明示する)。
+            打刻ボタンの近くに常時表示し、詳細(理由・保持期間)は開閉式で添える。 */}
+        {capabilities?.gpsEnabled ? (
+          <div className="punch-gps-notice">
+            <p className="punch-gps-notice__text">
+              {messages.punchGps.noticeAlways}
+              {gpsLocating ? <span className="punch-gps-notice__locating"> {messages.punchGps.locating}</span> : null}
+            </p>
+            <details className="punch-gps-notice__detail">
+              <summary>{messages.punchGps.detailToggle}</summary>
+              <p>{messages.punchGps.reason}</p>
+              <p>
+                {messages.punchGps.retentionPrefix}
+                {capabilities.gpsRetentionDays === null
+                  ? messages.punchGps.retentionSameAsAttendance
+                  : `${capabilities.gpsRetentionDays}${messages.punchGps.retentionDaysSuffix}`}
+              </p>
+            </details>
+          </div>
+        ) : null}
+        {gpsUnavailableNote ? <p className="punch-gps-notice__unavailable">{messages.punchGps.unavailableNote}</p> : null}
 
         <div className="punch-pad">
           <button
             type="button"
             className="punch-button punch-button--in"
-            disabled={!canClockIn || pending}
+            disabled={!canClockIn || pending || !isOnline}
             onClick={() => handlePunch("clock_in")}
           >
             <span>{messages.punchButtons.clockIn}</span>
@@ -164,7 +234,7 @@ export function PunchHome() {
           <button
             type="button"
             className="punch-button punch-button--break"
-            disabled={!canBreak || pending}
+            disabled={!canBreak || pending || !isOnline}
             onClick={() => handlePunch(breakKind)}
           >
             <span>{breakLabel}</span>
@@ -172,15 +242,15 @@ export function PunchHome() {
           <button
             type="button"
             className="punch-button punch-button--out"
-            disabled={!canClockOut || pending}
+            disabled={!canClockOut || pending || !isOnline}
             onClick={() => handlePunch("clock_out")}
           >
             <span>{messages.punchButtons.clockOut}</span>
           </button>
           <div className="punch-pad__hint" aria-hidden="true">
-            <span>{!canClockIn ? messages.punchHints.clockInDisabled : " "}</span>
-            <span>{!canBreak ? messages.punchHints.breakDisabled : " "}</span>
-            <span>{!canClockOut ? messages.punchHints.clockOutDisabled : " "}</span>
+            <span>{!isOnline ? messages.offline.punchDisabledHint : !canClockIn ? messages.punchHints.clockInDisabled : " "}</span>
+            <span>{!isOnline ? messages.offline.punchDisabledHint : !canBreak ? messages.punchHints.breakDisabled : " "}</span>
+            <span>{!isOnline ? messages.offline.punchDisabledHint : !canClockOut ? messages.punchHints.clockOutDisabled : " "}</span>
           </div>
         </div>
 

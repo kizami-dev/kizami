@@ -11,6 +11,11 @@
   align-items: center;
   gap: var(--space-6);
   padding: var(--space-6) var(--space-4) var(--space-7);
+  /* PWA(standalone起動)でのセーフエリア対応: iPhoneのノッチ・ホームバーに被らないよう
+     ビューポート下端の余白を確保する(viewport-fit=cover は _layout.tsx で設定)。 */
+  padding-bottom: max(var(--space-7), env(safe-area-inset-bottom));
+  padding-left: max(var(--space-4), env(safe-area-inset-left));
+  padding-right: max(var(--space-4), env(safe-area-inset-right));
   max-width: 32rem;
   margin: 0 auto;
   width: 100%;
@@ -223,6 +228,63 @@
   border-radius: var(--radius-s);
   padding: var(--space-3);
   text-align: center;
+}
+
+/* オフライン時の明示(PWA、v0.4)。打刻には正確な時刻が要るため、
+   オフラインでは打刻できないことを常時バナーで示す(画面自体は開ける)。 */
+.punch-offline-banner {
+  width: 100%;
+  color: var(--k-ink-soft);
+  font-size: 0.85rem;
+  border: 1px solid var(--k-ink-soft);
+  background: rgba(26, 26, 26, 0.04);
+  border-radius: var(--radius-s);
+  padding: var(--space-3);
+  text-align: center;
+}
+
+/* GPS付き打刻の明示(要件§3: 有効化時は従業員に取得中であることを明示する)。
+   打刻ボタンの近くに常時表示する静かな案内(演出は打刻スタンプのみに集中する原則のため、
+   ここは色数を絞り控えめに保つ)。 */
+.punch-gps-notice {
+  width: 100%;
+  border-left: 3px solid var(--k-cyan-ink);
+  padding: var(--space-2) var(--space-3);
+  font-size: 0.8rem;
+  color: var(--k-ink-soft);
+}
+
+.punch-gps-notice__text {
+  margin: 0;
+  color: var(--k-key);
+}
+
+.punch-gps-notice__locating {
+  color: var(--k-cyan-ink);
+  font-weight: 700;
+}
+
+.punch-gps-notice__detail {
+  margin-top: var(--space-1);
+}
+
+.punch-gps-notice__detail summary {
+  cursor: pointer;
+  color: var(--k-cyan-ink);
+  font-size: 0.78rem;
+}
+
+.punch-gps-notice__detail p {
+  margin: var(--space-1) 0 0;
+  color: var(--k-ink-soft);
+}
+
+.punch-gps-notice__unavailable {
+  width: 100%;
+  color: var(--k-ink-soft);
+  font-size: 0.78rem;
+  text-align: center;
+  margin: 0;
 }
 
 /* 今日のトンボ列 */

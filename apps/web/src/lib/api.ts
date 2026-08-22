@@ -75,6 +75,16 @@ export interface Punch {
   occurredAt: number;
 }
 
+/**
+ * GPS付き打刻(v0.4、PWA+GPS打刻)。テナントでGPSが有効なときだけ Web 側が実際の値を送る。
+ * サーバー側も再確認する(テナントでGPSが無効なら、送っても保存されない。
+ * apps/api/src/routes/punches.ts のコメント参照)。
+ */
+export interface PunchGpsInput {
+  gpsLat: number;
+  gpsLng: number;
+}
+
 export interface AttendanceStatus {
   state: AttendanceState;
   lastPunch: { kind: PunchKind; occurredAt: number } | null;
@@ -379,6 +389,16 @@ export interface AttendanceSettingsDto {
   history: AttendanceSettingVersionDto[];
 }
 
+/**
+ * GET /settings/attendance/capabilities(認証のみ、権限不要)のレスポンス。
+ * 打刻画面が「GPSを取得して送るかどうか」を判断するために必要な最小限の情報のみ
+ * (GET /settings/attendance のような日界・法定休日等は含まない。routes/settings.ts 参照)。
+ */
+export interface AttendanceCapabilitiesDto {
+  gpsEnabled: boolean;
+  gpsRetentionDays: number | null;
+}
+
 /** POST /settings/attendance の入力。新しい版を1件追加する(UPDATE ではない)。 */
 export interface CreateAttendanceSettingVersionInput {
   effectiveFrom: string;
@@ -636,8 +656,9 @@ export const api = {
     return request("/me");
   },
 
-  async punch(kind: PunchKind): Promise<{ punch: Punch }> {
-    return request("/punches", { method: "POST", body: JSON.stringify({ kind }) });
+  /** gps 省略時は座標なしで打刻する(位置情報が取得できなかった/許可されなかった場合)。 */
+  async punch(kind: PunchKind, gps?: PunchGpsInput): Promise<{ punch: Punch }> {
+    return request("/punches", { method: "POST", body: JSON.stringify({ kind, ...gps }) });
   },
 
   /** from/to は UTC エポック分(inclusive)。 */
@@ -891,6 +912,11 @@ export const api = {
   /** GET /settings/attendance(tenant_settings.calendar.manage)。現在有効な版+版の履歴。 */
   async getAttendanceSettings(): Promise<AttendanceSettingsDto> {
     return request("/settings/attendance");
+  },
+
+  /** GET /settings/attendance/capabilities(認証のみ、権限不要)。打刻画面がGPS要否を判断するために使う。 */
+  async getAttendanceCapabilities(): Promise<AttendanceCapabilitiesDto> {
+    return request("/settings/attendance/capabilities");
   },
 
   /**

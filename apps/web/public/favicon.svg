@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <rect width="512" height="512" rx="96" fill="#1A1A1A"/>
+  <!-- 見当合わせマーク(トンボ): 印刷所の版ズレを合わせる印。KIZAMIの世界観の中心モチーフ -->
+  <g stroke="#FBFBF9" stroke-width="16" fill="none" stroke-linecap="square">
+    <circle cx="256" cy="256" r="132"/>
+    <line x1="256" y1="86" x2="256" y2="426"/>
+    <line x1="86" y1="256" x2="426" y2="256"/>
+  </g>
+  <circle cx="256" cy="256" r="22" fill="#FBFBF9"/>
+  <!-- CMYの版ズレ痕跡(わずかにオフセットした小円、常時は見当が合っている状態=静止) -->
+  <circle cx="256" cy="146" r="12" fill="#00A3D9"/>
+  <circle cx="366" cy="256" r="12" fill="#E5007E"/>
+  <circle cx="146" cy="256" r="12" fill="#FFD400"/>
+</svg>

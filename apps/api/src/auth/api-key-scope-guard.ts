@@ -7,6 +7,11 @@
  * 許可表に無いエンドポイント(設定変更・承認・締め・メンバー管理…)は、APIキーがどんなスコープを
  * 持っていても一律403にする(依頼「それ以外のエンドポイントはAPIキーでは一切アクセスできない」
  * ―安全側に倒す判断)。新しくAPIキー経由のエンドポイントを開放したい場合は、ここに1行足す。
+ *
+ * 2026-08-22追記(apps/mcp): MCPサーバーの `list_corrections`(修正申請の参照のみ)のために
+ * `GET /corrections` を `read` スコープで追加した。既存の書き込み系(POST /corrections,
+ * .../approve, .../reject, .../withdraw)は許可表に含めない(申請の作成・承認はAPIキー/MCPの
+ * 対象外という決定どおり)。
  */
 
 import type { MiddlewareHandler } from "hono";
@@ -32,6 +37,7 @@ const ALLOWLIST: readonly ScopeRule[] = [
   { method: "GET", path: "/attendance/status", anyOf: ["punch", "read"] },
   { method: "GET", path: "/attendance/monthly", anyOf: ["read"] },
   { method: "GET", path: "/leave/balance", anyOf: ["read"] },
+  { method: "GET", path: "/corrections", anyOf: ["read"] },
 ];
 
 /**

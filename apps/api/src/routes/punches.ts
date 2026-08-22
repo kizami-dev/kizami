@@ -3,7 +3,7 @@
  */
 
 import { Hono } from "hono";
-import { insertPunchEvent, listValidPunches, type Database } from "@kizami/db";
+import { getEffectiveSettingsVersion, insertPunchEvent, listValidPunches, type Database } from "@kizami/db";
 import type { PunchKind } from "@kizami/engine";
 import type { AppEnv } from "../auth/middleware.js";
 import { requireSelf } from "../authz.js";
@@ -20,10 +20,21 @@ export const FUTURE_TOLERANCE_MINUTES = 5;
 interface PunchBody {
   kind?: unknown;
   occurredAt?: unknown;
+  /** GPS付き打刻(v0.4、docs/requirements.md §3)。テナントでGPSが有効なときのみ Web 側が送る。 */
+  gpsLat?: unknown;
+  gpsLng?: unknown;
 }
 
 export function isValidPunchKind(value: unknown): value is PunchKind {
   return typeof value === "string" && (VALID_PUNCH_KINDS as readonly string[]).includes(value);
+}
+
+function isValidLatitude(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value >= -90 && value <= 90;
+}
+
+function isValidLongitude(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value >= -180 && value <= 180;
 }
 
 /** クエリ文字列を整数(UTC エポック分)としてパースする。不正・非整数は null。 */
@@ -72,10 +83,20 @@ export function createPunchesRoutes(db: Database) {
     if (typeof body !== "object" || body === null) {
       return c.json({ error: "invalid_body" }, 400);
     }
-    const { kind, occurredAt } = body as PunchBody;
+    const { kind, occurredAt, gpsLat, gpsLng } = body as PunchBody;
 
     if (!isValidPunchKind(kind)) {
       return c.json({ error: "invalid_kind" }, 400);
+    }
+
+    // GPS座標(v0.4)。両方省略なら「取得できなかった/対象外」として扱い、打刻自体は止めない
+    // (依頼: 許可されなければ位置情報なしで打刻する)。指定された場合のみ形式を検証する。
+    let providedGps: { lat: number; lng: number } | null = null;
+    if (gpsLat !== undefined || gpsLng !== undefined) {
+      if (!isValidLatitude(gpsLat) || !isValidLongitude(gpsLng)) {
+        return c.json({ error: "invalid_gps_coordinates" }, 400);
+      }
+      providedGps = { lat: gpsLat, lng: gpsLng };
     }
 
     const now = nowMinutes();
@@ -104,6 +125,19 @@ export function createPunchesRoutes(db: Database) {
     // (c.get("apiKeyScopes") はセッションCookie認証では undefined のまま)。
     const source = c.get("apiKeyScopes") !== undefined ? "api" : "web";
 
+    // テナントでGPSが無効なら、クライアントが座標を送ってきても保存しない(docs/requirements.md §3:
+    // 「GPS座標の取得は既定OFF — テナント設定でopt-in」。サーバー側で必ず再確認し、クライアントの
+    // 自己申告だけを信用しない)。
+    let metaGpsLat: number | null = null;
+    let metaGpsLng: number | null = null;
+    if (providedGps) {
+      const settingsVersion = await getEffectiveSettingsVersion(db, { tenantId: user.tenantId, onDate: attendanceDate });
+      if (settingsVersion?.gpsEnabled) {
+        metaGpsLat = providedGps.lat;
+        metaGpsLng = providedGps.lng;
+      }
+    }
+
     const event = await insertPunchEvent(db, {
       tenantId: user.tenantId,
       userId: user.id,
@@ -114,6 +148,8 @@ export function createPunchesRoutes(db: Database) {
       actorId: user.id,
       metaIp,
       metaUa,
+      metaGpsLat,
+      metaGpsLng,
     });
 
     return c.json({ punch: { id: event.id, kind: event.kind, occurredAt: event.occurredAt } }, 201);

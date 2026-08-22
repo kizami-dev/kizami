@@ -729,6 +729,24 @@ export function createSettingsRoutes(db: Database, deps: SettingsRoutesDeps = {}
     });
   });
 
+  // ---- GET /settings/attendance/capabilities(GPS付き打刻。2026-08-22 追加、PWA+GPS打刻) ----
+  // GET /settings/attendance 自体は ATTENDANCE_CALENDAR_PERMISSION(tenant_settings.calendar.manage)
+  // を要求し、一般の従業員は読めない。しかし打刻画面は「テナントでGPSが有効かどうか」を
+  // 全従業員が知る必要がある(有効なら取得中であることを明示し、位置情報を添えて送るため)。
+  // GET /leave/capabilities(routes/leave.ts、認証のみで自分が休暇申請するために必要な情報を返す)
+  // と同じ考え方で、認証のみ・権限不要の薄いエンドポイントを新設する(依頼の指示どおり)。
+  // 返す値は「GPSを有効にしているか」「座標の保持期間」のみで、日界・法定休日など他の
+  // テナント設定は含まない(それらは打刻に必要な情報ではなく、権限が無い従業員に見せる理由がない)。
+  app.get("/attendance/capabilities", async (c) => {
+    const user = c.get("user");
+    const today = todayLocalDate(TZ_OFFSET_MINUTES_JST);
+    const effective = await getEffectiveSettingsVersion(db, { tenantId: user.tenantId, onDate: today });
+    return c.json({
+      gpsEnabled: effective?.gpsEnabled ?? false,
+      gpsRetentionDays: effective?.gpsRetentionDays ?? null,
+    });
+  });
+
   // ---- GET/POST /settings/attendance(日界・法定休日・休憩ルール・GPS の版管理。2026-08-22 追加) ----
   // 原則6(docs/design/v01-data-model.md): 編集UIは新しい版を追加しかできない。既存の版は
   // 一切 UPDATE しない(過去の計算結果を変えないため)。
