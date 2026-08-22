@@ -69,6 +69,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@kizami/law':
+        specifier: workspace:*
+        version: link:../../packages/law
       react:
         specifier: ^19.2.8
         version: 19.2.8

@@ -229,6 +229,27 @@ export function createLeaveRoutes(db: Database) {
   const app = new Hono<AppEnv>();
 
   // ---- GET /leave/balance ----
+  /**
+   * 自分が休暇申請するときに必要な情報だけを返す(認証だけで読める)。
+   *
+   * GET /settings/leave は leave.grant.manage(テナント)権限が要るため、一般の従業員は
+   * 自社が時間単位年休や半休を有効にしているかを知る手段が無く、申請フォームが誤った
+   * 選択肢を出してしまっていた(2026-08-22 修正)。制度の可否と所定労働時間は
+   * 従業員本人が自分の申請のために知るべき情報なので、秘密情報を含まない形で公開する。
+   */
+  app.get("/capabilities", async (c) => {
+    const actor = c.get("user");
+    const settings = await loadLeaveSettings(db, actor.tenantId);
+    const ctx = await loadBalanceContext(db, actor.tenantId, actor.id);
+    return c.json({
+      hourlyLeaveEnabled: settings.hourlyLeaveEnabled,
+      hourlyLeaveMaxDays: settings.hourlyLeaveMaxDays,
+      halfDayLeaveEnabled: settings.halfDayLeaveEnabled,
+      stockConversionEnabled: settings.stockConversionEnabled,
+      standardDayMinutes: ctx.currentStandardDayMinutes,
+    });
+  });
+
   app.get("/balance", async (c) => {
     const actor = c.get("user");
     const queryUserId = c.req.query("userId");

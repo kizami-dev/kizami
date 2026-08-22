@@ -9,9 +9,21 @@ export interface SettingsAccess {
   departments: boolean;
   members: boolean;
   presets: boolean;
+  /** GET /settings/tenant-profile(alert.labor_limit.configure)。v0.3 追加。 */
+  tenantProfile: boolean;
+  /** GET /settings/leave(leave.grant.manage)。v0.3 追加。 */
+  leave: boolean;
 }
 
-const INITIAL: SettingsAccess = { loading: true, notifications: false, departments: false, members: false, presets: false };
+const INITIAL: SettingsAccess = {
+  loading: true,
+  notifications: false,
+  departments: false,
+  members: false,
+  presets: false,
+  tenantProfile: false,
+  leave: false,
+};
 
 /**
  * 設定サブナビ(AppHeader・SettingsNav・設定ハブ)がどの /settings/* を表示してよいかを判定する。
@@ -40,9 +52,11 @@ export function useSettingsAccess(): SettingsAccess {
       probe(() => api.listDepartments()),
       probe(() => api.listMembers()),
       probe(() => api.listPresets()),
-    ]).then(([notifications, departments, members, presets]) => {
+      probe(() => api.getTenantProfile()),
+      probe(() => api.getLeaveSettings()),
+    ]).then(([notifications, departments, members, presets, tenantProfile, leave]) => {
       if (cancelled) return;
-      setAccess({ loading: false, notifications, departments, members, presets });
+      setAccess({ loading: false, notifications, departments, members, presets, tenantProfile, leave });
     });
 
     return () => {

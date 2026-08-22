@@ -119,6 +119,13 @@ export interface MonthlyAttendance {
   totals: CategorizedMinutes;
   flexBalance: FlexBalance;
   warnings: CalcWarning[];
+  /** 締め済みかどうか(apps/api/src/routes/attendance.ts の GET /attendance/monthly、v0.3 追加)。 */
+  closed: boolean;
+  /** 締め後修正(amend)が入っているか。true の場合のみ originalTotals/originalFlexBalance が入る。 */
+  amended: boolean;
+  /** 当初(最初の締め)の確定値。amended のときのみ存在する。 */
+  originalTotals?: CategorizedMinutes;
+  originalFlexBalance?: FlexBalance;
 }
 
 export type CorrectionStatus = "pending" | "approved" | "rejected" | "withdrawn";
@@ -277,6 +284,191 @@ export interface UpdatePresetInput {
   grants?: PermissionGrantDto[];
 }
 
+/** 締め状態のイベント種別。close(締め)/reopen(解除)/amend(締め後修正の反映)。packages/db の ClosingEventKind と一致。 */
+export type ClosingEventKind = "close" | "reopen" | "amend";
+
+/** 月次締めの1イベント(apps/api/src/routes/closings.ts の serializeEvent と一致、v0.3)。 */
+export interface ClosingEventDto {
+  id: string;
+  event: ClosingEventKind;
+  actorId: string;
+  note: string | null;
+  /** event="amend" のとき、由来となった打刻修正申請ID(いずれか一方のみ非null)。 */
+  correctionRequestId: string | null;
+  /** event="amend" のとき、由来となった休暇申請ID(いずれか一方のみ非null)。 */
+  leaveRequestId: string | null;
+  /** UTC エポック分 */
+  occurredAt: number;
+}
+
+/** 月次締めの現在状態(apps/api/src/routes/closings.ts の serializeState と一致、v0.3)。 */
+export interface ClosingStateDto {
+  period: string;
+  status: "open" | "closed";
+  lastEvent: ClosingEventDto | null;
+  /** occurred_at 昇順(古い順) */
+  history: ClosingEventDto[];
+}
+
+/**
+ * テナントの法令プロファイル(apps/api/src/routes/settings.ts の GET/PUT /settings/tenant-profile と一致)。
+ * この3値は集計(週法定労働時間・60時間超区分・36協定の各閾値)に直接影響する。
+ */
+export interface TenantLawProfileDto {
+  isSmallOrMediumEnterprise: boolean;
+  isSpecialProvisionWorkplace: boolean;
+  specialClauseEnabled: boolean;
+}
+
+/**
+ * 有給休暇(v0.3、docs/requirements.md §5)。apps/api/src/routes/leave.ts の
+ * serializeLeaveRequest/serializeLeaveGrant・GET /leave/balance・GET/PUT /settings/leave と
+ * 一致させる。判断点: packages/leave の型は再利用せず(apps/web は packages/* への依存を
+ * 追加しない既存方針、lib/permissions.ts のコメント参照)、DTO をここに再定義する。
+ */
+export type LeaveUnit = "full_day" | "half_day_am" | "half_day_pm" | "hourly";
+
+/** annual: 通常の年次有給。stocked: 失効年休の積立休暇。 */
+export type LeaveType = "annual" | "stocked";
+
+export type LeaveRequestStatus = "pending" | "approved" | "rejected" | "withdrawn";
+
+/** 1件の付与について、消化・残高を分単位で表した状態(GET /leave/balance の byGrant/expiringSoon 要素)。 */
+export interface LeaveGrantAllocationDto {
+  id: string;
+  leaveType: LeaveType;
+  grantedOn: string;
+  days: number;
+  grantedMinutes: number;
+  expiresOn: string;
+  usedMinutes: number;
+  /** unit='hourly' の消化のみの累計(年5日分上限の判定用参考値)。 */
+  hourlyUsedMinutes: number;
+  remainingMinutes: number;
+  expired: boolean;
+}
+
+export interface LeaveTypeSummaryDto {
+  totalGrantedMinutes: number;
+  usedMinutes: number;
+  remainingMinutes: number;
+  expiringSoon: LeaveGrantAllocationDto[];
+  byGrant: LeaveGrantAllocationDto[];
+}
+
+/** 年5日取得義務の状況(1付与=1期間)。taken/required/shortage は 0.5 日刻み。 */
+export interface MandatoryFiveDaysStatusDto {
+  grantId: string;
+  periodStart: string;
+  /** 排他的上限(この日を含まない)。 */
+  periodEnd: string;
+  taken: number;
+  required: number;
+  shortage: number;
+  /** = periodEnd。この日の前日までに義務を満たす必要がある。 */
+  deadline: string;
+  satisfied: boolean;
+}
+
+export interface LeaveBalanceDto {
+  standardDayMinutes: number;
+  annual: LeaveTypeSummaryDto;
+  stocked: LeaveTypeSummaryDto;
+  mandatoryFiveDays: MandatoryFiveDaysStatusDto[];
+}
+
+export interface LeaveRequestDto {
+  id: string;
+  userId: string;
+  requestedBy: string;
+  status: LeaveRequestStatus;
+  leaveDate: string;
+  unit: LeaveUnit;
+  minutes: number | null;
+  leaveType: LeaveType;
+  reason: string;
+  decidedBy: string | null;
+  decidedAt: number | null;
+  decisionNote: string | null;
+  createdAt: number;
+}
+
+/** unit を省略すると full_day、leaveType を省略すると annual(apps/api の既定値と一致)。 */
+export interface CreateLeaveRequestInput {
+  leaveDate: string;
+  unit?: LeaveUnit;
+  minutes?: number;
+  leaveType?: LeaveType;
+  reason: string;
+}
+
+export interface LeaveGrantDto {
+  id: string;
+  userId: string;
+  leaveType: LeaveType;
+  grantedOn: string;
+  days: number;
+  expiresOn: string;
+  source: "auto" | "manual" | "conversion";
+  convertedFromGrantId: string | null;
+  note: string | null;
+  createdAt: number;
+}
+
+/** テナントの有給付与方式。statutory=法定(入社日基準)、fixed_date=基準日方式(全社一斉)。 */
+export type LeaveGrantMethod = "statutory" | "fixed_date";
+
+export interface TenantLeaveSettingsDto {
+  grantMethod: LeaveGrantMethod;
+  fixedDateMmDd: string | null;
+  hourlyLeaveEnabled: boolean;
+  hourlyLeaveMaxDays: number;
+  halfDayLeaveEnabled: boolean;
+  stockConversionEnabled: boolean;
+  stockMaxDays: number;
+  stockExpiresMonths: number | null;
+  updatedAt: number | null;
+  updatedBy: string | null;
+}
+
+/** 自分が休暇申請するときに必要な情報だけ(GET /leave/capabilities)。秘密情報を含まない。 */
+export interface LeaveCapabilitiesDto {
+  hourlyLeaveEnabled: boolean;
+  hourlyLeaveMaxDays: number;
+  halfDayLeaveEnabled: boolean;
+  stockConversionEnabled: boolean;
+  standardDayMinutes: number;
+}
+
+export interface UpdateLeaveSettingsInput {
+  grantMethod: LeaveGrantMethod;
+  fixedDateMmDd?: string | null;
+  hourlyLeaveEnabled: boolean;
+  hourlyLeaveMaxDays: number;
+  halfDayLeaveEnabled: boolean;
+  stockConversionEnabled: boolean;
+  stockMaxDays: number;
+  stockExpiresMonths?: number | null;
+}
+
+export interface CreateLeaveGrantInput {
+  userId: string;
+  grantedOn: string;
+  days: number;
+  expiresOn?: string;
+  leaveType?: LeaveType;
+  note?: string;
+}
+
+/** 失効した年次有給1件について、積立休暇への振替結果を表す(POST /leave/grants/convert-expired)。 */
+export interface StockConversionCandidateDto {
+  sourceGrantId: string;
+  leftoverMinutes: number;
+  leftoverDays: number;
+  convertedDays: number;
+  truncatedDays: number;
+}
+
 export const api = {
   async login(email: string, password: string): Promise<{ user: AuthUser }> {
     return request("/auth/login", { method: "POST", body: JSON.stringify({ email, password }) });
@@ -403,4 +595,147 @@ export const api = {
   async deletePreset(id: string): Promise<{ ok: true }> {
     return request(`/presets/${id}`, { method: "DELETE" });
   },
+
+  /** period は "YYYY-MM"。GET /closings/:period(closing.view、最低 department スコープ)。 */
+  async getClosingState(period: string): Promise<{ closing: ClosingStateDto }> {
+    return request(`/closings/${encodeURIComponent(period)}`);
+  },
+
+  /** POST /closings/:period/close(closing.execute)。note は任意(500文字以内)。 */
+  async closeMonth(period: string, note?: string): Promise<{ closing: ClosingStateDto }> {
+    return request(`/closings/${encodeURIComponent(period)}/close`, {
+      method: "POST",
+      body: JSON.stringify(note ? { note } : {}),
+    });
+  },
+
+  /** POST /closings/:period/reopen(closing.unlock)。note は任意(500文字以内)。 */
+  async reopenMonth(period: string, note?: string): Promise<{ closing: ClosingStateDto }> {
+    return request(`/closings/${encodeURIComponent(period)}/reopen`, {
+      method: "POST",
+      body: JSON.stringify(note ? { note } : {}),
+    });
+  },
+
+  /** GET /settings/tenant-profile(alert.labor_limit.configure、tenant スコープ)。 */
+  async getTenantProfile(): Promise<TenantLawProfileDto> {
+    return request("/settings/tenant-profile");
+  },
+
+  /** PUT /settings/tenant-profile。3値とも必須(省略時維持ルールは無い、apps/api 側の契約どおり)。 */
+  async updateTenantProfile(input: TenantLawProfileDto): Promise<TenantLawProfileDto> {
+    return request("/settings/tenant-profile", { method: "PUT", body: JSON.stringify(input) });
+  },
+
+  /** GET /leave/balance。userId 省略時は本人。他者指定は leave.balance.view(department 以上)が必要。 */
+  async getLeaveBalance(userId?: string): Promise<LeaveBalanceDto> {
+    return request(`/leave/balance${userId ? `?userId=${encodeURIComponent(userId)}` : ""}`);
+  },
+
+  async listLeaveRequests(status: "pending" | "all" = "all"): Promise<{ requests: LeaveRequestDto[] }> {
+    return request(`/leave/requests?status=${status}`);
+  },
+
+  /** POST /leave/requests。targetMonthClosed=true の場合、対象月は締め済み(承認には closing.unlock が必要)。 */
+  async createLeaveRequest(input: CreateLeaveRequestInput): Promise<{ request: LeaveRequestDto; targetMonthClosed: boolean }> {
+    return request("/leave/requests", { method: "POST", body: JSON.stringify(input) });
+  },
+
+  /** POST /leave/requests/:id/approve。amended=true の場合、締め済み月への反映(amend)が行われた。 */
+  async approveLeaveRequest(id: string, note?: string): Promise<{ request: LeaveRequestDto; amended: boolean }> {
+    return request(`/leave/requests/${id}/approve`, { method: "POST", body: JSON.stringify(note ? { note } : {}) });
+  },
+
+  async rejectLeaveRequest(id: string, note?: string): Promise<{ request: LeaveRequestDto }> {
+    return request(`/leave/requests/${id}/reject`, { method: "POST", body: JSON.stringify(note ? { note } : {}) });
+  },
+
+  async withdrawLeaveRequest(id: string): Promise<{ request: LeaveRequestDto }> {
+    return request(`/leave/requests/${id}/withdraw`, { method: "POST" });
+  },
+
+  /**
+   * GET /leave/capabilities(認証のみ)。自分が申請するときに必要な情報。
+   * テナント設定(/settings/leave)は管理権限が要り一般の従業員は読めないため、
+   * 申請フォームの選択肢はこちらを使う。
+   */
+  async getLeaveCapabilities(): Promise<LeaveCapabilitiesDto> {
+    return request("/leave/capabilities");
+  },
+
+  /** GET /settings/leave(leave.grant.manage、tenant スコープ)。 */
+  async getLeaveSettings(): Promise<TenantLeaveSettingsDto> {
+    return request("/settings/leave");
+  },
+
+  async updateLeaveSettings(input: UpdateLeaveSettingsInput): Promise<TenantLeaveSettingsDto> {
+    return request("/settings/leave", { method: "PUT", body: JSON.stringify(input) });
+  },
+
+  /** POST /leave/grants(手動付与、leave.grant.manage)。 */
+  async createLeaveGrant(input: CreateLeaveGrantInput): Promise<{ grant: LeaveGrantDto }> {
+    return request("/leave/grants", { method: "POST", body: JSON.stringify(input) });
+  },
+
+  /** POST /leave/grants/auto(法定付与の冪等実行、leave.grant.manage)。 */
+  async autoGrantLeave(userId: string): Promise<{ created: LeaveGrantDto[]; skipped: number }> {
+    return request("/leave/grants/auto", { method: "POST", body: JSON.stringify({ userId }) });
+  },
+
+  /** POST /leave/grants/convert-expired(失効年休の積立振替、leave.grant.manage)。 */
+  async convertExpiredLeave(userId: string): Promise<{ conversions: StockConversionCandidateDto[]; created: LeaveGrantDto[] }> {
+    return request("/leave/grants/convert-expired", { method: "POST", body: JSON.stringify({ userId }) });
+  },
 };
+
+/**
+ * CSV エクスポート(GET /exports/attendance.csv)は JSON ではないため request<T> を使わず、
+ * 直接 fetch する。ブラウザ側からの権限有無の確認(ボタン表示可否)は、実際のダウンロードと
+ * 同じ URL への HEAD リクエストで行う(hono は HEAD を自動的に GET と同じルーティング・
+ * ミドルウェア(権限チェック含む)にディスパッチしボディだけ捨てるため、CSV本体を
+ * 二重に転送せずに 200/403 を判定できる — apps/api/node_modules/hono の #dispatch 実装より)。
+ */
+export async function probeAttendanceCsvAccess(month: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${BASE_URL}/exports/attendance.csv?month=${encodeURIComponent(month)}`, {
+      method: "HEAD",
+      credentials: "include",
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+export interface AttendanceCsvDownload {
+  blob: Blob;
+  filename: string;
+}
+
+/** GET /exports/attendance.csv[?compare=original] を blob として取得する。Content-Disposition のファイル名を尊重する。 */
+export async function downloadAttendanceCsv(month: string, compareOriginal: boolean): Promise<AttendanceCsvDownload> {
+  const query = `?month=${encodeURIComponent(month)}${compareOriginal ? "&compare=original" : ""}`;
+  let res: Response;
+  try {
+    res = await fetch(`${BASE_URL}/exports/attendance.csv${query}`, { credentials: "include" });
+  } catch (cause) {
+    throw new ApiError(0, { error: "network_error", cause });
+  }
+  if (!res.ok) {
+    let body: unknown = null;
+    try {
+      body = await res.json();
+    } catch {
+      // レスポンスボディが無い/JSON でない場合は無視する
+    }
+    if (res.status === 401) {
+      throw new UnauthorizedError(body);
+    }
+    throw new ApiError(res.status, body);
+  }
+  const disposition = res.headers.get("content-disposition") ?? "";
+  const match = /filename="?([^";]+)"?/i.exec(disposition);
+  const filename = match?.[1] ?? `kizami-${month}.csv`;
+  const blob = await res.blob();
+  return { blob, filename };
+}

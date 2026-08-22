@@ -1,0 +1,330 @@
+/**
+ * 有給休暇ホーム(/leave)・有給の制度設定(/settings/leave)のスタイル(v0.3)。
+ *
+ * docs/design/ui-direction.md の方針どおり、この画面群(申請・承認・制度設定)は
+ * 遊びを持たず K 主体で静かに保つ。残高・年5日は「数値が主役」のため K 主体+tabular-nums、
+ * 警告のみ Y(--k-yellow-ink)、危険操作の確認は M(--k-magenta-ink)に絞る。
+ * 申請一覧・確認ダイアログ・フォーム部品は corrections.css の .correction-* / .k-modal
+ * クラスをそのまま再利用し、ここでは有給固有の表示(残高カード・年5日・コンテキストヘルプ等)
+ * のみを追加する。
+ */
+
+.leave {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+.leave__main {
+  flex: 1;
+  padding: var(--space-5) var(--space-4) var(--space-7);
+  max-width: 48rem;
+  margin: 0 auto;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.leave__title {
+  font-family: var(--font-display);
+  font-size: 1.4rem;
+  letter-spacing: 0.04em;
+}
+
+.leave__tagline {
+  font-size: 0.85rem;
+  color: var(--k-ink-soft);
+}
+
+.leave__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.leave__section-title {
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  letter-spacing: 0.02em;
+}
+
+/* ---- コンテキストヘルプ(法制度由来の説明。§10) ---- */
+
+.leave-help {
+  display: flex;
+  gap: var(--space-2);
+  font-size: 0.8rem;
+  line-height: 1.6;
+  color: var(--k-ink-soft);
+  border: var(--border-hair);
+  border-radius: var(--radius-s);
+  padding: var(--space-3);
+  background: rgba(26, 26, 26, 0.02);
+}
+
+.leave-help__icon {
+  flex: none;
+}
+
+/* ---- 残高サマリ ---- */
+
+.leave-balance-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: var(--space-4);
+}
+
+.leave-balance-card {
+  border: var(--border-hair);
+  border-radius: var(--radius-m);
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.leave-balance-card__type {
+  font-size: 0.85rem;
+  color: var(--k-ink-soft);
+}
+
+.leave-balance-card__remaining {
+  font-family: var(--font-mono);
+  font-size: 1.6rem;
+  font-weight: 600;
+}
+
+.leave-balance-card__meta {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: 0.8rem;
+  color: var(--k-ink-soft);
+}
+
+.leave-balance-card__meta .tabular-nums {
+  color: var(--k-key);
+}
+
+.leave-expiring {
+  border: 1px solid var(--k-yellow-ink);
+  background: rgba(255, 212, 0, 0.12);
+  border-radius: var(--radius-s);
+  padding: var(--space-3);
+  font-size: 0.82rem;
+  color: var(--k-yellow-ink);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.leave-expiring__mark {
+  font-weight: 700;
+}
+
+.leave-grant-details {
+  font-size: 0.85rem;
+}
+
+.leave-grant-details summary {
+  cursor: pointer;
+  color: var(--k-ink-soft);
+  padding: var(--space-1) 0;
+}
+
+.leave-grant-table-wrap {
+  overflow-x: auto;
+  border: var(--border-hair);
+  border-radius: var(--radius-m);
+  margin-top: var(--space-2);
+}
+
+.leave-grant-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  min-width: 28rem;
+}
+
+.leave-grant-table th,
+.leave-grant-table td {
+  padding: var(--space-2) var(--space-3);
+  text-align: right;
+  border-bottom: 1px solid rgba(26, 26, 26, 0.08);
+  white-space: nowrap;
+}
+
+.leave-grant-table th {
+  color: var(--k-ink-soft);
+  font-weight: 400;
+  font-size: 0.75rem;
+}
+
+.leave-grant-table th:first-child,
+.leave-grant-table td:first-child {
+  text-align: left;
+}
+
+.leave-grant-table td.tabular-nums {
+  font-family: var(--font-mono);
+}
+
+.leave-grant-table tr.leave-grant-table__row--expired td {
+  color: var(--k-ink-soft);
+  text-decoration: line-through;
+}
+
+/* ---- 年5日取得義務 ---- */
+
+.leave-mandatory-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.leave-mandatory-item {
+  border: var(--border-hair);
+  border-radius: var(--radius-m);
+  padding: var(--space-3) var(--space-4);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-size: 0.88rem;
+}
+
+.leave-mandatory-item__period {
+  color: var(--k-ink-soft);
+  font-size: 0.78rem;
+  flex-basis: 100%;
+}
+
+.leave-mandatory-item__count {
+  font-family: var(--font-mono);
+}
+
+.leave-mandatory-item__status {
+  font-weight: 700;
+}
+
+.leave-mandatory-item--shortage {
+  border-color: var(--k-yellow-ink);
+  background: rgba(255, 212, 0, 0.08);
+}
+
+.leave-mandatory-item--shortage .leave-mandatory-item__status {
+  color: var(--k-yellow-ink);
+}
+
+.leave-mandatory-item--satisfied .leave-mandatory-item__status {
+  color: var(--k-ink-soft);
+  font-weight: 400;
+}
+
+/* ---- 申請フォーム ---- */
+
+.leave-request-form {
+  border: var(--border-hair);
+  border-radius: var(--radius-m);
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.leave-unit-group {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(6rem, 1fr));
+  gap: var(--space-2);
+}
+
+.leave-unit-btn {
+  border: var(--border-hair);
+  border-radius: var(--radius-m);
+  padding: var(--space-3) var(--space-2);
+  font-size: 0.82rem;
+  background: transparent;
+  color: var(--k-ink-soft);
+  text-align: center;
+}
+
+.leave-unit-btn--active {
+  border-color: var(--k-key);
+  color: var(--k-key);
+  font-weight: 700;
+  background: rgba(26, 26, 26, 0.04);
+}
+
+.leave-hourly-hint {
+  font-size: 0.8rem;
+  color: var(--k-ink-soft);
+}
+
+.leave-target-month-closed {
+  border: 1px solid var(--k-yellow-ink);
+  background: rgba(255, 212, 0, 0.1);
+  color: var(--k-yellow-ink);
+  border-radius: var(--radius-s);
+  padding: var(--space-3);
+  font-size: 0.85rem;
+}
+
+/* ---- 申請一覧 ---- */
+
+.leave-requests-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* ---- /settings/leave: 管理操作(付与・積立振替) ---- */
+
+.leave-admin-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  border: var(--border-hair);
+  border-radius: var(--radius-m);
+  padding: var(--space-4);
+}
+
+.leave-admin-section__desc {
+  font-size: 0.82rem;
+  color: var(--k-ink-soft);
+}
+
+.leave-admin-result {
+  font-size: 0.85rem;
+  border: 1px solid var(--k-cyan);
+  background: rgba(0, 163, 217, 0.06);
+  color: var(--k-cyan-ink);
+  border-radius: var(--radius-s);
+  padding: var(--space-3);
+}
+
+.leave-admin-result-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+  margin-top: var(--space-2);
+}
+
+.leave-admin-result-table th,
+.leave-admin-result-table td {
+  padding: var(--space-1) var(--space-2);
+  text-align: right;
+  border-bottom: 1px solid rgba(0, 110, 153, 0.15);
+}
+
+.leave-admin-result-table th:first-child,
+.leave-admin-result-table td:first-child {
+  text-align: left;
+}

@@ -2,11 +2,22 @@
 
 import { useEffect, useState } from "react";
 import { Link, useRouter } from "waku";
-import { api, ApiError, UnauthorizedError, type MonthlyAttendance, type TimeCategory } from "../lib/api";
-import { messages } from "../lib/messages";
+import {
+  api,
+  ApiError,
+  UnauthorizedError,
+  downloadAttendanceCsv,
+  probeAttendanceCsvAccess,
+  type ClosingEventDto,
+  type ClosingStateDto,
+  type MonthlyAttendance,
+  type TimeCategory,
+} from "../lib/api";
+import { mapClosingErrorMessage, messages } from "../lib/messages";
 import {
   currentYearMonthJst,
   formatDateLabel,
+  formatDateTimeJst,
   formatDurationHm,
   formatMonthLabel,
   formatMonthParam,
@@ -16,9 +27,34 @@ import {
 } from "../lib/time";
 import { useAuthGuard } from "../lib/useAuthGuard";
 import { AppHeader } from "./AppHeader";
+import { ConfirmDialog } from "./ConfirmDialog";
 import { CorrectionForm } from "./CorrectionForm";
 
 const TOTAL_CATEGORIES: TimeCategory[] = ["statutory", "overtime", "overtime60h", "lateNight", "statutoryHoliday"];
+
+/** 当初値との差分テーブルの1行(区分別合計5種+flex収支3種)。 */
+interface DiffRow {
+  key: string;
+  label: string;
+  original: number;
+  current: number;
+}
+
+function buildDiffRows(data: MonthlyAttendance): DiffRow[] {
+  if (!data.amended || !data.originalTotals || !data.originalFlexBalance) return [];
+  const rows: DiffRow[] = TOTAL_CATEGORIES.map((cat) => ({
+    key: cat,
+    label: messages.totalsCategoryLabel[cat],
+    original: data.originalTotals![cat],
+    current: data.totals[cat],
+  }));
+  rows.push(
+    { key: "flexFrame", label: messages.closing.diffFlexFrame, original: data.originalFlexBalance.frameMinutes, current: data.flexBalance.frameMinutes },
+    { key: "flexActual", label: messages.closing.diffFlexActual, original: data.originalFlexBalance.actualMinutes, current: data.flexBalance.actualMinutes },
+    { key: "flexDiff", label: messages.closing.diffFlexDiff, original: data.originalFlexBalance.diffMinutes, current: data.flexBalance.diffMinutes },
+  );
+  return rows;
+}
 
 export function MonthlyView() {
   const router = useRouter();
@@ -35,6 +71,26 @@ export function MonthlyView() {
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [correctionDate, setCorrectionDate] = useState<string | null>(null);
+
+  // 締め状態(v0.3): GET /closings/:period が 403 ならパネル自体を非表示にする(依頼どおり)。
+  const [closingState, setClosingState] = useState<ClosingStateDto | null>(null);
+  const [closingForbidden, setClosingForbidden] = useState(false);
+
+  const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
+  const [closeNote, setCloseNote] = useState("");
+  const [closePending, setClosePending] = useState(false);
+  const [closeError, setCloseError] = useState<string | null>(null);
+
+  const [reopenConfirmOpen, setReopenConfirmOpen] = useState(false);
+  const [reopenNote, setReopenNote] = useState("");
+  const [reopenPending, setReopenPending] = useState(false);
+  const [reopenError, setReopenError] = useState<string | null>(null);
+
+  // CSVエクスポート(v0.3): HEAD プローブで権限が無ければボタンごと出さない。
+  const [csvAllowed, setCsvAllowed] = useState(false);
+  const [csvDownloading, setCsvDownloading] = useState(false);
+  const [csvError, setCsvError] = useState<string | null>(null);
+  const [compareOriginal, setCompareOriginal] = useState(false);
 
   useEffect(() => {
     if (autoOpenDate) setCorrectionDate(autoOpenDate);
@@ -68,6 +124,110 @@ export function MonthlyView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [guard.status, monthParam, reloadKey]);
 
+  useEffect(() => {
+    if (guard.status !== "authed") return;
+    let cancelled = false;
+    api
+      .getClosingState(monthParam)
+      .then((res) => {
+        if (cancelled) return;
+        setClosingState(res.closing);
+        setClosingForbidden(false);
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        if (err instanceof UnauthorizedError) {
+          router.push("/login");
+          return;
+        }
+        if (err instanceof ApiError && err.status === 403) {
+          setClosingForbidden(true);
+          setClosingState(null);
+          return;
+        }
+        // 締めパネルは付加情報のため、それ以外のエラーは静かに諦める(本体の月次表示は継続する)
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [guard.status, monthParam, reloadKey]);
+
+  useEffect(() => {
+    if (guard.status !== "authed") return;
+    let cancelled = false;
+    probeAttendanceCsvAccess(monthParam).then((ok) => {
+      if (!cancelled) setCsvAllowed(ok);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [guard.status, monthParam]);
+
+  async function handleCloseConfirm() {
+    setClosePending(true);
+    setCloseError(null);
+    try {
+      const res = await api.closeMonth(monthParam, closeNote.trim() === "" ? undefined : closeNote.trim());
+      setClosingState(res.closing);
+      setCloseConfirmOpen(false);
+      setCloseNote("");
+      setReloadKey((k) => k + 1);
+    } catch (err) {
+      if (err instanceof UnauthorizedError) {
+        router.push("/login");
+        return;
+      }
+      setCloseError(err instanceof ApiError ? mapClosingErrorMessage(err.body) : messages.errors.network);
+    } finally {
+      setClosePending(false);
+    }
+  }
+
+  async function handleReopenConfirm() {
+    setReopenPending(true);
+    setReopenError(null);
+    try {
+      const res = await api.reopenMonth(monthParam, reopenNote.trim() === "" ? undefined : reopenNote.trim());
+      setClosingState(res.closing);
+      setReopenConfirmOpen(false);
+      setReopenNote("");
+      setReloadKey((k) => k + 1);
+    } catch (err) {
+      if (err instanceof UnauthorizedError) {
+        router.push("/login");
+        return;
+      }
+      setReopenError(err instanceof ApiError ? mapClosingErrorMessage(err.body) : messages.errors.network);
+    } finally {
+      setReopenPending(false);
+    }
+  }
+
+  async function handleCsvDownload() {
+    setCsvDownloading(true);
+    setCsvError(null);
+    try {
+      const { blob, filename } = await downloadAttendanceCsv(monthParam, data?.amended === true && compareOriginal);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      if (err instanceof UnauthorizedError) {
+        router.push("/login");
+        return;
+      }
+      setCsvError(messages.closing.csvDownloadFailed);
+    } finally {
+      setCsvDownloading(false);
+    }
+  }
+
   if (guard.status === "loading") {
     return <p className="monthly-loading">{messages.loading}</p>;
   }
@@ -88,6 +248,11 @@ export function MonthlyView() {
 
   const flex = data?.flexBalance;
   const flexPercent = flex && flex.frameMinutes > 0 ? Math.min(100, Math.max(0, (flex.actualMinutes / flex.frameMinutes) * 100)) : 0;
+  const diffRows = data ? buildDiffRows(data) : [];
+
+  function closingActorLabel(event: ClosingEventDto): string {
+    return event.actorId === guard.user?.id ? messages.closing.historyActorSelf : event.actorId;
+  }
 
   return (
     <div className="monthly">
@@ -108,6 +273,15 @@ export function MonthlyView() {
 
         {data ? (
           <>
+            {data.closed ? (
+              <div className="closing-status">
+                <span className="closing-badge closing-badge--closed">{messages.closing.closedBadge}</span>
+                {data.amended ? (
+                  <span className="closing-badge closing-badge--amended">{messages.closing.amendedBadge}</span>
+                ) : null}
+              </div>
+            ) : null}
+
             <div className="flex-balance">
               <span className="flex-balance__label">{messages.monthly.flexBalanceLabel}</span>
               <div
@@ -147,6 +321,117 @@ export function MonthlyView() {
                 ))}
               </div>
             </div>
+
+            {diffRows.length > 0 ? (
+              <div className="closing-diff">
+                <h2 className="closing-diff__title">{messages.closing.diffTitle}</h2>
+                <div className="closing-diff__table-wrap">
+                  <table className="closing-diff__table">
+                    <thead>
+                      <tr>
+                        <th>{messages.closing.diffColumnCategory}</th>
+                        <th>{messages.closing.diffColumnOriginal}</th>
+                        <th>{messages.closing.diffColumnCurrent}</th>
+                        <th>{messages.closing.diffColumnDelta}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {diffRows.map((row) => {
+                        const delta = row.current - row.original;
+                        return (
+                          <tr key={row.key}>
+                            <td>{row.label}</td>
+                            <td className="closing-diff__num tabular-nums">{formatDurationHm(row.original)}</td>
+                            <td className="closing-diff__num tabular-nums">{formatDurationHm(row.current)}</td>
+                            <td
+                              className={`closing-diff__num tabular-nums ${delta < 0 ? "closing-diff__delta--negative" : "closing-diff__delta--positive"}`}
+                            >
+                              {delta >= 0 ? "+" : ""}
+                              {formatDurationHm(delta)}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : null}
+
+            {!closingForbidden && closingState ? (
+              <div className="closing-panel">
+                <div className="closing-panel__actions">
+                  {closingState.status === "open" ? (
+                    <button
+                      type="button"
+                      className="k-modal__confirm k-modal__confirm--neutral"
+                      onClick={() => setCloseConfirmOpen(true)}
+                    >
+                      {messages.closing.closeAction}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="k-modal__confirm k-modal__confirm--caution"
+                      onClick={() => setReopenConfirmOpen(true)}
+                    >
+                      {messages.closing.reopenAction}
+                    </button>
+                  )}
+                </div>
+
+                <details className="closing-history">
+                  <summary>{messages.closing.historyTitle}</summary>
+                  {closingState.history.length === 0 ? (
+                    <p className="closing-history__empty">{messages.closing.historyEmpty}</p>
+                  ) : (
+                    <ul className="closing-history__list">
+                      {[...closingState.history].reverse().map((event) => (
+                        <li key={event.id} className={`closing-history__item closing-history__item--${event.event}`}>
+                          <span className="closing-history__event">{messages.closing.historyEventLabel[event.event]}</span>
+                          <span className="closing-history__actor">{closingActorLabel(event)}</span>
+                          <span className="closing-history__time tabular-nums">{formatDateTimeJst(event.occurredAt)}</span>
+                          {event.note ? <span className="closing-history__note">{event.note}</span> : null}
+                          {event.correctionRequestId ? (
+                            <Link to="/corrections" className="closing-history__link">
+                              {messages.closing.historyCorrectionLink}
+                            </Link>
+                          ) : null}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </details>
+              </div>
+            ) : null}
+
+            {csvAllowed ? (
+              <div className="csv-export">
+                {data.amended ? (
+                  <label className="csv-export__checkbox">
+                    <input
+                      type="checkbox"
+                      checked={compareOriginal}
+                      onChange={(e) => setCompareOriginal(e.target.checked)}
+                    />
+                    {messages.closing.csvCompareOriginalLabel}
+                  </label>
+                ) : null}
+                <button
+                  type="button"
+                  className="k-modal__cancel"
+                  onClick={handleCsvDownload}
+                  disabled={csvDownloading}
+                >
+                  {csvDownloading ? messages.closing.csvDownloading : messages.closing.csvDownload}
+                </button>
+                {csvError ? (
+                  <p className="correction-error" role="alert">
+                    {csvError}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
 
             <div className="monthly-table-wrap">
               {data.days.length === 0 ? (
@@ -217,6 +502,47 @@ export function MonthlyView() {
           onUnauthorized={() => {
             setCorrectionDate(null);
             router.push("/login");
+          }}
+        />
+      ) : null}
+
+      {closeConfirmOpen ? (
+        <ConfirmDialog
+          title={messages.closing.confirmCloseTitle}
+          message={messages.closing.confirmCloseMessage}
+          confirmLabel={messages.closing.confirmCloseLabel}
+          tone="neutral"
+          note={closeNote}
+          onNoteChange={setCloseNote}
+          noteLabel={messages.closing.noteLabel}
+          notePlaceholder={messages.closing.notePlaceholder}
+          pending={closePending}
+          error={closeError}
+          onConfirm={handleCloseConfirm}
+          onCancel={() => {
+            setCloseConfirmOpen(false);
+            setCloseError(null);
+          }}
+        />
+      ) : null}
+
+      {reopenConfirmOpen ? (
+        <ConfirmDialog
+          title={messages.closing.confirmReopenTitle}
+          message={messages.closing.confirmReopenMessage}
+          extraNote={messages.closing.confirmReopenExtraNote}
+          confirmLabel={messages.closing.confirmReopenLabel}
+          tone="caution"
+          note={reopenNote}
+          onNoteChange={setReopenNote}
+          noteLabel={messages.closing.noteLabel}
+          notePlaceholder={messages.closing.notePlaceholder}
+          pending={reopenPending}
+          error={reopenError}
+          onConfirm={handleReopenConfirm}
+          onCancel={() => {
+            setReopenConfirmOpen(false);
+            setReopenError(null);
           }}
         />
       ) : null}

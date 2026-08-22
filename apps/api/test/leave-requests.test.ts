@@ -238,3 +238,35 @@ describe("leave requests API", () => {
     });
   });
 });
+
+describe("GET /leave/capabilities", () => {
+  it("lets a member without leave.grant.manage read what they can request", async () => {
+    const seeded = await setupTestDb();
+    const app = createApp({ db: seeded.db });
+    const cookie = await loginAndGetCookie(app, seeded.email, seeded.password);
+
+    // 設定は権限が要るので読めないが、申請に必要な情報は読める
+    const settingsRes = await app.request("/settings/leave", { headers: { cookie } });
+    expect(settingsRes.status).toBe(403);
+
+    const res = await app.request("/leave/capabilities", { headers: { cookie } });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      hourlyLeaveEnabled: boolean;
+      halfDayLeaveEnabled: boolean;
+      hourlyLeaveMaxDays: number;
+      standardDayMinutes: number;
+    };
+    expect(typeof body.hourlyLeaveEnabled).toBe("boolean");
+    expect(typeof body.halfDayLeaveEnabled).toBe("boolean");
+    expect(body.hourlyLeaveMaxDays).toBeGreaterThanOrEqual(1);
+    expect(body.standardDayMinutes).toBeGreaterThan(0);
+  });
+
+  it("requires authentication", async () => {
+    const seeded = await setupTestDb();
+    const app = createApp({ db: seeded.db });
+    const res = await app.request("/leave/capabilities");
+    expect(res.status).toBe(401);
+  });
+});

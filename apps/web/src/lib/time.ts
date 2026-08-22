@@ -130,3 +130,24 @@ export function formatDateLabel(dateStr: string): string {
   const weekday = weekdayNames[new Date(Date.UTC(year, month - 1, day)).getUTCDay()];
   return `${month}/${day}(${weekday})`;
 }
+
+/**
+ * 分数 → "○日○時間(○分)"(有給残高の表示用、v0.3)。
+ * standardDayMinutes(所定労働時間)で日に換算し、余りを時間・分に分解する。
+ * standardDayMinutes が 0 以下の場合は換算できないため分のみを返す(防御的フォールバック)。
+ */
+export function formatDaysHoursMinutes(minutes: number, standardDayMinutes: number): string {
+  const total = Math.max(0, Math.round(minutes));
+  if (standardDayMinutes <= 0) return `${total}分`;
+
+  const days = Math.floor(total / standardDayMinutes);
+  const remainder = total % standardDayMinutes;
+  const hours = Math.floor(remainder / 60);
+  const mins = remainder % 60;
+
+  const parts: string[] = [];
+  if (days > 0) parts.push(`${days}日`);
+  if (hours > 0 || days === 0) parts.push(`${hours}時間`);
+  if (mins > 0) parts.push(`${mins}分`);
+  return parts.join("");
+}

@@ -1,0 +1,203 @@
+/**
+ * テナントプロファイル設定(/settings/tenant-profile)・法改正予定表示のスタイル(v0.3)。
+ *
+ * docs/design/ui-direction.md の方針どおり K 主体で静かに保つ(設定・締め系と同じ扱い)。
+ * 意味色は状態のみ: 現在適用中の値=K、特別条項時の上限=M(危険寄りの数値のため)。
+ */
+
+.tenant-profile {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+.tenant-profile__forbidden {
+  border: 1px solid var(--k-magenta);
+  color: var(--k-magenta-ink);
+  background: rgba(229, 0, 126, 0.06);
+  border-radius: var(--radius-s);
+  padding: var(--space-4);
+  font-size: 0.92rem;
+}
+
+.tenant-profile__main {
+  flex: 1;
+  padding: var(--space-5) var(--space-4) var(--space-7);
+  max-width: 40rem;
+  margin: 0 auto;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.tenant-profile__title {
+  font-family: var(--font-display);
+  font-size: 1.4rem;
+  letter-spacing: 0.04em;
+}
+
+.tenant-profile__tagline {
+  font-size: 0.85rem;
+  color: var(--k-ink-soft);
+}
+
+.tenant-profile__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.tenant-profile__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  border: var(--border-hair);
+  border-radius: var(--radius-m);
+  padding: var(--space-4);
+}
+
+.tenant-profile__checkbox {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
+.tenant-profile__checkbox input[type="checkbox"] {
+  accent-color: var(--k-key);
+  width: 1.05rem;
+  height: 1.05rem;
+}
+
+.tenant-profile__hint {
+  font-size: 0.8rem;
+  color: var(--k-ink-soft);
+}
+
+.tenant-profile__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.tenant-profile__success {
+  color: var(--k-cyan-ink);
+  font-size: 0.85rem;
+  border: 1px solid var(--k-cyan);
+  background: rgba(0, 163, 217, 0.06);
+  border-radius: var(--radius-s);
+  padding: var(--space-3);
+}
+
+/* 現在適用中の主要な値 */
+.law-rules {
+  border: var(--border-hair);
+  border-radius: var(--radius-m);
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.law-rules__title {
+  font-family: var(--font-display);
+  font-size: 1rem;
+  letter-spacing: 0.02em;
+}
+
+.law-rules__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+  gap: var(--space-3);
+}
+
+.law-rules__item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.law-rules__item-label {
+  font-size: 0.78rem;
+  color: var(--k-ink-soft);
+}
+
+.law-rules__item-value {
+  font-family: var(--font-mono);
+  font-size: 1.05rem;
+}
+
+.law-rules__special {
+  border-top: var(--border-hair);
+  padding-top: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.law-rules__special-title {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--k-magenta-ink);
+}
+
+.law-rules__special .law-rules__item-value {
+  color: var(--k-magenta-ink);
+}
+
+/* 適用予定の法改正 */
+.upcoming-laws {
+  border: var(--border-hair);
+  border-radius: var(--radius-m);
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.upcoming-laws__title {
+  font-family: var(--font-display);
+  font-size: 1rem;
+  letter-spacing: 0.02em;
+}
+
+.upcoming-laws__empty {
+  color: var(--k-ink-soft);
+  font-size: 0.85rem;
+}
+
+.upcoming-laws__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.upcoming-laws__item {
+  border: var(--border-hair);
+  border-radius: var(--radius-s);
+  padding: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: 0.86rem;
+}
+
+.upcoming-laws__effective-from {
+  font-family: var(--font-mono);
+  font-weight: 700;
+}
+
+.upcoming-laws__changes {
+  color: var(--k-key);
+}
+
+.upcoming-laws__basis {
+  color: var(--k-ink-soft);
+  font-size: 0.78rem;
+}

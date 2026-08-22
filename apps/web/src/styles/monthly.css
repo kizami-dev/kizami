@@ -206,3 +206,188 @@
   padding: var(--space-6) 0;
   text-align: center;
 }
+
+/**
+ * 月次締め・当初値との差分・CSVエクスポート(v0.3)。
+ * 意味色は状態のみ: 確定済み=C、修正あり=Y、締めの解除(危険操作)=M。
+ */
+.closing-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.closing-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  border: 2px solid var(--badge-color, var(--k-key));
+  color: var(--badge-color, var(--k-key));
+  border-radius: var(--radius-m);
+  padding: var(--space-1) var(--space-3);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.closing-badge--closed {
+  --badge-color: var(--k-cyan-ink);
+}
+
+.closing-badge--amended {
+  --badge-color: var(--k-yellow-ink);
+}
+
+.closing-diff {
+  border: var(--border-hair);
+  border-radius: var(--radius-m);
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.closing-diff__title {
+  font-family: var(--font-display);
+  font-size: 1rem;
+  letter-spacing: 0.02em;
+}
+
+.closing-diff__table-wrap {
+  overflow-x: auto;
+}
+
+.closing-diff__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  min-width: 28rem;
+}
+
+.closing-diff__table th,
+.closing-diff__table td {
+  padding: var(--space-2) var(--space-3);
+  text-align: right;
+  border-bottom: 1px solid rgba(26, 26, 26, 0.08);
+  white-space: nowrap;
+}
+
+.closing-diff__table th {
+  color: var(--k-ink-soft);
+  font-weight: 400;
+  font-size: 0.76rem;
+}
+
+.closing-diff__table th:first-child,
+.closing-diff__table td:first-child {
+  text-align: left;
+}
+
+.closing-diff__table td.closing-diff__num {
+  font-family: var(--font-mono);
+}
+
+.closing-diff__delta--negative {
+  color: var(--k-magenta-ink);
+}
+
+.closing-diff__delta--positive {
+  color: var(--k-cyan-ink);
+}
+
+.closing-panel {
+  border: var(--border-hair);
+  border-radius: var(--radius-m);
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.closing-panel__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.closing-history summary {
+  cursor: pointer;
+  font-size: 0.88rem;
+  color: var(--k-ink-soft);
+  font-weight: 700;
+}
+
+.closing-history__empty {
+  color: var(--k-ink-soft);
+  font-size: 0.82rem;
+  padding-top: var(--space-2);
+}
+
+.closing-history__list {
+  list-style: none;
+  margin: 0;
+  padding: var(--space-3) 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.closing-history__item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-3);
+  border: var(--border-hair);
+  border-radius: var(--radius-s);
+  padding: var(--space-2) var(--space-3);
+  font-size: 0.82rem;
+}
+
+.closing-history__event {
+  font-weight: 700;
+}
+
+.closing-history__item--close .closing-history__event {
+  color: var(--k-cyan-ink);
+}
+
+.closing-history__item--reopen .closing-history__event {
+  color: var(--k-magenta-ink);
+}
+
+.closing-history__item--amend .closing-history__event {
+  color: var(--k-yellow-ink);
+}
+
+.closing-history__time {
+  font-family: var(--font-mono);
+  color: var(--k-ink-soft);
+}
+
+.closing-history__note {
+  flex-basis: 100%;
+  color: var(--k-ink-soft);
+}
+
+.closing-history__link {
+  color: var(--k-cyan-ink);
+}
+
+.csv-export {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.csv-export__checkbox {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.85rem;
+}
+
+.csv-export__checkbox input[type="checkbox"] {
+  accent-color: var(--k-key);
+  width: 1rem;
+  height: 1rem;
+}

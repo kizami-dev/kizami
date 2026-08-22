@@ -10,7 +10,13 @@ import { AppHeader } from "./AppHeader";
  * /settings のハブ画面。アクセスできる設定項目だけをカードで表示する
  * (AppHeader の「設定」リンクの遷移先。要件: 既存の設定ナビから各画面に辿れること)。
  */
-type SettingsRoute = "/settings/notifications" | "/settings/departments" | "/settings/members" | "/settings/presets";
+type SettingsRoute =
+  | "/settings/notifications"
+  | "/settings/departments"
+  | "/settings/members"
+  | "/settings/presets"
+  | "/settings/tenant-profile"
+  | "/settings/leave";
 
 export function SettingsHubView() {
   const guard = useAuthGuard();
@@ -44,6 +50,20 @@ export function SettingsHubView() {
       to: "/settings/presets" as const,
       title: messages.settingsHub.presetsTitle,
       desc: messages.settingsHub.presetsDesc,
+    },
+    {
+      key: "tenantProfile",
+      enabled: access.tenantProfile,
+      to: "/settings/tenant-profile" as const,
+      title: messages.settingsHub.tenantProfileTitle,
+      desc: messages.settingsHub.tenantProfileDesc,
+    },
+    {
+      key: "leave",
+      enabled: access.leave,
+      to: "/settings/leave" as const,
+      title: messages.settingsHub.leaveTitle,
+      desc: messages.settingsHub.leaveDesc,
     },
   ].filter((c) => c.enabled);
 

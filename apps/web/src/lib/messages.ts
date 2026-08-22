@@ -13,6 +13,7 @@ export const messages = {
     home: "打刻",
     monthly: "月次",
     corrections: "申請",
+    leave: "有給",
     settings: "設定",
     logout: "ログアウト",
   },
@@ -283,6 +284,8 @@ export const messages = {
     departments: "部署",
     members: "メンバー",
     presets: "権限プリセット",
+    tenantProfile: "テナントプロファイル",
+    leave: "有給休暇",
   },
 
   settingsHub: {
@@ -297,6 +300,129 @@ export const messages = {
     membersDesc: "メンバーの所属変更、権限プリセットの割当、実効権限の確認を行います。",
     presetsTitle: "権限プリセット",
     presetsDesc: "権限のON/OFFとスコープを組み合わせたプリセットを作成・編集します。",
+    tenantProfileTitle: "テナントプロファイル",
+    tenantProfileDesc: "企業規模・特例措置対象事業場・特別条項など、集計に影響する属性と適用予定の法改正を確認します。",
+    leaveTitle: "有給休暇",
+    leaveDesc: "付与方式・時間単位年休・積立休暇のテナント全体の設定を行います。",
+  },
+
+  /** 月次締め・CSVエクスポート(/monthly 画面、v0.3)。要件 §6(締めと出口)・§10(コンテキストヘルプ)。 */
+  closing: {
+    closedBadge: "確定済み",
+    amendedBadge: "締め後に修正あり",
+
+    closeAction: "この月を締める",
+    reopenAction: "確定を解除する",
+
+    confirmCloseTitle: "この月を締めますか",
+    confirmCloseMessage:
+      "この月の勤怠を確定します。以後の打刻・修正は申請と承認が必要になります。この操作は監査ログに記録されます。",
+    confirmCloseLabel: "締める",
+
+    confirmReopenTitle: "確定を解除しますか",
+    confirmReopenMessage: "確定を解除すると、この月は再び自由に編集できる状態になります。",
+    confirmReopenExtraNote: "締めの解除は影響の大きい操作です。この操作は監査ログに記録されます。",
+    confirmReopenLabel: "解除する",
+
+    noteLabel: "メモ(任意)",
+    notePlaceholder: "締め・解除の理由など(任意)",
+
+    diffTitle: "当初値との差分",
+    diffColumnCategory: "区分",
+    diffColumnOriginal: "当初",
+    diffColumnCurrent: "現在",
+    diffColumnDelta: "差分",
+    diffFlexFrame: "フレックス総枠",
+    diffFlexActual: "フレックス実績",
+    diffFlexDiff: "フレックス収支",
+
+    historyTitle: "締め履歴",
+    historyEmpty: "まだ締め・解除の履歴はありません",
+    historyActorSelf: "本人",
+    historyEventLabel: {
+      close: "締め",
+      reopen: "解除",
+      amend: "修正反映",
+    } satisfies Record<"close" | "reopen" | "amend", string>,
+    historyCorrectionLink: "由来の修正申請を確認する",
+
+    csvDownload: "CSVをダウンロード",
+    csvDownloading: "作成中…",
+    csvCompareOriginalLabel: "当初値との差分を含める",
+    csvDownloadFailed: "CSVのダウンロードに失敗しました。もう一度お試しください",
+
+    errors: {
+      already_closed: "この月は既に締められています",
+      not_closed: "この月はまだ締められていません",
+      invalid_period: "対象月の指定を確認してください",
+      invalid_note: "メモは500文字以内で入力してください",
+      invalid_body: "入力内容を確認してください",
+      default: "処理に失敗しました。もう一度お試しください",
+    },
+  },
+
+  /** テナントプロファイル設定(/settings/tenant-profile、v0.3)。要件 §10(法制度に由来する表示にはヘルプを添える)。 */
+  settingsTenantProfile: {
+    title: "テナントプロファイル",
+    tagline: "労働時間の集計・36協定アラートの前提になる、テナント全体の属性を設定します。",
+    noPermission: "この設定を変更する権限がありません",
+    loadFailed: "設定の取得に失敗しました。もう一度お試しください",
+
+    smeLabel: "中小企業かどうか",
+    smeHint: "法改正の施行日が企業規模で異なる項目(月60時間超の割増、36協定の上限規制)の判定に使います。",
+
+    specialProvisionLabel: "特例措置対象事業場かどうか",
+    specialProvisionHint:
+      "商業・映画演劇業・保健衛生業・接客娯楽業で常時9人以下の事業場は、週の法定労働時間が44時間になります(労基法40条)。",
+
+    specialClauseLabel: "特別条項の締結あり",
+    specialClauseHint:
+      "36協定の特別条項に関するアラート(月100時間未満・複数月平均80時間・年720時間・月45時間超は年6回)を有効にします。",
+
+    save: "保存",
+    saving: "保存中…",
+    saveSuccess: "設定を保存しました。",
+
+    confirmTitle: "この設定を変更しますか",
+    confirmMessage: "この設定は労働時間の集計に直接影響します。",
+    confirmExtraNote: "変更は監査ログに記録されます。",
+    confirmLabel: "変更する",
+
+    currentRulesTitle: "現在適用中の主要な値",
+    currentRulesWeekly: "週の法定労働時間",
+    currentRulesAgreementMonthly: "36協定・月の上限",
+    currentRulesAgreementAnnual: "36協定・年の上限",
+    currentRulesHourlyLeave: "時間単位年休の上限日数",
+    currentRulesHourlyLeaveUnit: "日/年",
+    currentRulesSpecialClauseTitle: "特別条項時の上限(締結ありの場合)",
+    currentRulesSpecialMonthlyCap: "単月",
+    currentRulesSpecialMonthlyCapNote: "未満",
+    currentRulesSpecialMultiMonth: "複数月平均",
+    currentRulesSpecialAnnual: "年間",
+    currentRulesSpecialExceedCount: "月45時間超が許される回数",
+    currentRulesSpecialExceedCountUnit: "回/年",
+
+    upcomingTitle: "適用予定の法改正",
+    upcomingEmpty: "現在、適用予定の法改正はありません",
+    upcomingEffectiveFrom: "施行日",
+    upcomingBasis: "根拠",
+    upcomingChangesPrefix: "変更点: ",
+    upcomingRuleLabel: {
+      weeklyStatutoryMinutes: "週の法定労働時間",
+      lateNight: "深夜帯",
+      overtime60h: "月60時間超の区分",
+      agreement36: "36協定の上限",
+      annualLeave: "年次有給休暇",
+    } satisfies Record<"weeklyStatutoryMinutes" | "lateNight" | "overtime60h" | "agreement36" | "annualLeave", string>,
+
+    errors: {
+      invalid_is_small_or_medium_enterprise: "入力内容を確認してください",
+      invalid_is_special_provision_workplace: "入力内容を確認してください",
+      invalid_special_clause_enabled: "入力内容を確認してください",
+      invalid_body: "入力内容を確認してください",
+      tenant_not_found: "テナント情報が見つかりません",
+      default: "処理に失敗しました。もう一度お試しください",
+    },
   },
 
   departments: {
@@ -440,6 +566,223 @@ export const messages = {
       default: "処理に失敗しました。もう一度お試しください",
     },
   },
+
+  /** 有給休暇ホーム(/leave、v0.3)。docs/requirements.md §5・docs/design/ui-direction.md。 */
+  leave: {
+    title: "有給休暇",
+    tagline: "残高の確認、休暇の申請、申請の承認を行います。",
+    loadFailed: "有給休暇の情報取得に失敗しました。もう一度お試しください",
+
+    balanceTitle: "残高",
+    annualLabel: "年次有給",
+    stockedLabel: "積立休暇",
+    remainingLabel: "残り",
+    grantedTotalLabel: "付与合計",
+    usedTotalLabel: "消化済み",
+    noGrants: "付与された有給がありません",
+    grantBreakdownToggle: "付与ごとの内訳",
+    grantColumnGrantedOn: "付与日",
+    grantColumnDays: "日数",
+    grantColumnExpiresOn: "期限",
+    grantColumnRemaining: "残り",
+    grantExpired: "時効消滅",
+    expiringSoonTitle: "まもなく失効します",
+    expiringSoonNote: "60日以内に期限を迎える付与があります。早めの取得をおすすめします。",
+
+    mandatoryTitle: "年5日取得義務の状況",
+    mandatoryHelp:
+      "年10日以上付与された従業員は、付与日から1年以内に5日取得させることが法律で義務付けられています(労基法39条7項)。半休は0.5日として数えられますが、時間単位の取得は含められません。",
+    mandatoryNone: "対象となる付与(年10日以上)がありません",
+    mandatoryTakenLabel: "取得",
+    mandatoryRequiredLabel: "必要",
+    mandatoryDeadlineLabel: "期限",
+    mandatoryShortagePrefix: "あと",
+    mandatoryShortageSuffix: "日",
+    mandatorySatisfied: "達成",
+
+    requestFormTitle: "休暇を申請",
+    dateLabel: "対象日",
+    unitLabel: "単位",
+    unitFullDay: "全休",
+    unitHalfDayAm: "午前半休",
+    unitHalfDayPm: "午後半休",
+    unitHourly: "時間単位",
+    minutesLabel: "時間(分)",
+    minutesPlaceholder: "例: 120",
+    leaveTypeLabel: "消化する枠",
+    leaveTypeAnnual: "年次有給",
+    leaveTypeStocked: "積立休暇",
+    reasonLabel: "理由",
+    reasonPlaceholder: "休暇の理由を入力してください",
+    hourlyQuotaPrefix: "時間単位で取得できるのは年5日分までです(現在 ",
+    hourlyQuotaSeparator: " / 上限 ",
+    hourlyQuotaSuffix: ")",
+    submit: "申請する",
+    submitting: "送信中…",
+    submitted: "申請を送信しました。承認されると勤怠記録に反映されます。",
+    targetMonthClosedNote: "この月は確定済みです。承認するには確定解除の権限が必要です。",
+
+    requestsTitle: "申請一覧",
+    requestsEmpty: "申請はまだありません",
+    columnDate: "対象日",
+    columnUnit: "単位",
+    columnLeaveType: "枠",
+    columnReason: "理由",
+    columnDecision: "決裁",
+
+    statusLabel: {
+      pending: "申請中",
+      approved: "承認済",
+      rejected: "却下",
+      withdrawn: "取下げ",
+    } satisfies Record<"pending" | "approved" | "rejected" | "withdrawn", string>,
+
+    unitLabelShort: {
+      full_day: "全休",
+      half_day_am: "午前半休",
+      half_day_pm: "午後半休",
+      hourly: "時間単位",
+    } satisfies Record<"full_day" | "half_day_am" | "half_day_pm" | "hourly", string>,
+
+    leaveTypeLabelShort: {
+      annual: "年次有給",
+      stocked: "積立休暇",
+    } satisfies Record<"annual" | "stocked", string>,
+
+    approve: "承認",
+    reject: "却下",
+    withdraw: "取下げ",
+    decidedBySelf: "本人",
+    decisionNoteLabel: "決裁メモ",
+    decisionNotePlaceholder: "メモ(任意)",
+
+    confirmApproveTitle: "この申請を承認しますか",
+    confirmApproveMessage: "承認すると勤怠記録に反映され、月次集計が変わります。この操作は監査ログに記録されます。",
+    confirmApproveSelfNote: "自己承認として記録されます。",
+    confirmRejectTitle: "この申請を却下しますか",
+    confirmRejectMessage: "却下すると申請は却下済みとして記録され、勤怠記録には反映されません。",
+    confirmWithdrawTitle: "この申請を取り下げますか",
+    confirmWithdrawMessage: "取り下げると申請中の状態が解除されます。必要であれば再度申請できます。",
+
+    close: "閉じる",
+    cancel: "キャンセル",
+
+    errors: {
+      invalid_leave_date: "対象日を確認してください",
+      invalid_reason: "理由を1〜500文字で入力してください",
+      invalid_unit: "単位を確認してください",
+      invalid_leave_type: "消化する枠を確認してください",
+      invalid_minutes: "時間(分)を正しく入力してください",
+      invalid_body: "入力内容を確認してください",
+      hourly_leave_disabled: "時間単位の取得はこのテナントでは有効になっていません",
+      half_day_leave_disabled: "半休の取得はこのテナントでは有効になっていません",
+      duplicate_request: "同じ日・同じ単位の申請が既にあります",
+      exceeds_daily_hours: "1日の所定労働時間を超えています",
+      insufficient_balance: "残日数が足りません",
+      hourly_limit_exceeded: "時間単位で取得できる年間上限を超えます",
+      not_pending: "この申請は既に処理されています",
+      not_found: "対象の申請が見つかりません",
+      forbidden: "この操作を行う権限がありません",
+      month_closed_requires_unlock: "この月は確定済みです。承認するには確定解除の権限が必要です",
+      default: "処理に失敗しました。もう一度お試しください",
+    },
+  },
+
+  /** 有給休暇の制度設定(/settings/leave、v0.3)。GET/PUT /settings/leave と付与管理系エンドポイントの文言をまとめる。 */
+  settingsLeave: {
+    title: "有給休暇の設定",
+    tagline: "付与方式・時間単位年休・積立休暇のテナント全体の設定を行います。",
+    noPermission: "この設定を変更する権限がありません",
+    loadFailed: "設定の取得に失敗しました。もう一度お試しください",
+
+    grantMethodSectionTitle: "付与方式",
+    grantMethodStatutory: "法定(入社日基準)",
+    grantMethodFixedDate: "基準日方式(全社一斉)",
+    fixedDateLabel: "基準日(月-日)",
+    fixedDatePlaceholder: "例: 04-01",
+
+    hourlySectionTitle: "時間単位年休",
+    hourlyEnabledLabel: "時間単位年休を有効にする",
+    hourlyHelp: "労使協定の締結が必要です。年5日分が法律上の上限です(労基法39条4項)。",
+    hourlyMaxDaysLabel: "年間上限日数(1〜5)",
+
+    halfDaySectionTitle: "半休",
+    halfDayEnabledLabel: "半休を有効にする",
+
+    stockSectionTitle: "失効分の積立",
+    stockEnabledLabel: "失効分の積立を有効にする",
+    stockHelp: "時効で失効する年次有給を別枠に積み立てる制度です。法定の制度ではなく、会社が任意に設ける制度です。",
+    stockMaxDaysLabel: "積立の上限日数",
+    stockExpiresMonthsLabel: "積立分の有効期限(月数、空欄なら無期限)",
+
+    save: "保存",
+    saving: "保存中…",
+    saveSuccess: "設定を保存しました。",
+    saveNote: "この設定はテナント全体に適用されます。変更は監査ログに記録されます。",
+
+    adminSectionTitle: "付与・積立の管理",
+    adminSectionTagline: "対象メンバーを選んで実行します。この操作は監査ログに記録されます。",
+    targetUserLabel: "対象メンバー",
+    targetUserPlaceholder: "メンバーを選択してください",
+
+    autoGrantTitle: "法定付与の実行",
+    autoGrantDesc: "入社日から計算して未付与分を作成します。既に付与済みの分は作られません。",
+    autoGrantRun: "法定付与を実行",
+    autoGrantRunning: "実行中…",
+    autoGrantResultCreatedPrefix: "",
+    autoGrantResultCreatedSuffix: "件付与しました",
+    autoGrantResultSkippedPrefix: "(付与済みなどでスキップ ",
+    autoGrantResultSkippedSuffix: "件)",
+    autoGrantEmpty: "新たに付与できる分はありませんでした",
+
+    manualGrantTitle: "手動付与",
+    manualGrantDesc: "任意の日数・期限で有給を付与します。",
+    grantedOnLabel: "付与日",
+    daysLabel: "日数",
+    expiresOnLabel: "期限(空欄なら既定値: 年次有給は付与日+2年、積立は無期限)",
+    leaveTypeLabel: "種別",
+    leaveTypeAnnual: "年次有給",
+    leaveTypeStocked: "積立休暇",
+    noteLabel: "メモ(任意)",
+    manualGrantSubmit: "付与する",
+    manualGrantSubmitting: "処理中…",
+    manualGrantSuccess: "付与しました。",
+
+    convertTitle: "失効分の積立振替",
+    convertDesc: "時効で失効した年次有給の未消化分を積立休暇に振り替えます。",
+    convertRun: "積立振替を実行",
+    convertRunning: "実行中…",
+    convertResultTitle: "振替結果",
+    convertResultConvertedPrefix: "振替日数: ",
+    convertResultConvertedSuffix: "日",
+    convertResultTruncatedPrefix: "(上限超過で切り捨て: ",
+    convertResultTruncatedSuffix: "日)",
+    convertResultEmpty: "振替対象はありませんでした",
+
+    errors: {
+      invalid_grant_method: "付与方式を確認してください",
+      invalid_fixed_date_mm_dd: "基準日はMM-DD形式で入力してください",
+      invalid_hourly_leave_enabled: "入力内容を確認してください",
+      invalid_half_day_leave_enabled: "入力内容を確認してください",
+      invalid_stock_conversion_enabled: "入力内容を確認してください",
+      invalid_hourly_leave_max_days: "年間上限日数は1〜5の範囲で入力してください",
+      invalid_stock_max_days: "積立の上限日数を正しく入力してください",
+      invalid_stock_expires_months: "積立分の有効期限(月数)を正しく入力してください",
+      invalid_body: "入力内容を確認してください",
+      invalid_user_id: "対象メンバーを選択してください",
+      invalid_granted_on: "付与日を確認してください",
+      invalid_days: "日数を正しく入力してください",
+      invalid_expires_on: "期限を確認してください",
+      invalid_leave_type: "種別を確認してください",
+      invalid_note: "メモを確認してください",
+      not_found: "対象が見つかりません",
+      hire_date_not_set: "対象メンバーの入社日が設定されていません",
+      leave_settings_not_configured: "先に有給の制度設定を保存してください",
+      stock_conversion_disabled: "積立の設定が有効になっていません",
+      forbidden: "この操作を行う権限がありません",
+      default: "処理に失敗しました。もう一度お試しください",
+    },
+  },
 } as const;
 
 /** apps/api のエラーコード({ error: string })を日本語文言へマッピングする(§10 コンテキストヘルプ・messages.ts 集約方針)。 */
@@ -493,4 +836,32 @@ export function mapPresetErrorMessage(body: unknown): string {
   const errors = messages.presets.errors as Record<string, string | undefined>;
   const code = errorCodeOf(body);
   return (code && errors[code]) ?? messages.presets.errors.default;
+}
+
+/** 月次締め(POST /closings/:period/close・/reopen)のエラーマッピング(v0.3)。 */
+export function mapClosingErrorMessage(body: unknown): string {
+  const errors = messages.closing.errors as Record<string, string | undefined>;
+  const code = errorCodeOf(body);
+  return (code && errors[code]) ?? messages.closing.errors.default;
+}
+
+/** テナントプロファイル(PUT /settings/tenant-profile)のエラーマッピング(v0.3)。 */
+export function mapTenantProfileErrorMessage(body: unknown): string {
+  const errors = messages.settingsTenantProfile.errors as Record<string, string | undefined>;
+  const code = errorCodeOf(body);
+  return (code && errors[code]) ?? messages.settingsTenantProfile.errors.default;
+}
+
+/** 休暇申請(POST /leave/requests・:id/approve・reject・withdraw)のエラーマッピング(v0.3)。 */
+export function mapLeaveRequestErrorMessage(body: unknown): string {
+  const errors = messages.leave.errors as Record<string, string | undefined>;
+  const code = errorCodeOf(body);
+  return (code && errors[code]) ?? messages.leave.errors.default;
+}
+
+/** 有給の制度設定・付与管理(GET/PUT /settings/leave・POST /leave/grants*)のエラーマッピング(v0.3)。 */
+export function mapLeaveSettingsErrorMessage(body: unknown): string {
+  const errors = messages.settingsLeave.errors as Record<string, string | undefined>;
+  const code = errorCodeOf(body);
+  return (code && errors[code]) ?? messages.settingsLeave.errors.default;
 }

@@ -10,7 +10,7 @@ import { NotificationBell } from "./NotificationBell";
 export interface AppHeaderProps {
   displayName: string;
   email: string;
-  active: "home" | "monthly" | "corrections" | "settings";
+  active: "home" | "monthly" | "corrections" | "settings" | "leave";
 }
 
 export function AppHeader({ displayName, email, active }: AppHeaderProps) {
@@ -21,7 +21,12 @@ export function AppHeader({ displayName, email, active }: AppHeaderProps) {
   // (要件: 権限が無いユーザーにはナビにも表示しない)。
   const settingsAccess = useSettingsAccess();
   const canSeeSettings =
-    settingsAccess.notifications || settingsAccess.departments || settingsAccess.members || settingsAccess.presets;
+    settingsAccess.notifications ||
+    settingsAccess.departments ||
+    settingsAccess.members ||
+    settingsAccess.presets ||
+    settingsAccess.tenantProfile ||
+    settingsAccess.leave;
 
   async function handleLogout() {
     setLoggingOut(true);
@@ -53,6 +58,9 @@ export function AppHeader({ displayName, email, active }: AppHeaderProps) {
           aria-current={active === "corrections" ? "page" : undefined}
         >
           {messages.nav.corrections}
+        </Link>
+        <Link to="/leave" className="k-header__navlink" aria-current={active === "leave" ? "page" : undefined}>
+          {messages.nav.leave}
         </Link>
         {canSeeSettings ? (
           <Link to="/settings" className="k-header__navlink" aria-current={active === "settings" ? "page" : undefined}>

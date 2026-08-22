@@ -9,6 +9,8 @@ import "../styles/corrections.css";
 import "../styles/notifications.css";
 import "../styles/settings.css";
 import "../styles/org-settings.css";
+import "../styles/law.css";
+import "../styles/leave.css";
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
   return (
