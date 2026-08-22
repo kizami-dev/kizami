@@ -172,6 +172,64 @@
   font-size: 0.86rem;
 }
 
+/*
+ * 休憩の自動控除ルール編集(2026-08-23 追加)。行: 「時刻入力 超えたら 分数入力 分を控除 削除」。
+ * 390px 幅でも横スクロールさせないため flex-wrap で折り返す。
+ */
+.attendance-settings__break-rules {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.attendance-settings__break-rule-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.85rem;
+}
+
+.attendance-settings__break-rule-row input[type="time"] {
+  border: var(--border-hair);
+  border-radius: var(--radius-s);
+  padding: var(--space-2) var(--space-3);
+  font-size: 0.9rem;
+  background: var(--k-paper);
+  color: inherit;
+  width: 7rem;
+}
+
+.attendance-settings__break-rule-row input[type="number"] {
+  border: var(--border-hair);
+  border-radius: var(--radius-s);
+  padding: var(--space-2) var(--space-3);
+  font-size: 0.9rem;
+  background: var(--k-paper);
+  color: inherit;
+  width: 5rem;
+}
+
+.attendance-settings__break-rule-remove {
+  border: var(--border-hair);
+  border-radius: var(--radius-s);
+  background: transparent;
+  color: var(--k-ink-soft);
+  padding: var(--space-1) var(--space-3);
+  font-size: 0.78rem;
+}
+
+.attendance-settings__break-rule-remove:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--k-magenta) 6%, transparent);
+  color: var(--k-magenta-ink);
+}
+
+.attendance-settings__break-rule-remove:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .attendance-settings__gps-warning {
   border: 1px solid var(--k-magenta);
   color: var(--k-magenta-ink);

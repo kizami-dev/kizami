@@ -23,8 +23,12 @@ import type { UserNotificationSettings } from "@kizami/db";
  * (missing_clock_out / overtime_* 8種 / leave_expiring_*d 3種 / leave_mandatory5_*d 2種)、
  * 従業員が実際に意識する単位はこの3カテゴリで十分と判断し束ねた。type が将来増えても
  * このカテゴリ数は増やさず、resolveNotificationCategory の対応表だけを拡張する想定。
+ *
+ * `correction_alert`(2026-08-23 追加): 修正系申請(休憩自動控除の打ち消し等)の承認・却下
+ * 通知。migration 0015 で専用列(correction_alert_email/webhook)が入り、他の3カテゴリと
+ * 同様に個人設定で ON/OFF できる。
  */
-export const NOTIFICATION_CATEGORIES = ["missing_clock_out", "overtime_alert", "leave_alert"] as const;
+export const NOTIFICATION_CATEGORIES = ["missing_clock_out", "overtime_alert", "leave_alert", "correction_alert"] as const;
 export type NotificationCategory = (typeof NOTIFICATION_CATEGORIES)[number];
 
 export interface CategoryChannelPrefs {
@@ -38,22 +42,26 @@ export const DEFAULT_USER_NOTIFICATION_PREFS: Readonly<Record<NotificationCatego
     missing_clock_out: Object.freeze({ email: false, webhook: false }),
     overtime_alert: Object.freeze({ email: false, webhook: false }),
     leave_alert: Object.freeze({ email: false, webhook: false }),
+    correction_alert: Object.freeze({ email: false, webhook: false }),
   });
 
 /**
  * notifications.type(例: "missing_clock_out" / "overtime_45h_reached" /
- * "leave_expiring_60d" / "leave_mandatory5_90d")からカテゴリを解決する。
- * 未知の type は呼び出し元の実装ミスとして扱い、例外を投げる(silent に握りつぶすと
- * 個人設定が効かないまま通知が飛ぶ/飛ばない事故に気づけないため)。
+ * "leave_expiring_60d" / "leave_mandatory5_90d" / "auto_break_waiver_approved")から
+ * カテゴリを解決する。未知の type は呼び出し元の実装ミスとして扱い、例外を投げる
+ * (silent に握りつぶすと個人設定が効かないまま通知が飛ぶ/飛ばない事故に気づけないため)。
  */
 export function resolveNotificationCategory(notificationType: string): NotificationCategory {
   if (notificationType === "missing_clock_out") return "missing_clock_out";
   if (notificationType.startsWith("overtime_")) return "overtime_alert";
   if (notificationType.startsWith("leave_")) return "leave_alert";
+  if (notificationType.startsWith("auto_break_waiver_")) return "correction_alert";
   throw new Error(`resolveNotificationCategory: unknown notification type "${notificationType}"`);
 }
 
-/** DB行(未設定なら null)からカテゴリ別 prefs を解決する。行が無ければ既定値をそのまま返す。 */
+/**
+ * DB行(未設定なら null)からカテゴリ別 prefs を解決する。行が無ければ既定値をそのまま返す。
+ */
 export function resolveUserNotificationPrefs(
   row: UserNotificationSettings | null,
 ): Record<NotificationCategory, CategoryChannelPrefs> {
@@ -62,12 +70,14 @@ export function resolveUserNotificationPrefs(
       missing_clock_out: { ...DEFAULT_USER_NOTIFICATION_PREFS.missing_clock_out },
       overtime_alert: { ...DEFAULT_USER_NOTIFICATION_PREFS.overtime_alert },
       leave_alert: { ...DEFAULT_USER_NOTIFICATION_PREFS.leave_alert },
+      correction_alert: { ...DEFAULT_USER_NOTIFICATION_PREFS.correction_alert },
     };
   }
   return {
     missing_clock_out: { email: row.missingClockOutEmail, webhook: row.missingClockOutWebhook },
     overtime_alert: { email: row.overtimeAlertEmail, webhook: row.overtimeAlertWebhook },
     leave_alert: { email: row.leaveAlertEmail, webhook: row.leaveAlertWebhook },
+    correction_alert: { email: row.correctionAlertEmail, webhook: row.correctionAlertWebhook },
   };
 }
 

@@ -212,6 +212,8 @@ export const messages = {
     /** insufficient_break の警告文言に添える不足量(必要・実際)。 */
     breakShortfallSuffix: (required: string, actual: string) => `(必要 ${required}・実際 ${actual})`,
     columnBreak: "休憩",
+    /** 休憩の自動控除の併記ラベル(2026-08-23 追加、docs/design/breaks.md「UI 上の扱い」)。 */
+    autoBreakLabel: "自動",
     columnLateNight: "深夜",
     /** 固定時間制のときだけ出す時間外列(2026-08-23 追加)。 */
     columnOvertime: "時間外",
@@ -368,6 +370,71 @@ export const messages = {
     },
   },
 
+  /**
+   * 休憩自動控除の打ち消し申請(2026-08-23 追加)。docs/design/breaks.md「採る設計」の
+   * UI 側。correction_requests(打刻修正申請)とは別テーブル・別フローだが、
+   * 承認画面は同じ場所(/corrections)・同じ作法(ConfirmDialog・k-modal)を踏襲する。
+   */
+  autoBreakWaiver: {
+    /** CorrectionForm(月次の修正モーダル)内の新モードタブ。 */
+    modeWaiver: "休憩を取れなかった",
+    /** 自動控除がある日にモーダル上部へ出す注記。 */
+    deductedNotice: (amount: string) => `この日は自動 ${amount} が休憩として控除されています。`,
+    formHint: "実際には休憩を取れなかった場合の申請です。承認されるとこの日の自動控除がなくなり、休憩不足であれば警告が表示されます。",
+    reasonLabel: "理由",
+    reasonPlaceholder: "休憩を取れなかった理由を入力してください",
+    submit: "申請する",
+    submitting: "送信中…",
+
+    typeLabel: "休憩自動控除の打ち消し",
+    columnDate: "対象日",
+    columnReason: "理由",
+    columnDecision: "決裁",
+
+    ownSectionTitle: "休憩自動控除の打ち消し申請",
+    ownSectionTagline: "自分が申請した、休憩自動控除の打ち消し申請の一覧です。",
+    queueSectionTitle: "承認待ちの打ち消し申請",
+    queueSectionTagline: "承認権限のある範囲内で、承認待ちの打ち消し申請です。",
+    empty: "申請はまだありません",
+    queueEmpty: "承認待ちの申請はありません",
+
+    statusLabel: {
+      pending: "申請中",
+      approved: "承認済",
+      rejected: "却下",
+      withdrawn: "取下げ",
+    } satisfies Record<"pending" | "approved" | "rejected" | "withdrawn", string>,
+
+    approve: "承認",
+    reject: "却下",
+    withdraw: "取下げ",
+    decisionNoteLabel: "決裁メモ",
+    decisionNotePlaceholder: "メモ(任意)",
+    decidedBySelf: "本人",
+
+    confirmApproveTitle: "この申請を承認しますか",
+    confirmApproveMessage:
+      "承認するとこの日の自動控除がなくなり、月次集計が変わります。休憩不足であれば警告が表示されます。この操作は監査ログに記録されます。",
+    confirmApproveSelfNote: "自己承認として記録されます。",
+    confirmRejectTitle: "この申請を却下しますか",
+    confirmRejectMessage: "却下すると申請は却下済みとして記録され、自動控除はそのまま残ります。",
+    confirmWithdrawTitle: "この申請を取り下げますか",
+    confirmWithdrawMessage: "取り下げると申請中の状態が解除されます。必要であれば再度申請できます。",
+
+    errors: {
+      invalid_waive_date: "対象日を確認してください",
+      invalid_reason: "理由を1〜500文字で入力してください",
+      invalid_body: "入力内容を確認してください",
+      invalid_status: "表示できない状態が指定されました",
+      not_pending: "この申請は既に処理されています",
+      already_approved: "この日の打ち消しは既に承認されています",
+      not_found: "対象の申請が見つかりません",
+      forbidden: "この操作を行う権限がありません",
+      month_closed_requires_unlock: "この月は確定済みです。承認するには確定解除の権限が必要です",
+      default: "処理に失敗しました。もう一度お試しください",
+    },
+  },
+
   notifications: {
     bellLabel: "通知",
     title: "通知",
@@ -493,6 +560,8 @@ export const messages = {
       missing_clock_out: "打刻忘れ",
       overtime_alert: "36協定・時間外アラート",
       leave_alert: "有給の失効間近・年5日取得義務アラート",
+      /** 2026-08-23 追加。修正系申請(休憩自動控除の打ち消し等)の承認・却下通知。 */
+      correction_alert: "申請の承認・却下(休憩自動控除の打ち消しなど)",
     } as Record<string, string>,
 
     emailSectionTitle: "通知先メールアドレス",
@@ -795,11 +864,28 @@ export const messages = {
     currentTitle: "現在有効な設定",
     currentEffectiveFrom: "この版が有効になった日",
     dayBoundaryLabel: "日界(1日の起算時刻)",
+    /**
+     * 週の起算曜日(2026-08-23 追加)。週40時間判定(固定時間制の週次時間外)の週の区切り。
+     * 法定休日の曜日指定(legalHolidayWeekday)とは別概念 — 混同しない。
+     */
+    weekStartWeekdayLabel: "週の起算曜日",
+    weekStartWeekdayHint: "週40時間の判定に使う週の区切り。就業規則に定めがなければ日曜日起算が原則です(昭和63年基発第1号)。",
     legalHolidayLabel: "法定休日",
     legalHolidayWeekday: "曜日指定",
     legalHolidayDates: "暦日指定",
     breakRuleLabel: "休憩ルール",
     breakRulePunch: "打刻方式",
+    /** 休憩の自動控除(2026-08-23 追加、docs/design/breaks.md「採る設計」)。 */
+    breakRuleModeAuto: "自動控除",
+    breakRuleModeBoth: "併用",
+    breakRuleRulesTitle: "控除ルール",
+    breakRuleOverSuffix: "超えたら",
+    breakRuleDeductSuffix: "分を控除",
+    breakRuleAddRule: "行を追加する",
+    breakRuleRemoveRule: "削除",
+    breakRuleRuleOverLabel: "基準の労働時間",
+    breakRuleRuleDeductLabel: "控除する分数",
+    breakRuleMaxRulesHint: "最大3行まで設定できます。",
     gpsLabel: "GPS打刻",
     gpsEnabledYes: "有効",
     gpsEnabledNo: "無効",
@@ -852,6 +938,7 @@ export const messages = {
       invalid_body: "入力内容を確認してください",
       invalid_effective_from: "適用開始日を確認してください",
       invalid_day_boundary_minutes: "日界は0〜1439の範囲(分)で入力してください",
+      invalid_week_start_weekday: "週の起算曜日を確認してください",
       invalid_legal_holiday_rule: "法定休日の指定を確認してください",
       invalid_break_rule: "休憩ルールを確認してください",
       invalid_gps_enabled: "入力内容を確認してください",
@@ -1512,6 +1599,13 @@ export function mapAttendanceSettingsErrorMessage(body: unknown): string {
   const errors = messages.settingsAttendance.errors as Record<string, string | undefined>;
   const code = errorCodeOf(body);
   return (code && errors[code]) ?? messages.settingsAttendance.errors.default;
+}
+
+/** 休憩自動控除の打ち消し申請(POST /auto-break-waivers・:id/approve・reject・withdraw)のエラーマッピング(2026-08-23 追加)。 */
+export function mapAutoBreakWaiverErrorMessage(body: unknown): string {
+  const errors = messages.autoBreakWaiver.errors as Record<string, string | undefined>;
+  const code = errorCodeOf(body);
+  return (code && errors[code]) ?? messages.autoBreakWaiver.errors.default;
 }
 
 /** APIキー発行/失効(POST・DELETE /api-keys)のエラーマッピング(v0.4 追加)。 */

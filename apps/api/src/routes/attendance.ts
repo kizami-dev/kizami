@@ -9,6 +9,7 @@ import {
   getEffectiveSettingsVersion,
   getOriginalClosingSnapshots,
   listApprovedLeaveRequestsInRange,
+  listApprovedWaiverDatesInRange,
   listValidPunches,
   type Database,
 } from "@kizami/db";
@@ -155,7 +156,7 @@ export function createAttendanceRoutes(db: Database) {
     const fromMinutes = localMidnightUtcMinutes(monthStartEpochDay - 1, tz);
     const toMinutes = localMidnightUtcMinutes(monthEndEpochDay + 2, tz) - 1;
 
-    const [punchRows, settingsTimeline, lawTimeline, approvedLeaveRequests] = await Promise.all([
+    const [punchRows, settingsTimeline, lawTimeline, approvedLeaveRequests, autoBreakWaivedDates] = await Promise.all([
       listValidPunches(db, { tenantId: user.tenantId, userId: user.id, fromMinutes, toMinutes }),
       buildSettingsTimeline(db, {
         tenantId: user.tenantId,
@@ -165,6 +166,16 @@ export function createAttendanceRoutes(db: Database) {
       }),
       buildLawTimelineForTenant(db, { tenantId: user.tenantId, fromDate: monthStartDate, toDate: monthEndDate }),
       listApprovedLeaveRequestsInRange(db, {
+        tenantId: user.tenantId,
+        userId: user.id,
+        fromDate: monthStartDate,
+        toDate: monthEndDate,
+      }),
+      // 判断点(apps/api/src/lib/closing-amend.ts の computeMonthlyForUser と同じ理由・同じコメントを
+      // 重複させないためここでは要点のみ): waiveDate は勤怠日(帰属日)であり、engine の
+      // isInPeriod フィルタにより月の外に帰属する区間はそもそもこの月の DailyBreakdown に
+      // 現れないため、punch 取得のような ±1 日の余裕は不要。月そのものの範囲で足りる。
+      listApprovedWaiverDatesInRange(db, {
         tenantId: user.tenantId,
         userId: user.id,
         fromDate: monthStartDate,
@@ -189,6 +200,7 @@ export function createAttendanceRoutes(db: Database) {
       lawTimeline,
       period: { year, month },
       paidLeave,
+      autoBreakWaivedDates,
     };
 
     const output = calculate(input);

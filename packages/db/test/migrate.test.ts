@@ -13,6 +13,7 @@ describe("migrate", () => {
         "api_keys",
         "audit_logs",
         "auth_credentials",
+        "auto_break_waivers",
         "closing_events",
         "closing_snapshots",
         "correction_requests",

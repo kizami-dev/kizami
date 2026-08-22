@@ -8,12 +8,14 @@ import {
   UnauthorizedError,
   type AttendanceSettingsDto,
   type AttendanceSettingVersionDto,
+  type AutoBreakRuleDto,
+  type BreakRuleDto,
   type LegalHolidayRuleDto,
   type WorkPolicySettingsDto,
   type WorkPolicyVersionDto,
 } from "../lib/api";
 import { mapAttendanceSettingsErrorMessage, messages } from "../lib/messages";
-import { currentYearMonthJst, dateStrFromEpochMinutesJst, formatMonthParam, nowMinutes, shiftMonth } from "../lib/time";
+import { currentYearMonthJst, dateStrFromEpochMinutesJst, formatDurationHm, formatMonthParam, nowMinutes, shiftMonth } from "../lib/time";
 import { useAuthGuard } from "../lib/useAuthGuard";
 import { AppHeader } from "./AppHeader";
 import { HelpTip } from "./HelpTip";
@@ -45,23 +47,77 @@ function summarizeLegalHoliday(rule: LegalHolidayRuleDto): string {
   return `${messages.settingsAttendance.legalHolidayDates}: ${rule.dates.join("、")}`;
 }
 
+/**
+ * 休憩ルールの要約文字列(現在有効な設定の表示・版の履歴の両方で使う)。
+ * auto/both は「◯:◯超えたら◯:◯控除」を「、」区切りで並べる(rules は最大3件)。
+ */
+function summarizeBreakRule(rule: BreakRuleDto): string {
+  if (rule.mode === "punch") return messages.settingsAttendance.breakRulePunch;
+  const modeLabel = rule.mode === "auto" ? messages.settingsAttendance.breakRuleModeAuto : messages.settingsAttendance.breakRuleModeBoth;
+  const rulesText = rule.rules
+    .map((r) => `${formatDurationHm(r.overMinutes)}${messages.settingsAttendance.breakRuleOverSuffix} → ${formatDurationHm(r.deductMinutes)}${messages.settingsAttendance.breakRuleDeductSuffix}`)
+    .join("、");
+  return `${modeLabel}(${rulesText})`;
+}
+
 function summarizeAttendanceVersion(v: AttendanceSettingVersionDto): string {
   const gps = v.gpsEnabled
     ? `GPS: ${messages.settingsAttendance.gpsEnabledYes}${v.gpsRetentionDays ? `(${v.gpsRetentionDays}${messages.settingsAttendance.gpsRetentionDaysUnit})` : ""}`
     : `GPS: ${messages.settingsAttendance.gpsEnabledNo}`;
-  return `${messages.settingsAttendance.dayBoundaryLabel} ${minutesToHm(v.dayBoundaryMinutes)} / ${summarizeLegalHoliday(v.legalHolidayRule)} / ${gps}`;
+  return `${messages.settingsAttendance.dayBoundaryLabel} ${minutesToHm(v.dayBoundaryMinutes)} / ${messages.settingsAttendance.weekStartWeekdayLabel}: ${WEEKDAY_LABELS[v.weekStartWeekday as 0 | 1 | 2 | 3 | 4 | 5 | 6]} / ${summarizeLegalHoliday(v.legalHolidayRule)} / ${messages.settingsAttendance.breakRuleLabel}: ${summarizeBreakRule(v.breakRule)} / ${gps}`;
+}
+
+/**
+ * フォームの休憩ルール行 → API 入力の BreakRuleDto。
+ * 不正な行(時刻・控除分数のいずれかが解釈できない、行が0件)があれば null を返す
+ * (呼び出し側で invalid_break_rule として表示する)。昇順・重複なし・高々3件の検証は
+ * サーバー側(routes/settings.ts isValidBreakRule)に委ねる — ここでは形式だけ検証する。
+ */
+function buildBreakRule(mode: "punch" | "auto" | "both", rows: BreakRuleRowForm[]): BreakRuleDto | null {
+  if (mode === "punch") return { mode: "punch" };
+
+  const rules: AutoBreakRuleDto[] = [];
+  for (const row of rows) {
+    const overMinutes = hmToMinutes(row.overHm);
+    const deductMinutes = Number(row.deductMinutes);
+    if (overMinutes === null || !Number.isInteger(deductMinutes) || deductMinutes < 1) return null;
+    rules.push({ overMinutes, deductMinutes });
+  }
+  if (rules.length === 0) return null;
+  return { mode, rules };
 }
 
 function summarizeWorkPolicyVersion(v: WorkPolicyVersionDto): string {
   return `${messages.settingsAttendance.flexStandardDayMinutesLabel}: ${v.standardDayMinutes}分`;
 }
 
+/** 休憩の自動控除ルール1行の編集用フォーム状態(2026-08-23 追加)。overHm は "HH:MM" 表示。 */
+interface BreakRuleRowForm {
+  overHm: string;
+  deductMinutes: string;
+}
+
+/**
+ * auto/both を選んだ直後にプレフィルする初期値(労基法34条の法定最低、docs/design/breaks.md)。
+ * 6時間超で45分・8時間超で60分。
+ */
+const LEGAL_MINIMUM_BREAK_RULE_ROWS: BreakRuleRowForm[] = [
+  { overHm: "06:00", deductMinutes: "45" },
+  { overHm: "08:00", deductMinutes: "60" },
+];
+
+const MAX_BREAK_RULE_ROWS = 3;
+
 interface AttendanceFormState {
   effectiveFrom: string;
   dayBoundaryHm: string;
+  weekStartWeekday: 0 | 1 | 2 | 3 | 4 | 5 | 6;
   legalHolidayKind: "weekday" | "dates";
   legalHolidayWeekday: 0 | 1 | 2 | 3 | 4 | 5 | 6;
   legalHolidayDatesText: string;
+  breakRuleMode: "punch" | "auto" | "both";
+  /** mode が punch のときも保持しておく(auto/both に切り替えた瞬間に空にならないように)。 */
+  breakRuleRows: BreakRuleRowForm[];
   gpsEnabled: boolean;
   gpsRetentionDays: string;
 }
@@ -72,12 +128,19 @@ function defaultNextMonthFirstDay(): string {
 }
 
 function initialAttendanceForm(effective: AttendanceSettingVersionDto | null): AttendanceFormState {
+  const breakRule = effective?.breakRule;
   return {
     effectiveFrom: defaultNextMonthFirstDay(),
     dayBoundaryHm: effective ? minutesToHm(effective.dayBoundaryMinutes) : "00:00",
+    weekStartWeekday: (effective?.weekStartWeekday as 0 | 1 | 2 | 3 | 4 | 5 | 6 | undefined) ?? 0,
     legalHolidayKind: effective?.legalHolidayRule.kind ?? "weekday",
     legalHolidayWeekday: effective?.legalHolidayRule.kind === "weekday" ? effective.legalHolidayRule.weekday : 0,
     legalHolidayDatesText: effective?.legalHolidayRule.kind === "dates" ? effective.legalHolidayRule.dates.join(",") : "",
+    breakRuleMode: breakRule?.mode ?? "punch",
+    breakRuleRows:
+      breakRule && breakRule.mode !== "punch"
+        ? breakRule.rules.map((r) => ({ overHm: minutesToHm(r.overMinutes), deductMinutes: String(r.deductMinutes) }))
+        : LEGAL_MINIMUM_BREAK_RULE_ROWS,
     gpsEnabled: effective?.gpsEnabled ?? false,
     gpsRetentionDays: effective?.gpsRetentionDays != null ? String(effective.gpsRetentionDays) : "",
   };
@@ -177,6 +240,26 @@ export function SettingsAttendanceView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [guard.status, reloadKey]);
 
+  function updateBreakRuleRow(index: number, patch: Partial<BreakRuleRowForm>) {
+    setAttendanceForm((prev) =>
+      prev ? { ...prev, breakRuleRows: prev.breakRuleRows.map((row, i) => (i === index ? { ...row, ...patch } : row)) } : prev,
+    );
+  }
+
+  function addBreakRuleRow() {
+    setAttendanceForm((prev) =>
+      prev && prev.breakRuleRows.length < MAX_BREAK_RULE_ROWS
+        ? { ...prev, breakRuleRows: [...prev.breakRuleRows, { overHm: "00:00", deductMinutes: "" }] }
+        : prev,
+    );
+  }
+
+  function removeBreakRuleRow(index: number) {
+    setAttendanceForm((prev) =>
+      prev && prev.breakRuleRows.length > 1 ? { ...prev, breakRuleRows: prev.breakRuleRows.filter((_, i) => i !== index) } : prev,
+    );
+  }
+
   async function handleAttendanceSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!attendanceForm) return;
@@ -192,6 +275,12 @@ export function SettingsAttendanceView() {
         ? { kind: "weekday", weekday: attendanceForm.legalHolidayWeekday }
         : { kind: "dates", dates: attendanceForm.legalHolidayDatesText.split(",").map((d) => d.trim()).filter((d) => d.length > 0) };
 
+    const breakRule = buildBreakRule(attendanceForm.breakRuleMode, attendanceForm.breakRuleRows);
+    if (breakRule === null) {
+      setAttendanceError(messages.settingsAttendance.errors.invalid_break_rule);
+      return;
+    }
+
     const gpsRetentionDays = attendanceForm.gpsRetentionDays.trim() === "" ? null : Number(attendanceForm.gpsRetentionDays);
 
     setAttendanceSaving(true);
@@ -201,8 +290,9 @@ export function SettingsAttendanceView() {
       await api.createAttendanceSettingVersion({
         effectiveFrom: attendanceForm.effectiveFrom,
         dayBoundaryMinutes,
+        weekStartWeekday: attendanceForm.weekStartWeekday,
         legalHolidayRule,
-        breakRule: { mode: "punch" },
+        breakRule,
         gpsEnabled: attendanceForm.gpsEnabled,
         gpsRetentionDays,
       });
@@ -289,6 +379,12 @@ export function SettingsAttendanceView() {
                   <span className="attendance-settings__current-value tabular-nums">{minutesToHm(attendance.effective.dayBoundaryMinutes)}</span>
                 </div>
                 <div className="attendance-settings__current-row">
+                  <span className="attendance-settings__current-label">{messages.settingsAttendance.weekStartWeekdayLabel}</span>
+                  <span className="attendance-settings__current-value">
+                    {WEEKDAY_LABELS[attendance.effective.weekStartWeekday as 0 | 1 | 2 | 3 | 4 | 5 | 6]}
+                  </span>
+                </div>
+                <div className="attendance-settings__current-row">
                   <span className="attendance-settings__current-label">
                     {messages.settingsAttendance.legalHolidayLabel}
                     <HelpTip helpKey="attendance.legal-holiday" />
@@ -296,8 +392,11 @@ export function SettingsAttendanceView() {
                   <span className="attendance-settings__current-value">{summarizeLegalHoliday(attendance.effective.legalHolidayRule)}</span>
                 </div>
                 <div className="attendance-settings__current-row">
-                  <span className="attendance-settings__current-label">{messages.settingsAttendance.breakRuleLabel}</span>
-                  <span className="attendance-settings__current-value">{messages.settingsAttendance.breakRulePunch}</span>
+                  <span className="attendance-settings__current-label">
+                    {messages.settingsAttendance.breakRuleLabel}
+                    <HelpTip helpKey="attendance.auto-break" />
+                  </span>
+                  <span className="attendance-settings__current-value">{summarizeBreakRule(attendance.effective.breakRule)}</span>
                 </div>
                 <div className="attendance-settings__current-row">
                   <span className="attendance-settings__current-label">{messages.settingsAttendance.gpsLabel}</span>
@@ -355,6 +454,25 @@ export function SettingsAttendanceView() {
                 <span className="attendance-settings__field-hint">{messages.settingsAttendance.dayBoundaryHint}</span>
               </label>
 
+              <label className="attendance-settings__field">
+                <span>{messages.settingsAttendance.weekStartWeekdayLabel}</span>
+                <select
+                  value={attendanceForm.weekStartWeekday}
+                  onChange={(e) =>
+                    setAttendanceForm((prev) =>
+                      prev ? { ...prev, weekStartWeekday: Number(e.target.value) as 0 | 1 | 2 | 3 | 4 | 5 | 6 } : prev,
+                    )
+                  }
+                >
+                  {([0, 1, 2, 3, 4, 5, 6] as const).map((w) => (
+                    <option key={w} value={w}>
+                      {WEEKDAY_LABELS[w]}
+                    </option>
+                  ))}
+                </select>
+                <span className="attendance-settings__field-hint">{messages.settingsAttendance.weekStartWeekdayHint}</span>
+              </label>
+
               <fieldset className="attendance-settings__field">
                 <legend>
                   {messages.settingsAttendance.legalHolidayLabel}
@@ -406,6 +524,82 @@ export function SettingsAttendanceView() {
                 ) : null}
               </fieldset>
 
+              <fieldset className="attendance-settings__field">
+                <legend>
+                  {messages.settingsAttendance.breakRuleLabel}
+                  <HelpTip helpKey="attendance.auto-break" />
+                </legend>
+                <label className="attendance-settings__radio">
+                  <input
+                    type="radio"
+                    name="breakRuleMode"
+                    checked={attendanceForm.breakRuleMode === "punch"}
+                    onChange={() => setAttendanceForm((prev) => (prev ? { ...prev, breakRuleMode: "punch" } : prev))}
+                  />
+                  {messages.settingsAttendance.breakRulePunch}
+                </label>
+                <label className="attendance-settings__radio">
+                  <input
+                    type="radio"
+                    name="breakRuleMode"
+                    checked={attendanceForm.breakRuleMode === "auto"}
+                    onChange={() => setAttendanceForm((prev) => (prev ? { ...prev, breakRuleMode: "auto" } : prev))}
+                  />
+                  {messages.settingsAttendance.breakRuleModeAuto}
+                </label>
+                <label className="attendance-settings__radio">
+                  <input
+                    type="radio"
+                    name="breakRuleMode"
+                    checked={attendanceForm.breakRuleMode === "both"}
+                    onChange={() => setAttendanceForm((prev) => (prev ? { ...prev, breakRuleMode: "both" } : prev))}
+                  />
+                  {messages.settingsAttendance.breakRuleModeBoth}
+                </label>
+
+                {attendanceForm.breakRuleMode !== "punch" ? (
+                  <div className="attendance-settings__break-rules">
+                    <p className="attendance-settings__field-hint">{messages.settingsAttendance.breakRuleRulesTitle}</p>
+                    {attendanceForm.breakRuleRows.map((row, i) => (
+                      <div className="attendance-settings__break-rule-row" key={i}>
+                        <input
+                          type="time"
+                          aria-label={messages.settingsAttendance.breakRuleRuleOverLabel}
+                          value={row.overHm}
+                          onChange={(e) => updateBreakRuleRow(i, { overHm: e.target.value })}
+                        />
+                        <span>{messages.settingsAttendance.breakRuleOverSuffix}</span>
+                        <input
+                          type="number"
+                          min={1}
+                          aria-label={messages.settingsAttendance.breakRuleRuleDeductLabel}
+                          value={row.deductMinutes}
+                          onChange={(e) => updateBreakRuleRow(i, { deductMinutes: e.target.value })}
+                        />
+                        <span>{messages.settingsAttendance.breakRuleDeductSuffix}</span>
+                        <button
+                          type="button"
+                          className="attendance-settings__break-rule-remove"
+                          onClick={() => removeBreakRuleRow(i)}
+                          disabled={attendanceForm.breakRuleRows.length <= 1}
+                        >
+                          {messages.settingsAttendance.breakRuleRemoveRule}
+                        </button>
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      className="k-modal__cancel"
+                      onClick={addBreakRuleRow}
+                      disabled={attendanceForm.breakRuleRows.length >= MAX_BREAK_RULE_ROWS}
+                    >
+                      {messages.settingsAttendance.breakRuleAddRule}
+                    </button>
+                    <span className="attendance-settings__field-hint">{messages.settingsAttendance.breakRuleMaxRulesHint}</span>
+                  </div>
+                ) : null}
+              </fieldset>
+
               <label className="attendance-settings__checkbox">
                 <input
                   type="checkbox"
@@ -450,22 +644,24 @@ export function SettingsAttendanceView() {
             {attendance.history.length === 0 ? (
               <p className="attendance-settings__empty">{messages.settingsAttendance.historyEmpty}</p>
             ) : (
-              <table className="org-table">
-                <thead>
-                  <tr>
-                    <th>{messages.settingsAttendance.historyColumnEffectiveFrom}</th>
-                    <th>{messages.settingsAttendance.historyColumnSummary}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {[...attendance.history].reverse().map((v) => (
-                    <tr key={v.effectiveFrom}>
-                      <td className="tabular-nums">{v.effectiveFrom}</td>
-                      <td>{summarizeAttendanceVersion(v)}</td>
+              <div className="org-settings__table-wrap">
+                <table className="org-table">
+                  <thead>
+                    <tr>
+                      <th>{messages.settingsAttendance.historyColumnEffectiveFrom}</th>
+                      <th>{messages.settingsAttendance.historyColumnSummary}</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {[...attendance.history].reverse().map((v) => (
+                      <tr key={v.effectiveFrom}>
+                        <td className="tabular-nums">{v.effectiveFrom}</td>
+                        <td>{summarizeAttendanceVersion(v)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </section>
         ) : null}
@@ -537,22 +733,24 @@ export function SettingsAttendanceView() {
             {workPolicy.history.length === 0 ? (
               <p className="attendance-settings__empty">{messages.settingsAttendance.historyEmpty}</p>
             ) : (
-              <table className="org-table">
-                <thead>
-                  <tr>
-                    <th>{messages.settingsAttendance.historyColumnEffectiveFrom}</th>
-                    <th>{messages.settingsAttendance.historyColumnSummary}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {[...workPolicy.history].reverse().map((v) => (
-                    <tr key={v.effectiveFrom}>
-                      <td className="tabular-nums">{v.effectiveFrom}</td>
-                      <td>{summarizeWorkPolicyVersion(v)}</td>
+              <div className="org-settings__table-wrap">
+                <table className="org-table">
+                  <thead>
+                    <tr>
+                      <th>{messages.settingsAttendance.historyColumnEffectiveFrom}</th>
+                      <th>{messages.settingsAttendance.historyColumnSummary}</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {[...workPolicy.history].reverse().map((v) => (
+                      <tr key={v.effectiveFrom}>
+                        <td className="tabular-nums">{v.effectiveFrom}</td>
+                        <td>{summarizeWorkPolicyVersion(v)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </section>
         ) : null}

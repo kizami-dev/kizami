@@ -196,6 +196,17 @@
   gap: var(--space-2);
 }
 
+/* 休憩の自動控除がある日は「休憩を取れなかった」タブが増える(2026-08-23 追加)。 */
+.correction-mode--4 {
+  grid-template-columns: repeat(4, 1fr);
+}
+
+@media (max-width: 420px) {
+  .correction-mode--4 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
 .correction-mode__btn {
   border: var(--border-hair);
   border-radius: var(--radius-m);
@@ -303,6 +314,24 @@
   font-size: 0.9rem;
   padding: var(--space-6) 0;
   text-align: center;
+}
+
+/*
+ * 打刻修正申請と休憩自動控除の打ち消し申請(2026-08-23 追加)を、同じ画面(/corrections)に
+ * セクションを分けて並べる。混ぜて1本のリストにはしない — 対象(打刻 vs 自動控除の日)も
+ * 承認の認可方式(自己承認 vs 権限ベース)も異なる別種の申請であるため、種別の境目を
+ * セクション見出しで明確にする方が「種別が見分けられる」要件に対して素直だと判断した。
+ */
+.corrections__section + .corrections__section {
+  border-top: var(--border-hair);
+  padding-top: var(--space-5);
+}
+
+.corrections__section-title {
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  letter-spacing: 0.02em;
+  margin-bottom: var(--space-2);
 }
 
 .corrections__list {

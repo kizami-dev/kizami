@@ -97,7 +97,13 @@ describe("buildDailyBreakdown — stretches (打刻の事実の日別配賦)", (
 
     const day = days.find((d) => d.date === "2026-04-10");
     expect(day?.stretches).toEqual([
-      { clockInAt: punches[0]?.occurredAt, clockOutAt: null, workedMinutes: null, breakMinutes: null },
+      {
+        clockInAt: punches[0]?.occurredAt,
+        clockOutAt: null,
+        workedMinutes: null,
+        breakMinutes: null,
+        autoDeductedBreakMinutes: null,
+      },
     ]);
     expect(day?.workedMinutes).toBe(0);
   });

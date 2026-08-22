@@ -51,10 +51,15 @@ export function buildDailyBreakdown(
   period: { year: number; month: number },
   paidLeave: PaidLeaveEntry[],
   stretches: WorkStretch[] = [],
+  // 自動控除(auto-break.ts)で workedSegments の末尾から取り除かれた区間。breakSegments
+  // (打刻由来)とは別の Map に積み上げ、DailyBreakdown.autoDeductedBreakMinutes を作る
+  // — 打刻由来の休憩と自動控除を合算しないという要件(breaks.md)をここでも保つ。
+  autoDeductedSegments: Segment[] = [],
 ): DailyBreakdown[] {
   const workedByDate = new Map<PlainDateString, number>();
   const lateNightByDate = new Map<PlainDateString, number>();
   const breakByDate = new Map<PlainDateString, number>();
+  const autoDeductedByDate = new Map<PlainDateString, number>();
 
   // stretch は分割せず「clockInAt が属する勤怠日」にまるごと帰属させる(日界をまたぐ夜勤は
   // 出勤した日の行に出て、退勤時刻が翌日になる。UI 側で「翌 7:00」のように表示する想定)。
@@ -90,6 +95,14 @@ export function buildDailyBreakdown(
     }
   }
 
+  for (const segment of autoDeductedSegments) {
+    for (const piece of splitByAttendanceDay(segment, settingsTimeline)) {
+      if (!isInPeriod(piece.date, period)) continue;
+      const minutes = piece.end - piece.start;
+      autoDeductedByDate.set(piece.date, (autoDeductedByDate.get(piece.date) ?? 0) + minutes);
+    }
+  }
+
   // 同日に複数エントリがある場合は合算する(午前2時間+午後1時間など)
   const paidLeaveMinutesByDate = new Map<PlainDateString, number>();
   for (const entry of paidLeave) {
@@ -112,6 +125,7 @@ export function buildDailyBreakdown(
       date,
       workedMinutes: holiday ? 0 : rawWorked,
       breakMinutes: breakByDate.get(date) ?? 0,
+      autoDeductedBreakMinutes: autoDeductedByDate.get(date) ?? 0,
       lateNightMinutes: lateNightByDate.get(date) ?? 0,
       isLegalHoliday: holiday,
       legalHolidayMinutes: holiday ? rawWorked : 0,

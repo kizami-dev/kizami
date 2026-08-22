@@ -262,6 +262,18 @@
   margin-top: 2px;
 }
 
+/*
+ * 休憩の自動控除の併記(2026-08-23 追加)。打刻由来の休憩(主表示)の下に小さく添える
+ * — .monthly-table__overtime-extra(時間外列の「法定内」併記)と同じ型。合算した1つの
+ * 数字にはしない(本人が「自動で引かれた分」に気づけることが要件、docs/design/breaks.md)。
+ */
+.monthly-table__break-extra {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--k-ink-soft);
+  margin-top: 2px;
+}
+
 .monthly-empty {
   color: var(--k-ink-soft);
   font-size: 0.85rem;

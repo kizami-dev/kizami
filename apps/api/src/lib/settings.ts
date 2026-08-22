@@ -9,7 +9,7 @@
 
 import { and, asc, eq } from "drizzle-orm";
 import { getSettingsTimeline, getTenantById, userPolicyAssignments, workPolicyVersions, type Database, type Transaction } from "@kizami/db";
-import type { CalcSettings, LawTimelineSpan, LegalHolidayRule, SettingsSpan } from "@kizami/engine";
+import type { BreakRule, CalcSettings, LawTimelineSpan, LegalHolidayRule, SettingsSpan } from "@kizami/engine";
 import { buildLawTimeline } from "@kizami/law";
 
 /** Asia/Tokyo 固定(分)。テナントTZが設定可能になるのは v1.0 以降の想定。 */
@@ -144,7 +144,7 @@ export async function buildSettingsTimeline(
         version.kind === "fixed"
           ? { kind: "fixed", standardDayMinutes: version.standardDayMinutes }
           : { kind: "flex", settlement: version.settlementPeriod as "monthly", core: null, standardDayMinutes: version.standardDayMinutes },
-      breakRule: JSON.parse(tenantVersion.breakRule) as { mode: "punch" },
+      breakRule: JSON.parse(tenantVersion.breakRule) as BreakRule,
     };
 
     return { from: date, settings };

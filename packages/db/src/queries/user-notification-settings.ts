@@ -35,6 +35,8 @@ export interface UpsertUserNotificationSettingsInput {
   overtimeAlertWebhook: boolean;
   leaveAlertEmail: boolean;
   leaveAlertWebhook: boolean;
+  correctionAlertEmail: boolean;
+  correctionAlertWebhook: boolean;
   emailAddress: string | null;
   webhookUrl: string | null;
   /** UTC エポック分 */
@@ -55,6 +57,8 @@ export async function upsertUserNotificationSettings(
     overtimeAlertWebhook: input.overtimeAlertWebhook,
     leaveAlertEmail: input.leaveAlertEmail,
     leaveAlertWebhook: input.leaveAlertWebhook,
+    correctionAlertEmail: input.correctionAlertEmail,
+    correctionAlertWebhook: input.correctionAlertWebhook,
     emailAddress: input.emailAddress,
     webhookUrl: input.webhookUrl,
     updatedAt: input.updatedAt,

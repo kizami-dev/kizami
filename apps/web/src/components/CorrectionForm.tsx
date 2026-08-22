@@ -2,17 +2,27 @@
 
 import { useEffect, useRef, useState } from "react";
 import { api, ApiError, UnauthorizedError, type Punch, type PunchKind } from "../lib/api";
-import { mapCorrectionErrorMessage, messages } from "../lib/messages";
-import { dateWindowJst, formatDateLabel, formatTimeJst, toEpochMinutesJst } from "../lib/time";
+import { mapAutoBreakWaiverErrorMessage, mapCorrectionErrorMessage, messages } from "../lib/messages";
+import { dateWindowJst, formatDateLabel, formatDurationHm, formatTimeJst, toEpochMinutesJst } from "../lib/time";
 import { HelpTip } from "./HelpTip";
 
 const PUNCH_KIND_OPTIONS: PunchKind[] = ["clock_in", "break_start", "break_end", "clock_out"];
 const MAX_REASON_LENGTH = 500;
 
-type Mode = "add" | "correct" | "cancel";
+/**
+ * "waiver" は打刻修正申請ではなく、休憩自動控除の打ち消し申請(auto_break_waivers、
+ * docs/design/breaks.md「採る設計」)。専用画面を増やさず、このモーダルの4つ目のタブとして
+ * 追加する(依頼「既存の CorrectionForm がどう開かれているかを見て、同じ場所に追加する」)。
+ */
+type Mode = "add" | "correct" | "cancel" | "waiver";
 
 export interface CorrectionFormProps {
   date: string;
+  /**
+   * その日の休憩自動控除分数(2026-08-23 追加)。0 より大きい場合のみ「休憩を取れなかった」
+   * タブを表示する(自動控除の無い日に打ち消し申請の入口を出しても意味がないため)。
+   */
+  autoDeductedBreakMinutes?: number;
   onClose: () => void;
   onSubmitted: () => void;
   /** UnauthorizedError 発生時、呼び出し元(MonthlyView)に /login への誘導を委ねる。 */
@@ -23,7 +33,8 @@ export interface CorrectionFormProps {
  * 月次画面の各日行から開く、打刻修正申請フォーム(モーダル)。
  * docs/design/ui-direction.md の方針: 遊びは打刻画面のみ、それ以外(この画面含む)は明瞭優先。
  */
-export function CorrectionForm({ date, onClose, onSubmitted, onUnauthorized }: CorrectionFormProps) {
+export function CorrectionForm({ date, autoDeductedBreakMinutes = 0, onClose, onSubmitted, onUnauthorized }: CorrectionFormProps) {
+  const hasAutoDeductedBreak = autoDeductedBreakMinutes > 0;
   const [punches, setPunches] = useState<Punch[] | null>(null);
   const [loadError, setLoadError] = useState(false);
 
@@ -93,7 +104,24 @@ export function CorrectionForm({ date, onClose, onSubmitted, onUnauthorized }: C
     setFormError(null);
 
     if (reason.length < 1 || reason.length > MAX_REASON_LENGTH) {
-      setFormError(messages.corrections.errors.invalid_reason);
+      setFormError(mode === "waiver" ? messages.autoBreakWaiver.errors.invalid_reason : messages.corrections.errors.invalid_reason);
+      return;
+    }
+
+    if (mode === "waiver") {
+      setSubmitting(true);
+      try {
+        await api.createAutoBreakWaiver({ waiveDate: date, reason });
+        onSubmitted();
+      } catch (err) {
+        if (err instanceof UnauthorizedError) {
+          onUnauthorized();
+          return;
+        }
+        setFormError(err instanceof ApiError ? mapAutoBreakWaiverErrorMessage(err.body) : messages.errors.network);
+      } finally {
+        setSubmitting(false);
+      }
       return;
     }
 
@@ -175,6 +203,13 @@ export function CorrectionForm({ date, onClose, onSubmitted, onUnauthorized }: C
               <HelpTip helpKey="correction.flow" />
             </p>
 
+            {hasAutoDeductedBreak ? (
+              <p className="correction-form__hint">
+                {messages.autoBreakWaiver.deductedNotice(formatDurationHm(autoDeductedBreakMinutes))}
+                <HelpTip helpKey="attendance.auto-break" />
+              </p>
+            ) : null}
+
             <section className="correction-form__section">
               <p className="correction-form__section-title">{messages.corrections.currentPunchesTitle}</p>
               {loadError ? <p className="correction-error">{messages.errors.loadFailed}</p> : null}
@@ -195,7 +230,11 @@ export function CorrectionForm({ date, onClose, onSubmitted, onUnauthorized }: C
             </section>
 
             <section className="correction-form__section">
-              <div className="correction-mode" role="radiogroup" aria-label="操作の種類">
+              <div
+                className={`correction-mode${hasAutoDeductedBreak ? " correction-mode--4" : ""}`}
+                role="radiogroup"
+                aria-label="操作の種類"
+              >
                 <button
                   type="button"
                   ref={firstFieldRef}
@@ -224,7 +263,20 @@ export function CorrectionForm({ date, onClose, onSubmitted, onUnauthorized }: C
                 >
                   {messages.corrections.modeCancel}
                 </button>
+                {hasAutoDeductedBreak ? (
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={mode === "waiver"}
+                    className={`correction-mode__btn${mode === "waiver" ? " correction-mode__btn--active" : ""}`}
+                    onClick={() => handleModeChange("waiver")}
+                  >
+                    {messages.autoBreakWaiver.modeWaiver}
+                  </button>
+                ) : null}
               </div>
+
+              {mode === "waiver" ? <p className="correction-form__section-title">{messages.autoBreakWaiver.formHint}</p> : null}
 
               {mode === "correct" || mode === "cancel" ? (
                 <div className="correction-field">
@@ -277,12 +329,14 @@ export function CorrectionForm({ date, onClose, onSubmitted, onUnauthorized }: C
               ) : null}
 
               <div className="correction-field">
-                <label htmlFor="correction-reason">{messages.corrections.reasonLabel}</label>
+                <label htmlFor="correction-reason">
+                  {mode === "waiver" ? messages.autoBreakWaiver.reasonLabel : messages.corrections.reasonLabel}
+                </label>
                 <textarea
                   id="correction-reason"
                   value={reason}
                   maxLength={MAX_REASON_LENGTH}
-                  placeholder={messages.corrections.reasonPlaceholder}
+                  placeholder={mode === "waiver" ? messages.autoBreakWaiver.reasonPlaceholder : messages.corrections.reasonPlaceholder}
                   onChange={(e) => setReason(e.target.value)}
                   required
                 />
@@ -304,7 +358,13 @@ export function CorrectionForm({ date, onClose, onSubmitted, onUnauthorized }: C
               {messages.corrections.cancel}
             </button>
             <button type="submit" className="k-modal__confirm k-modal__confirm--neutral" disabled={submitting}>
-              {submitting ? messages.corrections.submitting : messages.corrections.submit}
+              {mode === "waiver"
+                ? submitting
+                  ? messages.autoBreakWaiver.submitting
+                  : messages.autoBreakWaiver.submit
+                : submitting
+                  ? messages.corrections.submitting
+                  : messages.corrections.submit}
             </button>
           </div>
         </form>

@@ -22,7 +22,13 @@
  * 避けるため)`Promise.all` にせず逐次 await する。
  */
 
-import { listApprovedLeaveRequestsInRange, listValidPunches, type Database, type Transaction } from "@kizami/db";
+import {
+  listApprovedLeaveRequestsInRange,
+  listApprovedWaiverDatesInRange,
+  listValidPunches,
+  type Database,
+  type Transaction,
+} from "@kizami/db";
 import { calculate, type EngineInput, type EngineOutput, type PaidLeaveEntry, type PunchKind, type ValidPunch } from "@kizami/engine";
 import { resolveUsageMinutes, type LeaveUnit } from "@kizami/leave";
 import { buildLawTimelineForTenant, buildSettingsTimeline, standardDayMinutesForDate, TZ_OFFSET_MINUTES_JST } from "./settings.js";
@@ -79,6 +85,21 @@ export async function computeMonthlyForUser(
     fromDate: monthStartDate,
     toDate: monthEndDate,
   });
+  // 判断点(完了報告に明記): 打刻取得(punchRows)は日界またぎの区間を正しく構成するために
+  // 前後1日はみ出して取得するが、waiver の対象期間は同じ幅にする必要が無い。waiveDate は
+  // WorkStretch の帰属日(resolveAttendanceDate 後の値、暦日ではなく勤怠日)であり、かつ
+  // packages/engine/src/daily.ts の isInPeriod フィルタにより「[monthStartDate,
+  // monthEndDate] の外に帰属する区間はそもそもこの月の DailyBreakdown に現れない」。
+  // つまり月境界をまたいで隣接月に帰属する区間の waiver は、その隣接月自身の計算でしか
+  // 意味を持たない(その月の computeMonthlyForUser 呼び出しが自分の fromDate/toDate で
+  // 拾う)。よってここは打刻取得と同じ ±1 日の余裕を持たせる必要が無く、月そのものの範囲で
+  // 十分(範囲を広げても実害は無いが、意味の無い余裕を持たせて分かりにくくする理由も無い)。
+  const autoBreakWaivedDates = await listApprovedWaiverDatesInRange(db, {
+    tenantId,
+    userId,
+    fromDate: monthStartDate,
+    toDate: monthEndDate,
+  });
 
   const punches: ValidPunch[] = punchRows.map((p) => ({ kind: p.kind as PunchKind, occurredAt: p.occurredAt }));
   const paidLeave: PaidLeaveEntry[] = approvedLeaveRequests.map((r) => ({
@@ -92,6 +113,7 @@ export async function computeMonthlyForUser(
     lawTimeline,
     period: { year, month },
     paidLeave,
+    autoBreakWaivedDates,
   };
 
   return { output: calculate(input), settingsTimeline };

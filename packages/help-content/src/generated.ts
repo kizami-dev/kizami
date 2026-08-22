@@ -16,7 +16,7 @@ export type HelpAudience = "employee" | "admin";
 export type HelpOrigin = "law" | "product" | "company";
 
 /** 参照キー(ドット区切り)の文字列リテラルunion。存在しないキーの参照はコンパイルエラーになる。 */
-export type HelpKey = "agreement36.limits" | "attendance.day-boundary" | "attendance.fixed-overtime" | "attendance.flex-frame" | "attendance.late-night" | "attendance.legal-holiday" | "attendance.minute-unit" | "attendance.warnings" | "attendance.work-system" | "closing.amend" | "closing.execute" | "closing.unlock" | "correction.flow" | "law.versioning" | "leave.grant" | "leave.hourly" | "leave.mandatory-five-days" | "overtime.60h" | "permission.presets" | "privacy.internal-terms-template" | "privacy.notice-template" | "tenant.special-provision";
+export type HelpKey = "agreement36.limits" | "attendance.auto-break" | "attendance.day-boundary" | "attendance.fixed-overtime" | "attendance.flex-frame" | "attendance.late-night" | "attendance.legal-holiday" | "attendance.minute-unit" | "attendance.warnings" | "attendance.work-system" | "closing.amend" | "closing.execute" | "closing.unlock" | "correction.flow" | "law.versioning" | "leave.grant" | "leave.hourly" | "leave.mandatory-five-days" | "overtime.60h" | "permission.presets" | "privacy.internal-terms-template" | "privacy.notice-template" | "tenant.special-provision";
 
 /** 1件のヘルプエントリ(packages/help-content/README.md のfrontmatter仕様に対応)。 */
 export interface HelpEntry {
@@ -43,6 +43,15 @@ export const HELP: Record<HelpKey, HelpEntry> = {
     summary: "36協定で延長できる時間外労働は原則月45時間・年360時間までです。臨時的な特別の事情がある場合に限り、労使協定で結ぶ特別条項によって年720時間などの上限まで延長できますが、上限には回数や複数月平均の制限もあります。",
     body: "# 36協定の上限規制\n\n時間外労働・休日労働をさせるには、あらかじめ36協定(労使協定)の締結・届出が必要です。\nその延長時間には、罰則付きの上限があります(労働基準法36条4項〜6項)。\n\n## 原則(限度時間)\n\n| 区分 | 上限 |\n| --- | --- |\n| 月 | 45時間 |\n| 年 | 360時間 |\n\n## 特別条項(臨時的な特別の事情がある場合)\n\n原則の上限を超えて労働させる必要がある場合、**特別条項付きの36協定をあらかじめ締結・届出して\nいること**を前提に、以下の上限まで延長できます。特別条項がなければ、この延長は認められません。\n\n| 区分 | 上限 |\n| --- | --- |\n| 年間の時間外労働 | 720時間以内 |\n| 単月(休日労働を含む) | 100時間未満 |\n| 複数月平均(2〜6か月平均、休日労働を含む) | 80時間以内 |\n| 月45時間を超えられる回数 | 年6回まで |\n\n特別条項はあくまで「臨時的な特別の事情」がある月に限って使うためのものであり、\n恒常的に上限いっぱいまで労働させることを認める趣旨ではありません。",
     companyExample: "月40時間を超える見込みが立った時点で、所属長を通じて人事部にご相談ください。\n特別条項の適用は人事部が一元管理し、事前の承認を必要とします。",
+  },
+  "attendance.auto-break": {
+    key: "attendance.auto-break",
+    audience: ["employee","admin"],
+    origin: "product",
+    basis: "労働基準法34条(休憩)を前提とした KIZAMI の集計仕様",
+    summary: "自動控除を有効にすると、休憩の打刻がなくても所定の休憩時間が実労働から差し引かれます。実際に休憩を取れなかった日は、打ち消しを申請すると控除されず、そのぶん休憩不足の警告が表示されます。",
+    body: "# 休憩の自動控除\n\n会社の設定によっては、休憩の打刻をしなくても、勤務時間に応じた所定の休憩が\n実労働時間から自動的に差し引かれます。\n\n## 動作の種類\n\n| 設定 | 動作 |\n| --- | --- |\n| 打刻方式 | 打刻された休憩だけを差し引く(自動控除なし) |\n| 自動控除 | 打刻に関わらず、勤務時間に応じた所定の休憩を差し引く |\n| 併用 | 打刻された休憩を使い、所定の時間に満たない分だけ追加で差し引く |\n\n自動控除された時間は、月次一覧で打刻由来の休憩とは**分けて表示**されます。\n「自分で打刻していないのに休憩が引かれている」ことに気づける必要があるためです。\n\n## 実際に休憩を取れなかったときは\n\n自動控除は「休憩を取ったはず」という前提で差し引く仕組みです。\n**実際には取れなかった日にそのまま差し引かれると、働いた時間が過少に記録されます。**\n\nその日について**打ち消し申請**を出してください。承認されると:\n\n- その日の自動控除がなくなり、実労働時間が打刻どおりに戻ります\n- 休憩が法律の最低時間(6時間超で45分、8時間超で60分)に足りていなければ、\n  休憩不足の警告が表示されます — これは会社が休憩を取らせる義務を\n  果たせていないことを示すもので、あなたの記録の誤りではありません\n\n## 途中で控除の基準を下回った場合\n\n勤務6時間5分の日に45分を差し引くと、残りは5時間20分になり\n「6時間を超えたら45分」という前提そのものが崩れます。\nKIZAMI はこのような場合に**差し引いた後の時間で基準を判定し直し**、\n基準を下回るなら控除しません。差し引いたせいで働いた時間が消える、\nという不利益が起きない仕組みです。\n\nなお、差し引いた後がちょうど基準に載る場合は控除されます。\n9時から18時まで9時間いて60分を差し引くと残りはちょうど8時間ですが、\nこれは「8時間勤務+昼休憩60分」という最も一般的な働き方そのものなので、\nそのとおりに記録されます。",
+    companyExample: "当社は休憩の自動控除(6時間超で45分・8時間超で60分)を有効にしています。\n業務都合で休憩を取れなかった日は、当日中に打ち消し申請と所属長への報告をお願いします。",
   },
   "attendance.day-boundary": {
     key: "attendance.day-boundary",

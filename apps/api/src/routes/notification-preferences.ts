@@ -134,6 +134,7 @@ export function createNotificationPreferencesRoutes(db: Database, deps: Notifica
       missing_clock_out: { ...currentPrefs.missing_clock_out },
       overtime_alert: { ...currentPrefs.overtime_alert },
       leave_alert: { ...currentPrefs.leave_alert },
+      correction_alert: { ...currentPrefs.correction_alert },
     };
     for (const category of NOTIFICATION_CATEGORIES) {
       const input = body.categories[category];
@@ -184,6 +185,8 @@ export function createNotificationPreferencesRoutes(db: Database, deps: Notifica
       overtimeAlertWebhook: resolvedPrefs.overtime_alert.webhook,
       leaveAlertEmail: resolvedPrefs.leave_alert.email,
       leaveAlertWebhook: resolvedPrefs.leave_alert.webhook,
+      correctionAlertEmail: resolvedPrefs.correction_alert.email,
+      correctionAlertWebhook: resolvedPrefs.correction_alert.webhook,
       emailAddress: emailAddressResult.value,
       webhookUrl: webhookUrlToStore,
       updatedAt: now,

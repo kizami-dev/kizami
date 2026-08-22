@@ -613,7 +613,10 @@ export function MonthlyView() {
                       <th>{messages.monthly.columnDate}</th>
                       <th>{messages.monthly.columnStretches}</th>
                       <th>{messages.monthly.columnWorked}</th>
-                      <th>{messages.monthly.columnBreak}</th>
+                      <th>
+                        {messages.monthly.columnBreak}
+                        <HelpTip helpKey="attendance.auto-break" />
+                      </th>
                       <th>
                         {messages.monthly.columnLateNight}
                         <HelpTip helpKey="attendance.late-night" />
@@ -672,8 +675,17 @@ export function MonthlyView() {
                                 見えるべきなので合算して表示する。区分の内訳は月合計のチップが担う。 */}
                             {hasActivity ? formatDurationHm(day.workedMinutes + day.legalHolidayMinutes) : null}
                           </td>
-                          <td className="monthly-table__num tabular-nums" data-label={messages.monthly.columnBreak}>
-                            {hasActivity ? formatDurationHm(day.breakMinutes) : null}
+                          <td className="monthly-table__num" data-label={messages.monthly.columnBreak}>
+                            {hasActivity ? (
+                              <>
+                                <div className="tabular-nums">{formatDurationHm(day.breakMinutes)}</div>
+                                {day.autoDeductedBreakMinutes > 0 ? (
+                                  <div className="monthly-table__break-extra tabular-nums">
+                                    {messages.monthly.autoBreakLabel} {formatDurationHm(day.autoDeductedBreakMinutes)}
+                                  </div>
+                                ) : null}
+                              </>
+                            ) : null}
                           </td>
                           <td className="monthly-table__num tabular-nums" data-label={messages.monthly.columnLateNight}>
                             {hasActivity ? formatDurationHm(day.lateNightMinutes) : null}
@@ -729,6 +741,7 @@ export function MonthlyView() {
       {correctionDate ? (
         <CorrectionForm
           date={correctionDate}
+          autoDeductedBreakMinutes={data?.days.find((d) => d.date === correctionDate)?.autoDeductedBreakMinutes ?? 0}
           onClose={() => setCorrectionDate(null)}
           onSubmitted={() => {
             setCorrectionDate(null);

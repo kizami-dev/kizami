@@ -60,7 +60,7 @@ import {
 } from "@kizami/db";
 import { dispatch, type NotificationMessage, type SmtpSendFn } from "@kizami/notify";
 import { HOURLY_LEAVE_MAX_DAYS_MAX, HOURLY_LEAVE_MAX_DAYS_MIN } from "@kizami/leave";
-import type { LegalHolidayRule } from "@kizami/engine";
+import type { AutoBreakRule, BreakRule, LegalHolidayRule } from "@kizami/engine";
 import { buildInternalTerms, buildPrivacyNotice, type PrivacyTemplateInput } from "@kizami/privacy-template";
 import type { AppEnv } from "../auth/middleware.js";
 import { sha256Hex } from "../auth/api-key.js";
@@ -255,15 +255,58 @@ function isValidLegalHolidayRule(value: unknown): value is LegalHolidayRule {
 }
 
 /**
- * breakRule のランタイム検証。判断点(完了報告に明記): DB スキーマのコメント
- * (packages/db/src/schema/settings.ts)は将来値として "auto"/"both" を挙げているが、
- * engine の CalcSettings["breakRule"] は v0.1 時点で `{ mode: "punch" }` しか受け付けない
- * (packages/engine/src/types.ts)。未実装のモードを保存できてしまうと集計側が誤ったキャストで
- * 静かに壊れるため、ここでは "punch" のみを許可する(engine 側が対応したら緩める)。
+ * 自動控除ルール(auto/both の rules 配列)1テナントあたりの上限件数。
+ *
+ * 判断点(完了報告に明記): 要件・カタログに上限の明記は無い。労基法34条が要求する休憩は
+ * 「6時間超45分」「8時間超60分」の実質2段階のみで、rules はこの階層構造を表現するための
+ * ものだから、3件を超える設定は運用上ほぼ誤入力(あるいは過度に複雑な内規)である可能性が
+ * 高い。無制限に許すと編集UIの一覧が扱いにくくなるだけでなく、auto-break.ts の selectRule
+ * (全ルールを毎回線形走査する設計)にも実利の無い負荷を強いる。3件は「45分・60分の法定2段階
+ * ＋任意の社内上乗せ1段階」を想定した余裕であり、テナント側の運用実態から見て十分な数と判断した。
  */
-function isValidBreakRule(value: unknown): value is { mode: "punch" } {
+const MAX_AUTO_BREAK_RULES = 3;
+
+function isValidAutoBreakRule(value: unknown): value is AutoBreakRule {
   if (typeof value !== "object" || value === null) return false;
-  return (value as Record<string, unknown>).mode === "punch";
+  const v = value as Record<string, unknown>;
+  return (
+    typeof v.overMinutes === "number" &&
+    Number.isInteger(v.overMinutes) &&
+    v.overMinutes >= 0 &&
+    typeof v.deductMinutes === "number" &&
+    Number.isInteger(v.deductMinutes) &&
+    v.deductMinutes >= 1
+  );
+}
+
+/**
+ * breakRule のランタイム検証(2026-08-23: engine が "auto"/"both" に対応したため、
+ * "punch" だけを許可していた暫定実装〔2026-08-22〕から拡張する)。
+ *
+ * - "punch": rules を持たない
+ * - "auto" / "both": rules は必須。空でない配列・要素数は高々 MAX_AUTO_BREAK_RULES 件
+ *   (上のコメント参照)。各要素は overMinutes(0以上の整数)・deductMinutes(1以上の整数)を持つ。
+ *   overMinutes は昇順・重複なしでなければならない — auto-break.ts の selectRule は
+ *   「適用可能なルールのうち overMinutes が最大のものを採る」前提で書かれており、
+ *   重複・逆順のルール集合は入力として無意味(どのルールを指しているか一意に決まらない)な
+ *   設定ミスであるため、保存時点で弾く。
+ */
+function isValidBreakRule(value: unknown): value is BreakRule {
+  if (typeof value !== "object" || value === null) return false;
+  const v = value as Record<string, unknown>;
+
+  if (v.mode === "punch") return true;
+  if (v.mode !== "auto" && v.mode !== "both") return false;
+
+  if (!Array.isArray(v.rules) || v.rules.length === 0 || v.rules.length > MAX_AUTO_BREAK_RULES) return false;
+
+  let prevOverMinutes = -1;
+  for (const rule of v.rules) {
+    if (!isValidAutoBreakRule(rule)) return false;
+    if (rule.overMinutes <= prevOverMinutes) return false; // 昇順・重複なし
+    prevOverMinutes = rule.overMinutes;
+  }
+  return true;
 }
 
 interface PutBody {
@@ -295,7 +338,7 @@ function serializeTenantSettingVersion(v: TenantSettingVersion) {
     dayBoundaryMinutes: v.dayBoundaryMinutes,
     weekStartWeekday: v.weekStartWeekday,
     legalHolidayRule: JSON.parse(v.legalHolidayRule) as LegalHolidayRule,
-    breakRule: JSON.parse(v.breakRule) as { mode: "punch" },
+    breakRule: JSON.parse(v.breakRule) as BreakRule,
     gpsEnabled: v.gpsEnabled,
     gpsRetentionDays: v.gpsRetentionDays,
     createdAt: v.createdAt,

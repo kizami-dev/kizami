@@ -156,7 +156,7 @@ describe("deriveSegments — stretches (打刻の事実)", () => {
   it("a normal clock_in/clock_out pair produces one stretch", () => {
     const result = deriveSegments([punch("clock_in", 0), punch("clock_out", 480)], timeline);
     expect(result.stretches).toEqual([
-      { clockInAt: 0, clockOutAt: 480, workedMinutes: 480, breakMinutes: 0 },
+      { clockInAt: 0, clockOutAt: 480, workedMinutes: 480, breakMinutes: 0, autoDeductedBreakMinutes: 0 },
     ]);
   });
 
@@ -166,7 +166,7 @@ describe("deriveSegments — stretches (打刻の事実)", () => {
       timeline,
     );
     expect(result.stretches).toEqual([
-      { clockInAt: 0, clockOutAt: 480, workedMinutes: 420, breakMinutes: 60 },
+      { clockInAt: 0, clockOutAt: 480, workedMinutes: 420, breakMinutes: 60, autoDeductedBreakMinutes: 0 },
     ]);
   });
 
@@ -179,8 +179,8 @@ describe("deriveSegments — stretches (打刻の事実)", () => {
     ];
     const result = deriveSegments(punches, timeline);
     expect(result.stretches).toEqual([
-      { clockInAt: 0, clockOutAt: 240, workedMinutes: 240, breakMinutes: 0 },
-      { clockInAt: 300, clockOutAt: 480, workedMinutes: 180, breakMinutes: 0 },
+      { clockInAt: 0, clockOutAt: 240, workedMinutes: 240, breakMinutes: 0, autoDeductedBreakMinutes: 0 },
+      { clockInAt: 300, clockOutAt: 480, workedMinutes: 180, breakMinutes: 0, autoDeductedBreakMinutes: 0 },
     ]);
   });
 
@@ -188,8 +188,8 @@ describe("deriveSegments — stretches (打刻の事実)", () => {
     const punches = [punch("clock_in", 0), punch("clock_out", 100), punch("clock_in", 150)];
     const result = deriveSegments(punches, timeline);
     expect(result.stretches).toEqual([
-      { clockInAt: 0, clockOutAt: 100, workedMinutes: 100, breakMinutes: 0 },
-      { clockInAt: 150, clockOutAt: null, workedMinutes: null, breakMinutes: null },
+      { clockInAt: 0, clockOutAt: 100, workedMinutes: 100, breakMinutes: 0, autoDeductedBreakMinutes: 0 },
+      { clockInAt: 150, clockOutAt: null, workedMinutes: null, breakMinutes: null, autoDeductedBreakMinutes: null },
     ]);
     // 集計(workedSegments)からは除外されるが、stretches には打刻の事実として残る
     expect(result.workedSegments).toEqual([{ start: 0, end: 100 }]);
@@ -199,7 +199,7 @@ describe("deriveSegments — stretches (打刻の事実)", () => {
     const punches = [punch("clock_in", 0), punch("break_start", 50), punch("clock_out", 80)];
     const result = deriveSegments(punches, timeline);
     expect(result.stretches).toEqual([
-      { clockInAt: 0, clockOutAt: 80, workedMinutes: 50, breakMinutes: 30 },
+      { clockInAt: 0, clockOutAt: 80, workedMinutes: 50, breakMinutes: 30, autoDeductedBreakMinutes: 0 },
     ]);
   });
 
@@ -207,7 +207,7 @@ describe("deriveSegments — stretches (打刻の事実)", () => {
     const punches = [punch("clock_in", 0), punch("break_start", 50)];
     const result = deriveSegments(punches, timeline);
     expect(result.stretches).toEqual([
-      { clockInAt: 0, clockOutAt: null, workedMinutes: null, breakMinutes: null },
+      { clockInAt: 0, clockOutAt: null, workedMinutes: null, breakMinutes: null, autoDeductedBreakMinutes: null },
     ]);
   });
 });

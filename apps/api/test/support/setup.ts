@@ -22,6 +22,7 @@ import {
   type Database,
 } from "@kizami/db";
 import { createEncryptor, type Encryptor } from "@kizami/crypto";
+import type { BreakRule } from "@kizami/engine";
 import { hashPassword } from "../../src/auth/password.js";
 
 /**
@@ -135,6 +136,33 @@ export async function switchToFixedWorkPolicy(
     settlementPeriod: "monthly", // fixed では無視される列。プレースホルダとして "monthly" を入れる
     core: null,
     standardDayMinutes: params.standardDayMinutes,
+    createdAt: 0,
+  });
+}
+
+/**
+ * `setupTestDb()` 済みのテナントの breakRule を切り替える(新しい tenant_setting_versions を
+ * 追記する、switchToFixedWorkPolicy と同じ「原則6どおり追記専用」の形)。
+ *
+ * POST /settings/attendance ではなく直接 DB へ挿入する理由: そのエンドポイントは
+ * 過去日への版追加を禁止する(`effectiveFrom < today` は 409)ため、テストで固定した
+ * "今日"(FIXED_NOW)より前の対象月(例: 2026-04)に対して breakRule を効かせたい場合、
+ * API 経由では実現できない。switchToFixedWorkPolicy と同じ理由で "1970-01-01"(setupTestDb
+ * の初期版と同値)は避け、既定 "2000-01-01" にする。
+ */
+export async function setBreakRule(
+  db: Database,
+  params: { tenantId: string; breakRule: BreakRule; effectiveFrom?: string },
+): Promise<void> {
+  await db.insert(tenantSettingVersions).values({
+    id: uuidv7(),
+    tenantId: params.tenantId,
+    effectiveFrom: params.effectiveFrom ?? "2000-01-01",
+    dayBoundaryMinutes: 0,
+    legalHolidayRule: JSON.stringify({ kind: "weekday", weekday: 0 }),
+    breakRule: JSON.stringify(params.breakRule),
+    gpsEnabled: false,
+    gpsRetentionDays: null,
     createdAt: 0,
   });
 }

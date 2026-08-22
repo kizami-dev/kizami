@@ -9,6 +9,7 @@ import { MonthClosedError, MonthClosedRequiresUnlockError } from "./lib/closing-
 import { createApiKeysRoutes } from "./routes/api-keys.js";
 import { createAttendanceRoutes } from "./routes/attendance.js";
 import { createAuthRoutes } from "./routes/auth.js";
+import { createAutoBreakWaiversRoutes } from "./routes/auto-break-waivers.js";
 import { createClosingsRoutes } from "./routes/closings.js";
 import { createCorrectionsRoutes } from "./routes/corrections.js";
 import { createDepartmentsRoutes } from "./routes/departments.js";
@@ -84,6 +85,9 @@ export function createApp(deps: CreateAppDeps) {
   authed.route("/punches", createPunchesRoutes(db));
   authed.route("/attendance", createAttendanceRoutes(db));
   authed.route("/corrections", createCorrectionsRoutes(db));
+  // 休憩自動控除の打ち消し申請(docs/design/breaks.md)。承認通知の送信に settings.ts と同じ
+  // notify 依存(smtpSendFn 等)+ encryptor を必要とするため、同じ deps をそのまま渡す。
+  authed.route("/auto-break-waivers", createAutoBreakWaiversRoutes(db, { ...(notify ?? {}), encryptor: encryptor ?? null }));
   authed.route("/notifications", createNotificationsRoutes(db));
   authed.route("/settings", createSettingsRoutes(db, { ...(notify ?? {}), encryptor: encryptor ?? null }));
   // 個人の通知受け取り設定(GET/PUT /settings/notifications/me, POST /settings/notifications/me/test)。

@@ -17,7 +17,7 @@ import { useSettingsAccess } from "../lib/useSettingsAccess";
 import { AppHeader } from "./AppHeader";
 import { ConfirmDialog } from "./ConfirmDialog";
 
-const CATEGORIES: PersonalNotificationCategory[] = ["missing_clock_out", "overtime_alert", "leave_alert"];
+const CATEGORIES: PersonalNotificationCategory[] = ["missing_clock_out", "overtime_alert", "leave_alert", "correction_alert"];
 
 interface FormState {
   categories: Record<PersonalNotificationCategory, { email: boolean; webhook: boolean }>;
@@ -113,6 +113,7 @@ export function PersonalNotificationSettingsView() {
         missing_clock_out: { email: form.categories.missing_clock_out.email, webhook: form.categories.missing_clock_out.webhook },
         overtime_alert: { email: form.categories.overtime_alert.email, webhook: form.categories.overtime_alert.webhook },
         leave_alert: { email: form.categories.leave_alert.email, webhook: form.categories.leave_alert.webhook },
+        correction_alert: { email: form.categories.correction_alert.email, webhook: form.categories.correction_alert.webhook },
       },
       // 空欄のまま送信 = 既存値を維持(3値ルールのうち「省略」に相当)。
       ...(form.emailAddress.trim() !== "" ? { emailAddress: form.emailAddress.trim() } : {}),

@@ -68,9 +68,31 @@ export interface CalcSettings {
   weekStartWeekday: 0 | 1 | 2 | 3 | 4 | 5 | 6;
   legalHoliday: LegalHolidayRule;
   workSystem: WorkSystem;
-  /** v0.1 は打刻方式のみ。自動控除は v1.0 */
-  breakRule: { mode: "punch" };
+  breakRule: BreakRule;
 }
+
+/**
+ * 自動控除のルール1件(docs/design/breaks.md「採る設計」)。
+ * 実労働(休憩控除後)が `overMinutes` を超えたら、合計 `deductMinutes` になるまで控除する。
+ * 判定・適用の詳細な意味論(閾値の選び方・punch/both との組み合わせ)は auto-break.ts 参照。
+ */
+export interface AutoBreakRule {
+  overMinutes: number;
+  deductMinutes: number;
+}
+
+/**
+ * 休憩控除のルール(判別可能ユニオン、docs/design/breaks.md)。
+ * 自動控除を「打刻を生成する」形で実装しない代わりに、集計時にこのルールで控除する
+ * (breaks.md「採る設計」節)。
+ */
+export type BreakRule =
+  /** 打刻された休憩のみ控除(現行) */
+  | { mode: "punch" }
+  /** 打刻を無視し、実労働に応じた所定の休憩を控除する。rules は複数件でも良い(閾値の異なる階層) */
+  | { mode: "auto"; rules: AutoBreakRule[] }
+  /** 打刻された休憩を使い、rules の控除量に満たなければ差分を追加控除する */
+  | { mode: "both"; rules: AutoBreakRule[] };
 
 /** effective-dated 設定(原則6)。from はローカル日付、その日から有効 */
 export interface SettingsSpan {
@@ -100,6 +122,12 @@ export interface EngineInput {
    * 同じ日に複数エントリがある場合は合算する(午前2時間+午後1時間など)。
    */
   paidLeave: PaidLeaveEntry[];
+  /**
+   * 承認済みの自動控除打ち消し(waiver)日。ここに含まれる日に始まる勤務区間には
+   * 自動控除(breakRule の auto/both)を適用しない(docs/design/breaks.md「採る設計」)。
+   * 打刻を修正するのではなく独立した申請として扱うため、打刻列とは別にこの配列で渡す。
+   */
+  autoBreakWaivedDates?: PlainDateString[];
 }
 
 /** 有給の取得。日単位・時間単位のどちらも「その日に何分ぶん有給を使ったか」で表す */
@@ -163,19 +191,35 @@ export interface WorkStretch {
   /** 退勤打刻。未退勤(missing_clock_out で集計除外)なら null */
   clockOutAt: number | null;
   /**
-   * この勤務区間の実労働(休憩控除後、分)。休憩不足判定(labor law §34-1)は
-   * 勤怠日ではなくこの単位で行う(break-check.ts 参照)。未退勤なら null(確定していない)。
+   * この勤務区間の実労働(分)。**自動控除(breakRule の auto/both)を適用した後**の値
+   * (auto-break.ts 参照)。休憩不足判定(labor law §34-1)は勤怠日ではなくこの単位で行う
+   * (break-check.ts 参照)。未退勤なら null(確定していない)。
    */
   workedMinutes: number | null;
-  /** この勤務区間の休憩合計(分)。未退勤なら null */
+  /**
+   * この勤務区間の打刻由来の休憩合計(分)。自動控除は含まない
+   * (`autoDeductedBreakMinutes` に分けて持つ — DailyBreakdown と同じ理由)。未退勤なら null
+   */
   breakMinutes: number | null;
+  /**
+   * この勤務区間で自動控除された休憩(分)。breakRule が "punch" か、waiver 適用日か、
+   * 実労働がどのルールの閾値にも届かなければ 0。未退勤なら null(自動控除もまだ確定しない)
+   */
+  autoDeductedBreakMinutes: number | null;
 }
 
 export interface DailyBreakdown {
   date: PlainDateString;
   /** 実労働(休憩控除後)。法定休日の労働は workedMinutes に含めず legalHolidayMinutes へ */
   workedMinutes: number;
+  /** 打刻由来の休憩(分)。自動控除は含まない(下記 autoDeductedBreakMinutes 参照) */
   breakMinutes: number;
+  /**
+   * 自動控除された休憩(分、breakRule が auto/both のときのみ非0になりうる)。
+   * breakMinutes(打刻由来)とは合算しない — 本人が「これは自動で引かれた分だ」と
+   * 気づけることが要件だから(docs/design/breaks.md「採る設計」)。
+   */
+  autoDeductedBreakMinutes: number;
   /** 暦時刻 22:00〜翌5:00 と実労働の重なり(法定休日分も含む) */
   lateNightMinutes: number;
   isLegalHoliday: boolean;

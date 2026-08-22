@@ -126,6 +126,11 @@ export interface DailyBreakdown {
   date: string;
   workedMinutes: number;
   breakMinutes: number;
+  /**
+   * 休憩の自動控除(分、2026-08-23 追加、docs/design/breaks.md「採る設計」)。
+   * 打刻由来の breakMinutes とは別。合算しない — 本人が「自動で引かれた分」に気づけることが要件。
+   */
+  autoDeductedBreakMinutes: number;
   lateNightMinutes: number;
   isLegalHoliday: boolean;
   legalHolidayMinutes: number;
@@ -258,7 +263,7 @@ export interface NotificationTestResult {
  * apps/api/src/routes/notification-preferences.ts の serialize と一致させる。
  * 上の NotificationSettingsDto(テナント共有のチャネル接続情報)とは別物 — 混同しないこと。
  */
-export type PersonalNotificationCategory = "missing_clock_out" | "overtime_alert" | "leave_alert";
+export type PersonalNotificationCategory = "missing_clock_out" | "overtime_alert" | "leave_alert" | "correction_alert";
 
 export interface PersonalNotificationCategoryPrefsDto {
   /** 常時 true(アプリ内通知はOFFにできない)。 */
@@ -428,14 +433,38 @@ export interface TenantLawProfileDto {
 export type LegalHolidayRuleDto = { kind: "weekday"; weekday: 0 | 1 | 2 | 3 | 4 | 5 | 6 } | { kind: "dates"; dates: string[] };
 
 /**
+ * 休憩の自動控除ルール1件(2026-08-23 追加、docs/design/breaks.md「採る設計」)。
+ * overMinutes(この分数を超えたら)・deductMinutes(控除する分数)。apps/api の
+ * routes/settings.ts isValidBreakRule と同じ制約(昇順・重複なし・高々3件)はサーバー側で検証される。
+ */
+export interface AutoBreakRuleDto {
+  overMinutes: number;
+  deductMinutes: number;
+}
+
+/**
+ * 休憩ルール(BreakRule、packages/engine の型を apps/web の既存方針どおりここに再定義)。
+ * punch=打刻のみ、auto=自動控除のみ(打刻の休憩は無視)、both=打刻された休憩を使い
+ * 法定最低に満たなければ差分を追加控除。
+ */
+export type BreakRuleDto = { mode: "punch" } | { mode: "auto" | "both"; rules: AutoBreakRuleDto[] };
+
+/**
  * テナント設定の版(apps/api/src/routes/settings.ts の GET/POST /settings/attendance と一致)。
  * effective-dated(原則6): 編集は「新しい版を追加」のみで、既存の版は変更されない。
  */
 export interface AttendanceSettingVersionDto {
   effectiveFrom: string;
   dayBoundaryMinutes: number;
+  /**
+   * 週の起算曜日(0=日曜〜6=土曜)。週40時間判定(固定時間制の週次時間外)の週の区切り。
+   * 2026-08-23 追加 — 既存の版管理フォームがこのフィールドを送っておらず
+   * POST /settings/attendance が invalid_week_start_weekday で必ず 400 になっていた
+   * (apps/web 側の既存バグ、本タスクで発覚・修正。完了報告に明記)。
+   */
+  weekStartWeekday: number;
   legalHolidayRule: LegalHolidayRuleDto;
-  breakRule: { mode: "punch" };
+  breakRule: BreakRuleDto;
   gpsEnabled: boolean;
   gpsRetentionDays: number | null;
   createdAt: number;
@@ -461,8 +490,9 @@ export interface AttendanceCapabilitiesDto {
 export interface CreateAttendanceSettingVersionInput {
   effectiveFrom: string;
   dayBoundaryMinutes: number;
+  weekStartWeekday: number;
   legalHolidayRule: LegalHolidayRuleDto;
-  breakRule: { mode: "punch" };
+  breakRule: BreakRuleDto;
   gpsEnabled: boolean;
   gpsRetentionDays: number | null;
 }
@@ -701,6 +731,33 @@ export interface CreateApiKeyInput {
   expiresAt?: number | null;
 }
 
+export type AutoBreakWaiverStatus = "pending" | "approved" | "rejected" | "withdrawn";
+
+/**
+ * 休憩自動控除の打ち消し申請(auto_break_waivers、2026-08-23 追加、docs/design/breaks.md「採る設計」)。
+ * apps/api/src/routes/auto-break-waivers.ts の serializeWaiver と一致させる。
+ * correction_requests とは別テーブル(打刻の存在しない自動控除には correction_requests が
+ * 使えないため) — CorrectionRequestDto とは意図的に別の型にする。
+ */
+export interface AutoBreakWaiverDto {
+  id: string;
+  userId: string;
+  requestedBy: string;
+  status: AutoBreakWaiverStatus;
+  waiveDate: string;
+  reason: string;
+  decidedBy: string | null;
+  decidedAt: number | null;
+  decisionNote: string | null;
+  createdAt: number;
+}
+
+export interface CreateAutoBreakWaiverInput {
+  /** "YYYY-MM-DD" */
+  waiveDate: string;
+  reason: string;
+}
+
 export const api = {
   async login(email: string, password: string): Promise<{ user: AuthUser }> {
     return request("/auth/login", { method: "POST", body: JSON.stringify({ email, password }) });
@@ -754,6 +811,36 @@ export const api = {
 
   async withdrawCorrection(id: string): Promise<{ request: CorrectionRequestDto }> {
     return request(`/corrections/${id}/withdraw`, { method: "POST" });
+  },
+
+  /**
+   * GET /auto-break-waivers。status 省略時は pending。userId 省略時は自分の分
+   * (VIEW_ALL_PERMISSION を持つ場合は自動的にスコープ内全員分になる、apps/api 側の挙動)。
+   */
+  async listAutoBreakWaivers(status: "pending" | "all" = "pending", userId?: string): Promise<{ requests: AutoBreakWaiverDto[] }> {
+    const params = new URLSearchParams({ status });
+    if (userId) params.set("userId", userId);
+    return request(`/auto-break-waivers?${params.toString()}`);
+  },
+
+  /** POST /auto-break-waivers。本人分のみ作成できる。targetMonthClosed=true なら対象月は締め済み。 */
+  async createAutoBreakWaiver(input: CreateAutoBreakWaiverInput): Promise<{ waiver: AutoBreakWaiverDto; targetMonthClosed: boolean }> {
+    return request("/auto-break-waivers", { method: "POST", body: JSON.stringify(input) });
+  },
+
+  /** POST /auto-break-waivers/:id/approve(attendance.correction.approve)。amended=true なら締め済み月に反映された。 */
+  async approveAutoBreakWaiver(id: string, note?: string): Promise<{ waiver: AutoBreakWaiverDto; amended: boolean }> {
+    return request(`/auto-break-waivers/${id}/approve`, { method: "POST", body: JSON.stringify(note ? { note } : {}) });
+  },
+
+  /** POST /auto-break-waivers/:id/reject(attendance.correction.approve)。 */
+  async rejectAutoBreakWaiver(id: string, note?: string): Promise<{ waiver: AutoBreakWaiverDto }> {
+    return request(`/auto-break-waivers/${id}/reject`, { method: "POST", body: JSON.stringify(note ? { note } : {}) });
+  },
+
+  /** POST /auto-break-waivers/:id/withdraw(本人のみ・pending のみ)。 */
+  async withdrawAutoBreakWaiver(id: string): Promise<{ waiver: AutoBreakWaiverDto }> {
+    return request(`/auto-break-waivers/${id}/withdraw`, { method: "POST" });
   },
 
   async unreadNotificationCount(): Promise<{ count: number }> {

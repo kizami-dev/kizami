@@ -68,6 +68,12 @@ export function deriveSegments(punches: ValidPunch[], settingsTimeline: Settings
         clockOutAt,
         workedMinutes: sumMinutes(stretchSegments),
         breakMinutes: sumMinutes(stretchBreaks),
+        // 自動控除(breakRule の auto/both)はこの時点ではまだ適用されていない
+        // (deriveSegments は打刻列の解釈のみを行う純粋な状態機械であり、休憩ルールの
+        // 適用は関知しない)。後段の auto-break.ts が実際の控除量で上書きする。
+        // 0 で初期化するのは「まだ控除していない」の意であって、確定した0(punch モードや
+        // 閾値未満で控除なし)と区別する必要が生じたことはない — どちらも最終的に同じ値になる。
+        autoDeductedBreakMinutes: 0,
       });
     }
     stretchSegments = [];
@@ -81,7 +87,13 @@ export function deriveSegments(punches: ValidPunch[], settingsTimeline: Settings
       // 集計(workedSegments/breakSegments)には含めないが、打刻の事実として stretches には残す。
       // 未退勤は実労働・休憩とも確定していないため workedMinutes/breakMinutes は null
       // (休憩不足判定の対象からも自動的に外れる — break-check.ts 参照)。
-      stretches.push({ clockInAt: stretchStart, clockOutAt: null, workedMinutes: null, breakMinutes: null });
+      stretches.push({
+        clockInAt: stretchStart,
+        clockOutAt: null,
+        workedMinutes: null,
+        breakMinutes: null,
+        autoDeductedBreakMinutes: null,
+      });
     }
     stretchSegments = [];
     stretchBreaks = [];

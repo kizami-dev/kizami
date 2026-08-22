@@ -1,0 +1,2 @@
+ALTER TABLE `user_notification_settings` ADD `correction_alert_email` integer DEFAULT false NOT NULL;--> statement-breakpoint
+ALTER TABLE `user_notification_settings` ADD `correction_alert_webhook` integer DEFAULT false NOT NULL;

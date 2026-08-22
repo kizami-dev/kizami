@@ -58,10 +58,13 @@ export const PERMISSION_CATALOG: readonly PermissionCatalogEntry[] = [
     DEPT_SCOPES,
     false,
   ),
+  // 判断点(2026-08-23): 休憩の自動控除打ち消し申請(auto_break_waivers)の承認もこの権限で
+  // 行う。承認者は打刻修正と運用上同じ層であり、カタログ項目を分けるとプリセット編集UIの
+  // チェックボックスが増えるだけで判断は変わらない。ラベルは両方を正直にカバーする文言にする。
   entry(
     "attendance.correction.approve",
-    "打刻修正申請を承認できる",
-    "メンバーから提出された打刻修正申請を承認し、勤怠記録に反映する",
+    "勤怠の修正系申請を承認できる",
+    "メンバーから提出された打刻修正申請・休憩の自動控除打ち消し申請を承認し、勤怠記録に反映する",
     DEPT_SCOPES,
     false,
   ),

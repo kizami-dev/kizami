@@ -33,6 +33,9 @@ describe("GET/PUT /settings/notifications/me", () => {
       missing_clock_out: { inapp: true, email: false, webhook: false },
       overtime_alert: { inapp: true, email: false, webhook: false },
       leave_alert: { inapp: true, email: false, webhook: false },
+      // correction_alert(2026-08-23 追加): 専用の DB 列が無く常に既定値のまま
+      // (apps/api/src/lib/notification-preferences.ts の判断点コメント参照)。
+      correction_alert: { inapp: true, email: false, webhook: false },
     });
     expect(body.emailAddress).toEqual({ value: null, effective: email });
     expect(body.webhookUrl).toEqual({ configured: false, preview: null });
@@ -55,6 +58,7 @@ describe("GET/PUT /settings/notifications/me", () => {
       missing_clock_out: { inapp: true, email: true, webhook: false },
       overtime_alert: { inapp: true, email: false, webhook: false },
       leave_alert: { inapp: true, email: false, webhook: false },
+      correction_alert: { inapp: true, email: false, webhook: false },
     });
 
     // 再読み込み(GET)しても反映されている
@@ -182,6 +186,9 @@ describe("GET/PUT /settings/notifications/me", () => {
       missing_clock_out: { inapp: true, email: false, webhook: false },
       overtime_alert: { inapp: true, email: false, webhook: false },
       leave_alert: { inapp: true, email: false, webhook: false },
+      // correction_alert(2026-08-23 追加): 専用の DB 列が無く常に既定値のまま
+      // (apps/api/src/lib/notification-preferences.ts の判断点コメント参照)。
+      correction_alert: { inapp: true, email: false, webhook: false },
     });
     expect(body2.emailAddress).toEqual({ value: null, effective: email2 });
 

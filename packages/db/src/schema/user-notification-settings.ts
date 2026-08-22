@@ -50,6 +50,10 @@ export const userNotificationSettings = sqliteTable(
     leaveAlertEmail: integer("leave_alert_email", { mode: "boolean" }).notNull().default(false),
     leaveAlertWebhook: integer("leave_alert_webhook", { mode: "boolean" }).notNull().default(false),
 
+    /** 修正系申請の承認・却下通知(correction_* / auto_break_waiver_*。2026-08-23 追加) */
+    correctionAlertEmail: integer("correction_alert_email", { mode: "boolean" }).notNull().default(false),
+    correctionAlertWebhook: integer("correction_alert_webhook", { mode: "boolean" }).notNull().default(false),
+
     /** null なら users.email を使う(API 層で解決) */
     emailAddress: text("email_address"),
     /** 個人の Webhook URL。暗号化して保存(apps/api/src/lib/encryption.ts) */
