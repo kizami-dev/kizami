@@ -71,10 +71,12 @@ describe("correction request flow", () => {
     expect(approved.request.status).toBe("approved");
     expect(approved.appliedEvent).toEqual({ id: expect.any(String), kind: "clock_out", occurredAt: clockOutAt });
 
-    // 承認後: 退勤打刻忘れの日が正しく計上され、警告が消える
+    // 承認後: 退勤打刻忘れの日が正しく計上され、missing_clock_out 警告が消える。
+    // 9:00〜18:00 休憩なしの勤務になるため insufficient_break(労基法34条)は正しく残る —
+    // これはこのテストの関心(修正申請の反映)とは別の、意図された検知(2026-08-23 追加)。
     const afterRes = await app.request("/attendance/monthly?month=2026-04", { headers: { cookie } });
-    const after = (await afterRes.json()) as { warnings: unknown[]; totals: { statutory: number } };
-    expect(after.warnings).toEqual([]);
+    const after = (await afterRes.json()) as { warnings: Array<{ kind: string }>; totals: { statutory: number } };
+    expect(after.warnings.map((w) => w.kind)).toEqual(["insufficient_break"]);
     expect(after.totals.statutory).toBeGreaterThan(0);
   });
 

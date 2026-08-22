@@ -34,6 +34,20 @@ export interface TenantLawProfile {
 export interface LawRules {
   /** 週の法定労働時間(分)。原則 2400(40時間)。労基法32条1項 */
   weeklyStatutoryMinutes: number;
+  /**
+   * 1日の法定労働時間(分)。480(8時間)。労基法32条2項。
+   * 特例措置対象事業場(週44時間)でも1日8時間は変わらない — 緩和されるのは週の方だけ
+   * (労基法40条・労基法施行規則25条の2は「週」の特例であり「日」には及ばない)。
+   * そのため `resolve.ts` の `applySpecialProvisionWorkplaceOverride` はこのフィールドを上書きしない。
+   */
+  dailyStatutoryMinutes: number;
+  /**
+   * 休憩の付与義務(労基法34条1項)。実労働が overMinutes を超えたら
+   * minimumMinutes 以上の休憩が必要。閾値の大きい順に評価する。
+   * 「超える」は厳密な超過(ちょうど overMinutes なら義務は発生しない)。
+   * 判定側の実装は engine/src/break-check.ts 参照。
+   */
+  breakRequirements: ReadonlyArray<{ overMinutes: number; minimumMinutes: number }>;
   /** 深夜帯(ローカル時刻の分。22:00=1320, 翌5:00=300)。労基法37条4項 */
   lateNight: { startMinutes: number; endMinutes: number };
   /** 月60時間超の時間外に対する区分を分けるかと、その閾値(分)。労基法37条1項ただし書 */

@@ -44,7 +44,7 @@ import { ForbiddenError, requireSelf } from "../authz.js";
 import { periodFromDate, resolveAttendanceDate } from "../lib/attendance-date.js";
 import { assertAmendAllowed } from "../lib/closing-guard.js";
 import { computeMonthlyOutputForUser } from "../lib/closing-amend.js";
-import { engineOutputFromSnapshots, snapshotInputsFromEngineOutput } from "../lib/closing-snapshot.js";
+import { engineOutputFromSnapshots, snapshotInputsFromEngineOutput, sumFixedBreakdown } from "../lib/closing-snapshot.js";
 import { FUTURE_TOLERANCE_MINUTES, isValidPunchKind } from "./punches.js";
 import { nowMinutes, parseMonthParam } from "../lib/time.js";
 
@@ -410,8 +410,7 @@ export function createCorrectionsRoutes(db: Database) {
               tenantId: user.tenantId,
               closingEventId: amendEvent.id,
               userId: existing.userId,
-              totals: output.totals,
-              flexBalance: output.flexBalance,
+              output,
             }),
           );
 
@@ -425,7 +424,11 @@ export function createCorrectionsRoutes(db: Database) {
               period,
               correctionRequestId: existing.id,
               before,
-              after: { totals: output.totals, flexBalance: output.flexBalance },
+              after: {
+                totals: output.totals,
+                flexBalance: output.flexBalance,
+                fixedBreakdown: output.workSystem === "fixed" ? sumFixedBreakdown(output.days) : null,
+              },
             }),
             occurredAt: now,
           });

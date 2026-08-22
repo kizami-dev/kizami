@@ -73,6 +73,28 @@ export function formatDateTimeJst(minutes: number): string {
   return `${formatDateLabel(dateStrFromEpochMinutesJst(minutes))} ${formatTimeJst(minutes)}`;
 }
 
+/** "YYYY-MM-DD" → 暦日インデックス(UTC 0時基準の日数)。日付同士の前後比較・差分計算用。 */
+function epochDayFromDateStr(dateStr: string): number {
+  const parts = dateStr.split("-").map(Number);
+  const year = parts[0] ?? 1970;
+  const month = parts[1] ?? 1;
+  const day = parts[2] ?? 1;
+  return Math.floor(Date.UTC(year, month - 1, day) / 86_400_000);
+}
+
+/** JST の暦日 "YYYY-MM-DD" 同士の日数差(b - a)。月次一覧の「翌」判定に使う。 */
+export function diffCalendarDaysJst(aDateStr: string, bDateStr: string): number {
+  return epochDayFromDateStr(bDateStr) - epochDayFromDateStr(aDateStr);
+}
+
+/** "YYYY-MM-DD" → "M/D"(曜日なし)。日をまたいだ退勤時刻の表示など、短く日付だけ示したい場面用。 */
+export function formatMonthDayShort(dateStr: string): string {
+  const parts = dateStr.split("-").map(Number);
+  const month = parts[1] ?? 1;
+  const day = parts[2] ?? 1;
+  return `${month}/${day}`;
+}
+
 /** 分数 → "H:MM" (tabular-nums 表示用)。 */
 export function formatDurationHm(minutes: number): string {
   const sign = minutes < 0 ? "-" : "";

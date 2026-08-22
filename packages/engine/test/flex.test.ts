@@ -7,8 +7,9 @@ import type { CalcSettings, LawTimelineSpan, SettingsSpan } from "../src/types.j
 const settings: CalcSettings = {
   tzOffsetMinutes: 540,
   dayBoundaryMinutes: 0,
+  weekStartWeekday: 0,
   legalHoliday: { kind: "weekday", weekday: 0 },
-  flex: { settlement: "monthly", core: null, standardDayMinutes: 480 },
+  workSystem: { kind: "flex", settlement: "monthly", core: null, standardDayMinutes: 480 },
   breakRule: { mode: "punch" },
 };
 

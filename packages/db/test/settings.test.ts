@@ -28,6 +28,7 @@ describe("tenant_setting_versions", () => {
         breakRule: JSON.stringify({ mode: "punch" }),
         gpsEnabled: false,
         gpsRetentionDays: null,
+        weekStartWeekday: 0,
         createdAt: 0,
       },
       {
@@ -39,6 +40,7 @@ describe("tenant_setting_versions", () => {
         breakRule: JSON.stringify({ mode: "punch" }),
         gpsEnabled: true,
         gpsRetentionDays: 90,
+        weekStartWeekday: 0,
         createdAt: 1,
       },
       {
@@ -50,6 +52,7 @@ describe("tenant_setting_versions", () => {
         breakRule: JSON.stringify({ mode: "both" }),
         gpsEnabled: true,
         gpsRetentionDays: null,
+        weekStartWeekday: 0,
         createdAt: 2,
       },
     ]);

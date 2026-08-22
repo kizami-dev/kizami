@@ -10,7 +10,7 @@
  */
 
 import { resolveAttendanceDate } from "./date.js";
-import type { CalcWarning, SettingsSpan, ValidPunch, WarningKind } from "./types.js";
+import type { CalcWarning, SettingsSpan, ValidPunch, WarningKind, WorkStretch } from "./types.js";
 
 export interface Segment {
   /** UTC エポック分(含む) */
@@ -23,6 +23,11 @@ export interface DeriveResult {
   workedSegments: Segment[];
   breakSegments: Segment[];
   warnings: CalcWarning[];
+  /**
+   * 出勤〜退勤の勤務区間。missing_clock_out で discard された(集計対象外の)区間も
+   * clockOutAt: null として含む — 打刻の事実は集計とは別に表示したいため。
+   */
+  stretches: WorkStretch[];
 }
 
 type State = "out" | "working" | "onBreak";
@@ -36,6 +41,7 @@ export function deriveSegments(punches: ValidPunch[], settingsTimeline: Settings
   const workedSegments: Segment[] = [];
   const breakSegments: Segment[] = [];
   const warnings: CalcWarning[] = [];
+  const stretches: WorkStretch[] = [];
 
   const warn = (kind: WarningKind, atMinutes: number) => {
     const { date } = resolveAttendanceDate(atMinutes, settingsTimeline);
@@ -49,9 +55,21 @@ export function deriveSegments(punches: ValidPunch[], settingsTimeline: Settings
   let stretchSegments: Segment[] = [];
   let stretchBreaks: Segment[] = [];
 
-  const commitStretch = () => {
+  const sumMinutes = (segments: Segment[]) => segments.reduce((sum, seg) => sum + (seg.end - seg.start), 0);
+
+  const commitStretch = (clockOutAt: number) => {
     for (const seg of stretchSegments) workedSegments.push(seg);
     for (const seg of stretchBreaks) breakSegments.push(seg);
+    if (stretchStart !== null) {
+      // ここまでに組み立てた stretchSegments/stretchBreaks を合算すれば、この勤務区間の
+      // 実労働・休憩がそのまま出る(休憩不足判定 §34-1 は勤怠日ではなくこの単位で行うため必要)。
+      stretches.push({
+        clockInAt: stretchStart,
+        clockOutAt,
+        workedMinutes: sumMinutes(stretchSegments),
+        breakMinutes: sumMinutes(stretchBreaks),
+      });
+    }
     stretchSegments = [];
     stretchBreaks = [];
     stretchStart = null;
@@ -60,6 +78,10 @@ export function deriveSegments(punches: ValidPunch[], settingsTimeline: Settings
   const discardStretch = () => {
     if (stretchStart !== null) {
       warn("missing_clock_out", stretchStart);
+      // 集計(workedSegments/breakSegments)には含めないが、打刻の事実として stretches には残す。
+      // 未退勤は実労働・休憩とも確定していないため workedMinutes/breakMinutes は null
+      // (休憩不足判定の対象からも自動的に外れる — break-check.ts 参照)。
+      stretches.push({ clockInAt: stretchStart, clockOutAt: null, workedMinutes: null, breakMinutes: null });
     }
     stretchSegments = [];
     stretchBreaks = [];
@@ -91,7 +113,7 @@ export function deriveSegments(punches: ValidPunch[], settingsTimeline: Settings
           if (subSegStart !== null && at > subSegStart) {
             stretchSegments.push({ start: subSegStart, end: at });
           }
-          commitStretch();
+          commitStretch(at);
           state = "out";
           subSegStart = null;
         } else if (punch.kind === "break_start") {
@@ -126,7 +148,7 @@ export function deriveSegments(punches: ValidPunch[], settingsTimeline: Settings
           }
           warn("clock_out_during_break", at);
           breakStart = null;
-          commitStretch();
+          commitStretch(at);
           state = "out";
           subSegStart = null;
         }
@@ -139,5 +161,5 @@ export function deriveSegments(punches: ValidPunch[], settingsTimeline: Settings
     discardStretch();
   }
 
-  return { workedSegments, breakSegments, warnings };
+  return { workedSegments, breakSegments, warnings, stretches };
 }

@@ -404,9 +404,6 @@ export function DashboardView() {
                   <ul className="dashboard-todo__warning-list">
                     {shownWarningDates.map((date) => (
                       <li key={date} className="dashboard-todo__warning-item">
-                        <span className="monthly-table__warning-mark" aria-hidden="true">
-                          Y
-                        </span>
                         <span>{formatDateLabel(date)}</span>
                         <Link to={`/monthly?month=${date.slice(0, 7)}&date=${date}`} className="dashboard-todo__row-link">
                           {messages.dashboard.todoWarningsFix}

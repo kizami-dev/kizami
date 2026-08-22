@@ -23,9 +23,11 @@ describe("golden cases", () => {
       const output = calculate(golden.input);
 
       expect(output.totals).toEqual(golden.expected.totals);
-      expect(output.flexBalance.frameMinutes).toBe(golden.expected.flexBalance.frame);
-      expect(output.flexBalance.actualMinutes).toBe(golden.expected.flexBalance.actual);
-      expect(output.flexBalance.diffMinutes).toBe(golden.expected.flexBalance.diff);
+      // 現行のゴールデンフィクスチャは全てフレックスのため flexBalance は必ず non-null
+      expect(output.flexBalance, "flexBalance should be present for flex fixtures").not.toBeNull();
+      expect(output.flexBalance?.frameMinutes).toBe(golden.expected.flexBalance.frame);
+      expect(output.flexBalance?.actualMinutes).toBe(golden.expected.flexBalance.actual);
+      expect(output.flexBalance?.diffMinutes).toBe(golden.expected.flexBalance.diff);
 
       const actualWarningKinds = [...output.warnings.map((w) => w.kind)].sort();
       const expectedWarningKinds = [...golden.expected.warningKinds].sort();

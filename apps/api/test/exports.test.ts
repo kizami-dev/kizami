@@ -6,7 +6,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import { auditLogs, upsertMembership, type Database } from "@kizami/db";
 import { createApp } from "../src/app.js";
-import { grantPermission, jstMinutes, loginAndGetCookie, setupTestDb } from "./support/setup.js";
+import {
+  grantPermission,
+  jstMinutes,
+  loginAndGetCookie,
+  setupSecondUser,
+  setupTestDb,
+  switchToFixedWorkPolicy,
+} from "./support/setup.js";
 import { setupOrgFixture } from "./support/org.js";
 
 const FIXED_NOW = new Date("2026-05-15T03:00:00.000Z"); // JST 2026-05-15 12:00
@@ -93,9 +100,12 @@ describe("GET /exports/attendance.csv", () => {
       "overtime60h_minutes",
       "late_night_minutes",
       "statutory_holiday_minutes",
+      "work_system",
       "flex_frame_minutes",
       "flex_actual_minutes",
       "flex_diff_minutes",
+      "fixed_within_scheduled_minutes",
+      "fixed_extra_within_statutory_minutes",
       "closed",
     ]);
     expect(rows).toHaveLength(1);
@@ -103,6 +113,9 @@ describe("GET /exports/attendance.csv", () => {
     expect(row[0]).toBe(userId);
     expect(row[2]).toBe(email);
     expect(row[3]).toBe("2026-04");
+    expect(row[9]).toBe("flex"); // work_system
+    expect(row[13]).toBe(""); // fixed_within_scheduled_minutes(フレックスなので空)
+    expect(row[14]).toBe(""); // fixed_extra_within_statutory_minutes(フレックスなので空)
     expect(row[row.length - 1]).toBe("false"); // closed
   });
 
@@ -147,7 +160,72 @@ describe("GET /exports/attendance.csv", () => {
     const { text: afterCloseText } = await getCsv(app, cookie, "2026-04");
     const afterRow = parseCsv(afterCloseText).rows[0] as string[];
     expect(afterRow[afterRow.length - 1]).toBe("true"); // closed
-    expect(afterRow.slice(4, 12)).toEqual(beforeRow.slice(4, 12)); // 区分別時間数・flex収支は締め前と一致
+    expect(afterRow.slice(4, 9)).toEqual(beforeRow.slice(4, 9)); // 区分別時間数は締め前と一致
+    expect(afterRow[9]).toBe(beforeRow[9]); // work_system
+    expect(afterRow.slice(10, 13)).toEqual(beforeRow.slice(10, 13)); // flex収支は締め前と一致
+    expect(afterRow[13]).toBe(""); // fixed_within_scheduled_minutes(フレックスなので締め済みでも空のまま)
+    expect(afterRow[14]).toBe(""); // fixed_extra_within_statutory_minutes(フレックスなので締め済みでも空のまま)
+  });
+
+  it("固定時間制: flex列は空文字・work_system列はfixed・fixed列は所定内/法定内残業の月合計になる(未締め月)", async () => {
+    const { db, tenantId, userId, email, password } = await setupTestDb();
+    await switchToFixedWorkPolicy(db, { tenantId, standardDayMinutes: 480 }); // 所定8h
+    await grantPermission(db, { tenantId, userId, permission: "export.attendance.run", scope: "tenant" });
+    const app = createApp({ db });
+    const cookie = await loginAndGetCookie(app, email, password);
+
+    // 09:00-19:00(10h)。所定8h(480分)+法定内残業0(所定=法定8hのため)+法定時間外2h(120分)
+    await postPunch(app, cookie, "clock_in", jstMinutes(2026, 4, 1, 9, 0));
+    await postPunch(app, cookie, "clock_out", jstMinutes(2026, 4, 1, 19, 0));
+
+    const { text } = await getCsv(app, cookie, "2026-04");
+    const { rows } = parseCsv(text);
+    expect(rows).toHaveLength(1);
+    const row = rows[0] as string[];
+
+    expect(row[9]).toBe("fixed"); // work_system
+    expect(row[10]).toBe(""); // flex_frame_minutes
+    expect(row[11]).toBe(""); // flex_actual_minutes
+    expect(row[12]).toBe(""); // flex_diff_minutes
+    expect(Number(row[13])).toBe(480); // fixed_within_scheduled_minutes
+    expect(Number(row[14])).toBe(0); // fixed_extra_within_statutory_minutes
+    expect(Number(row[5])).toBe(120); // overtime_minutes (法定時間外2h)
+  });
+
+  it("固定時間制・締め済み月: fixed列が空にならず、締め前と同じ実値になる(内訳が締めで失われないことの回帰テスト)", async () => {
+    const { db, tenantId, userId, email, password } = await setupTestDb();
+    await switchToFixedWorkPolicy(db, { tenantId, standardDayMinutes: 420 }); // 所定7h
+    await grantPermission(db, { tenantId, userId, permission: "export.attendance.run", scope: "tenant" });
+    await grantPermission(db, { tenantId, userId, permission: "closing.execute", scope: "tenant" });
+    const app = createApp({ db });
+    const cookie = await loginAndGetCookie(app, email, password);
+
+    // 09:00-19:00(10h)。所定7h(420分)+法定内残業1h(60分、7h超〜8h以内)+法定時間外2h(120分)
+    await postPunch(app, cookie, "clock_in", jstMinutes(2026, 4, 1, 9, 0));
+    await postPunch(app, cookie, "clock_out", jstMinutes(2026, 4, 1, 19, 0));
+
+    const { text: beforeCloseText } = await getCsv(app, cookie, "2026-04");
+    const beforeRow = parseCsv(beforeCloseText).rows[0] as string[];
+    expect(Number(beforeRow[13])).toBe(420); // fixed_within_scheduled_minutes(締め前)
+    expect(Number(beforeRow[14])).toBe(60); // fixed_extra_within_statutory_minutes(締め前)
+
+    const closeRes = await app.request("/closings/2026-04/close", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({}),
+    });
+    expect(closeRes.status).toBe(200);
+
+    const { text: afterCloseText } = await getCsv(app, cookie, "2026-04");
+    const { rows } = parseCsv(afterCloseText);
+    expect(rows).toHaveLength(1);
+    const afterRow = rows[0] as string[];
+    expect(afterRow[afterRow.length - 1]).toBe("true"); // closed
+    // 本題: 締め済み月でも fixed 列が空文字に潰れず、締め前と同じ実値のまま出る。
+    expect(afterRow[13]).not.toBe("");
+    expect(afterRow[14]).not.toBe("");
+    expect(Number(afterRow[13])).toBe(420);
+    expect(Number(afterRow[14])).toBe(60);
   });
 
   it("only includes users within the actor's scope (department manager cannot export a sibling department's member)", async () => {
@@ -176,5 +254,44 @@ describe("GET /exports/attendance.csv", () => {
     expect(exportedIds).toContain(org.memberAUserId); // 同じ部署Aのメンバーも含まれる
     expect(exportedIds).not.toContain(org.memberA1UserId); // 子部署(A1)は department スコープでは含まれない
     expect(exportedIds).not.toContain(org.memberBUserId); // 別ツリー(部署B)は含まれない
+
+    // 本題: org.memberAUserId は制度未割当のため締め時点で snapshot 行が1つも無い
+    // (engineOutputFromSnapshots でいう flexBalance/fixedBreakdown が両方 null になるケース)。
+    // これでも例外を投げず、fixed 列は空文字のまま出力される(0埋めにもならない)。
+    const memberARow = rows.find((r) => r[0] === org.memberAUserId) as string[];
+    expect(memberARow[13]).toBe(""); // fixed_within_scheduled_minutes
+    expect(memberARow[14]).toBe(""); // fixed_extra_within_statutory_minutes
+  });
+
+  it("行が皆無のユーザー(締め時点で制度未割当)がいても、他ユーザーの出力を含めクラッシュしない", async () => {
+    const { db, tenantId, userId, email, password } = await setupTestDb();
+    const second = await setupSecondUser(db, tenantId); // work_policy 未割当
+    await grantPermission(db, { tenantId, userId, permission: "export.attendance.run", scope: "tenant" });
+    await grantPermission(db, { tenantId, userId, permission: "closing.execute", scope: "tenant" });
+    const app = createApp({ db });
+    const cookie = await loginAndGetCookie(app, email, password);
+
+    await postPunch(app, cookie, "clock_in", jstMinutes(2026, 4, 1, 9, 0));
+    await postPunch(app, cookie, "clock_out", jstMinutes(2026, 4, 1, 18, 0));
+
+    const closeRes = await app.request("/closings/2026-04/close", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({}),
+    });
+    expect(closeRes.status).toBe(200);
+
+    const { status, text } = await getCsv(app, cookie, "2026-04");
+    expect(status).toBe(200);
+    const { rows } = parseCsv(text);
+    expect(rows).toHaveLength(2);
+
+    const secondRow = rows.find((r) => r[0] === second.userId) as string[];
+    expect(secondRow).toBeDefined();
+    expect(secondRow[13]).toBe(""); // fixed_within_scheduled_minutes(行が無いので空文字)
+    expect(secondRow[14]).toBe(""); // fixed_extra_within_statutory_minutes(行が無いので空文字)
+
+    const userRow = rows.find((r) => r[0] === userId) as string[];
+    expect(userRow[13]).toBe(""); // 本人はフレックスなのでこちらも空文字
   });
 });

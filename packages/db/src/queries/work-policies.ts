@@ -1,6 +1,6 @@
 /**
- * work_policies / work_policy_versions(フレックス設定。effective-dated, 追記専用)に対する
- * 最小限のクエリ層。
+ * work_policies / work_policy_versions(労働時間制の設定。フレックスタイム制/固定時間制。
+ * effective-dated, 追記専用)に対する最小限のクエリ層。
  *
  * v0.1〜v0.2 のアプリは「テナント1つにつき work_policy 1件」で運用する(seed.ts が常に1件だけ
  * 作成し、複数の制度を切り替えるUIは無い)。このファイルもその前提に立ち、
@@ -61,6 +61,9 @@ export interface InsertWorkPolicyVersionParams {
   workPolicyId: string;
   /** ローカル日付 "YYYY-MM-DD"。この日から有効 */
   effectiveFrom: string;
+  /** 労働時間制の種別: "flex"(フレックスタイム制) | "fixed"(固定時間制)。呼び出し側が明示する */
+  kind: string;
+  /** 清算期間。flex 専用("monthly" 固定)。kind = "fixed" のときは無視される */
   settlementPeriod: string;
   standardDayMinutes: number;
   /** UTC エポック分 */
@@ -79,6 +82,7 @@ export async function insertWorkPolicyVersion(db: Database | Transaction, params
       tenantId: params.tenantId,
       workPolicyId: params.workPolicyId,
       effectiveFrom: params.effectiveFrom,
+      kind: params.kind,
       settlementPeriod: params.settlementPeriod,
       core: null,
       standardDayMinutes: params.standardDayMinutes,

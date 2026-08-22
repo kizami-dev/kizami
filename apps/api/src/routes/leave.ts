@@ -65,7 +65,7 @@ import type { AppEnv } from "../auth/middleware.js";
 import { ForbiddenError, requirePermission } from "../authz.js";
 import { assertAmendAllowed } from "../lib/closing-guard.js";
 import { computeMonthlyOutputForUser } from "../lib/closing-amend.js";
-import { engineOutputFromSnapshots, snapshotInputsFromEngineOutput } from "../lib/closing-snapshot.js";
+import { engineOutputFromSnapshots, snapshotInputsFromEngineOutput, sumFixedBreakdown } from "../lib/closing-snapshot.js";
 import { resolveAccessibleUserIds } from "../lib/scope.js";
 import { buildSettingsTimeline, standardDayMinutesForDate, TZ_OFFSET_MINUTES_JST } from "../lib/settings.js";
 import { nowMinutes, parseMonthParam, todayLocalDate } from "../lib/time.js";
@@ -519,8 +519,7 @@ export function createLeaveRoutes(db: Database) {
               tenantId: user.tenantId,
               closingEventId: amendEvent.id,
               userId: existing.userId,
-              totals: output.totals,
-              flexBalance: output.flexBalance,
+              output,
             }),
           );
 
@@ -534,7 +533,11 @@ export function createLeaveRoutes(db: Database) {
               period,
               leaveRequestId: existing.id,
               before,
-              after: { totals: output.totals, flexBalance: output.flexBalance },
+              after: {
+                totals: output.totals,
+                flexBalance: output.flexBalance,
+                fixedBreakdown: output.workSystem === "fixed" ? sumFixedBreakdown(output.days) : null,
+              },
             }),
             occurredAt: now,
           });

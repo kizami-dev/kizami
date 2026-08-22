@@ -27,13 +27,30 @@ export interface ValidPunch {
 /** ローカル日付 "YYYY-MM-DD" */
 export type PlainDateString = string;
 
-export interface FlexSettings {
-  settlement: "monthly";
-  /** コアタイムは v0.1 では未対応(null 固定) */
-  core: null;
-  /** 標準となる1日の労働時間(分)。有給日の枠算入に使う */
-  standardDayMinutes: number;
-}
+/**
+ * 労働時間制(判別可能ユニオン)。`kind` で分岐する。
+ *
+ * `standardDayMinutes` は両方の branch に存在する。固定時間制では「所定労働時間」そのもの
+ * (日次の所定内/所定外法定内の境界に使う)、フレックスでは有給日の枠算入に使う値であり、
+ * 意味は違うが「その日の基準となる労働時間」という役割は共通しているため、フィールド名を揃えている。
+ */
+export type WorkSystem =
+  | {
+      kind: "flex";
+      settlement: "monthly";
+      /** コアタイムは v0.1 では未対応(null 固定) */
+      core: null;
+      /** 標準となる1日の労働時間(分)。有給日の枠算入に使う */
+      standardDayMinutes: number;
+    }
+  | {
+      kind: "fixed";
+      /** 所定労働時間(分)。1日8時間(法定)以内で設定される前提 */
+      standardDayMinutes: number;
+    };
+
+/** フレックス(月清算)の設定。`WorkSystem` の flex 分岐と同じ形(判別子 `kind` を除く)。 */
+export type FlexSettings = Omit<Extract<WorkSystem, { kind: "flex" }>, "kind">;
 
 export type LegalHolidayRule =
   | { kind: "weekday"; weekday: 0 | 1 | 2 | 3 | 4 | 5 | 6 } // 0=日曜
@@ -44,8 +61,13 @@ export interface CalcSettings {
   tzOffsetMinutes: number;
   /** 日界: ローカル0時からの分(0〜1439)。既定 0 */
   dayBoundaryMinutes: number;
+  /**
+   * 週の起算曜日(0=日曜)。固定時間制の週法定労働時間の判定(labor law §32-1)に使う。
+   * フレックスの月枠計算では使わない(月枠は暦日数ベースのため)。
+   */
+  weekStartWeekday: 0 | 1 | 2 | 3 | 4 | 5 | 6;
   legalHoliday: LegalHolidayRule;
-  flex: FlexSettings;
+  workSystem: WorkSystem;
   /** v0.1 は打刻方式のみ。自動控除は v1.0 */
   breakRule: { mode: "punch" };
 }
@@ -106,7 +128,11 @@ export type WarningKind =
   /** 休憩中でないのに break_end: 無効化 */
   | "unmatched_break_end"
   /** 休憩中に clock_out: 休憩を clock_out 時刻で閉じて退勤扱い(労働時間は減る方向) */
-  | "clock_out_during_break";
+  | "clock_out_during_break"
+  /** 期間の途中で労働時間制(flex/fixed)が切り替わった: 期間開始日の版で計算を続行する */
+  | "mixed_work_system"
+  /** 勤務区間の実労働に対して休憩(合計)が労基法34条1項の必要分に満たない: 不足量を警告 */
+  | "insufficient_break";
 
 export interface CalcWarning {
   kind: WarningKind;
@@ -114,6 +140,11 @@ export interface CalcWarning {
   date: PlainDateString;
   /** 対象打刻の時刻(UTC エポック分) */
   punchAt?: number;
+  /**
+   * insufficient_break のとき: 必要だった休憩と実際の休憩(分)。UI が不足量
+   * (requiredMinutes - actualMinutes)を出すのに使う。他の警告種別では未設定。
+   */
+  break?: { requiredMinutes: number; actualMinutes: number };
 }
 
 export type TimeCategory =
@@ -124,6 +155,21 @@ export type TimeCategory =
   | "statutoryHoliday";
 
 export type CategorizedMinutes = Readonly<Record<TimeCategory, number>>;
+
+/** その勤怠日に始まった勤務区間(出勤〜退勤の1まとまり)。打刻の事実を表示するための情報。 */
+export interface WorkStretch {
+  /** UTC エポック分 */
+  clockInAt: number;
+  /** 退勤打刻。未退勤(missing_clock_out で集計除外)なら null */
+  clockOutAt: number | null;
+  /**
+   * この勤務区間の実労働(休憩控除後、分)。休憩不足判定(labor law §34-1)は
+   * 勤怠日ではなくこの単位で行う(break-check.ts 参照)。未退勤なら null(確定していない)。
+   */
+  workedMinutes: number | null;
+  /** この勤務区間の休憩合計(分)。未退勤なら null */
+  breakMinutes: number | null;
+}
 
 export interface DailyBreakdown {
   date: PlainDateString;
@@ -138,6 +184,17 @@ export interface DailyBreakdown {
   isPaidLeave: boolean;
   /** その日の有給分数(枠算入は flexBalance 側で行う) */
   paidLeaveMinutes: number;
+  /**
+   * その日に始まった勤務区間。中抜けがあれば複数。集計対象外(missing_clock_out で
+   * discard された未退勤の区間)も打刻の事実として含む — 集計と表示は別物として扱う。
+   */
+  stretches: WorkStretch[];
+  /** 所定内(実労働のうち標準労働時間まで)。固定時間制のみ。フレックスでは 0 */
+  withinScheduledMinutes: number;
+  /** 所定外だが法定内(所定超〜1日8時間)。固定時間制のみ。フレックスでは 0 */
+  extraWithinStatutoryMinutes: number;
+  /** 法定時間外(日8時間超 + 週法定超)。固定時間制のみ。フレックスでは 0 */
+  statutoryOvertimeMinutes: number;
 }
 
 export interface FlexBalance {
@@ -152,6 +209,9 @@ export interface FlexBalance {
 export interface EngineOutput {
   days: DailyBreakdown[];
   totals: CategorizedMinutes;
-  flexBalance: FlexBalance;
+  /** フレックスのみ。固定時間制では null */
+  flexBalance: FlexBalance | null;
+  /** 期間開始日に有効だった労働時間制 */
+  workSystem: "flex" | "fixed";
   warnings: CalcWarning[];
 }

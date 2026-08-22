@@ -4,7 +4,7 @@
  * 参照: docs/design/v01-data-model.md 原則6 / §組織・認証・権限
  *
  * - `tenant_setting_versions`: 計算に影響するテナント設定の版(追記専用)
- * - `work_policies` / `work_policy_versions`: 労働時間制の定義(v0.1はフレックスのみ)。版管理
+ * - `work_policies` / `work_policy_versions`: 労働時間制の定義(フレックスタイム制 / 固定時間制)。版管理
  * - `user_policy_assignments`: user × work_policy の適用開始日(これも effective-dated)
  *
  * いずれも UPDATE せず新しい版(行)を追加することで変更を表現する。
@@ -38,6 +38,15 @@ export const tenantSettingVersions = sqliteTable(
     gpsEnabled: integer("gps_enabled", { mode: "boolean" }).notNull(),
     /** null = 勤怠データと同一の保持期間 */
     gpsRetentionDays: integer("gps_retention_days"),
+    /**
+     * 週の起算曜日(0=日曜〜6=土曜)。固定時間制で「週40時間超」を判定する起点として使う
+     * (フレックスタイム制では清算期間内の総枠で判定するため参照しない)。
+     * 2026-08-23 固定時間制対応で追加。既存行のマイグレーションでは 0(日曜)を入れる
+     * (`.default(0)` は ALTER TABLE ... NOT NULL 追加に必要な SQLite 上の都合であり、
+     * 新規作成時は insertTenantSettingVersion の呼び出し側が明示的に指定する — 既定値を
+     * クエリ層で決め打ちしない)。
+     */
+    weekStartWeekday: integer("week_start_weekday").notNull().default(0),
     /** UTC エポック分(この版が記録された時刻) */
     createdAt: integer("created_at").notNull(),
   },
@@ -55,8 +64,12 @@ export const workPolicies = sqliteTable("work_policies", {
 });
 
 /**
- * work_policies の版(追記専用)。v0.1 はフレックスのみ:
- * `settlementPeriod`(清算期間。v0.1 は "monthly" 固定)/ `core`(コアタイム。v0.1 は常に null)
+ * work_policies の版(追記専用)。労働時間制の種別を `kind` で区別する:
+ * - `"flex"`(フレックスタイム制): `settlementPeriod`(清算期間)/ `core`(コアタイム)を使う
+ * - `"fixed"`(固定時間制): `settlementPeriod` / `core` は無視される(列自体は NOT NULL のまま
+ *   残すため、fixed でも `settlementPeriod` には便宜上 "monthly" を、`core` には null を入れておく)
+ *
+ * 2026-08-23 固定時間制対応で `kind` を追加。既存行のマイグレーションでは "flex" を入れる。
  */
 export const workPolicyVersions = sqliteTable(
   "work_policy_versions",
@@ -69,8 +82,16 @@ export const workPolicyVersions = sqliteTable(
       .notNull()
       .references(() => workPolicies.id),
     effectiveFrom: text("effective_from").notNull(),
+    /**
+     * 労働時間制の種別: "flex"(フレックスタイム制) | "fixed"(固定時間制)。
+     * `.default("flex")` は ALTER TABLE ... NOT NULL 追加に必要な SQLite 上の都合であり、
+     * 新規作成時は insertWorkPolicyVersion の呼び出し側が明示的に指定する
+     * (既定値をクエリ層で決め打ちしない)。
+     */
+    kind: text("kind").notNull().default("flex"),
+    /** 清算期間。flex 専用("monthly" 固定)。kind = "fixed" のときは無視される */
     settlementPeriod: text("settlement_period").notNull(),
-    /** コアタイムは v0.1 未対応のため常に null */
+    /** コアタイム。flex 専用。v0.1 未対応のため常に null。kind = "fixed" のときは無視される */
     core: text("core"),
     /** 標準となる1日の労働時間(分)。有給日の枠算入に使う(engine の FlexSettings.standardDayMinutes 相当) */
     standardDayMinutes: integer("standard_day_minutes").notNull(),

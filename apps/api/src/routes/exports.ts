@@ -16,6 +16,23 @@
  * 最新−当初)」を追加する(給与の差額調整に必須 — 依頼)。amend が無い月(未締め、または
  * 締め済みだが未修正)は original = 最新、diff = 0 になる。
  *
+ * 固定時間制対応(2026-08-23):
+ * - `work_system` 列(flex/fixed)を追加。締め済み月は snapshot に flex 系の行が
+ *   1つも無ければ fixed と判定する(engineOutputFromSnapshots の契約 — closing-snapshot.ts
+ *   参照)。未締め月は calculate() の workSystem をそのまま使う
+ * - 既存の flex 3列は固定時間制の行では空文字にする(0 と「存在しない」を区別するため。
+ *   apps/api/src/lib/closing-snapshot.ts と同じ判断)
+ * - `fixed_within_scheduled_minutes` / `fixed_extra_within_statutory_minutes`(月合計)を追加。
+ *   EngineOutput.totals にはこの粒度が無い(所定内と法定内残業を分けて持たない)ため、未締め月は
+ *   output.days から、締め済み月は closing_snapshots の fixedWithinScheduled/
+ *   fixedExtraWithinStatutory 区分(CLOSING_SNAPSHOT_CATEGORIES に追加済み)から、それぞれ
+ *   値を出す。フレックスの月(または締め時点で対象ユーザーの行が皆無だった月)はこの2列を
+ *   空文字にする(0 と「存在しない」を区別する既存の判断と同じ)。列自体は work_system に
+ *   よらず常に存在させ、中身だけ制度・締め状態に応じて空にする(依頼: 列数を制度で変えない)
+ * - `compare=original` の original_ / diff_ 系にも fixed_ 系の列を追加する(締め済み月から
+ *   取れるようになったため。既存の5区分+flex3種と同じ original_ / diff_ 構成の対称性を保つ
+ *   ための判断 — 詳細は本ファイルの実装コメント参照)
+ *
  * CSV は UTF-8 BOM 付き・CRLF 改行(Excel 対応、依頼どおり)。
  */
 
@@ -29,10 +46,10 @@ import {
   type Database,
   type MemberUser,
 } from "@kizami/db";
-import type { CategorizedMinutes, FlexBalance } from "@kizami/engine";
+import type { CategorizedMinutes, EngineOutput, FlexBalance } from "@kizami/engine";
 import type { AppEnv } from "../auth/middleware.js";
 import { requirePermission } from "../authz.js";
-import { engineOutputFromSnapshots } from "../lib/closing-snapshot.js";
+import { engineOutputFromSnapshots, sumFixedBreakdown, type SnapshotTotals } from "../lib/closing-snapshot.js";
 import { resolveAccessibleUserIds } from "../lib/scope.js";
 import { formatDate, nowMinutes, parseMonthParam } from "../lib/time.js";
 import { calculateMonthlyForUser } from "../reminders.js";
@@ -49,13 +66,19 @@ const BASE_CSV_HEADER = [
   "overtime60h_minutes",
   "late_night_minutes",
   "statutory_holiday_minutes",
+  "work_system",
   "flex_frame_minutes",
   "flex_actual_minutes",
   "flex_diff_minutes",
+  "fixed_within_scheduled_minutes",
+  "fixed_extra_within_statutory_minutes",
   "closed",
 ];
 
-/** ?compare=original のときだけ末尾に追加する列。区分別5種+flex3種それぞれに original_ と diff_ の列を持つ。 */
+/**
+ * ?compare=original のときだけ末尾に追加する列。区分別5種+flex3種+固定内訳2種それぞれに
+ * original_ と diff_ の列を持つ(BASE_CSV_HEADER の値列と同じ並び・同じ10種で揃える)。
+ */
 const COMPARE_CSV_HEADER = [
   "original_statutory_minutes",
   "original_overtime_minutes",
@@ -65,6 +88,8 @@ const COMPARE_CSV_HEADER = [
   "original_flex_frame_minutes",
   "original_flex_actual_minutes",
   "original_flex_diff_minutes",
+  "original_fixed_within_scheduled_minutes",
+  "original_fixed_extra_within_statutory_minutes",
   "diff_statutory_minutes",
   "diff_overtime_minutes",
   "diff_overtime60h_minutes",
@@ -73,6 +98,8 @@ const COMPARE_CSV_HEADER = [
   "diff_flex_frame_minutes",
   "diff_flex_actual_minutes",
   "diff_flex_diff_minutes",
+  "diff_fixed_within_scheduled_minutes",
+  "diff_fixed_extra_within_statutory_minutes",
 ];
 
 /** RFC4180 準拠のフィールドエスケープ(カンマ・ダブルクォート・改行を含む場合のみ引用符で囲む)。 */
@@ -87,9 +114,19 @@ function buildCsvRow(fields: Array<string | number | boolean>): string {
   return fields.map((f) => escapeCsvField(String(f))).join(",");
 }
 
+/**
+ * CSV 1行分の入力。`flexBalance` はフレックス以外(固定時間制、または締め済みで snapshot に
+ * flex 系の行が無い)なら null。`fixedWithinScheduledMinutes`/`fixedExtraWithinStatutoryMinutes`
+ * も同じ理由で固定時間制以外なら null(closing-snapshot.ts の FixedBreakdownTotals と同じ設計)。
+ * `workSystem` は列の出し分け自体には使わない(flexBalance/fixed* の null 判定だけで足りる)が、
+ * 読み手が「なぜ空欄か」を判断できるようそのまま1列として出力する。
+ */
 interface MonthlyFigures {
   totals: CategorizedMinutes;
-  flexBalance: FlexBalance;
+  flexBalance: FlexBalance | null;
+  workSystem: "flex" | "fixed";
+  fixedWithinScheduledMinutes: number | null;
+  fixedExtraWithinStatutoryMinutes: number | null;
 }
 
 interface RowInput {
@@ -101,8 +138,15 @@ interface RowInput {
   original?: MonthlyFigures | undefined;
 }
 
+/** 空文字を許容する CSV フィールド(null/未取得の意味で使う)。 */
+type CsvField = string | number | boolean;
+
+function orEmpty(value: number | null): CsvField {
+  return value === null ? "" : value;
+}
+
 function buildRow({ user, period, current, closed, original }: RowInput): string {
-  const fields: Array<string | number | boolean> = [
+  const fields: CsvField[] = [
     user.id,
     user.name,
     user.email,
@@ -112,34 +156,86 @@ function buildRow({ user, period, current, closed, original }: RowInput): string
     current.totals.overtime60h,
     current.totals.lateNight,
     current.totals.statutoryHoliday,
-    current.flexBalance.frameMinutes,
-    current.flexBalance.actualMinutes,
-    current.flexBalance.diffMinutes,
+    current.workSystem,
+    orEmpty(current.flexBalance?.frameMinutes ?? null),
+    orEmpty(current.flexBalance?.actualMinutes ?? null),
+    orEmpty(current.flexBalance?.diffMinutes ?? null),
+    orEmpty(current.fixedWithinScheduledMinutes),
+    orEmpty(current.fixedExtraWithinStatutoryMinutes),
     closed,
   ];
 
   if (original) {
+    // 現在・当初どちらかが flexBalance を持たない(制度が違う、または締め済みでflex行が無い)
+    // 場合は差分を計算できないため空文字にする(0 と書くと「変化なし」に見えてしまう)。
+    const diffFlex = (pick: (f: MonthlyFigures) => number | undefined): CsvField => {
+      const c = pick(current);
+      const o = pick(original);
+      return c !== undefined && o !== undefined ? c - o : "";
+    };
+    // fixed 系は元々 number | null で持っているため diffFlex とは undefined/null が違うだけで
+    // 考え方は同じ(どちらかが null なら差分計算不能 = 空文字)。
+    const diffFixed = (pick: (f: MonthlyFigures) => number | null): CsvField => {
+      const c = pick(current);
+      const o = pick(original);
+      return c !== null && o !== null ? c - o : "";
+    };
     fields.push(
       original.totals.statutory,
       original.totals.overtime,
       original.totals.overtime60h,
       original.totals.lateNight,
       original.totals.statutoryHoliday,
-      original.flexBalance.frameMinutes,
-      original.flexBalance.actualMinutes,
-      original.flexBalance.diffMinutes,
+      orEmpty(original.flexBalance?.frameMinutes ?? null),
+      orEmpty(original.flexBalance?.actualMinutes ?? null),
+      orEmpty(original.flexBalance?.diffMinutes ?? null),
+      orEmpty(original.fixedWithinScheduledMinutes),
+      orEmpty(original.fixedExtraWithinStatutoryMinutes),
       current.totals.statutory - original.totals.statutory,
       current.totals.overtime - original.totals.overtime,
       current.totals.overtime60h - original.totals.overtime60h,
       current.totals.lateNight - original.totals.lateNight,
       current.totals.statutoryHoliday - original.totals.statutoryHoliday,
-      current.flexBalance.frameMinutes - original.flexBalance.frameMinutes,
-      current.flexBalance.actualMinutes - original.flexBalance.actualMinutes,
-      current.flexBalance.diffMinutes - original.flexBalance.diffMinutes,
+      diffFlex((f) => f.flexBalance?.frameMinutes),
+      diffFlex((f) => f.flexBalance?.actualMinutes),
+      diffFlex((f) => f.flexBalance?.diffMinutes),
+      diffFixed((f) => f.fixedWithinScheduledMinutes),
+      diffFixed((f) => f.fixedExtraWithinStatutoryMinutes),
     );
   }
 
   return buildCsvRow(fields);
+}
+
+/** 締め済み月: snapshot から読み戻した値を MonthlyFigures へ変換する。 */
+function monthlyFiguresFromSnapshot(snapshot: SnapshotTotals): MonthlyFigures {
+  return {
+    totals: snapshot.totals,
+    flexBalance: snapshot.flexBalance,
+    // flex 系の行があれば flex。無ければ fixed とみなす(対象ユーザーの行が締め時点で皆無
+    // だったケースも含む — engineOutputFromSnapshots の JSDoc 参照。この場合 fixedBreakdown も
+    // null になり、下記2列は結局空文字になるため実害は無い)。
+    workSystem: snapshot.flexBalance === null ? "fixed" : "flex",
+    fixedWithinScheduledMinutes: snapshot.fixedBreakdown?.withinScheduledMinutes ?? null,
+    fixedExtraWithinStatutoryMinutes: snapshot.fixedBreakdown?.extraWithinStatutoryMinutes ?? null,
+  };
+}
+
+/**
+ * 未締め月: calculate() の生の結果を MonthlyFigures へ変換する。
+ * 所定内/法定内残業の合算は sumFixedBreakdown(closing-snapshot.ts)を再利用する —
+ * 締め確定時にスナップショットへ書く値とここで表示する値の計算式がずれると、締めた瞬間に
+ * 表示値が変わって見えるバグになるため、計算式を1箇所に集約している。
+ */
+function monthlyFiguresFromEngineOutput(output: EngineOutput): MonthlyFigures {
+  const fixedBreakdown = output.workSystem === "fixed" ? sumFixedBreakdown(output.days) : null;
+  return {
+    totals: output.totals,
+    flexBalance: output.flexBalance,
+    workSystem: output.workSystem,
+    fixedWithinScheduledMinutes: fixedBreakdown?.withinScheduledMinutes ?? null,
+    fixedExtraWithinStatutoryMinutes: fixedBreakdown?.extraWithinStatutoryMinutes ?? null,
+  };
 }
 
 /** UTF-8 BOM + CRLF 改行の CSV 文字列を組み立てる(Excel 対応)。 */
@@ -188,15 +284,17 @@ export function createExportsRoutes(db: Database) {
         ? await getOriginalClosingSnapshotsForUsers(db, { tenantId: user.tenantId, period, userIds: targetUsers.map((u) => u.id) })
         : null;
       for (const u of targetUsers) {
-        const current = engineOutputFromSnapshots(snapshotsByUser.get(u.id) ?? []);
-        const original = originalSnapshotsByUser ? engineOutputFromSnapshots(originalSnapshotsByUser.get(u.id) ?? []) : undefined;
+        const current = monthlyFiguresFromSnapshot(engineOutputFromSnapshots(snapshotsByUser.get(u.id) ?? []));
+        const original = originalSnapshotsByUser
+          ? monthlyFiguresFromSnapshot(engineOutputFromSnapshots(originalSnapshotsByUser.get(u.id) ?? []))
+          : undefined;
         rows.push(buildRow({ user: u, period, current, closed, original }));
       }
     } else {
       for (const u of targetUsers) {
         try {
           const { output } = await calculateMonthlyForUser(db, { tenantId: user.tenantId, userId: u.id, year, month });
-          const current: MonthlyFigures = { totals: output.totals, flexBalance: output.flexBalance };
+          const current = monthlyFiguresFromEngineOutput(output);
           // 未締めの月には amend という概念が無い(そもそも確定値が存在しない)ため、
           // compare=original が指定されていても current をそのまま original として扱う(diff=0)。
           rows.push(buildRow({ user: u, period, current, closed, original: compareOriginal ? current : undefined }));

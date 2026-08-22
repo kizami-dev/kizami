@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createNotificationIfAbsent, insertPunchEvent, listNotifications, type Database } from "@kizami/db";
 import { runOvertimeAlertScan } from "../src/overtime-alerts.js";
-import { jstMinutes, setupTestDb } from "./support/setup.js";
+import { jstMinutes, setupTestDb, switchToFixedWorkPolicy } from "./support/setup.js";
 
 /**
  * 36協定アラート(基本版)のテスト。
@@ -72,6 +72,28 @@ describe("runOvertimeAlertScan", () => {
 
     // 4/1-4/22(日曜4/5,4/12,4/19を除く19日)を 09:00-21:00(12時間)勤務:
     // 実働 19*720=13680分, 月枠 10285分 → 時間外 3395分(≒56.6h) ≥ 2700分(45h)
+    await insertDailyShifts(db, { tenantId, userId, year: 2026, month: 4, fromDay: 1, toDay: 22, startHour: 9, endHour: 21 });
+
+    const nowMinutes = jstMinutes(2026, 4, 25, 12, 0);
+    const result = await runOvertimeAlertScan(db, { nowMinutes });
+
+    expect(result.scannedUserCount).toBe(1);
+    expect(result.created).toHaveLength(1);
+    expect(result.created[0]?.notification.type).toBe("overtime_45h_reached");
+    expect(result.created[0]?.notification.subjectDate).toBe("2026-04-01");
+
+    const stored = await listNotifications(db, { tenantId, userId });
+    expect(stored).toHaveLength(1);
+    expect(stored[0]?.type).toBe("overtime_45h_reached");
+  });
+
+  it("固定時間制: 月45時間の実績到達で overtime_45h_reached が発火する(総枠という概念が無いため totals.overtime がそのまま実績)", async () => {
+    const { db, tenantId, userId } = await setupTestDb();
+    await switchToFixedWorkPolicy(db, { tenantId, standardDayMinutes: 480 }); // 所定8h
+
+    // 4/1-4/22(日曜4/5,4/12,4/19を除く19日)を 09:00-21:00(12時間)勤務:
+    // 固定時間制は総枠と比較せず、日次(8h超)・週次(週40h超)の積み上げがそのまま
+    // totals.overtime になる(月枠 frameMinutes という概念自体が無い)。
     await insertDailyShifts(db, { tenantId, userId, year: 2026, month: 4, fromDay: 1, toDay: 22, startHour: 9, endHour: 21 });
 
     const nowMinutes = jstMinutes(2026, 4, 25, 12, 0);

@@ -178,14 +178,28 @@ function lastKMonths(to: TargetMonth, k: number): TargetMonth[] {
   return months;
 }
 
-interface MonthlyFigures {
-  /** その月の時間外(engine の totals.overtime、分) */
-  overtimeMinutes: number;
-  /** その月の法定休日労働(engine の totals.statutoryHoliday、分) */
-  holidayMinutes: number;
-  actualMinutes: number;
-  frameMinutes: number;
-}
+/**
+ * 1人・1ヶ月分の時間外関連の数値。フレックス/固定時間制で持つ値が違う(判別可能ユニオン)。
+ *
+ * `overtimeMinutes`/`holidayMinutes` は両方の branch に共通(engine の totals.overtime /
+ * totals.statutoryHoliday をそのまま使う。フレックスの月45h/年360h判定、特別条項の
+ * 月100h/複数月平均80hはどちらもこの2値だけで足りる)。フレックスの `actualMinutes`/
+ * `frameMinutes`(月枠との比較に使う)は固定時間制には存在しない概念のため fixed branch には無い
+ * — projectedOvertimeForMonth が制度ごとに別の式を使う理由と対応している(同関数のJSDoc参照)。
+ */
+type MonthlyFigures =
+  | {
+      workSystem: "flex";
+      overtimeMinutes: number;
+      holidayMinutes: number;
+      actualMinutes: number;
+      frameMinutes: number;
+    }
+  | {
+      workSystem: "fixed";
+      overtimeMinutes: number;
+      holidayMinutes: number;
+    };
 
 /**
  * 1人・1ヶ月分の時間外関連の数値を取得する。テナント設定・制度割当が揃っていない月は
@@ -197,7 +211,16 @@ async function monthlyFigures(
 ): Promise<MonthlyFigures | null> {
   try {
     const { output } = await calculateMonthlyForUser(db, params);
+    if (output.workSystem === "fixed") {
+      return { workSystem: "fixed", overtimeMinutes: output.totals.overtime, holidayMinutes: output.totals.statutoryHoliday };
+    }
+    if (output.flexBalance === null) {
+      // 契約上ありえない(workSystem: "flex" は必ず flexBalance を伴う。EngineOutput の
+      // JSDoc 参照)が、型上 flexBalance は独立した nullable フィールドなので防御的に扱う。
+      return null;
+    }
     return {
+      workSystem: "flex",
       overtimeMinutes: output.totals.overtime,
       holidayMinutes: output.totals.statutoryHoliday,
       actualMinutes: output.flexBalance.actualMinutes,
@@ -209,13 +232,25 @@ async function monthlyFigures(
 }
 
 /**
- * 実労働を月末までペースで日割りして伸ばし、総枠との差を見込み時間外とする
- * (v0.2 と同じ保守的な考え方)。経過日数が MIN_ELAPSED_DAYS_FOR_PROJECTION 未満なら null
- * (見込み判定の対象外)。
+ * 見込み時間外(月末までのペースで日割りして伸ばした値)を計算する。
+ * 経過日数が MIN_ELAPSED_DAYS_FOR_PROJECTION 未満なら null(見込み判定の対象外)。
+ *
+ * フレックスと固定時間制で式が違う理由(docs/design/work-systems.md 参照): フレックスは
+ * 時間外を「清算期間全体の総枠との過不足」でしか判定しないため、月の途中の
+ * totals.overtime は構造的に常に0になる(engine の flex.ts: overtime = max(0, actual - frame)
+ * で、月の途中は actual が frame に届かないことがほとんど)。そのため実労働(actualMinutes)を
+ * 月末までのペースで伸ばし、総枠(frameMinutes)との差を見込みとする必要がある(v0.2 からの
+ * 既存ロジック)。
+ * 固定時間制は日次・週次の積み上げで初日から totals.overtime に実績がそのまま乗る
+ * (総枠という概念が無い)ため、その overtimeMinutes 自体を同じペースで伸ばせば見込みになる。
  */
 function projectedOvertimeForMonth(figures: MonthlyFigures, year: number, month: number, day: number): number | null {
   if (day < MIN_ELAPSED_DAYS_FOR_PROJECTION) return null;
-  const projectedActualMinutes = figures.actualMinutes * (daysInMonth(year, month) / day);
+  const paceRatio = daysInMonth(year, month) / day;
+  if (figures.workSystem === "fixed") {
+    return Math.max(0, figures.overtimeMinutes * paceRatio);
+  }
+  const projectedActualMinutes = figures.actualMinutes * paceRatio;
   return Math.max(0, projectedActualMinutes - figures.frameMinutes);
 }
 

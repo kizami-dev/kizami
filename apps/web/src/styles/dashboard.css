@@ -242,16 +242,21 @@
   gap: var(--space-1);
 }
 
+/*
+ * 警告のある日の行(2026-08-23 修正: 「Y」マーク廃止)。「打刻に警告のある日」という
+ * 見出しの下に日付+「修正する」がすでに並ぶ文脈で、印(Y)は色以外の手掛かりを
+ * 重複して出していただけだったため廃止し、月次一覧の警告行と表現を揃えて
+ * 控えめな警告色の背景にする。
+ */
 .dashboard-todo__warning-item {
   display: flex;
   align-items: center;
   gap: var(--space-2);
   font-size: 0.88rem;
-  color: var(--k-yellow-ink);
-}
-
-.dashboard-todo__warning-item > span:not(.monthly-table__warning-mark) {
   color: var(--k-key);
+  background: color-mix(in srgb, var(--k-yellow) 12%, transparent);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-s);
 }
 
 .dashboard-todo__warning-item .dashboard-todo__row-link {

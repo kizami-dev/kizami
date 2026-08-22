@@ -92,6 +92,8 @@ export interface InsertTenantSettingVersionParams {
   breakRule: string;
   gpsEnabled: boolean;
   gpsRetentionDays: number | null;
+  /** 週の起算曜日(0=日曜)。固定時間制で「週40時間超」を判定する起点。呼び出し側が明示する */
+  weekStartWeekday: number;
   /** UTC エポック分 */
   createdAt: number;
 }
@@ -116,6 +118,7 @@ export async function insertTenantSettingVersion(
       breakRule: params.breakRule,
       gpsEnabled: params.gpsEnabled,
       gpsRetentionDays: params.gpsRetentionDays,
+      weekStartWeekday: params.weekStartWeekday,
       createdAt: params.createdAt,
     })
     .returning();

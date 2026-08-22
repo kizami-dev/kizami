@@ -10,7 +10,7 @@
 import { describe, expect, it } from "vitest";
 import { insertLeaveGrant, type Database } from "@kizami/db";
 import { createApp } from "../src/app.js";
-import { grantPermission, jstMinutes, loginAndGetCookie, setupTestDb } from "./support/setup.js";
+import { grantPermission, jstMinutes, loginAndGetCookie, setupTestDb, switchToFixedWorkPolicy } from "./support/setup.js";
 
 interface RequestLike {
   request: (path: string, init?: RequestInit) => Promise<Response> | Response;
@@ -254,9 +254,12 @@ describe("closing amend (post-close corrections)", () => {
       "overtime60h_minutes",
       "late_night_minutes",
       "statutory_holiday_minutes",
+      "work_system",
       "flex_frame_minutes",
       "flex_actual_minutes",
       "flex_diff_minutes",
+      "fixed_within_scheduled_minutes",
+      "fixed_extra_within_statutory_minutes",
       "closed",
       "original_statutory_minutes",
       "original_overtime_minutes",
@@ -266,6 +269,8 @@ describe("closing amend (post-close corrections)", () => {
       "original_flex_frame_minutes",
       "original_flex_actual_minutes",
       "original_flex_diff_minutes",
+      "original_fixed_within_scheduled_minutes",
+      "original_fixed_extra_within_statutory_minutes",
       "diff_statutory_minutes",
       "diff_overtime_minutes",
       "diff_overtime60h_minutes",
@@ -274,13 +279,15 @@ describe("closing amend (post-close corrections)", () => {
       "diff_flex_frame_minutes",
       "diff_flex_actual_minutes",
       "diff_flex_diff_minutes",
+      "diff_fixed_within_scheduled_minutes",
+      "diff_fixed_extra_within_statutory_minutes",
     ]);
     expect(rows).toHaveLength(1);
     const row = rows[0] as string[];
     expect(Number(row[4])).toBe(after.totals.statutory); // statutory_minutes (現在値)
-    expect(Number(row[13])).toBe(before.totals.statutory); // original_statutory_minutes
-    expect(Number(row[21])).toBe(after.totals.statutory - before.totals.statutory); // diff_statutory_minutes
-    expect(Number(row[21])).toBe(60);
+    expect(Number(row[16])).toBe(before.totals.statutory); // original_statutory_minutes
+    expect(Number(row[26])).toBe(after.totals.statutory - before.totals.statutory); // diff_statutory_minutes
+    expect(Number(row[26])).toBe(60);
   });
 
   it("without compare=original the CSV header/columns are unchanged (no original_*/diff_* columns)", async () => {
@@ -303,11 +310,55 @@ describe("closing amend (post-close corrections)", () => {
       "overtime60h_minutes",
       "late_night_minutes",
       "statutory_holiday_minutes",
+      "work_system",
       "flex_frame_minutes",
       "flex_actual_minutes",
       "flex_diff_minutes",
+      "fixed_within_scheduled_minutes",
+      "fixed_extra_within_statutory_minutes",
       "closed",
     ]);
+  });
+
+  it("固定時間制: 締め後修正(amend)を挟んでも所定内/法定内残業の内訳が正しく更新される(0に潰れない)", async () => {
+    const { db, tenantId, userId, email, password } = await setupTestDb();
+    await switchToFixedWorkPolicy(db, { tenantId, standardDayMinutes: 420 }); // 所定7h
+    await grantPermission(db, { tenantId, userId, permission: "closing.execute", scope: "tenant" });
+    await grantPermission(db, { tenantId, userId, permission: "closing.unlock", scope: "tenant" });
+    await grantPermission(db, { tenantId, userId, permission: "export.attendance.run", scope: "tenant" });
+    const app = createApp({ db });
+    const cookie = await loginAndGetCookie(app, email, password);
+
+    // 4/1 9:00-16:00(7h、休憩無し)→ 所定7hちょうどなので法定内残業は0
+    await postPunch(app, cookie, "clock_in", jstMinutes(2026, 4, 1, 9, 0));
+    const clockOut = await postPunch(app, cookie, "clock_out", jstMinutes(2026, 4, 1, 16, 0));
+    await closePeriod(app, cookie, "2026-04");
+
+    const { rows: beforeRows } = await parseCsv(app, cookie, "2026-04", false);
+    const beforeRow = beforeRows[0] as string[];
+    expect(Number(beforeRow[13])).toBe(420); // fixed_within_scheduled_minutes
+    expect(Number(beforeRow[14])).toBe(0); // fixed_extra_within_statutory_minutes
+
+    // 締め後、退勤打刻が実は17:00(8h)だったことが判明
+    // → 所定7h超〜法定8h以内の1hが新たに法定内残業として発生するはず
+    const createRes = await app.request("/corrections", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({
+        targetEventId: clockOut.id,
+        proposedKind: "clock_out",
+        proposedOccurredAt: jstMinutes(2026, 4, 1, 17, 0),
+        reason: "退勤打刻の訂正(所定内→法定内残業が発生するケース)",
+      }),
+    });
+    const created = ((await createRes.json()) as { request: { id: string } }).request;
+    const approveRes = await approveCorrection(app, cookie, created.id);
+    expect(approveRes.status).toBe(200);
+
+    const { rows: afterRows } = await parseCsv(app, cookie, "2026-04", false);
+    const afterRow = afterRows[0] as string[];
+    expect(Number(afterRow[13])).toBe(420); // fixed_within_scheduled_minutes(所定は変わらない)
+    expect(Number(afterRow[14])).toBe(60); // fixed_extra_within_statutory_minutes(1h 増えた。0に潰れていない)
   });
 
   it("approving a leave request for a closed month (with closing.unlock) amends flex actual minutes by standardDayMinutes", async () => {

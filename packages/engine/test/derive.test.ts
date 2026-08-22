@@ -5,8 +5,9 @@ import type { CalcSettings, SettingsSpan, ValidPunch } from "../src/types.js";
 const settings: CalcSettings = {
   tzOffsetMinutes: 0,
   dayBoundaryMinutes: 0,
+  weekStartWeekday: 0,
   legalHoliday: { kind: "weekday", weekday: 0 },
-  flex: { settlement: "monthly", core: null, standardDayMinutes: 480 },
+  workSystem: { kind: "flex", settlement: "monthly", core: null, standardDayMinutes: 480 },
   breakRule: { mode: "punch" },
 };
 
@@ -148,5 +149,65 @@ describe("deriveSegments — state machine", () => {
     const result = deriveSegments(punches, timeline);
     expect(result.warnings.map((w) => w.kind)).toEqual(["duplicate_clock_in"]);
     expect(result.workedSegments).toEqual([{ start: 0, end: 100 }]);
+  });
+});
+
+describe("deriveSegments — stretches (打刻の事実)", () => {
+  it("a normal clock_in/clock_out pair produces one stretch", () => {
+    const result = deriveSegments([punch("clock_in", 0), punch("clock_out", 480)], timeline);
+    expect(result.stretches).toEqual([
+      { clockInAt: 0, clockOutAt: 480, workedMinutes: 480, breakMinutes: 0 },
+    ]);
+  });
+
+  it("a break in the middle does not split the stretch (only the segments), and worked/break minutes reflect it", () => {
+    const result = deriveSegments(
+      [punch("clock_in", 0), punch("break_start", 180), punch("break_end", 240), punch("clock_out", 480)],
+      timeline,
+    );
+    expect(result.stretches).toEqual([
+      { clockInAt: 0, clockOutAt: 480, workedMinutes: 420, breakMinutes: 60 },
+    ]);
+  });
+
+  it("multiple clock_in/clock_out cycles in one day produce multiple stretches (中抜け)", () => {
+    const punches = [
+      punch("clock_in", 0),
+      punch("clock_out", 240),
+      punch("clock_in", 300),
+      punch("clock_out", 480),
+    ];
+    const result = deriveSegments(punches, timeline);
+    expect(result.stretches).toEqual([
+      { clockInAt: 0, clockOutAt: 240, workedMinutes: 240, breakMinutes: 0 },
+      { clockInAt: 300, clockOutAt: 480, workedMinutes: 180, breakMinutes: 0 },
+    ]);
+  });
+
+  it("an unclosed stretch (missing_clock_out) is still included, with clockOutAt/workedMinutes/breakMinutes: null", () => {
+    const punches = [punch("clock_in", 0), punch("clock_out", 100), punch("clock_in", 150)];
+    const result = deriveSegments(punches, timeline);
+    expect(result.stretches).toEqual([
+      { clockInAt: 0, clockOutAt: 100, workedMinutes: 100, breakMinutes: 0 },
+      { clockInAt: 150, clockOutAt: null, workedMinutes: null, breakMinutes: null },
+    ]);
+    // 集計(workedSegments)からは除外されるが、stretches には打刻の事実として残る
+    expect(result.workedSegments).toEqual([{ start: 0, end: 100 }]);
+  });
+
+  it("clock_out during a break still closes the stretch normally", () => {
+    const punches = [punch("clock_in", 0), punch("break_start", 50), punch("clock_out", 80)];
+    const result = deriveSegments(punches, timeline);
+    expect(result.stretches).toEqual([
+      { clockInAt: 0, clockOutAt: 80, workedMinutes: 50, breakMinutes: 30 },
+    ]);
+  });
+
+  it("a fully unclosed stretch (missing_clock_out at working, no segments) is still recorded", () => {
+    const punches = [punch("clock_in", 0), punch("break_start", 50)];
+    const result = deriveSegments(punches, timeline);
+    expect(result.stretches).toEqual([
+      { clockInAt: 0, clockOutAt: null, workedMinutes: null, breakMinutes: null },
+    ]);
   });
 });

@@ -6,6 +6,7 @@
 import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { eq } from "drizzle-orm";
 import {
   authCredentials,
   migrateDb,
@@ -104,6 +105,38 @@ export async function setupTestDb(): Promise<SeededTenant> {
   });
 
   return { db, tenantId, userId, email, password, displayName };
+}
+
+/**
+ * setupTestDb() 済みのテナントを固定時間制へ切り替える(新しい work_policy_versions を追記する、
+ * 原則6どおり追記専用)。
+ *
+ * 既定の effectiveFrom は "2000-01-01"(setupTestDb() が作るフレックスの初期版と同じ
+ * "1970-01-01" にはしない — buildSettingsTimeline の latestAtOrBefore は effectiveFrom が
+ * 同値の場合どちらを選ぶか未定義〔先勝ち〕になり、テストで使う 2026年の対象期間に対して
+ * どちらの版が有効になるか不安定になるため、確実にフレックス版より後で・テスト対象期間より
+ * 十分前の日付にしている)。
+ */
+export async function switchToFixedWorkPolicy(
+  db: Database,
+  params: { tenantId: string; standardDayMinutes: number; effectiveFrom?: string },
+): Promise<void> {
+  const rows = await db.select().from(workPolicies).where(eq(workPolicies.tenantId, params.tenantId)).limit(1);
+  const workPolicyId = rows[0]?.id;
+  if (!workPolicyId) {
+    throw new Error("switchToFixedWorkPolicy: no work_policies row found for tenant (call setupTestDb() first)");
+  }
+  await db.insert(workPolicyVersions).values({
+    id: uuidv7(),
+    tenantId: params.tenantId,
+    workPolicyId,
+    effectiveFrom: params.effectiveFrom ?? "2000-01-01",
+    kind: "fixed",
+    settlementPeriod: "monthly", // fixed では無視される列。プレースホルダとして "monthly" を入れる
+    core: null,
+    standardDayMinutes: params.standardDayMinutes,
+    createdAt: 0,
+  });
 }
 
 export interface SeededSecondUser {

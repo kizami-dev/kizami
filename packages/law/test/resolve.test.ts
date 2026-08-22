@@ -35,6 +35,7 @@ describe("resolveLawRules — 基準日での解決", () => {
   it("基準版そのもの(2000-01-01ちょうど)は完全な LawRules を返す", () => {
     const rules = resolveLawRules("2000-01-01", LARGE);
     expect(rules.weeklyStatutoryMinutes).toBe(2400);
+    expect(rules.dailyStatutoryMinutes).toBe(480);
     expect(rules.lateNight).toEqual({ startMinutes: 1320, endMinutes: 300 });
     expect(rules.annualLeave.hourlyMaxDays).toBe(0);
     expect(rules.overtime60h.enabled).toBe(false);
@@ -204,6 +205,34 @@ describe("listUpcomingChanges", () => {
   });
 });
 
+describe("resolveLawRules — 休憩の付与義務(労基法34条1項)", () => {
+  it("基準版から breakRequirements が設定されている(6時間超45分・8時間超60分)", () => {
+    const rules = resolveLawRules("2000-01-01", LARGE);
+    expect(rules.breakRequirements).toEqual([
+      { overMinutes: 360, minimumMinutes: 45 },
+      { overMinutes: 480, minimumMinutes: 60 },
+    ]);
+  });
+
+  it("直近の日付でも同じ値のまま(1947年の制定以来改正がないため版が増えない)", () => {
+    const rules = resolveLawRules("2026-01-01", LARGE);
+    expect(rules.breakRequirements).toEqual([
+      { overMinutes: 360, minimumMinutes: 45 },
+      { overMinutes: 480, minimumMinutes: 60 },
+    ]);
+  });
+
+  it("企業規模・特例措置対象事業場のいずれでも変わらない(34条は事業場属性・企業規模に依存しない)", () => {
+    const sme = resolveLawRules("2024-01-01", SME);
+    const specialLarge = resolveLawRules("2024-01-01", SPECIAL_PROVISION_LARGE);
+    expect(sme.breakRequirements).toEqual([
+      { overMinutes: 360, minimumMinutes: 45 },
+      { overMinutes: 480, minimumMinutes: 60 },
+    ]);
+    expect(specialLarge.breakRequirements).toEqual(sme.breakRequirements);
+  });
+});
+
 describe("resolveLawRules — 特例措置対象事業場(週44時間)", () => {
   it("特例措置対象事業場では weeklyStatutoryMinutes が 2640 になる", () => {
     const rules = resolveLawRules("2024-01-01", SPECIAL_PROVISION_LARGE);
@@ -236,6 +265,12 @@ describe("resolveLawRules — 特例措置対象事業場(週44時間)", () => {
     expect(specialSme.weeklyStatutoryMinutes).toBe(2640);
     // この時点の中小企業はまだ60時間超区分が未導入(特例措置とは独立した軸)
     expect(specialSme.overtime60h.enabled).toBe(false);
+  });
+
+  it("特例措置対象事業場でも1日の法定労働時間は480分のまま(緩和されるのは週だけ)", () => {
+    const rules = resolveLawRules("2024-01-01", SPECIAL_PROVISION_LARGE);
+    expect(rules.dailyStatutoryMinutes).toBe(480);
+    expect(rules.weeklyStatutoryMinutes).toBe(2640);
   });
 
   it("buildLawTimeline でも特例措置の上書きが各区間に反映される", () => {

@@ -95,6 +95,19 @@
   color: var(--k-cyan-ink);
 }
 
+/*
+ * 固定時間制の「時間外バー」(2026-08-23 追加、flex-balance と同じ構造・見た目を共有)。
+ * 36協定の月45時間を超えたときは track の縁を M(マゼンタ)にし、色だけに頼らず
+ * 数値・文言(overtimeBarOverLabel)でも超過を示す(依頼どおり)。
+ */
+.flex-balance__track--over {
+  border-color: var(--k-magenta-ink);
+}
+
+.flex-balance__track--over .flex-balance__fill {
+  background: var(--k-magenta);
+}
+
 /* 区分別合計チップ */
 .totals-row {
   display: flex;
@@ -136,6 +149,19 @@
 
 .totals-chip--statutoryHoliday {
   --chip-color: var(--k-cyan-ink);
+}
+
+/* 制度の明示(2026-08-23 追加)。テーブル直前に静かに1行だけ出す。 */
+.monthly-table__work-system {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: 0.85rem;
+  color: var(--k-ink-soft);
+}
+
+.monthly-table__work-system strong {
+  color: var(--k-key);
 }
 
 /* 日次テーブル: K 主体の静かな見た目 */
@@ -180,6 +206,19 @@
   color: var(--k-magenta-ink);
 }
 
+/*
+ * 警告のある行の背景(2026-08-23 追加、「Y」マーク廃止の代替)。
+ * 警告文言そのものが隣にあり非色覚的な手掛かりを既に担っているため、印(Y)は廃止し、
+ * 行全体を控えめな警告色の背景にする。--k-yellow はテキストには使えないが(tokens.css の
+ * 注記どおり)、背景としては薄く混ぜれば両テーマで機能する(ダークでも再定義しない原色のため)。
+ * モバイルはカード化(tr が display:block)されるため、この背景はカード自体にそのまま付く。
+ * 法定休日(--row--holiday)と重なった場合も、この背景は薄いので先頭セルのマゼンタ文字
+ * (下記)の可読性を損なわない。
+ */
+.monthly-table tr.monthly-table__row--warning {
+  background: color-mix(in srgb, var(--k-yellow) 12%, transparent);
+}
+
 .monthly-table__warning {
   text-align: left !important;
   color: var(--k-yellow-ink);
@@ -188,9 +227,39 @@
   min-width: 10rem;
 }
 
-.monthly-table__warning-mark {
-  display: inline-block;
-  margin-right: 4px;
+/* 勤務列(打刻時刻、2026-08-23 追加)。中抜けは複数行を積む。件数バッジには畳まない(依頼どおり)。 */
+.monthly-table__stretches {
+  text-align: left !important;
+}
+
+.monthly-table__stretch + .monthly-table__stretch {
+  margin-top: 2px;
+}
+
+/*
+ * 日界をまたぐ勤務の「受け側」の日に出す継続行(2026-08-23 追加)。前日以前の打刻であって
+ * その日の打刻そのものではないため、控えめな見た目(淡色・やや小さめ)にして通常の区間と
+ * 区別する。
+ */
+.monthly-table__stretch--incoming {
+  color: var(--k-ink-soft);
+  font-size: 0.82rem;
+}
+
+/*
+ * 時間外列(固定時間制のみ、2026-08-23 追加)。法定時間外を主表示、法定内残業(所定超〜1日8時間)
+ * はその下に小さく併記する。割増の要否が違う二つの数字を同じ大きさで並べない(依頼どおり)。
+ */
+.monthly-table__overtime-main {
+  font-family: var(--font-mono);
+  color: var(--k-magenta-ink);
+}
+
+.monthly-table__overtime-extra {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--k-ink-soft);
+  margin-top: 2px;
 }
 
 .monthly-empty {
@@ -390,4 +459,76 @@
   accent-color: var(--k-key);
   width: 1rem;
   height: 1rem;
+}
+
+/*
+ * モバイル(2026-08-23 追加): 勤務列・時間外列が増えたことで、素の表のままだと 390px 幅で
+ * 横スクロールが発生する。列を間引くと中抜けの有無・時間外の内訳など修正申請の判断に
+ * 効く情報が見えなくなるため、列を隠さずカード風に折り返す方を選んだ(依頼が挙げた
+ * 二択のうち後者)。thead は視覚的に隠すだけで DOM には残す(base.css の
+ * .visually-hidden と同じクリップ手法)。見出しラベルは各 td の data-label 属性
+ * (JSX側で列見出しと同じ文言を付与)を ::before で出す。
+ */
+@media (max-width: 640px) {
+  .monthly-table-wrap {
+    overflow-x: visible;
+    border: none;
+  }
+
+  .monthly-table {
+    min-width: 0;
+    display: block;
+  }
+
+  .monthly-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .monthly-table tbody {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+
+  .monthly-table tr {
+    display: block;
+    border: var(--border-hair);
+    border-radius: var(--radius-m);
+    padding: var(--space-3);
+  }
+
+  .monthly-table td {
+    display: block;
+    text-align: left !important;
+    white-space: normal;
+    border-bottom: none;
+    padding: var(--space-1) 0;
+  }
+
+  /* 打刻・警告・時間外が無い日はラベルごと隠す(空欄の「見出しだけのカード」を出さない)。 */
+  .monthly-table td[data-label]:empty {
+    display: none;
+  }
+
+  .monthly-table td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    font-size: 0.72rem;
+    color: var(--k-ink-soft);
+  }
+
+  .monthly-table__date {
+    font-family: var(--font-display);
+    font-size: 1rem;
+    letter-spacing: 0.02em;
+    margin-bottom: var(--space-2);
+  }
 }

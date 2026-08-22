@@ -79,6 +79,15 @@ export const LAW_VERSIONS: LawVersion[] = [
       "有効な版が見つからずエラーになる(意図的な仕様。詳細は resolve.ts コメント参照)。",
     rules: {
       weeklyStatutoryMinutes: 40 * 60, // 2400
+      // 特例措置対象事業場でも週とは独立に常に480分(労基法32条2項、resolve.ts 参照)。
+      // 全期間を通じて変更がないため基準版のみに置き、以降の版では差分に含めない。
+      dailyStatutoryMinutes: 8 * 60, // 480
+      // 休憩の付与義務(労基法34条1項)。1947年の制定以来変更がないため、dailyStatutoryMinutes と
+      // 同じ理由で基準版のみに置き、以降の版では差分に含めない。
+      breakRequirements: [
+        { overMinutes: 6 * 60, minimumMinutes: 45 }, // 6時間超で45分以上
+        { overMinutes: 8 * 60, minimumMinutes: 60 }, // 8時間超で60分以上
+      ],
       lateNight: { startMinutes: 22 * 60, endMinutes: 5 * 60 }, // 1320, 300
       // 月60時間超の割増区分は2010年改正で初めて導入されるため、基準版では無効
       overtime60h: { enabled: false, thresholdMinutes: 60 * 60 },

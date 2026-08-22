@@ -14,6 +14,7 @@ const FIXED_NOW = new Date("2026-04-15T03:00:00.000Z");
 const VALID_BODY = {
   effectiveFrom: "2026-05-01",
   dayBoundaryMinutes: 300, // 05:00
+  weekStartWeekday: 0,
   legalHolidayRule: { kind: "weekday", weekday: 6 },
   breakRule: { mode: "punch" },
   gpsEnabled: false,
@@ -194,6 +195,21 @@ describe("GET/POST /settings/attendance", () => {
     expect(await badBreak.json()).toEqual({ error: "invalid_break_rule" });
   });
 
+  it("POST rejects an out-of-range weekStartWeekday with 400", async () => {
+    const { db, tenantId, userId, email, password } = await setupTestDb();
+    await grantPermission(db, { tenantId, userId, permission: CALENDAR_PERMISSION, scope: "tenant" });
+    const app = createApp({ db });
+    const cookie = await loginAndGetCookie(app, email, password);
+
+    const res = await app.request("/settings/attendance", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ ...VALID_BODY, weekStartWeekday: 7 }),
+    });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "invalid_week_start_weekday" });
+  });
+
   it("history lists multiple versions in ascending effectiveFrom order after two POSTs", async () => {
     const { db, tenantId, userId, email, password } = await setupTestDb();
     await grantPermission(db, { tenantId, userId, permission: CALENDAR_PERMISSION, scope: "tenant" });
@@ -253,6 +269,7 @@ describe("GET/POST /settings/attendance", () => {
       body: JSON.stringify({
         effectiveFrom: "2026-05-01",
         dayBoundaryMinutes: 300,
+        weekStartWeekday: 0,
         legalHolidayRule: { kind: "weekday", weekday: 6 },
         breakRule: { mode: "punch" },
         gpsEnabled: true,

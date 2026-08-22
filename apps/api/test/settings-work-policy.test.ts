@@ -35,7 +35,7 @@ describe("GET/POST /settings/work-policy", () => {
     const res = await app.request("/settings/work-policy", {
       method: "POST",
       headers: { "content-type": "application/json", cookie },
-      body: JSON.stringify({ effectiveFrom: "2026-05-01", settlementPeriod: "monthly", standardDayMinutes: 480 }),
+      body: JSON.stringify({ effectiveFrom: "2026-05-01", kind: "flex", settlementPeriod: "monthly", standardDayMinutes: 480 }),
     });
     expect(res.status).toBe(403);
   });
@@ -49,7 +49,13 @@ describe("GET/POST /settings/work-policy", () => {
     const res = await app.request("/settings/work-policy", { headers: { cookie } });
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.effective).toEqual({ effectiveFrom: "1970-01-01", settlementPeriod: "monthly", standardDayMinutes: 480, createdAt: 0 });
+    expect(body.effective).toEqual({
+      effectiveFrom: "1970-01-01",
+      kind: "flex",
+      settlementPeriod: "monthly",
+      standardDayMinutes: 480,
+      createdAt: 0,
+    });
     expect(body.history).toHaveLength(1);
   });
 
@@ -62,7 +68,7 @@ describe("GET/POST /settings/work-policy", () => {
     const res = await app.request("/settings/work-policy", {
       method: "POST",
       headers: { "content-type": "application/json", cookie },
-      body: JSON.stringify({ effectiveFrom: "2026-04-14", settlementPeriod: "monthly", standardDayMinutes: 480 }),
+      body: JSON.stringify({ effectiveFrom: "2026-04-14", kind: "flex", settlementPeriod: "monthly", standardDayMinutes: 480 }),
     });
     expect(res.status).toBe(409);
     expect(await res.json()).toEqual({ error: "effective_from_in_past" });
@@ -77,10 +83,44 @@ describe("GET/POST /settings/work-policy", () => {
     const res = await app.request("/settings/work-policy", {
       method: "POST",
       headers: { "content-type": "application/json", cookie },
-      body: JSON.stringify({ effectiveFrom: "2026-05-01", settlementPeriod: "yearly", standardDayMinutes: 480 }),
+      body: JSON.stringify({ effectiveFrom: "2026-05-01", kind: "flex", settlementPeriod: "yearly", standardDayMinutes: 480 }),
     });
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ error: "invalid_settlement_period" });
+  });
+
+  it("POST rejects an unsupported kind with 400 invalid_work_system_kind", async () => {
+    const { db, tenantId, userId, email, password } = await setupTestDb();
+    await grantPermission(db, { tenantId, userId, permission: PERMISSION, scope: "tenant" });
+    const app = createApp({ db });
+    const cookie = await loginAndGetCookie(app, email, password);
+
+    const res = await app.request("/settings/work-policy", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ effectiveFrom: "2026-05-01", kind: "yearly", standardDayMinutes: 480 }),
+    });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "invalid_work_system_kind" });
+  });
+
+  it("POST kind=fixed ignores the request's settlementPeriod and stores the placeholder", async () => {
+    const { db, tenantId, userId, email, password } = await setupTestDb();
+    await grantPermission(db, { tenantId, userId, permission: PERMISSION, scope: "tenant" });
+    const app = createApp({ db });
+    const cookie = await loginAndGetCookie(app, email, password);
+
+    // settlementPeriod をわざと不正な値にしても、kind=fixed では見ずに無視されるはず
+    // (プレースホルダで DB 列を埋めるだけ)。
+    const res = await app.request("/settings/work-policy", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ effectiveFrom: "2026-05-01", kind: "fixed", settlementPeriod: "bogus", standardDayMinutes: 480 }),
+    });
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.version.kind).toBe("fixed");
+    expect(body.version.settlementPeriod).toBe("monthly");
   });
 
   it("POST rejects a duplicate effectiveFrom with 409 version_already_exists", async () => {
@@ -89,7 +129,7 @@ describe("GET/POST /settings/work-policy", () => {
     const app = createApp({ db });
     const cookie = await loginAndGetCookie(app, email, password);
 
-    const body = { effectiveFrom: "2026-05-01", settlementPeriod: "monthly", standardDayMinutes: 420 };
+    const body = { effectiveFrom: "2026-05-01", kind: "flex", settlementPeriod: "monthly", standardDayMinutes: 420 };
     const first = await app.request("/settings/work-policy", {
       method: "POST",
       headers: { "content-type": "application/json", cookie },
@@ -115,7 +155,7 @@ describe("GET/POST /settings/work-policy", () => {
     const res = await app.request("/settings/work-policy", {
       method: "POST",
       headers: { "content-type": "application/json", cookie },
-      body: JSON.stringify({ effectiveFrom: "2026-05-01", settlementPeriod: "monthly", standardDayMinutes: 420 }),
+      body: JSON.stringify({ effectiveFrom: "2026-05-01", kind: "flex", settlementPeriod: "monthly", standardDayMinutes: 420 }),
     });
     expect(res.status).toBe(201);
     const body = await res.json();
@@ -154,7 +194,7 @@ describe("GET/POST /settings/work-policy", () => {
     const post = await app.request("/settings/work-policy", {
       method: "POST",
       headers: { "content-type": "application/json", cookie },
-      body: JSON.stringify({ effectiveFrom: "2026-05-01", settlementPeriod: "monthly", standardDayMinutes: 360 }),
+      body: JSON.stringify({ effectiveFrom: "2026-05-01", kind: "flex", settlementPeriod: "monthly", standardDayMinutes: 360 }),
     });
     expect(post.status).toBe(201);
 

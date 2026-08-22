@@ -149,6 +149,27 @@ describe("closing_events / closing_snapshots", () => {
       expect(snapshots).toEqual([]);
     });
 
+    it("round-trips the fixed work system breakdown categories (fixedWithinScheduled / fixedExtraWithinStatutory)", async () => {
+      const closeEvent = await appendClosingEvent(db, {
+        tenantId,
+        period: "2026-04",
+        event: "close",
+        actorId: userId,
+        occurredAt: 1000,
+      });
+
+      await saveClosingSnapshots(db, [
+        { tenantId, closingEventId: closeEvent.id, userId, category: "statutory", minutes: 9600 },
+        { tenantId, closingEventId: closeEvent.id, userId, category: "fixedWithinScheduled", minutes: 8400 },
+        { tenantId, closingEventId: closeEvent.id, userId, category: "fixedExtraWithinStatutory", minutes: 1200 },
+      ]);
+
+      const snapshots = await getClosingSnapshots(db, { tenantId, period: "2026-04" });
+      const byCategory = Object.fromEntries(snapshots.map((s) => [s.category, s.minutes]));
+      expect(byCategory.fixedWithinScheduled).toBe(8400);
+      expect(byCategory.fixedExtraWithinStatutory).toBe(1200);
+    });
+
     it("still returns the last close's snapshots after a reopen (no snapshot deletion on reopen)", async () => {
       const closeEvent = await appendClosingEvent(db, {
         tenantId,

@@ -61,6 +61,8 @@ interface RawFixture {
   settings: {
     tz_offset: number;
     day_boundary: string;
+    /** 週の起算曜日(省略時は sunday)。現行フィクスチャは全てフレックスのため実際には未使用 */
+    week_start_weekday?: string;
     legal_holiday: RawLegalHoliday;
     flex: { settlement: "monthly"; core: null; standard_day: string };
     break_rule: { mode: "punch" };
@@ -129,8 +131,12 @@ export function loadGoldenCase(yamlText: string): GoldenCase {
   const settings: CalcSettings = {
     tzOffsetMinutes: raw.settings.tz_offset,
     dayBoundaryMinutes: parseHm(raw.settings.day_boundary),
+    // 既存フィクスチャは週起算曜日を指定しないため、既定で日曜起算にする
+    // (現行フィクスチャは全てフレックスで週次判定を使わないため実際には効かない)。
+    weekStartWeekday: WEEKDAY_NAMES[String(raw.settings.week_start_weekday ?? "sunday")] ?? 0,
     legalHoliday: parseLegalHoliday(raw.settings.legal_holiday),
-    flex: {
+    workSystem: {
+      kind: "flex",
       settlement: raw.settings.flex.settlement,
       core: raw.settings.flex.core,
       standardDayMinutes: parseHm(raw.settings.flex.standard_day),
@@ -156,7 +162,7 @@ export function loadGoldenCase(yamlText: string): GoldenCase {
   // (同日エントリの合算はエンジン側 buildDailyBreakdown/calculateFlexBalance が行う)。
   const legacyPaidLeave: PaidLeaveEntry[] = (raw.paid_leave_days ?? []).map((date) => ({
     date,
-    minutes: settings.flex.standardDayMinutes,
+    minutes: settings.workSystem.standardDayMinutes,
   }));
   const explicitPaidLeave: PaidLeaveEntry[] = (raw.paid_leave ?? []).map((entry) => ({
     date: entry.date,

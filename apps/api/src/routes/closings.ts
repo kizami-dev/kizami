@@ -199,8 +199,7 @@ export function createClosingsRoutes(db: Database) {
             tenantId: user.tenantId,
             closingEventId: event.id,
             userId,
-            totals: output.totals,
-            flexBalance: output.flexBalance,
+            output,
           }),
         );
         await saveClosingSnapshots(tx, snapshotInputs);

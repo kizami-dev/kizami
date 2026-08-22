@@ -58,4 +58,14 @@ expected:
   # diff = 16200 - 10628 = 5572
   totals: { statutory: 10628, overtime: 5572, overtime60h: 0, lateNight: 0, statutoryHoliday: 0 }
   flex_balance: { frame: 10628, actual: 16200, diff: 5572 }
-  warnings: []
+  # 18日分すべて実労働900分(15時間)・休憩0分 → 各区間で8時間超60分の休憩が必要なところ
+  # 不足しているため、区間ごとに insufficient_break が1件ずつ(計18件)出る。
+  # (休憩付与義務は労基法34条1項そのもので、60時間超区分の施行日とは無関係に全期間で有効)
+  warnings:
+    [
+      "insufficient_break", "insufficient_break", "insufficient_break", "insufficient_break",
+      "insufficient_break", "insufficient_break", "insufficient_break", "insufficient_break",
+      "insufficient_break", "insufficient_break", "insufficient_break", "insufficient_break",
+      "insufficient_break", "insufficient_break", "insufficient_break", "insufficient_break",
+      "insufficient_break", "insufficient_break",
+    ]

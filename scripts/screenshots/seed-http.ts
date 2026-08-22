@@ -254,9 +254,13 @@ export async function seedHttp(params: SeedHttpParams): Promise<SeedHttpResult> 
     breakRule: { mode: "punch" },
     gpsEnabled: true,
     gpsRetentionDays: 90,
+    // 週の起算曜日。固定時間制の「週40時間超」の判定に使う(就業規則に定めが無ければ
+    // 日曜起算が原則 — 昭和63年基発第1号)。デモは既定のまま日曜にする。
+    weekStartWeekday: 0,
   });
   await client.createWorkPolicyVersion({
     effectiveFrom: fmtDate(today),
+    kind: "flex",
     settlementPeriod: "monthly",
     standardDayMinutes: 480,
   });

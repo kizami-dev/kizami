@@ -11,7 +11,7 @@ import { auditLogs, tenantSettingVersions, uuidv7, type Database } from "@kizami
 import { calculate, type EngineInput, type LawTimelineSpan } from "@kizami/engine";
 import { buildLawTimeline } from "@kizami/law";
 import { createApp } from "../src/app.js";
-import { grantPermission, jstMinutes, loginAndGetCookie, setupTestDb } from "./support/setup.js";
+import { grantPermission, jstMinutes, loginAndGetCookie, setupTestDb, switchToFixedWorkPolicy } from "./support/setup.js";
 
 const FIXED_NOW = new Date("2026-05-15T03:00:00.000Z"); // JST 2026-05-15 12:00
 
@@ -289,8 +289,9 @@ describe("closings API", () => {
           settings: {
             tzOffsetMinutes: 540,
             dayBoundaryMinutes: 300,
+            weekStartWeekday: 0,
             legalHoliday: { kind: "weekday", weekday: 6 },
-            flex: { settlement: "monthly", core: null, standardDayMinutes: 480 },
+            workSystem: { kind: "flex", settlement: "monthly", core: null, standardDayMinutes: 480 },
             breakRule: { mode: "punch" },
           },
         },
@@ -306,5 +307,32 @@ describe("closings API", () => {
     expect(afterSettingsChange.body.closed).toBe(true);
     expect(afterSettingsChange.body.totals).toEqual(beforeClose.body.totals);
     expect(afterSettingsChange.body.flexBalance).toEqual(beforeClose.body.flexBalance);
+  });
+
+  it("固定時間制: close -> snapshot -> 読み戻しで flexBalance が null のまま復元される(0埋めに戻らない)", async () => {
+    const { db, tenantId, userId, email, password } = await setupTestDb();
+    await switchToFixedWorkPolicy(db, { tenantId, standardDayMinutes: 480 });
+    await grantPermission(db, { tenantId, userId, permission: "closing.execute", scope: "tenant" });
+    const app = createApp({ db });
+    const cookie = await loginAndGetCookie(app, email, password);
+
+    // 4/1 9:00-19:00(10h、休憩なし)→ 日次法定時間外(8h超)2h が出るはず
+    expect((await postPunch(app, cookie, "clock_in", jstMinutes(2026, 4, 1, 9, 0))).status).toBe(201);
+    expect((await postPunch(app, cookie, "clock_out", jstMinutes(2026, 4, 1, 19, 0))).status).toBe(201);
+
+    const beforeClose = await getMonthly(app, cookie, "2026-04");
+    expect(beforeClose.body.closed).toBe(false);
+    expect(beforeClose.body.workSystem).toBe("fixed");
+    expect(beforeClose.body.flexBalance).toBeNull();
+    expect(beforeClose.body.totals.overtime).toBe(120); // 2h
+
+    const closeRes = await closePeriod(app, cookie, "2026-04");
+    expect(closeRes.status).toBe(200);
+
+    const afterClose = await getMonthly(app, cookie, "2026-04");
+    expect(afterClose.body.closed).toBe(true);
+    // 0埋めのデフォルト({frameMinutes:0,...})に戻っていないことが本題。
+    expect(afterClose.body.flexBalance).toBeNull();
+    expect(afterClose.body.totals).toEqual(beforeClose.body.totals);
   });
 });

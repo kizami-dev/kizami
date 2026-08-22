@@ -293,6 +293,7 @@ function serializeTenantSettingVersion(v: TenantSettingVersion) {
   return {
     effectiveFrom: v.effectiveFrom,
     dayBoundaryMinutes: v.dayBoundaryMinutes,
+    weekStartWeekday: v.weekStartWeekday,
     legalHolidayRule: JSON.parse(v.legalHolidayRule) as LegalHolidayRule,
     breakRule: JSON.parse(v.breakRule) as { mode: "punch" },
     gpsEnabled: v.gpsEnabled,
@@ -305,6 +306,7 @@ function serializeTenantSettingVersion(v: TenantSettingVersion) {
 function serializeWorkPolicyVersion(v: WorkPolicyVersion) {
   return {
     effectiveFrom: v.effectiveFrom,
+    kind: v.kind,
     settlementPeriod: v.settlementPeriod,
     standardDayMinutes: v.standardDayMinutes,
     createdAt: v.createdAt,
@@ -810,6 +812,17 @@ export function createSettingsRoutes(db: Database, deps: SettingsRoutesDeps = {}
     if (!isValidBreakRule(body.breakRule)) return c.json({ error: "invalid_break_rule" }, 400);
     const breakRule = body.breakRule;
 
+    // このルートの他フィールド(dayBoundaryMinutes・legalHolidayRule・breakRule・gpsEnabled)は
+    // いずれも「省略時は前版から引き継ぐ」PUT ではなく、POST のたびに新しい版の全項目を
+    // 必須で受け取る流儀(このエンドポイントは追記専用の版作成であり、PUT /settings/notifications
+    // のような3値ルールの対象ではない)。weekStartWeekday もこれに揃え、省略・範囲外(0〜6以外)は
+    // 400 とし、暗黙に前版や既定値0を引き継がない(週の起算曜日を取り違えたまま新しい版を
+    // 作ってしまう事故を防ぐ)。
+    if (typeof body.weekStartWeekday !== "number" || !Number.isInteger(body.weekStartWeekday) || body.weekStartWeekday < 0 || body.weekStartWeekday > 6) {
+      return c.json({ error: "invalid_week_start_weekday" }, 400);
+    }
+    const weekStartWeekday = body.weekStartWeekday;
+
     if (typeof body.gpsEnabled !== "boolean") return c.json({ error: "invalid_gps_enabled" }, 400);
     const gpsEnabled = body.gpsEnabled;
 
@@ -849,6 +862,7 @@ export function createSettingsRoutes(db: Database, deps: SettingsRoutesDeps = {}
       breakRule: JSON.stringify(breakRule),
       gpsEnabled,
       gpsRetentionDays,
+      weekStartWeekday,
       createdAt: now,
     });
 
@@ -894,6 +908,15 @@ export function createSettingsRoutes(db: Database, deps: SettingsRoutesDeps = {}
     });
   });
 
+  /**
+   * kind = "fixed" のとき、DB 列(settlement_period は NOT NULL)を埋めるためだけに使う
+   * プレースホルダ。work_policy_versions.settlementPeriod は flex 専用の列であり
+   * (packages/db/src/schema/settings.ts のコメント参照)、固定時間制では意味を持たず
+   * リクエストの値も使わない。決め打ちの値をこの1箇所だけに集約し、コード中に
+   * "monthly" 文字列リテラルが散らばらないようにする。
+   */
+  const FIXED_SETTLEMENT_PERIOD_PLACEHOLDER = "monthly";
+
   app.post("/work-policy", async (c) => {
     requirePermission(c, WORK_POLICY_PERMISSION, "tenant");
     const user = c.get("user");
@@ -904,11 +927,23 @@ export function createSettingsRoutes(db: Database, deps: SettingsRoutesDeps = {}
     if (!isValidLocalDate(body.effectiveFrom)) return c.json({ error: "invalid_effective_from" }, 400);
     const effectiveFrom = body.effectiveFrom;
 
-    // v0.1 はフレックスの清算期間 "monthly" のみ対応(packages/engine の FlexSettings.settlement)。
-    if (body.settlementPeriod !== "monthly") {
-      return c.json({ error: "invalid_settlement_period" }, 400);
+    if (body.kind !== "flex" && body.kind !== "fixed") {
+      return c.json({ error: "invalid_work_system_kind" }, 400);
     }
-    const settlementPeriod = body.settlementPeriod;
+    const kind = body.kind;
+
+    // settlementPeriod はフレックス専用の列。固定時間制ではリクエストの値を見ず(検証もせず)、
+    // 上記プレースホルダで DB 列を埋める。v0.1 はフレックスの清算期間 "monthly" のみ対応
+    // (packages/engine の FlexSettings.settlement)。
+    let settlementPeriod: string;
+    if (kind === "flex") {
+      if (body.settlementPeriod !== "monthly") {
+        return c.json({ error: "invalid_settlement_period" }, 400);
+      }
+      settlementPeriod = body.settlementPeriod;
+    } else {
+      settlementPeriod = FIXED_SETTLEMENT_PERIOD_PLACEHOLDER;
+    }
 
     if (
       typeof body.standardDayMinutes !== "number" ||
@@ -926,7 +961,11 @@ export function createSettingsRoutes(db: Database, deps: SettingsRoutesDeps = {}
     }
 
     const now = nowMinutes();
-    const policy = await getOrCreateTenantWorkPolicy(db, { tenantId: user.tenantId, name: "標準フレックス", createdAt: now });
+    // "標準"(制度中立の名前): 制度(flex/fixed)は版(work_policy_versions.kind)側が持つため、
+    // ポリシー名自体は制度を含意しない名前にする。get-or-create なので既存テナントで既に
+    // "標準フレックス" 等の名前が付いている場合はそのまま(名前は変わらない) — ここが効くのは
+    // work_policies 行がまだ無い新規テナント(seed 未経由のテスト DB 等)のみ。
+    const policy = await getOrCreateTenantWorkPolicy(db, { tenantId: user.tenantId, name: "標準", createdAt: now });
     const history = await listWorkPolicyVersions(db, { tenantId: user.tenantId, workPolicyId: policy.id });
     if (history.some((v) => v.effectiveFrom === effectiveFrom)) {
       return c.json({ error: "version_already_exists" }, 409);
@@ -936,6 +975,7 @@ export function createSettingsRoutes(db: Database, deps: SettingsRoutesDeps = {}
       tenantId: user.tenantId,
       workPolicyId: policy.id,
       effectiveFrom,
+      kind,
       settlementPeriod,
       standardDayMinutes,
       createdAt: now,

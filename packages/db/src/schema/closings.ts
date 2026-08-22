@@ -44,7 +44,16 @@ import { leaveRequests } from "./leave.js";
 import { tenants } from "./tenants.js";
 import { users } from "./users.js";
 
-/** 区分別時間数5種 + flex収支3種(上記コメント参照)。DB 層は文字列として保持し、中身は解釈しない。 */
+/**
+ * 区分別時間数5種 + flex収支3種 + 固定時間制内訳2種(上記コメント参照)。
+ * DB 層は文字列として保持し、中身は解釈しない。
+ *
+ * fixedWithinScheduled(所定内)/fixedExtraWithinStatutory(法定内残業)は固定時間制の月にのみ
+ * 書かれる(flexFrame 等と同じ「行が無い = 制度が違う」設計。apps/api/src/lib/closing-snapshot.ts
+ * 参照)。この2つが無いと、月次 totals.statutory(所定内+法定内残業の合計)からは締めた瞬間に
+ * 内訳が復元不能になる — 給与計算では基本給扱いか時間外手当扱いかが変わるため、締め済み月でも
+ * 区別が要る(docs/design/work-systems.md 参照)。
+ */
 export const CLOSING_SNAPSHOT_CATEGORIES = [
   "statutory",
   "overtime",
@@ -54,6 +63,8 @@ export const CLOSING_SNAPSHOT_CATEGORIES = [
   "flexFrame",
   "flexActual",
   "flexDiff",
+  "fixedWithinScheduled",
+  "fixedExtraWithinStatutory",
 ] as const;
 export type ClosingSnapshotCategory = (typeof CLOSING_SNAPSHOT_CATEGORIES)[number];
 

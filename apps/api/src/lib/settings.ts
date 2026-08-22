@@ -77,6 +77,7 @@ export async function buildSettingsTimeline(
     .select({
       effectiveFrom: workPolicyVersions.effectiveFrom,
       workPolicyId: workPolicyVersions.workPolicyId,
+      kind: workPolicyVersions.kind,
       settlementPeriod: workPolicyVersions.settlementPeriod,
       standardDayMinutes: workPolicyVersions.standardDayMinutes,
     })
@@ -102,17 +103,33 @@ export async function buildSettingsTimeline(
   const sortedDates = [...changePoints].sort();
 
   return sortedDates.map((date): SettingsSpan => {
-    const tenantVersion = latestAtOrBefore(tenantTimeline, date);
+    // 判断点(バグ修正, 2026-08-23): 各要素(tenantVersion/assignment/version)は本来 `date`
+    // (このspanの開始点)で解決すべきだが、`date` が `fromDate` より前になりうる
+    // (tenantTimeline は「fromDate 以前の最新版1件」を必ず含むため、その版の effectiveFrom が
+    // 唯一の changePoint になっているケースがある)。このとき assignment/version は
+    // `>= fromDate` でしか changePoints に採用しないため、`fromDate` より前かつ tenantVersion の
+    // effectiveFrom より後で work policy だけが切り替わっていた場合、その切り替えが
+    // どの changePoint にも現れず、解決に使う日付が古いまま(切り替え前の版)になってしまう
+    // (上のバグ修正コメントが前提としていた「fromDate 時点の最新値に吸収される」が実際には
+    // 成立していなかった — `latestAtOrBefore` に渡していたのが `fromDate` ではなく `date` その
+    // ものだったため)。`date` が `fromDate` より前のときだけ `fromDate` に引き上げて解決する
+    // ことで、この2つの日付のずれを解消する(`date` 自体は span の `from` として使うため
+    // そのまま残す — engine 側は「この日付以下で最大の from を持つ span」を選ぶだけなので、
+    // fromDate より前の span が結果的に「実際には fromDate 時点の値」を持っていても、
+    // fromDate 以降の日付を解決する際の結果は変わらない)。
+    const resolveDate = date < fromDate ? fromDate : date;
+
+    const tenantVersion = latestAtOrBefore(tenantTimeline, resolveDate);
     if (!tenantVersion) {
       throw new Error(`no tenant settings resolvable at ${date}`);
     }
-    const assignment = latestAtOrBefore(assignments, date);
+    const assignment = latestAtOrBefore(assignments, resolveDate);
     if (!assignment) {
       throw new Error(`no work policy assigned at ${date}`);
     }
     const version = latestAtOrBefore(
       versions.filter((v) => v.workPolicyId === assignment.workPolicyId),
-      date,
+      resolveDate,
     );
     if (!version) {
       throw new Error(`no work policy version resolvable for policy ${assignment.workPolicyId} at ${date}`);
@@ -121,17 +138,36 @@ export async function buildSettingsTimeline(
     const settings: CalcSettings = {
       tzOffsetMinutes: TZ_OFFSET_MINUTES_JST,
       dayBoundaryMinutes: tenantVersion.dayBoundaryMinutes,
+      weekStartWeekday: toWeekday(tenantVersion.weekStartWeekday),
       legalHoliday: JSON.parse(tenantVersion.legalHolidayRule) as LegalHolidayRule,
-      flex: {
-        settlement: version.settlementPeriod as "monthly",
-        core: null,
-        standardDayMinutes: version.standardDayMinutes,
-      },
+      workSystem:
+        version.kind === "fixed"
+          ? { kind: "fixed", standardDayMinutes: version.standardDayMinutes }
+          : { kind: "flex", settlement: version.settlementPeriod as "monthly", core: null, standardDayMinutes: version.standardDayMinutes },
       breakRule: JSON.parse(tenantVersion.breakRule) as { mode: "punch" },
     };
 
     return { from: date, settings };
   });
+}
+
+/**
+ * DB の week_start_weekday(素の integer)を engine の `0|1|...|6` 型へ narrowing する。
+ *
+ * 判断点: 範囲外の値(DBを直接操作した、マイグレーション漏れ等)を例外にするか 0 に丸めるかは
+ * このファイルの既存の流儀(buildSettingsTimeline 冒頭の tenantTimeline が空なら Error を
+ * 投げる、standardDayMinutesForDate も解決できなければ Error を投げる)に合わせ、**例外**を選ぶ。
+ * 0 に丸めて処理を続けると「週の起算曜日を取り違えたまま週次法定時間外を計算する」という
+ * 誤った集計値をサイレントに返してしまい、賃金計算に直結する固定時間制の集計では
+ * 検出しにくい実害が大きい。DB 側は NOT NULL 制約はあるが 0〜6 の範囲チェックは持たない
+ * (SQLite に CHECK 制約を追加する変更は本タスクのスコープ外の packages/db に及ぶ)ため、
+ * アプリ層のこの境界で検証する。
+ */
+function toWeekday(value: number): CalcSettings["weekStartWeekday"] {
+  if (Number.isInteger(value) && value >= 0 && value <= 6) {
+    return value as CalcSettings["weekStartWeekday"];
+  }
+  throw new Error(`invalid week_start_weekday in tenant_setting_versions: ${value}`);
 }
 
 export interface BuildLawTimelineForTenantParams {
@@ -170,8 +206,13 @@ export async function buildLawTimelineForTenant(
 }
 
 /**
- * 指定日に有効な標準労働時間(所定労働時間、分)を settingsTimeline から解決する。
+ * 指定日に有効な標準労働時間(分)を settingsTimeline から解決する。
  * 有給休暇(§5)の全休・半休の分数換算に使う(routes/leave.ts)。
+ *
+ * 制度によって `standardDayMinutes` の意味は異なる(`WorkSystem` 型の JSDoc 参照): フレックスでは
+ * 「有給日の枠算入に使う標準労働時間」、固定時間制では「所定労働時間そのもの」。しかし
+ * どちらも「1日分の有給が何分に換算されるか」としては正しい値であり、この関数はその
+ * 共通の役割だけを使うため制度によらず素通しでよい(意味の違いは呼び出し側では意識不要)。
  *
  * buildSettingsTimeline() が返す SettingsSpan[] は effective-dated(from 昇順、期間初日以前に
  * 有効な版を必ず1つ含む)前提のため、engine 側の findSettingsForDate と同じ「date 以下で
@@ -188,5 +229,5 @@ export function standardDayMinutesForDate(settingsTimeline: SettingsSpan[], date
   if (!chosen) {
     throw new Error(`no settings resolvable for ${date}`);
   }
-  return chosen.settings.flex.standardDayMinutes;
+  return chosen.settings.workSystem.standardDayMinutes;
 }

@@ -100,12 +100,26 @@ export type WarningKind =
   | "break_outside_work"
   | "duplicate_break_start"
   | "unmatched_break_end"
-  | "clock_out_during_break";
+  | "clock_out_during_break"
+  /** 期間の途中で労働時間制(flex/fixed)が切り替わった(2026-08-23 追加、packages/engine)。 */
+  | "mixed_work_system"
+  /** 勤務区間の休憩が労基法34条の最低時間に足りない(2026-08-23 追加、packages/engine)。 */
+  | "insufficient_break";
 
 export interface CalcWarning {
   kind: WarningKind;
   date: string;
   punchAt?: number;
+  /** insufficient_break のとき: 必要だった休憩と実際の休憩(分)。 */
+  break?: { requiredMinutes: number; actualMinutes: number };
+}
+
+/** その勤怠日に始まった勤務区間(出勤〜退勤の1まとまり)。中抜けがあれば複数。 */
+export interface WorkStretch {
+  /** UTC エポック分 */
+  clockInAt: number;
+  /** 退勤打刻。未退勤(missing_clock_out で集計除外)なら null */
+  clockOutAt: number | null;
 }
 
 export interface DailyBreakdown {
@@ -116,6 +130,16 @@ export interface DailyBreakdown {
   isLegalHoliday: boolean;
   legalHolidayMinutes: number;
   isPaidLeave: boolean;
+  /** その日の有給分数(2026-08-23 追加、packages/engine の DailyBreakdown と一致)。 */
+  paidLeaveMinutes: number;
+  /** その日に始まった勤務区間。打刻時刻の表示用(2026-08-23 追加)。 */
+  stretches: WorkStretch[];
+  /** 所定内(実労働のうち標準労働時間まで)。固定時間制のみ。フレックスでは 0 */
+  withinScheduledMinutes: number;
+  /** 所定外だが法定内(所定超〜1日8時間、いわゆる法定内残業)。固定時間制のみ。フレックスでは 0 */
+  extraWithinStatutoryMinutes: number;
+  /** 法定時間外(日8時間超 + 週法定超)。固定時間制のみ。フレックスでは 0 */
+  statutoryOvertimeMinutes: number;
 }
 
 export interface FlexBalance {
@@ -127,7 +151,10 @@ export interface FlexBalance {
 export interface MonthlyAttendance {
   days: DailyBreakdown[];
   totals: CategorizedMinutes;
-  flexBalance: FlexBalance;
+  /** フレックスのみ。固定時間制では null(packages/engine の EngineOutput と一致、2026-08-23)。 */
+  flexBalance: FlexBalance | null;
+  /** 期間開始日に有効だった労働時間制(2026-08-23 追加)。 */
+  workSystem: "flex" | "fixed";
   warnings: CalcWarning[];
   /** 締め済みかどうか(apps/api/src/routes/attendance.ts の GET /attendance/monthly、v0.3 追加)。 */
   closed: boolean;
@@ -135,7 +162,7 @@ export interface MonthlyAttendance {
   amended: boolean;
   /** 当初(最初の締め)の確定値。amended のときのみ存在する。 */
   originalTotals?: CategorizedMinutes;
-  originalFlexBalance?: FlexBalance;
+  originalFlexBalance?: FlexBalance | null;
 }
 
 export type CorrectionStatus = "pending" | "approved" | "rejected" | "withdrawn";

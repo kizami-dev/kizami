@@ -14,7 +14,14 @@ import {
   lateNightOverlapMinutes,
   resolveAttendanceDate,
 } from "./date.js";
-import type { DailyBreakdown, LawTimelineSpan, PaidLeaveEntry, PlainDateString, SettingsSpan } from "./types.js";
+import type {
+  DailyBreakdown,
+  LawTimelineSpan,
+  PaidLeaveEntry,
+  PlainDateString,
+  SettingsSpan,
+  WorkStretch,
+} from "./types.js";
 
 interface DayPiece {
   date: PlainDateString;
@@ -43,10 +50,25 @@ export function buildDailyBreakdown(
   lawTimeline: LawTimelineSpan[],
   period: { year: number; month: number },
   paidLeave: PaidLeaveEntry[],
+  stretches: WorkStretch[] = [],
 ): DailyBreakdown[] {
   const workedByDate = new Map<PlainDateString, number>();
   const lateNightByDate = new Map<PlainDateString, number>();
   const breakByDate = new Map<PlainDateString, number>();
+
+  // stretch は分割せず「clockInAt が属する勤怠日」にまるごと帰属させる(日界をまたぐ夜勤は
+  // 出勤した日の行に出て、退勤時刻が翌日になる。UI 側で「翌 7:00」のように表示する想定)。
+  const stretchesByDate = new Map<PlainDateString, WorkStretch[]>();
+  for (const stretch of stretches) {
+    const { date } = resolveAttendanceDate(stretch.clockInAt, settingsTimeline);
+    if (!isInPeriod(date, period)) continue;
+    const list = stretchesByDate.get(date);
+    if (list) {
+      list.push(stretch);
+    } else {
+      stretchesByDate.set(date, [stretch]);
+    }
+  }
 
   for (const segment of workedSegments) {
     for (const piece of splitByAttendanceDay(segment, settingsTimeline)) {
@@ -95,6 +117,11 @@ export function buildDailyBreakdown(
       legalHolidayMinutes: holiday ? rawWorked : 0,
       isPaidLeave: paidLeaveMinutes > 0,
       paidLeaveMinutes,
+      stretches: stretchesByDate.get(date) ?? [],
+      // 固定時間制の内訳は fixed.ts が埋める。フレックスでは 0 のまま。
+      withinScheduledMinutes: 0,
+      extraWithinStatutoryMinutes: 0,
+      statutoryOvertimeMinutes: 0,
     });
   }
 

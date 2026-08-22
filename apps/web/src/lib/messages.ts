@@ -206,15 +206,51 @@ export const messages = {
     prevMonth: "前月",
     nextMonth: "翌月",
     columnDate: "日付",
+    /** 打刻時刻(出勤→退勤)の列(2026-08-23 追加)。 */
+    columnStretches: "勤務",
     columnWorked: "実労働",
+    /** insufficient_break の警告文言に添える不足量(必要・実際)。 */
+    breakShortfallSuffix: (required: string, actual: string) => `(必要 ${required}・実際 ${actual})`,
     columnBreak: "休憩",
     columnLateNight: "深夜",
+    /** 固定時間制のときだけ出す時間外列(2026-08-23 追加)。 */
+    columnOvertime: "時間外",
     columnWarning: "警告",
     columnActions: "操作",
     correctionAction: "修正",
     empty: "この月の打刻データはありません",
+
+    /** 未退勤の勤務区間(clockOutAt: null)。 */
+    stretchOpenEnded: "—",
+    /** 退勤が翌日の暦日にまたがるときの接頭辞。 */
+    stretchNextDayPrefix: "翌",
+    /**
+     * 日界をまたぐ勤務の「受け側」の日の勤務列先頭に出す接頭辞(2026-08-23 追加)。
+     * 「翌」表記(区間の開始日側)と対称: 前日からなら stretchPrevDayLabel、
+     * 2日以上前からなら stretchFromDateLabel(M/D)を使う。
+     */
+    stretchPrevDayLabel: "(前日から)",
+    stretchFromDateLabel: (monthDay: string) => `(${monthDay} から)`,
+    /** 法定内残業(extraWithinStatutoryMinutes)の併記ラベル。 */
+    overtimeExtraLabel: "法定内",
+
+    /** 表示中の労働時間制の明示(2026-08-23 追加、ui-direction.md「月次」節)。 */
+    workSystemLabel: "表示中の労働時間制",
+    workSystemValue: {
+      flex: "フレックスタイム制",
+      fixed: "固定時間制",
+    } satisfies Record<"flex" | "fixed", string>,
+
     flexBalanceLabel: "フレックス収支",
     flexBalanceUnit: "分",
+    /** 固定時間制での「フレックス収支バー」置き換え(2026-08-23 追加)。36協定の月45時間に対する時間外の位置。 */
+    overtimeBarLabel: "時間外(36協定 月45時間の上限に対して)",
+    overtimeBarUnit: "分",
+    /** 上限に対する残り(下回っているとき)。 */
+    overtimeBarRemainingLabel: "残り",
+    /** 上限を超えたとき(頭打ち表示だけでなく文言でも分かるように)。 */
+    overtimeBarOverLabel: "上限を超過",
+
     totalsLabel: "区分別合計",
   },
 
@@ -234,6 +270,9 @@ export const messages = {
     duplicate_break_start: "休憩中の重複した休憩開始打刻を無効にしました",
     unmatched_break_end: "対応する休憩開始のない休憩終了打刻を無効にしました",
     clock_out_during_break: "休憩中に退勤打刻があり、休憩を終えて退勤したものとして扱いました",
+    mixed_work_system:
+      "この期間の途中で労働時間制が変更されました。期間開始日時点の制度で月全体を集計しています。集計対象の期間を分けて確認したい場合は管理者にご相談ください",
+    insufficient_break: "この勤務の休憩が法律で必要な時間に足りていません。休憩の打刻漏れがないか確認してください",
   } satisfies Record<
     | "missing_clock_out"
     | "duplicate_clock_in"
@@ -241,7 +280,9 @@ export const messages = {
     | "break_outside_work"
     | "duplicate_break_start"
     | "unmatched_break_end"
-    | "clock_out_during_break",
+    | "clock_out_during_break"
+    | "mixed_work_system"
+    | "insufficient_break",
     string
   >,
 

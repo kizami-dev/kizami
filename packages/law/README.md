@@ -80,6 +80,13 @@ const upcoming = listUpcomingChanges("2026-08-22", { isSmallOrMediumEnterprise: 
     — 例: 30日の月で通常 `floor(2400×30/7) = 10285`分、特例措置対象事業場は
     `floor(2640×30/7) = 11314`分
 - `LawRules`: ある時点で有効な、完全な法令ルールの集合
+  - `dailyStatutoryMinutes`: 1日の法定労働時間(分)。480(8時間)固定(労基法32条2項)。
+    特例措置対象事業場の週44時間(`weeklyStatutoryMinutes`)とは独立で、日の方は上書きされない
+  - `breakRequirements`: 休憩の付与義務(労基法34条1項)。実労働(休憩控除後)が `overMinutes` を
+    厳密に超えたら `minimumMinutes` 以上の休憩が必要(6時間超で45分、8時間超で60分)。
+    1947年の制定以来変更がないため `dailyStatutoryMinutes` と同じく基準版のみに置いている。
+    判定は勤務区間(出勤〜退勤の1まとまり)単位で行う契約 — engine 側は `@kizami/engine` の
+    `break-check.ts` を参照
 - `LawVersion`: `effectiveFrom` + `appliesTo`(省略可) + `basis` + `rules`(差分) の1版
 
 ## 関数
