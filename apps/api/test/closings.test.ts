@@ -8,11 +8,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import { auditLogs, tenantSettingVersions, uuidv7, type Database } from "@kizami/db";
-import { calculate, type EngineInput } from "@kizami/engine";
+import { calculate, type EngineInput, type LawTimelineSpan } from "@kizami/engine";
+import { buildLawTimeline } from "@kizami/law";
 import { createApp } from "../src/app.js";
 import { grantPermission, jstMinutes, loginAndGetCookie, setupTestDb } from "./support/setup.js";
 
 const FIXED_NOW = new Date("2026-05-15T03:00:00.000Z"); // JST 2026-05-15 12:00
+
+// setupTestDb() が作るテナントの法令プロファイル既定値(中小企業・特例措置対象外)と同じもの。
+const LAW_TIMELINE: LawTimelineSpan[] = buildLawTimeline("2026-04-01", "2026-04-30", {
+  isSmallOrMediumEnterprise: true,
+  isSpecialProvisionWorkplace: false,
+});
 
 interface RequestLike {
   request: (path: string, init?: RequestInit) => Promise<Response> | Response;
@@ -288,6 +295,7 @@ describe("closings API", () => {
           },
         },
       ],
+      lawTimeline: LAW_TIMELINE,
       period: { year: 2026, month: 4 },
       paidLeave: [],
     } satisfies EngineInput);

@@ -26,7 +26,7 @@ import {
   nowMinutes,
   parseMonthParam,
 } from "../lib/time.js";
-import { buildSettingsTimeline, standardDayMinutesForDate, TZ_OFFSET_MINUTES_JST } from "../lib/settings.js";
+import { buildLawTimelineForTenant, buildSettingsTimeline, standardDayMinutesForDate, TZ_OFFSET_MINUTES_JST } from "../lib/settings.js";
 
 const MINUTES_PER_DAY = 1440;
 
@@ -149,7 +149,7 @@ export function createAttendanceRoutes(db: Database) {
     const fromMinutes = localMidnightUtcMinutes(monthStartEpochDay - 1, tz);
     const toMinutes = localMidnightUtcMinutes(monthEndEpochDay + 2, tz) - 1;
 
-    const [punchRows, settingsTimeline, approvedLeaveRequests] = await Promise.all([
+    const [punchRows, settingsTimeline, lawTimeline, approvedLeaveRequests] = await Promise.all([
       listValidPunches(db, { tenantId: user.tenantId, userId: user.id, fromMinutes, toMinutes }),
       buildSettingsTimeline(db, {
         tenantId: user.tenantId,
@@ -157,6 +157,7 @@ export function createAttendanceRoutes(db: Database) {
         fromDate: monthStartDate,
         toDate: monthEndDate,
       }),
+      buildLawTimelineForTenant(db, { tenantId: user.tenantId, fromDate: monthStartDate, toDate: monthEndDate }),
       listApprovedLeaveRequestsInRange(db, {
         tenantId: user.tenantId,
         userId: user.id,
@@ -179,6 +180,7 @@ export function createAttendanceRoutes(db: Database) {
     const input: EngineInput = {
       punches,
       settingsTimeline,
+      lawTimeline,
       period: { year, month },
       paidLeave,
     };

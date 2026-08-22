@@ -11,6 +11,9 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
+  "dependencies": {
+    "@kizami/law": "workspace:*"
+  },
   "devDependencies": {
     "yaml": "^2.9.0"
   }

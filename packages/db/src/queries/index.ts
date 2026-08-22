@@ -8,4 +8,5 @@ export * from "./notifications.js";
 export * from "./permissions.js";
 export * from "./punches.js";
 export * from "./settings.js";
+export * from "./tenants.js";
 export * from "./leave.js";

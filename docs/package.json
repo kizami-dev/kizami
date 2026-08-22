@@ -7,6 +7,20 @@
     "dev": "vitepress dev",
     "build": "vitepress build"
   },
+  "comments": {
+    "typedoc-isolation": [
+      "typedoc / typedoc-plugin-markdown / typescript@5 をルートではなくここに隔離しているのは暫定回避策。",
+      "理由: TypeDoc は TypeScript の Compiler API(内部APIを含む)に依存しているが、TypeScript 7 は",
+      "Go 実装への書き換えに伴い programmatic API を持たずにリリースされたため、ルートの typescript@7 では",
+      "TypeDoc が動作しない。typescript-eslint や Vue/Svelte/Astro 等のツールチェーンも同じ理由で待ち状態。",
+      "pnpm の overrides(typedoc>typescript)では回避できなかった — ルート自身が typescript を直接依存",
+      "しているため peer 解決がそちらに引きずられるため(効かなかったので overrides は削除済み)。",
+      "解消条件: TypeScript 7.1 で programmatic API が提供され、TypeDoc が対応すること",
+      "(https://github.com/TypeStrong/typedoc/issues/3098 — TS7 対応は TS7.0 リリース後に機能凍結して着手予定)。",
+      "解消時にやること: ここから typedoc / typedoc-plugin-markdown / typescript を削除してルートの",
+      "devDependencies に戻し、scripts/typedoc-validate.mjs の typedoc 起動パスも合わせて戻す。"
+    ]
+  },
   "devDependencies": {
     "typedoc": "^0.28.20",
     "typedoc-plugin-markdown": "^4.12.0",

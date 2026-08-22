@@ -1,0 +1,61 @@
+# 60時間超区分の施行前(中小企業・2023-03、施行は2023-04-01)— overtime60h は常に0。
+name: 法令結線 — 中小企業の60時間超区分は2023-04-01より前は無効(常に0)
+law_reference: 労働基準法37条1項ただし書(中小企業への適用は2023-04-01、packages/law/src/versions.ts 参照)
+settings:
+  tz_offset: 540
+  day_boundary: "00:00"
+  legal_holiday: { dates: [] } # このケースでは法定休日を無関係にするため暦日指定・空配列にする
+  flex: { settlement: monthly, core: null, standard_day: "08:00" }
+  break_rule: { mode: punch }
+period: 2023-03
+law: { is_small_or_medium_enterprise: true }
+paid_leave_days: []
+punches:
+  # 2023-03-01〜18の18日間、06:00-21:00(15時間, 900分)勤務・休憩なし。深夜帯(22-24,0-5)には掛からない。
+  - { kind: clock_in,  at: "2023-03-01T06:00" }
+  - { kind: clock_out, at: "2023-03-01T21:00" }
+  - { kind: clock_in,  at: "2023-03-02T06:00" }
+  - { kind: clock_out, at: "2023-03-02T21:00" }
+  - { kind: clock_in,  at: "2023-03-03T06:00" }
+  - { kind: clock_out, at: "2023-03-03T21:00" }
+  - { kind: clock_in,  at: "2023-03-04T06:00" }
+  - { kind: clock_out, at: "2023-03-04T21:00" }
+  - { kind: clock_in,  at: "2023-03-05T06:00" }
+  - { kind: clock_out, at: "2023-03-05T21:00" }
+  - { kind: clock_in,  at: "2023-03-06T06:00" }
+  - { kind: clock_out, at: "2023-03-06T21:00" }
+  - { kind: clock_in,  at: "2023-03-07T06:00" }
+  - { kind: clock_out, at: "2023-03-07T21:00" }
+  - { kind: clock_in,  at: "2023-03-08T06:00" }
+  - { kind: clock_out, at: "2023-03-08T21:00" }
+  - { kind: clock_in,  at: "2023-03-09T06:00" }
+  - { kind: clock_out, at: "2023-03-09T21:00" }
+  - { kind: clock_in,  at: "2023-03-10T06:00" }
+  - { kind: clock_out, at: "2023-03-10T21:00" }
+  - { kind: clock_in,  at: "2023-03-11T06:00" }
+  - { kind: clock_out, at: "2023-03-11T21:00" }
+  - { kind: clock_in,  at: "2023-03-12T06:00" }
+  - { kind: clock_out, at: "2023-03-12T21:00" }
+  - { kind: clock_in,  at: "2023-03-13T06:00" }
+  - { kind: clock_out, at: "2023-03-13T21:00" }
+  - { kind: clock_in,  at: "2023-03-14T06:00" }
+  - { kind: clock_out, at: "2023-03-14T21:00" }
+  - { kind: clock_in,  at: "2023-03-15T06:00" }
+  - { kind: clock_out, at: "2023-03-15T21:00" }
+  - { kind: clock_in,  at: "2023-03-16T06:00" }
+  - { kind: clock_out, at: "2023-03-16T21:00" }
+  - { kind: clock_in,  at: "2023-03-17T06:00" }
+  - { kind: clock_out, at: "2023-03-17T21:00" }
+  - { kind: clock_in,  at: "2023-03-18T06:00" }
+  - { kind: clock_out, at: "2023-03-18T21:00" }
+expected:
+  # 手計算:
+  # 2023-03は31日: frame = floor(2400*31/7) = floor(10628.57...) = 10628分
+  # worked合計 = 18日 * 900分 = 16200分。actual = 16200(有給なし)
+  # overtime = max(0, 16200-10628) = 5572分
+  # overtime60h: 中小企業の60時間超区分の施行(2023-04-01)より前なので無効 → 常に0
+  #   (施行後なら max(0, 5572-3600) = 1972分になるはずの値が、施行前は0に強制される)
+  # diff = 16200 - 10628 = 5572
+  totals: { statutory: 10628, overtime: 5572, overtime60h: 0, lateNight: 0, statutoryHoliday: 0 }
+  flex_balance: { frame: 10628, actual: 16200, diff: 5572 }
+  warnings: []

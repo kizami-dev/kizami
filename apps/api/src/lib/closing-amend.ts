@@ -25,7 +25,7 @@
 import { listApprovedLeaveRequestsInRange, listValidPunches, type Database, type Transaction } from "@kizami/db";
 import { calculate, type EngineInput, type EngineOutput, type PaidLeaveEntry, type PunchKind, type ValidPunch } from "@kizami/engine";
 import { resolveUsageMinutes, type LeaveUnit } from "@kizami/leave";
-import { buildSettingsTimeline, standardDayMinutesForDate, TZ_OFFSET_MINUTES_JST } from "./settings.js";
+import { buildLawTimelineForTenant, buildSettingsTimeline, standardDayMinutesForDate, TZ_OFFSET_MINUTES_JST } from "./settings.js";
 import type { SettingsSpan } from "@kizami/engine";
 import { dateFromEpochDay, daysInMonth, epochDayFromDate, formatDate, localMidnightUtcMinutes } from "./time.js";
 
@@ -72,6 +72,7 @@ export async function computeMonthlyForUser(
     fromDate: monthStartDate,
     toDate: monthEndDate,
   });
+  const lawTimeline = await buildLawTimelineForTenant(db, { tenantId, fromDate: monthStartDate, toDate: monthEndDate });
   const approvedLeaveRequests = await listApprovedLeaveRequestsInRange(db, {
     tenantId,
     userId,
@@ -88,6 +89,7 @@ export async function computeMonthlyForUser(
   const input: EngineInput = {
     punches,
     settingsTimeline,
+    lawTimeline,
     period: { year, month },
     paidLeave,
   };

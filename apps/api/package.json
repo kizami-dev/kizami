@@ -15,6 +15,7 @@
     "@kizami/crypto": "workspace:*",
     "@kizami/db": "workspace:*",
     "@kizami/engine": "workspace:*",
+    "@kizami/law": "workspace:*",
     "@kizami/leave": "workspace:*",
     "@kizami/notify": "workspace:*",
     "bullmq": "^6.2.0",

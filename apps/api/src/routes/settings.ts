@@ -1,5 +1,6 @@
 /**
- * GET /settings/notifications, PUT /settings/notifications, POST /settings/notifications/test
+ * GET /settings/notifications, PUT /settings/notifications, POST /settings/notifications/test,
+ * GET /settings/leave, PUT /settings/leave, GET /settings/tenant-profile, PUT /settings/tenant-profile
  *
  * テナント単位の通知チャネル設定(tenant_notification_settings)。権限
  * `notification.settings.manage`(scope tenant のみ — docs/design/permission-catalog.md §1.11)
@@ -32,8 +33,10 @@
 import { Hono } from "hono";
 import {
   getNotificationSettings,
+  getTenantById,
   getTenantLeaveSettings,
   insertAuditLog,
+  updateTenantLawProfile,
   upsertNotificationSettings,
   upsertTenantLeaveSettings,
   type Database,
@@ -64,6 +67,22 @@ const TEST_NOTIFICATION_BODY = "これは KIZAMI の通知設定を確認する�
  * (依頼「tenant_settings.calendar.manage 相当。適切な権限キーをカタログから選ぶこと」への回答)。
  */
 const LEAVE_SETTINGS_PERMISSION = "leave.grant.manage";
+
+/**
+ * GET/PUT /settings/tenant-profile(2026-08-22 追加: 法令パッケージ結線・36協定完全版)が
+ * 要求する権限。
+ *
+ * 判断点: 依頼は「`tenant_settings.calendar.manage` 相当の適切なものをカタログから選ぶ」と
+ * 指示している。`tenant_settings.*` 系(calendar/flex/gps/auto_deduction)はどれも
+ * 「集計の入力になるテナント設定」という点では近いが、このエンドポイントが扱う3値
+ * (企業規模・特例措置対象事業場・特別条項締結)は具体的には「36協定アラートの各閾値の
+ * 決定に直結する」ものであり、`alert.labor_limit.configure`(36協定アラートの閾値・通知先を
+ * 設定できる。テナント全体のみ・危険フラグあり)の対象範囲(「法定上限に対するアラート閾値」の
+ * 設定)に最も具体的に一致する。フレックス総枠にも影響する(特例措置対象事業場)ため
+ * `tenant_settings.flex.manage` も候補になりうるが、この依頼の主眼が36協定アラート完全版で
+ * あることを踏まえ `alert.labor_limit.configure` を採用した(独自判断、完了報告に明記)。
+ */
+const TENANT_PROFILE_PERMISSION = "alert.labor_limit.configure";
 
 export interface SettingsRoutesDeps {
   /** webhookChannel の fetch 差し替え(テスト用)。省略時はグローバル fetch */
@@ -427,6 +446,87 @@ export function createSettingsRoutes(db: Database, deps: SettingsRoutesDeps = {}
     });
 
     return c.json(updated);
+  });
+
+  // ---- GET/PUT /settings/tenant-profile(法令プロファイル・特別条項。2026-08-22 追加) ----
+  app.get("/tenant-profile", async (c) => {
+    requirePermission(c, TENANT_PROFILE_PERMISSION, "tenant");
+    const user = c.get("user");
+    const tenant = await getTenantById(db, user.tenantId);
+    if (!tenant) {
+      return c.json({ error: "tenant_not_found" }, 404);
+    }
+    return c.json({
+      isSmallOrMediumEnterprise: tenant.isSmallOrMediumEnterprise,
+      isSpecialProvisionWorkplace: tenant.isSpecialProvisionWorkplace,
+      specialClauseEnabled: tenant.specialClauseEnabled,
+    });
+  });
+
+  app.put("/tenant-profile", async (c) => {
+    requirePermission(c, TENANT_PROFILE_PERMISSION, "tenant");
+    const user = c.get("user");
+
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "invalid_body" }, 400);
+    }
+    if (typeof body !== "object" || body === null) return c.json({ error: "invalid_body" }, 400);
+    const b = body as Record<string, unknown>;
+
+    if (typeof b.isSmallOrMediumEnterprise !== "boolean") {
+      return c.json({ error: "invalid_is_small_or_medium_enterprise" }, 400);
+    }
+    if (typeof b.isSpecialProvisionWorkplace !== "boolean") {
+      return c.json({ error: "invalid_is_special_provision_workplace" }, 400);
+    }
+    if (typeof b.specialClauseEnabled !== "boolean") {
+      return c.json({ error: "invalid_special_clause_enabled" }, 400);
+    }
+
+    const before = await getTenantById(db, user.tenantId);
+    if (!before) {
+      return c.json({ error: "tenant_not_found" }, 404);
+    }
+
+    const updated = await updateTenantLawProfile(db, {
+      tenantId: user.tenantId,
+      isSmallOrMediumEnterprise: b.isSmallOrMediumEnterprise,
+      isSpecialProvisionWorkplace: b.isSpecialProvisionWorkplace,
+      specialClauseEnabled: b.specialClauseEnabled,
+    });
+
+    // この3値は集計(週法定労働時間・60時間超区分・36協定の各閾値)に直接影響するため、
+    // 依頼どおり変更時は必ず監査ログに残す(before/after 両方を残し、何から何に変えたか追える形にする)。
+    const now = nowMinutes();
+    await insertAuditLog(db, {
+      tenantId: user.tenantId,
+      actorId: user.id,
+      action: "tenant_profile.update",
+      targetType: "tenant",
+      targetId: user.tenantId,
+      detail: JSON.stringify({
+        before: {
+          isSmallOrMediumEnterprise: before.isSmallOrMediumEnterprise,
+          isSpecialProvisionWorkplace: before.isSpecialProvisionWorkplace,
+          specialClauseEnabled: before.specialClauseEnabled,
+        },
+        after: {
+          isSmallOrMediumEnterprise: updated.isSmallOrMediumEnterprise,
+          isSpecialProvisionWorkplace: updated.isSpecialProvisionWorkplace,
+          specialClauseEnabled: updated.specialClauseEnabled,
+        },
+      }),
+      occurredAt: now,
+    });
+
+    return c.json({
+      isSmallOrMediumEnterprise: updated.isSmallOrMediumEnterprise,
+      isSpecialProvisionWorkplace: updated.isSpecialProvisionWorkplace,
+      specialClauseEnabled: updated.specialClauseEnabled,
+    });
   });
 
   return app;

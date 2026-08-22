@@ -9,7 +9,7 @@
  * Date オブジェクト・Date.now() は一切使わない。
  */
 
-import type { CalcSettings, LegalHolidayRule, PlainDateString, SettingsSpan } from "./types.js";
+import type { CalcSettings, LawTimelineSpan, LegalHolidayRule, PlainDateString, SettingsSpan } from "./types.js";
 
 export interface CivilDate {
   year: number;
@@ -109,6 +109,20 @@ export function findSettingsForDate(date: PlainDateString, timeline: SettingsSpa
   return chosen.settings;
 }
 
+/** timeline(from 昇順を仮定しない)から、指定ローカル日付に有効な最新版の法令ルールを返す(findSettingsForDate と同じ解決方法)。 */
+export function findLawForDate(date: PlainDateString, timeline: LawTimelineSpan[]): LawTimelineSpan["law"] {
+  let chosen: LawTimelineSpan | undefined;
+  for (const span of timeline) {
+    if (span.from <= date && (chosen === undefined || span.from > chosen.from)) {
+      chosen = span;
+    }
+  }
+  if (!chosen) {
+    throw new Error(`no law version effective on or before ${date}`);
+  }
+  return chosen.law;
+}
+
 /** ある設定(dayBoundary/tzOffset)を仮定した場合の、UTC エポック分に対応する勤怠日 */
 function attendanceDateForSettings(utcEpochMinutes: number, settings: CalcSettings): PlainDateString {
   const localMinutes = utcEpochMinutes + settings.tzOffsetMinutes;
@@ -153,10 +167,22 @@ function rangeOverlap(aStart: number, aEnd: number, bStart: number, bEnd: number
 }
 
 /**
- * [start, end) UTC エポック分の区間と、暦時刻 [22:00,24:00) ∪ [00:00,05:00)(ローカル、日ごと)
+ * [start, end) UTC エポック分の区間と、暦時刻の深夜帯(ローカル、日ごと、`lateNight` で指定)
  * との重なり分数。
+ *
+ * `lateNight`(法令由来、`@kizami/law` の `LawRules["lateNight"]`)は日をまたぐ表現
+ * (startMinutes=1320〜endMinutes=300 = 22:00〜翌5:00 のように startMinutes > endMinutes)を
+ * 前提にしている(2000年基準版から現在まで実際にそうなっているため)。各暦日 d について
+ * 「d の [startMinutes,1440) 部分」と「d の [0,endMinutes) 部分」の両方を独立に積算する
+ * (= d 自身の夜と d 自身の未明であり、d の夜〜d+1 の未明を1つの連続区間として扱うわけではない。
+ * この積算方式で日跨ぎシフトの深夜時間が正しく求まることは late-night-day-boundary.yaml で固定)。
  */
-export function lateNightOverlapMinutes(start: number, end: number, tzOffsetMinutes: number): number {
+export function lateNightOverlapMinutes(
+  start: number,
+  end: number,
+  tzOffsetMinutes: number,
+  lateNight: { startMinutes: number; endMinutes: number },
+): number {
   if (end <= start) return 0;
   const localStart = start + tzOffsetMinutes;
   const localEnd = end + tzOffsetMinutes;
@@ -165,8 +191,8 @@ export function lateNightOverlapMinutes(start: number, end: number, tzOffsetMinu
   let total = 0;
   for (let d = firstDay; d <= lastDay; d++) {
     const base = d * MINUTES_PER_DAY;
-    total += rangeOverlap(localStart, localEnd, base + 1320, base + 1440); // 22:00-24:00
-    total += rangeOverlap(localStart, localEnd, base + 0, base + 300); // 00:00-05:00
+    total += rangeOverlap(localStart, localEnd, base + lateNight.startMinutes, base + MINUTES_PER_DAY);
+    total += rangeOverlap(localStart, localEnd, base + 0, base + lateNight.endMinutes);
   }
   return total;
 }

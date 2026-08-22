@@ -1,0 +1,19 @@
+# 特例措置対象事業場(週44時間)— 総枠が通常(週40時間)と異なることを固定する。
+name: 法令結線 — 特例措置対象事業場は週44時間で総枠が変わる
+law_reference: 労働基準法40条・労基法施行規則25条の2(特例措置対象事業場)
+settings:
+  tz_offset: 540
+  day_boundary: "00:00"
+  legal_holiday: { weekday: sunday }
+  flex: { settlement: monthly, core: null, standard_day: "08:00" }
+  break_rule: { mode: punch }
+period: 2026-04
+law: { is_special_provision_workplace: true }
+paid_leave_days: []
+punches: []
+expected:
+  # 2026-04 は30日: frame = floor(44h*60 * 30 / 7) = floor(2640*30/7) = floor(11314.28...) = 11314分
+  # (通常の週40時間なら 10285分。flex-basic.yaml と同じ月・打刻ゼロで比較できる)
+  totals: { statutory: 0, overtime: 0, overtime60h: 0, lateNight: 0, statutoryHoliday: 0 }
+  flex_balance: { frame: 11314, actual: 0, diff: -11314 }
+  warnings: []

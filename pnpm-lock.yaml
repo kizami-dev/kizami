@@ -32,6 +32,9 @@ importers:
       '@kizami/engine':
         specifier: workspace:*
         version: link:../../packages/engine
+      '@kizami/law':
+        specifier: workspace:*
+        version: link:../../packages/law
       '@kizami/leave':
         specifier: workspace:*
         version: link:../../packages/leave
@@ -119,6 +122,10 @@ importers:
         version: 0.31.10
 
   packages/engine:
+    dependencies:
+      '@kizami/law':
+        specifier: workspace:*
+        version: link:../law
     devDependencies:
       yaml:
         specifier: ^2.9.0

@@ -39,6 +39,17 @@ describe("migrate", () => {
     expect(inserted[0]?.name).toBe("Tenant A");
 
     const rows = await db.select().from(tenants);
-    expect(rows).toEqual([{ id: "t1", name: "Tenant A", createdAt: 0 }]);
+    // is_small_or_medium_enterprise / is_special_provision_workplace / special_clause_enabled
+    // (2026-08-22 追加, 法令パッケージ結線)は既定値(true/false/false)で入る。
+    expect(rows).toEqual([
+      {
+        id: "t1",
+        name: "Tenant A",
+        isSmallOrMediumEnterprise: true,
+        isSpecialProvisionWorkplace: false,
+        specialClauseEnabled: false,
+        createdAt: 0,
+      },
+    ]);
   });
 });

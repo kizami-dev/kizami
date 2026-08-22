@@ -5,7 +5,15 @@
  * - 時刻は UTC エポック分(integer)。秒を持たない
  * - 日付・時刻文字列はテナントのローカル(Asia/Tokyo 想定、固定オフセット)
  * - エンジンは純関数。I/O・現在時刻・タイムゾーンDBに依存しない
+ *
+ * 判断点(2026-08-22, 法令パッケージの結線): 週法定労働時間・深夜帯・60時間超区分の
+ * 有効/閾値・36協定の各上限といった法令由来の値は、以前は本パッケージ内にハードコードして
+ * いたが、法改正の施行日で自動的に切り替わるべき値であるため `@kizami/law` の `LawRules` を
+ * 入力(`EngineInput.lawTimeline`)として受け取る形に変更した。`@kizami/law` は
+ * ランタイム非依存・依存ゼロの純粋パッケージであり、engine → law の一方向依存は
+ * 「純関数のみ・DB非依存」という本パッケージの制約(要件 §8/§9)を破らない。
  */
+import type { LawRules } from "@kizami/law";
 
 export type PunchKind = "clock_in" | "clock_out" | "break_start" | "break_end";
 
@@ -48,10 +56,21 @@ export interface SettingsSpan {
   settings: CalcSettings;
 }
 
+/**
+ * effective-dated な法令ルール(`settingsTimeline` と同じ流儀)。`@kizami/law` の
+ * `buildLawTimeline` が返す形とそのまま一致する。from はローカル日付、その日から有効。
+ */
+export interface LawTimelineSpan {
+  from: PlainDateString;
+  law: LawRules;
+}
+
 export interface EngineInput {
   punches: ValidPunch[];
   /** from 昇順。期間初日以前に有効な版を必ず1つ含むこと */
   settingsTimeline: SettingsSpan[];
+  /** from 昇順。期間初日以前に有効な版を必ず1つ含むこと(`@kizami/law` の `buildLawTimeline` と同じ契約) */
+  lawTimeline: LawTimelineSpan[];
   period: { year: number; month: number };
   /**
    * 有給取得(所定労働扱いで枠に算入)。

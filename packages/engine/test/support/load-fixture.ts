@@ -3,8 +3,9 @@
  * 期待値へ変換するローダー。テストコード専用(src からは参照しない)。
  */
 
+import { buildLawTimeline } from "@kizami/law";
 import { parse } from "yaml";
-import { utcMinutesFromLocalDateTime } from "../../src/date.js";
+import { daysInMonth, utcMinutesFromLocalDateTime } from "../../src/date.js";
 import type {
   CalcSettings,
   EngineInput,
@@ -13,6 +14,15 @@ import type {
   PlainDateString,
   PunchKind,
 } from "../../src/types.js";
+
+/**
+ * フィクスチャに `law:` 指定が無い場合の既定プロファイル(中小企業・特例措置対象外)。
+ * 判断点: 既存の全ゴールデンケースは period が 2026-04 等、現行のすべての法令版の施行日より
+ * 十分後の日付なので、この既定プロファイルで buildLawTimeline すると常に「現行法(最新版)」
+ * 1本だけの lawTimeline になる — 「フィクスチャに法令指定が無ければ現行法(十分新しい日付)の
+ * 版を使う」という要求を、period の日付をそのまま使うことで特別扱いなしに満たせる。
+ */
+const DEFAULT_LAW_PROFILE = { isSmallOrMediumEnterprise: true, isSpecialProvisionWorkplace: false };
 
 const WEEKDAY_NAMES: Record<string, 0 | 1 | 2 | 3 | 4 | 5 | 6> = {
   sunday: 0,
@@ -56,6 +66,8 @@ interface RawFixture {
     break_rule: { mode: "punch" };
   };
   period: string; // "YYYY-MM"
+  /** 法令プロファイル(省略時は DEFAULT_LAW_PROFILE = 中小企業・特例措置対象外)。 */
+  law?: { is_small_or_medium_enterprise?: boolean; is_special_provision_workplace?: boolean };
   /** 旧記法(後方互換): 全休日の一覧。standard_day 分の全休として解釈する */
   paid_leave_days?: string[];
   /** 新記法: 日付ごとの有給取得分数(時間単位年休を表現できる) */
@@ -151,10 +163,20 @@ export function loadGoldenCase(yamlText: string): GoldenCase {
     minutes: entry.minutes,
   }));
 
+  const period = parsePeriod(raw.period);
+  const lawProfile = {
+    isSmallOrMediumEnterprise: raw.law?.is_small_or_medium_enterprise ?? DEFAULT_LAW_PROFILE.isSmallOrMediumEnterprise,
+    isSpecialProvisionWorkplace: raw.law?.is_special_provision_workplace ?? DEFAULT_LAW_PROFILE.isSpecialProvisionWorkplace,
+  };
+  const periodStartDate: PlainDateString = `${String(period.year).padStart(4, "0")}-${String(period.month).padStart(2, "0")}-01`;
+  const periodEndDay = daysInMonth(period.year, period.month);
+  const periodEndDate: PlainDateString = `${String(period.year).padStart(4, "0")}-${String(period.month).padStart(2, "0")}-${String(periodEndDay).padStart(2, "0")}`;
+
   const input: EngineInput = {
     punches,
     settingsTimeline: [{ from: "1970-01-01", settings }],
-    period: parsePeriod(raw.period),
+    lawTimeline: buildLawTimeline(periodStartDate, periodEndDate, lawProfile),
+    period,
     paidLeave: [...legacyPaidLeave, ...explicitPaidLeave],
   };
 

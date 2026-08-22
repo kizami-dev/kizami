@@ -1,7 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { calculate, type CalcSettings, type EngineInput, type ValidPunch } from "@kizami/engine";
+import { calculate, type CalcSettings, type EngineInput, type LawTimelineSpan, type ValidPunch } from "@kizami/engine";
+import { buildLawTimeline } from "@kizami/law";
 import { createApp } from "../src/app.js";
 import { jstMinutes, loginAndGetCookie, setupTestDb } from "./support/setup.js";
+
+// setupTestDb() が作るテナントの法令プロファイル既定値(中小企業・特例措置対象外)と同じもので
+// 2026-04 の lawTimeline を組み立てる(apps/api/src/routes/attendance.ts が実際に使う
+// buildLawTimelineForTenant と同じ結果になる — この月は現行法1本のみ)。
+const LAW_TIMELINE: LawTimelineSpan[] = buildLawTimeline("2026-04-01", "2026-04-30", {
+  isSmallOrMediumEnterprise: true,
+  isSpecialProvisionWorkplace: false,
+});
 
 // テスト対象期間(2026-04)の内側、日界・月境界から十分離れた安全な時刻に固定する。
 const FIXED_NOW = new Date("2026-04-15T03:00:00.000Z"); // JST 2026-04-15 12:00
@@ -61,6 +70,7 @@ describe("GET /attendance/monthly", () => {
     const expected = calculate({
       punches,
       settingsTimeline: [{ from: "1970-01-01", settings: SETTINGS }],
+      lawTimeline: LAW_TIMELINE,
       period: { year: 2026, month: 4 },
       paidLeave: [],
     } satisfies EngineInput);
@@ -83,6 +93,7 @@ describe("GET /attendance/monthly", () => {
     const expected = calculate({
       punches: [],
       settingsTimeline: [{ from: "1970-01-01", settings: SETTINGS }],
+      lawTimeline: LAW_TIMELINE,
       period: { year: 2026, month: 4 },
       paidLeave: [],
     } satisfies EngineInput);

@@ -1,7 +1,24 @@
 /**
- * tenants — テナントの不変属性のみ。
+ * tenants — テナントの不変属性 + 法令プロファイル。
  *
- * 計算に影響する設定は持たない(それらは `tenant_setting_versions` の版として管理する)。
+ * 計算に影響する設定は原則 `tenant_setting_versions` の版として管理するが、以下の3列は
+ * 例外として本テーブルに直接持たせている(2026-08-22, 36協定完全版・法令パッケージ結線の依頼):
+ *
+ * - `is_small_or_medium_enterprise` / `is_special_provision_workplace`: `@kizami/law` の
+ *   `TenantLawProfile` を組み立てる元になる、テナントの法令上の属性(企業規模・特例措置対象
+ *   事業場かどうか)。`tenant_setting_versions` のような「施行日で切り替わる」性質の値ではなく、
+ *   「その事業者が制度上どちらに該当するか」という比較的安定した属性であるため、
+ *   effective-dated な版管理ではなく単純な現在値として持たせる(依頼で明示された設計)。
+ *   変更されうる(例: 増員で特例措置対象でなくなる)ため、変更時は監査ログに残す
+ *   (apps/api/src/routes/settings.ts の GET/PUT /settings/tenant-profile)。
+ * - `special_clause_enabled`: 36協定の特別条項を締結しているか(テナント設定)。特別条項固有の
+ *   上限(月100時間未満・複数月平均80時間・年720時間・月45時間超は年6回まで)のアラートは
+ *   このフラグが true のときだけ評価する(apps/api/src/overtime-alerts.ts)。判断点: 法令プロファイル
+ *   (企業規模・特例措置対象事業場)とは性質が異なる(こちらは労使協定の締結有無という運用上の
+ *   選択)が、いずれも「36協定アラートの集計に直接影響するテナント設定」として同じ
+ *   GET/PUT /settings/tenant-profile にまとめて置く(依頼が3つを列挙する形で依頼している
+ *   ことを踏まえた判断)。
+ *
  * 参照: docs/design/v01-data-model.md §組織・認証・権限
  */
 
@@ -10,6 +27,12 @@ import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 export const tenants = sqliteTable("tenants", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
+  /** 中小企業かどうか。@kizami/law の TenantLawProfile.isSmallOrMediumEnterprise に対応。既定 true */
+  isSmallOrMediumEnterprise: integer("is_small_or_medium_enterprise", { mode: "boolean" }).notNull().default(true),
+  /** 特例措置対象事業場かどうか。@kizami/law の TenantLawProfile.isSpecialProvisionWorkplace に対応。既定 false */
+  isSpecialProvisionWorkplace: integer("is_special_provision_workplace", { mode: "boolean" }).notNull().default(false),
+  /** 36協定の特別条項を締結しているか。既定 false(未締結 = 月45h/年360hが絶対上限) */
+  specialClauseEnabled: integer("special_clause_enabled", { mode: "boolean" }).notNull().default(false),
   /** UTC エポック分 */
   createdAt: integer("created_at").notNull(),
 });

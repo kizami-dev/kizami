@@ -8,8 +8,9 @@
  */
 
 import { and, asc, eq } from "drizzle-orm";
-import { getSettingsTimeline, userPolicyAssignments, workPolicyVersions, type Database, type Transaction } from "@kizami/db";
-import type { CalcSettings, LegalHolidayRule, SettingsSpan } from "@kizami/engine";
+import { getSettingsTimeline, getTenantById, userPolicyAssignments, workPolicyVersions, type Database, type Transaction } from "@kizami/db";
+import type { CalcSettings, LawTimelineSpan, LegalHolidayRule, SettingsSpan } from "@kizami/engine";
+import { buildLawTimeline } from "@kizami/law";
 
 /** Asia/Tokyo 固定(分)。テナントTZが設定可能になるのは v1.0 以降の想定。 */
 export const TZ_OFFSET_MINUTES_JST = 540;
@@ -130,6 +131,41 @@ export async function buildSettingsTimeline(
     };
 
     return { from: date, settings };
+  });
+}
+
+export interface BuildLawTimelineForTenantParams {
+  tenantId: string;
+  /** ローカル日付 "YYYY-MM-DD"(対象期間初日) */
+  fromDate: string;
+  /** ローカル日付 "YYYY-MM-DD"(対象期間末日) */
+  toDate: string;
+}
+
+/**
+ * [fromDate, toDate] をカバーする engine 用 LawTimelineSpan[] を組み立てる。
+ *
+ * テナントの法令プロファイル(is_small_or_medium_enterprise / is_special_provision_workplace、
+ * tenants テーブルに直接持つ現在値。packages/db/src/schema/tenants.ts 参照)を
+ * `@kizami/law` の `buildLawTimeline` にそのまま渡す。法令プロファイル自体は effective-dated
+ * ではない(現在値のみ)ため、buildSettingsTimeline のような「変更点の和集合」計算は不要 —
+ * `@kizami/law` 側が法改正の施行日を自動的に処理する。
+ *
+ * `Database | Transaction` を受け取る(buildSettingsTimeline と同じ理由。
+ * apps/api/src/lib/closing-amend.ts が同一トランザクションで使う)。
+ */
+export async function buildLawTimelineForTenant(
+  db: Database | Transaction,
+  params: BuildLawTimelineForTenantParams,
+): Promise<LawTimelineSpan[]> {
+  const { tenantId, fromDate, toDate } = params;
+  const tenant = await getTenantById(db, tenantId);
+  if (!tenant) {
+    throw new Error(`buildLawTimelineForTenant: tenant not found: ${tenantId}`);
+  }
+  return buildLawTimeline(fromDate, toDate, {
+    isSmallOrMediumEnterprise: tenant.isSmallOrMediumEnterprise,
+    isSpecialProvisionWorkplace: tenant.isSpecialProvisionWorkplace,
   });
 }
 

@@ -21,6 +21,7 @@ export function calculate(input: EngineInput): EngineOutput {
     workedSegments,
     breakSegments,
     input.settingsTimeline,
+    input.lawTimeline,
     input.period,
     input.paidLeave,
   );
@@ -28,6 +29,7 @@ export function calculate(input: EngineInput): EngineOutput {
   const { totals, flexBalance } = calculateFlexBalance(
     days,
     input.settingsTimeline,
+    input.lawTimeline,
     input.period,
     input.paidLeave,
   );

@@ -6,6 +6,7 @@ import type { Segment } from "./derive.js";
 import {
   attendanceDayEndUtc,
   daysInMonth,
+  findLawForDate,
   findSettingsForDate,
   formatDateString,
   isInPeriod,
@@ -13,7 +14,7 @@ import {
   lateNightOverlapMinutes,
   resolveAttendanceDate,
 } from "./date.js";
-import type { DailyBreakdown, PaidLeaveEntry, PlainDateString, SettingsSpan } from "./types.js";
+import type { DailyBreakdown, LawTimelineSpan, PaidLeaveEntry, PlainDateString, SettingsSpan } from "./types.js";
 
 interface DayPiece {
   date: PlainDateString;
@@ -39,6 +40,7 @@ export function buildDailyBreakdown(
   workedSegments: Segment[],
   breakSegments: Segment[],
   settingsTimeline: SettingsSpan[],
+  lawTimeline: LawTimelineSpan[],
   period: { year: number; month: number },
   paidLeave: PaidLeaveEntry[],
 ): DailyBreakdown[] {
@@ -52,7 +54,8 @@ export function buildDailyBreakdown(
       const minutes = piece.end - piece.start;
       workedByDate.set(piece.date, (workedByDate.get(piece.date) ?? 0) + minutes);
       const settings = findSettingsForDate(piece.date, settingsTimeline);
-      const lateNight = lateNightOverlapMinutes(piece.start, piece.end, settings.tzOffsetMinutes);
+      const law = findLawForDate(piece.date, lawTimeline);
+      const lateNight = lateNightOverlapMinutes(piece.start, piece.end, settings.tzOffsetMinutes, law.lateNight);
       lateNightByDate.set(piece.date, (lateNightByDate.get(piece.date) ?? 0) + lateNight);
     }
   }
