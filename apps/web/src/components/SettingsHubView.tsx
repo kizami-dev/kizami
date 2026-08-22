@@ -21,7 +21,9 @@ type SettingsRoute =
   | "/settings/help"
   | "/settings/privacy"
   | "/settings/attendance"
-  | "/settings/api-keys";
+  | "/settings/api-keys"
+  | "/settings/slack"
+  | "/settings/slack-link";
 
 export function SettingsHubView() {
   const guard = useAuthGuard();
@@ -43,6 +45,13 @@ export function SettingsHubView() {
       to: "/settings/api-keys" as const,
       title: messages.settingsHub.apiKeysTitle,
       desc: messages.settingsHub.apiKeysDesc,
+    },
+    {
+      key: "slackLink",
+      enabled: access.slackLink,
+      to: "/settings/slack-link" as const,
+      title: messages.settingsHub.slackLinkTitle,
+      desc: messages.settingsHub.slackLinkDesc,
     },
   ].filter((c) => c.enabled);
 
@@ -109,6 +118,13 @@ export function SettingsHubView() {
       to: "/settings/privacy" as const,
       title: messages.settingsHub.privacyTitle,
       desc: messages.settingsHub.privacyDesc,
+    },
+    {
+      key: "slack",
+      enabled: access.slack,
+      to: "/settings/slack" as const,
+      title: messages.settingsHub.slackTitle,
+      desc: messages.settingsHub.slackDesc,
     },
   ].filter((c) => c.enabled);
 

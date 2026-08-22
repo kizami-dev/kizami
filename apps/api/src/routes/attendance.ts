@@ -37,7 +37,13 @@ const MINUTES_PER_DAY = 1440;
  * 再解決」の2パス方式を、GET /attendance/status のためだけに最小限で再実装している
  * (engine の内部モジュールは公開 API に含まれず import できないため)。
  */
-async function resolveTodayWindow(
+/**
+ * apps/api/src/routes/slack.ts(Slackスラッシュコマンド打刻)も、無効な遷移の事前判定と
+ * `/punch status` の応答に、この2関数(resolveTodayWindow・deriveStatus)をそのまま再利用する。
+ * GET /attendance/status と全く同じロジックで「今の状態」を判定する必要があるため、ここでの
+ * export はエクスポート範囲を広げるだけの変更(ロジック自体は変更しない)。
+ */
+export async function resolveTodayWindow(
   db: Database,
   tenantId: string,
   atMinutes: number,
@@ -63,9 +69,9 @@ async function resolveTodayWindow(
   return { dayStart, dayEnd };
 }
 
-type AttendanceState = "out" | "working" | "onBreak";
+export type AttendanceState = "out" | "working" | "onBreak";
 
-interface StatusResult {
+export interface StatusResult {
   state: AttendanceState;
   lastPunch: { kind: PunchKind; occurredAt: number } | null;
 }
@@ -76,7 +82,7 @@ interface StatusResult {
  * 例外的に「休憩中の clock_out」は休憩を閉じて退勤する有効な遷移として扱う
  * (docs/design/v01-data-model.md「不正打刻列の解釈ルール」参照)。
  */
-function deriveStatus(punches: Array<{ kind: string; occurredAt: number }>): StatusResult {
+export function deriveStatus(punches: Array<{ kind: string; occurredAt: number }>): StatusResult {
   let state: AttendanceState = "out";
   let lastPunch: StatusResult["lastPunch"] = null;
 

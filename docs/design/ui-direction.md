@@ -29,11 +29,84 @@ KIZAMI の世界観を**印刷プロセス**に置く。打刻=スタンプ(刻�
 意味づけ(常にラベル・アイコンを併記): 出勤=C、休憩=Y、退勤=M、地とテキスト=K。
 ダーク対応は v0.1 スコープ外(トークン設計だけ崩さないこと)。
 
+## ロゴとアイコン(2026-08-22 確定)
+
+「印刷所の刻印」のコンセプトを、ロゴマークと文字ロゴそれぞれに落とし込んだ確定版。
+**形状・色・針の角度は変更禁止**(再検討はスコープ外)。
+
+### マーク: トンボ(見当合わせマーク)+ 時計の針
+
+確定ソース: `apps/web/public/icons/source/kizami-mark.svg`(64x64 viewBox)。
+
+```svg
+<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+  <g stroke-width="3" fill="none" stroke-linecap="square">
+    <line x1="32" y1="4"  x2="32" y2="18" stroke="#1A1A1A"/>
+    <line x1="60" y1="32" x2="46" y2="32" stroke="#00A3D9"/>
+    <line x1="32" y1="60" x2="32" y2="46" stroke="#E5007E"/>
+    <line x1="4"  y1="32" x2="18" y2="32" stroke="#FFD400"/>
+    <circle cx="32" cy="32" r="16" stroke="#1A1A1A"/>
+  </g>
+  <g stroke="#1A1A1A" stroke-width="3" stroke-linecap="round">
+    <line x1="32" y1="32" x2="41.5" y2="26.5"/>
+    <line x1="32" y1="32" x2="41.5" y2="37.5"/>
+  </g>
+</svg>
+```
+
+**由来**: トンボ(印刷の版ズレを合わせる印)と時計の文字盤・針を重ねる。4本の腕が CMYK の
+4版に対応し、**12時の腕が K(黒)、そこから右回りに C(3時)→M(6時)→Y(9時)**。針は
+**1時方向と5時方向**を指すが、これは装飾ではなく「K」の字の開き方(縦棒+開いた斜め2画)に
+由来する角度で、中央の円 = 時計の文字盤 = トンボの円という三重の意味を持たせている。
+
+**サイズ別の調整**(小さいほど線を太く、腕をわずかに外へ伸ばす): 192px 以上は
+`stroke-width` 3 のまま(確定ソースそのもの)。44〜96px 相当(実際に画面上で見える
+物理サイズ基準。ファイルが 180px の apple-touch-icon もここに含む=判断点)は
+`stroke-width` 4。32px 以下(favicon)は `stroke-width` 5 かつ腕の外端をさらに外へ
+伸ばす(例: 上腕 `y1="2"`、右腕 `x1="62"`)。`apps/web/src/components/KizamiMark.tsx`
+と `scripts/generate-icons.mjs` は同じ3段階のバケット判定を共有している。
+
+**ダーク対応**: K に相当する部分(12時の腕・円・針)の `#1A1A1A` を `#F2F2EE` に
+置き換えるだけ。CMYK の3色は固定色のまま変えない。`favicon.svg` は
+`@media (prefers-color-scheme: dark)` を SVG 内に埋め込んで対応し、アプリ内
+(`KizamiMark` コンポーネント)は `currentColor` を使ってテキスト色に追従させる。
+
+**マスカブル版**(Android、`icon-maskable-512.png`): 安全領域(中央80%)に収まるよう
+確定マークを 0.8 倍に縮小し、背景を `--k-paper`(`#FBFBF9`、紙白)で塗る。
+`apple-touch-icon.png` / `icon-192.png` / `icon-512.png` も透過だと表示環境によって
+見え方が不安定になるため、同じ紙白背景を敷いている(独自判断)。`favicon.svg` /
+`favicon-32.png` はブラウザタブ上にそのまま浮かせるため背景なし(透過)。
+
+### 再生成の手順
+
+`apps/web/public/icons/source/kizami-mark.svg` をソース・オブ・トゥルースとして、
+`node scripts/generate-icons.mjs`(要 `rsvg-convert`)を実行すると以下を再生成する:
+
+- `apps/web/public/favicon.svg`・`favicon-32.png`・`apple-touch-icon.png`
+- `apps/web/public/icons/icon-192.png`・`icon-512.png`・`icon-maskable-512.png`
+- `docs/public/kizami-mark.svg`(VitePress の `themeConfig.logo` 用。`favicon.svg` と同一内容)
+
+形状そのものを変える場合は `scripts/generate-icons.mjs` の `markGroups()` を直接編集する
+(座標をハードコードしているのは意図的 — 確定形状を1箇所からしか変えられないようにするため)。
+
+### 文字ロゴ: Jost
+
+Google Fonts の **Jost**(Futura の流れを汲む幾何学サンセリフ)を採用。トンボの造形と
+同じ「円と直線」の語彙で揃えている。ウェイトは **500**、字間は **0.18em** と広めに取り、
+製図的な精度感を出す。CSS 変数 `--font-logo`(`tokens.css`)としてロゴ専用に切り出し、
+ヘッダー(`.k-header__logo`)とログインカード(`.login-card__logo`)で共有する。
+
+**状態スタンプの書体(`--font-display` = Shippori Antique B1)は変更していない**。
+ロゴは製図・見当合わせという「精度」のモチーフ、スタンプは活版印刷という「刻印」の
+モチーフで、担っている役割が異なる。スタンプ側の活版の趣を保つことは v0.1 の
+コンセプト(「打刻=スタンプ(刻印)」)の核であり、ロゴ書体の変更に巻き込まない。
+
 ## タイポグラフィ
 
 | ロール | 書体 | 用途 |
 | --- | --- | --- |
-| Display | Shippori Antique B1 | ロゴ・状態スタンプの文字のみ。活版の趣。多用禁止 |
+| Display | Shippori Antique B1 | 状態スタンプの文字のみ(「ロゴとアイコン」節参照)。活版の趣。多用禁止 |
+| Logo | Jost(weight 500) | 文字ロゴ「KIZAMI」専用。字間 0.18em(「ロゴとアイコン」節参照) |
 | Body | Zen Kaku Gothic New | 本文・UI 全般 |
 | Numerals | IBM Plex Mono | 時刻・集計数値。`font-variant-numeric: tabular-nums` |
 
@@ -75,7 +148,7 @@ Google Fonts を利用(セルフホストは v1.0 で検討)。
 
 ### ログイン
 
-- 紙白の上に中央カード。ロゴは「KIZAMI」+小さなトンボ装飾のみ。演出なし
+- 紙白の上に中央カード。ロゴマーク(44px)+文字ロゴ「KIZAMI」を縦に重ねて表示。演出なし
 
 ## 品質フロア
 
@@ -183,8 +256,8 @@ KIZAMI 自身に OAuth のためのプライバシーポリシーは不要(KIZAM
 - Slack連携の設定画面(Signing Secret、アカウント連携の状態、ワンタイムトークン入力)
 
 ### v0.4 完了後
-1. **PWAアイコンの本番品質化** — 「印刷所の刻印」の世界観に沿ったもの。ホーム画面に置いて
-   気持ちいいレベルまで
+1. ~~**PWAアイコンの本番品質化**~~ — 2026-08-22 完了。トンボ+時計の針のロゴマーク・
+   Jost の文字ロゴを確定し、「ロゴとアイコン」節に反映済み
 2. **通知の一覧画面** — 現在はヘッダーのドロップダウンのみ。過去の通知を遡れない
 3. **ダーク対応** — v0.1 で「スコープ外だがトークン設計は崩さない」としていた宿題。
    スマホから夜間に使うと効く

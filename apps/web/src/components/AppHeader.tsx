@@ -5,6 +5,7 @@ import { Link, useRouter } from "waku";
 import { api } from "../lib/api";
 import { messages } from "../lib/messages";
 import { useSettingsAccess } from "../lib/useSettingsAccess";
+import { KizamiMark } from "./KizamiMark";
 import { NotificationBell } from "./NotificationBell";
 
 export interface AppHeaderProps {
@@ -44,10 +45,10 @@ export function AppHeader({ displayName, email, active }: AppHeaderProps) {
   return (
     <header className="k-header">
       <Link to="/" className="k-header__brand">
-        <span className="k-header__logo">{messages.appName}</span>
-        <span className="k-header__tombo" aria-hidden="true">
-          ✛
+        <span className="k-header__mark" aria-hidden="true">
+          <KizamiMark size={24} />
         </span>
+        <span className="k-header__logo">{messages.appName}</span>
       </Link>
       <nav className="k-header__nav" aria-label={messages.appName}>
         <Link to="/" className="k-header__navlink" aria-current={active === "home" ? "page" : undefined}>

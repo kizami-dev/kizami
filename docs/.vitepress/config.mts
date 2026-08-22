@@ -168,6 +168,10 @@ export default defineConfig({
   // リンクも既存文言に含まれているため、ビルドを壊さないよう死リンクチェックは無効化する
   // (§10 該当の4ファイルは文章を書き換えない方針のため、リンク切れの修正はスコープ外)。
   themeConfig: {
+    // ロゴ: apps/web と共通のマーク(トンボ+時計の針)。docs/public/kizami-mark.svg は
+    // scripts/generate-icons.mjs が apps/web/public/favicon.svg と同一内容で生成する
+    // (docs/design/ui-direction.md「ロゴとアイコン」節)。
+    logo: "/kizami-mark.svg",
     nav: [
       { text: "要件定義", link: "/requirements" },
       { text: "外部連携", link: "/external-api/" },

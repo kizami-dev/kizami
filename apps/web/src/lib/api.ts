@@ -260,6 +260,37 @@ export interface UpdatePersonalNotificationSettingsInput {
   webhookUrl?: string;
 }
 
+/**
+ * Slackスラッシュコマンド打刻の連携設定(テナント単位。2026-08-22 追加、docs/external-api/slack.md)。
+ * apps/api/src/routes/settings.ts の GET/PUT /settings/slack と一致させる。
+ * Signing Secret は秘密情報のため全文は返らない(configured相当の signingSecretSet のみ)。
+ */
+export interface SlackSettingsDto {
+  teamId: string | null;
+  enabled: boolean;
+  signingSecretSet: boolean;
+  updatedAt: number | null;
+  updatedBy: string | null;
+}
+
+/**
+ * PUT /settings/slack の入力(3値ルール、apps/api/src/routes/settings.ts 参照):
+ * フィールド省略=既存値維持、null/""=クリア、それ以外の文字列=置換。
+ * signingSecretはマスクされて返ってくるため、Web側は「空欄なら省略(維持)・入力があれば新しい値」
+ * という規約でこの3値ルールの一部だけを使う(PUT /settings/notifications と同じ考え方)。
+ */
+export interface UpdateSlackSettingsInput {
+  enabled: boolean;
+  teamId?: string;
+  signingSecret?: string;
+}
+
+/** POST /settings/slack-link(Slack連携用ワンタイムトークンの確定)のレスポンス。 */
+export interface SlackLinkResultDto {
+  linked: true;
+  slackUserId: string;
+}
+
 /** 権限のスコープ(狭い→広い: self < department < department_and_descendants < tenant)。packages/authz/src/types.ts と一致。 */
 export type Scope = "self" | "department" | "department_and_descendants" | "tenant";
 
@@ -717,6 +748,19 @@ export const api = {
 
   async updateNotificationSettings(input: UpdateNotificationSettingsInput): Promise<NotificationSettingsDto> {
     return request("/settings/notifications", { method: "PUT", body: JSON.stringify(input) });
+  },
+
+  async getSlackSettings(): Promise<SlackSettingsDto> {
+    return request("/settings/slack");
+  },
+
+  async updateSlackSettings(input: UpdateSlackSettingsInput): Promise<SlackSettingsDto> {
+    return request("/settings/slack", { method: "PUT", body: JSON.stringify(input) });
+  },
+
+  /** Slackの `/punch link` が発行したワンタイムトークンを、自分のKIZAMIアカウントに連携する。 */
+  async redeemSlackLinkToken(token: string): Promise<SlackLinkResultDto> {
+    return request("/settings/slack-link", { method: "POST", body: JSON.stringify({ token }) });
   },
 
   async testNotificationSettings(): Promise<{ results: NotificationTestResult[] }> {

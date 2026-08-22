@@ -4,6 +4,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "waku";
 import { api, ApiError } from "../lib/api";
 import { messages } from "../lib/messages";
+import { KizamiMark } from "./KizamiMark";
 
 export function LoginForm() {
   const router = useRouter();
@@ -51,10 +52,10 @@ export function LoginForm() {
     <div className="login-screen">
       <div className="login-card">
         <div className="login-card__brand">
-          <span className="login-card__logo">{messages.login.title}</span>
-          <span className="login-card__tombo" aria-hidden="true">
-            ✛
+          <span className="login-card__mark" aria-hidden="true">
+            <KizamiMark size={44} />
           </span>
+          <span className="login-card__logo">{messages.login.title}</span>
         </div>
         <p className="login-card__tagline">{messages.login.tagline}</p>
 

@@ -36,10 +36,15 @@ import type { getConfig as File_SettingsPresets_getConfig } from './pages/settin
 // prettier-ignore
 import type { getConfig as File_SettingsPrivacy_getConfig } from './pages/settings/privacy';
 // prettier-ignore
+import type { getConfig as File_SettingsSlackLink_getConfig } from './pages/settings/slack-link';
+// prettier-ignore
+import type { getConfig as File_SettingsSlack_getConfig } from './pages/settings/slack';
+// prettier-ignore
 import type { getConfig as File_SettingsTenantProfile_getConfig } from './pages/settings/tenant-profile';
 
 // prettier-ignore
 type Page =
+| { path: '/_root'; render: 'static' }
 | ({ path: '/corrections' } & GetConfigResponse<typeof File_Corrections_getConfig>)
 | ({ path: '/' } & GetConfigResponse<typeof File_Index_getConfig>)
 | ({ path: '/leave' } & GetConfigResponse<typeof File_Leave_getConfig>)
@@ -56,6 +61,8 @@ type Page =
 | ({ path: '/settings/notifications/me' } & GetConfigResponse<typeof File_SettingsNotificationsMe_getConfig>)
 | ({ path: '/settings/presets' } & GetConfigResponse<typeof File_SettingsPresets_getConfig>)
 | ({ path: '/settings/privacy' } & GetConfigResponse<typeof File_SettingsPrivacy_getConfig>)
+| ({ path: '/settings/slack-link' } & GetConfigResponse<typeof File_SettingsSlackLink_getConfig>)
+| ({ path: '/settings/slack' } & GetConfigResponse<typeof File_SettingsSlack_getConfig>)
 | ({ path: '/settings/tenant-profile' } & GetConfigResponse<typeof File_SettingsTenantProfile_getConfig>);
 
 // prettier-ignore

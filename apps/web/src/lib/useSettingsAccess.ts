@@ -53,6 +53,18 @@ export interface SettingsAccess {
    * 権限プローブは不要で常に true。
    */
   apiKeys: boolean;
+  /**
+   * /settings/slack(Slackスラッシュコマンド打刻の連携設定。2026-08-22 追加)。
+   * GET /settings/slack が要求する権限は notification.settings.manage の転用
+   * (apps/api/src/routes/settings.ts の SLACK_SETTINGS_PERMISSION コメント参照)。
+   */
+  slack: boolean;
+  /**
+   * /settings/slack-link(Slack連携用トークンの入力。2026-08-22 追加)。
+   * 判断点: apiKeys と同じ「自分用なので権限不要」— 認証済みなら誰でも自分のSlackアカウントを
+   * 連携できるため、権限プローブは不要で常に true。
+   */
+  slackLink: boolean;
 }
 
 const INITIAL: SettingsAccess = {
@@ -68,6 +80,8 @@ const INITIAL: SettingsAccess = {
   privacy: false,
   attendance: false,
   apiKeys: true,
+  slack: false,
+  slackLink: true,
 };
 
 /**
@@ -101,7 +115,8 @@ export function useSettingsAccess(): SettingsAccess {
       probe(() => api.getLeaveSettings()),
       probe(() => api.getAttendanceSettings()),
       probe(() => api.getWorkPolicySettings()),
-    ]).then(([notifications, departments, members, presets, tenantProfile, leave, attendanceSettings, workPolicySettings]) => {
+      probe(() => api.getSlackSettings()),
+    ]).then(([notifications, departments, members, presets, tenantProfile, leave, attendanceSettings, workPolicySettings, slack]) => {
       if (cancelled) return;
       setAccess({
         loading: false,
@@ -116,6 +131,8 @@ export function useSettingsAccess(): SettingsAccess {
         privacy: notifications,
         attendance: attendanceSettings || workPolicySettings,
         apiKeys: true,
+        slack,
+        slackLink: true,
       });
     });
 

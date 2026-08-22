@@ -368,6 +368,79 @@ export const messages = {
     },
   },
 
+  /**
+   * Slackスラッシュコマンド打刻の連携設定(/settings/slack、2026-08-22 追加、会社全体)。
+   * docs/external-api/slack.md が仕様の正。
+   */
+  settingsSlack: {
+    title: "Slack連携",
+    tagline: "Slackのスラッシュコマンド(/punch)から打刻できるようにする設定です。",
+    noPermission: "この設定を変更する権限がありません",
+    setupGuideHint: "導入手順(Slackアプリの作成・Signing Secretの控え方)は docs/external-api/slack.md を参照してください。",
+
+    teamIdLabel: "Slack ワークスペースID(Team ID)",
+    teamIdPlaceholder: "T0123456",
+    teamIdHint: "Slackの「Basic Information」ページなどで確認できます。1テナントにつき1ワークスペースのみ設定できます。",
+
+    signingSecretLabel: "Signing Secret",
+    signingSecretConfigured: "設定済み",
+    signingSecretNotConfigured: "未設定",
+    keepIfBlankHint: "変更しない場合は空のままにしてください",
+
+    enabledLabel: "Slack打刻を有効にする",
+    enabledHint: "有効にするには、ワークスペースIDとSigning Secretの両方が設定されている必要があります。",
+
+    save: "保存",
+    saving: "保存中…",
+    saveSuccess: "設定を保存しました。",
+    saveNote: "この設定はテナント全体に適用されます。変更は監査ログに記録されます。",
+
+    loading: "読み込み中…",
+    loadFailed: "設定の取得に失敗しました。もう一度お試しください",
+
+    linkNavHint: "従業員自身のSlackアカウント連携は「",
+    linkNavLinkLabel: "Slack連携用トークンの入力",
+    linkNavHintSuffix: "」から行えます(権限不要)。",
+
+    errors: {
+      invalid_enabled: "入力内容を確認してください",
+      invalid_team_id: "ワークスペースIDを確認してください",
+      invalid_signing_secret: "Signing Secretを確認してください",
+      invalid_slack_config: "有効にする場合は、ワークスペースIDとSigning Secretの両方を入力してください",
+      invalid_body: "入力内容を確認してください",
+      encryption_unavailable: "現在この項目を保存できません。管理者にお問い合わせください",
+      default: "処理に失敗しました。もう一度お試しください",
+    },
+  },
+
+  /**
+   * Slack連携用トークンの入力(/settings/slack-link、2026-08-22 追加、権限不要・全従業員向け)。
+   * Slackで `/punch link` を実行すると発行される、15分間有効なワンタイムトークンをここで入力する。
+   */
+  settingsSlackLink: {
+    title: "Slack連携用トークンの入力",
+    tagline: "Slackで `/punch link` を実行すると表示されるトークンを入力すると、自分のSlackアカウントと連携できます。",
+    howToTitle: "手順",
+    howTo1: "Slackで `/punch link` を実行する",
+    howTo2: "表示されたトークン(15分間有効)をコピーする",
+    howTo3: "下の欄に貼り付けて「連携する」を押す",
+
+    tokenLabel: "トークン",
+    tokenPlaceholder: "kzsl_...",
+    submit: "連携する",
+    submitting: "連携中…",
+
+    successTitle: "連携しました",
+    successMessage: (slackUserId: string) => `Slackアカウント(${slackUserId})と連携しました。以後 \`/punch in\` などが使えます。`,
+
+    errors: {
+      invalid_token: "トークンを入力してください",
+      invalid_body: "入力内容を確認してください",
+      invalid_or_expired_token: "トークンが無効か、期限切れ(15分)です。Slackで `/punch link` をもう一度実行してください",
+      default: "処理に失敗しました。もう一度お試しください",
+    },
+  },
+
   /** 設定サブナビ(/settings/* 間の行き来。アクセス可能な項目のみ表示)。 */
   settingsNav: {
     label: "設定メニュー",
@@ -385,6 +458,7 @@ export const messages = {
     privacy: "個人情報",
     attendance: "勤怠ルール",
     apiKeys: "APIキー",
+    slack: "Slack連携",
   },
 
   settingsHub: {
@@ -416,6 +490,10 @@ export const messages = {
     privacyDesc: "従業員向けプライバシー通知・社内利用規約の雛形を、現在の設定から確認します。",
     apiKeysTitle: "APIキー",
     apiKeysDesc: "ICカードリーダー・Slack bot・MCPサーバーなど外部クライアントから打刻するためのAPIキーを発行・失効します。",
+    slackTitle: "Slack連携",
+    slackDesc: "Slackのスラッシュコマンド(/punch)から打刻できるようにする設定を行います。",
+    slackLinkTitle: "Slack連携用トークンの入力",
+    slackLinkDesc: "Slackで `/punch link` を実行して発行したトークンを入力し、自分のSlackアカウントと連携します。",
   },
 
   /** 月次締め・CSVエクスポート(/monthly 画面、v0.3)。要件 §6(締めと出口)・§10(コンテキストヘルプ)。 */
@@ -1170,6 +1248,26 @@ export function mapPersonalNotificationSettingsErrorMessage(body: unknown): stri
     return errors[code] ?? messages.settingsPersonalNotifications.errors.default;
   }
   return messages.settingsPersonalNotifications.errors.default;
+}
+
+/** apps/api の Slack連携設定エラーコード({ error: string })を日本語文言へマッピングする(messages.ts 集約方針)。 */
+export function mapSlackSettingsErrorMessage(body: unknown): string {
+  const errors = messages.settingsSlack.errors as Record<string, string | undefined>;
+  if (body && typeof body === "object" && "error" in body && typeof (body as { error: unknown }).error === "string") {
+    const code = (body as { error: string }).error;
+    return errors[code] ?? messages.settingsSlack.errors.default;
+  }
+  return messages.settingsSlack.errors.default;
+}
+
+/** apps/api の Slack連携用トークン確定エラーコード({ error: string })を日本語文言へマッピングする(messages.ts 集約方針)。 */
+export function mapSlackLinkErrorMessage(body: unknown): string {
+  const errors = messages.settingsSlackLink.errors as Record<string, string | undefined>;
+  if (body && typeof body === "object" && "error" in body && typeof (body as { error: unknown }).error === "string") {
+    const code = (body as { error: string }).error;
+    return errors[code] ?? messages.settingsSlackLink.errors.default;
+  }
+  return messages.settingsSlackLink.errors.default;
 }
 
 function errorCodeOf(body: unknown): string | null {

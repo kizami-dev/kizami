@@ -21,6 +21,7 @@ import { createNotificationPreferencesRoutes } from "./routes/notification-prefe
 import { createPresetsRoutes } from "./routes/presets.js";
 import { createPunchesRoutes } from "./routes/punches.js";
 import { createSettingsRoutes, type SettingsRoutesDeps } from "./routes/settings.js";
+import { createSlackRoutes } from "./routes/slack.js";
 import { createLeaveRoutes } from "./routes/leave.js";
 
 export interface CreateAppDeps {
@@ -67,6 +68,11 @@ export function createApp(deps: CreateAppDeps) {
   app.get("/healthz", (c) => c.json({ ok: true, name: "kizami" }));
 
   app.route("/auth", createAuthRoutes(db, { secureCookies }));
+
+  // POST /slack/commands(Slackスラッシュコマンド打刻)は認証ミドルウェアの外側に置く。
+  // Slackはセッションを持たないため、署名検証(routes/slack.ts)が認証の代わりになる
+  // (docs/external-api/slack.md)。
+  app.route("/slack", createSlackRoutes(db, { encryptor: encryptor ?? null }));
 
   const authed = new Hono<AppEnv>();
   // セッションCookie / 公開打刻APIキーの両方を受け付ける(v0.4)。認証後、APIキー認証のみ

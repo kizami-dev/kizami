@@ -18,22 +18,24 @@
 
 .login-card__brand {
   display: flex;
-  align-items: baseline;
+  flex-direction: column;
+  align-items: center;
   justify-content: center;
-  gap: var(--space-2);
-  margin-bottom: var(--space-1);
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
 }
 
-.login-card__logo {
-  font-family: var(--font-display);
-  font-size: 2rem;
-  letter-spacing: 0.08em;
+.login-card__mark {
+  display: flex;
   color: var(--k-key);
 }
 
-.login-card__tombo {
-  color: var(--k-cyan-ink);
-  font-size: 1rem;
+.login-card__logo {
+  font-family: var(--font-logo);
+  font-weight: 500;
+  font-size: 2rem;
+  letter-spacing: 0.18em;
+  color: var(--k-key);
 }
 
 .login-card__tagline {

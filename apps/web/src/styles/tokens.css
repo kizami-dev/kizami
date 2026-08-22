@@ -23,6 +23,10 @@
 
   /* 書体 */
   --font-display: "Shippori Antique B1", serif;
+  /* ロゴ専用。状態スタンプ(--font-display)とは別書体 — 活版の趣はスタンプ側に残す
+     ため、ロゴは幾何学サンセリフの Jost(Futura の流れを汲む「円と直線」の語彙、
+     トンボの造形と揃う)にする(docs/design/ui-direction.md「ロゴとアイコン」節)。 */
+  --font-logo: "Jost", "Futura", "Century Gothic", sans-serif;
   --font-body: "Zen Kaku Gothic New", sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, monospace;
 

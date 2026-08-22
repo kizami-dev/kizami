@@ -10,6 +10,7 @@ export * from "./notifications.js";
 export * from "./permissions.js";
 export * from "./punches.js";
 export * from "./settings.js";
+export * from "./slack.js";
 export * from "./tenants.js";
 export * from "./user-notification-settings.js";
 export * from "./leave.js";
