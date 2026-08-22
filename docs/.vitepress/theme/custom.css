@@ -1,0 +1,40 @@
+/**
+ * 制度ガイド(docs/guide/)の出所バッジ。VitePress既定のCSS変数(--vp-c-*)を使うため
+ * ライト/ダーク両対応になる(apps/web側の docs/design/ui-direction.md「出所を必ず区別する」
+ * と同じ原則: 法令=落ち着いた実線の枠、KIZAMIの仕様=薄いグレー塗り)。
+ */
+
+.help-origin-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  padding: 2px 12px;
+  border-radius: 999px;
+  margin-bottom: 6px;
+}
+
+.help-origin-badge--law {
+  border: 1px solid var(--vp-c-text-1);
+  color: var(--vp-c-text-1);
+  background: transparent;
+}
+
+.help-origin-badge--product {
+  border: none;
+  color: var(--vp-c-text-2);
+  background: var(--vp-c-default-soft);
+}
+
+.help-origin-badge--company {
+  border: 1px dashed var(--vp-c-text-2);
+  color: var(--vp-c-text-2);
+  background: transparent;
+}
+
+.help-origin-audience {
+  font-size: 0.8rem;
+  color: var(--vp-c-text-2);
+  margin: 0 0 1.5rem;
+}

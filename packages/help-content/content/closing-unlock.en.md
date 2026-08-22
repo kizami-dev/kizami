@@ -1,5 +1,7 @@
 ---
 key: closing.unlock
+audience: [admin]
+origin: product
 summary: Reopens a finalized monthly closing so attendance records for that month can be corrected again. Unlocking, corrections, and re-closing are all recorded in the audit log.
 ---
 

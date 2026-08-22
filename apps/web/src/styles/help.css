@@ -1,0 +1,125 @@
+/**
+ * HelpTip(コンテキストヘルプ)のスタイル。
+ *
+ * docs/design/ui-direction.md の方針: 演出は打刻画面のみに集中し、それ以外は静かに保つ。
+ * 出所バッジは意味色ではなく形で区別する(法令=落ち着いた実線の枠、KIZAMIの仕様=薄いグレー塗り)
+ * — 「意味色は状態のみ」の原則を守り、CMYKの原色はここでは使わない。
+ */
+
+.help-tip {
+  display: inline-block;
+  position: relative;
+  vertical-align: middle;
+  margin-left: var(--space-2);
+}
+
+.help-tip__trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.15rem;
+  height: 1.15rem;
+  border-radius: 50%;
+  border: 1px solid var(--k-ink-soft);
+  color: var(--k-ink-soft);
+  font-size: 0.7rem;
+  font-weight: 700;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+
+.help-tip__trigger::-webkit-details-marker {
+  display: none;
+}
+
+.help-tip__trigger:hover,
+.help-tip__trigger:focus-visible {
+  border-color: var(--k-key);
+  color: var(--k-key);
+  outline: none;
+}
+
+.help-tip__trigger:focus-visible {
+  box-shadow: var(--focus-ring);
+}
+
+.help-tip__trigger-icon {
+  line-height: 1;
+}
+
+.help-tip[open] .help-tip__trigger {
+  border-color: var(--k-key);
+  color: var(--k-key);
+  background: rgba(26, 26, 26, 0.06);
+}
+
+.help-tip__panel {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + var(--space-2));
+  left: 0;
+  width: max(16rem, 100%);
+  max-width: min(22rem, 80vw);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  background: var(--k-paper);
+  border: var(--border-hair);
+  border-radius: var(--radius-m);
+  box-shadow: var(--shadow-card);
+  font-weight: 400;
+}
+
+.help-tip__badge {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  padding: 2px var(--space-2);
+  border-radius: 999px;
+  white-space: normal;
+}
+
+/* 法令: 落ち着いた実線の枠(変更不可であることを枠で示す) */
+.help-tip__badge--law {
+  border: 1px solid var(--k-key);
+  color: var(--k-key);
+  background: transparent;
+}
+
+/* KIZAMIの仕様: 薄いグレー塗り(バージョンで変わりうる、法令より軽い扱い) */
+.help-tip__badge--product {
+  border: none;
+  color: var(--k-ink-soft);
+  background: rgba(26, 26, 26, 0.08);
+}
+
+/* 自社の規定(将来のテナントオーバーライド表示用) */
+.help-tip__badge--company {
+  border: 1px dashed var(--k-ink-soft);
+  color: var(--k-ink-soft);
+  background: transparent;
+}
+
+.help-tip__summary {
+  font-size: 0.82rem;
+  line-height: 1.6;
+  color: var(--k-key);
+}
+
+.help-tip__link {
+  align-self: flex-start;
+  font-size: 0.78rem;
+  color: var(--k-cyan-ink);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.help-tip__link:hover,
+.help-tip__link:focus-visible {
+  color: var(--k-key);
+}

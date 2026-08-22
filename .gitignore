@@ -5,6 +5,7 @@ dist/
 docs/.vitepress/dist/
 docs/.vitepress/cache/
 docs/api/
+docs/guide/
 *.log
 .env
 .env.*

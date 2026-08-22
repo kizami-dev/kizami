@@ -12,6 +12,8 @@ declare module "*.css" {
 interface ImportMetaEnv {
   /** apps/api のベース URL。未設定時は http://localhost:3001 にフォールバックする。 */
   readonly WAKU_PUBLIC_API_URL?: string;
+  /** VitePress 制度ガイドのベース URL。未設定時は /docs にフォールバックする(lib/help.ts)。 */
+  readonly WAKU_PUBLIC_DOCS_URL?: string;
 }
 
 interface ImportMeta {

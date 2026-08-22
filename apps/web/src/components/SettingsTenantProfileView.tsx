@@ -9,6 +9,7 @@ import { dateStrFromEpochMinutesJst, nowMinutes } from "../lib/time";
 import { useAuthGuard } from "../lib/useAuthGuard";
 import { AppHeader } from "./AppHeader";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { HelpTip } from "./HelpTip";
 import { SettingsNav } from "./SettingsNav";
 
 /** LawRules のトップレベルキーのうち、法改正で変わりうるものの表示順(packages/law/src/types.ts の定義順)。 */
@@ -164,6 +165,7 @@ export function SettingsTenantProfileView() {
                     onChange={(e) => updateForm({ isSmallOrMediumEnterprise: e.target.checked })}
                   />
                   {messages.settingsTenantProfile.smeLabel}
+                  <HelpTip helpKey="overtime.60h" />
                 </label>
                 <p className="tenant-profile__hint">{messages.settingsTenantProfile.smeHint}</p>
               </div>
@@ -188,6 +190,7 @@ export function SettingsTenantProfileView() {
                     onChange={(e) => updateForm({ specialClauseEnabled: e.target.checked })}
                   />
                   {messages.settingsTenantProfile.specialClauseLabel}
+                  <HelpTip helpKey="agreement36.limits" />
                 </label>
                 <p className="tenant-profile__hint">{messages.settingsTenantProfile.specialClauseHint}</p>
               </div>
@@ -278,7 +281,10 @@ export function SettingsTenantProfileView() {
             ) : null}
 
             <section className="upcoming-laws">
-              <h2 className="upcoming-laws__title">{messages.settingsTenantProfile.upcomingTitle}</h2>
+              <h2 className="upcoming-laws__title">
+                {messages.settingsTenantProfile.upcomingTitle}
+                <HelpTip helpKey="law.versioning" />
+              </h2>
               {upcoming.length === 0 ? (
                 <p className="upcoming-laws__empty">{messages.settingsTenantProfile.upcomingEmpty}</p>
               ) : (

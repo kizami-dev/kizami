@@ -14,6 +14,7 @@ import { mapPresetErrorMessage, messages } from "../lib/messages";
 import { useAuthGuard } from "../lib/useAuthGuard";
 import { AppHeader } from "./AppHeader";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { HelpTip } from "./HelpTip";
 import { PresetFormDialog, type PresetFormValue } from "./PresetFormDialog";
 import { SettingsNav } from "./SettingsNav";
 
@@ -163,7 +164,10 @@ export function PresetsView() {
       <AppHeader displayName={guard.user.displayName} email={guard.user.email} active="settings" />
       <main className="org-settings__main org-settings__main--wide">
         <SettingsNav active="presets" />
-        <h1 className="org-settings__title">{messages.presets.title}</h1>
+        <h1 className="org-settings__title">
+          {messages.presets.title}
+          <HelpTip helpKey="permission.presets" />
+        </h1>
         <p className="org-settings__tagline">{messages.presets.tagline}</p>
 
         {forbidden ? (

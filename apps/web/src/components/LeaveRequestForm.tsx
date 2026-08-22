@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { api, ApiError, UnauthorizedError, type LeaveType, type LeaveUnit, type LeaveCapabilitiesDto } from "../lib/api";
 import { mapLeaveRequestErrorMessage, messages } from "../lib/messages";
+import { HelpTip } from "./HelpTip";
 
 const MAX_REASON_LENGTH = 500;
 const HOURLY_LEAVE_MAX_DAYS_DEFAULT = 5;
@@ -138,7 +139,10 @@ export function LeaveRequestForm({ standardDayMinutes, settings, hourlyUsedMinut
 
       {unit === "hourly" ? (
         <div className="correction-field">
-          <label htmlFor="leave-minutes">{messages.leave.minutesLabel}</label>
+          <label htmlFor="leave-minutes">
+            {messages.leave.minutesLabel}
+            <HelpTip helpKey="leave.hourly" />
+          </label>
           <input
             id="leave-minutes"
             type="number"

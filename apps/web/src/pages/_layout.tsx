@@ -11,6 +11,7 @@ import "../styles/settings.css";
 import "../styles/org-settings.css";
 import "../styles/law.css";
 import "../styles/leave.css";
+import "../styles/help.css";
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
   return (

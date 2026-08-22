@@ -29,6 +29,7 @@ import { useAuthGuard } from "../lib/useAuthGuard";
 import { AppHeader } from "./AppHeader";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { CorrectionForm } from "./CorrectionForm";
+import { HelpTip } from "./HelpTip";
 
 const TOTAL_CATEGORIES: TimeCategory[] = ["statutory", "overtime", "overtime60h", "lateNight", "statutoryHoliday"];
 
@@ -283,7 +284,10 @@ export function MonthlyView() {
             ) : null}
 
             <div className="flex-balance">
-              <span className="flex-balance__label">{messages.monthly.flexBalanceLabel}</span>
+              <span className="flex-balance__label">
+                {messages.monthly.flexBalanceLabel}
+                <HelpTip helpKey="attendance.flex-frame" />
+              </span>
               <div
                 className="flex-balance__track"
                 role="meter"
@@ -324,7 +328,10 @@ export function MonthlyView() {
 
             {diffRows.length > 0 ? (
               <div className="closing-diff">
-                <h2 className="closing-diff__title">{messages.closing.diffTitle}</h2>
+                <h2 className="closing-diff__title">
+                  {messages.closing.diffTitle}
+                  <HelpTip helpKey="closing.amend" />
+                </h2>
                 <div className="closing-diff__table-wrap">
                   <table className="closing-diff__table">
                     <thead>
@@ -362,21 +369,27 @@ export function MonthlyView() {
               <div className="closing-panel">
                 <div className="closing-panel__actions">
                   {closingState.status === "open" ? (
-                    <button
-                      type="button"
-                      className="k-modal__confirm k-modal__confirm--neutral"
-                      onClick={() => setCloseConfirmOpen(true)}
-                    >
-                      {messages.closing.closeAction}
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        className="k-modal__confirm k-modal__confirm--neutral"
+                        onClick={() => setCloseConfirmOpen(true)}
+                      >
+                        {messages.closing.closeAction}
+                      </button>
+                      <HelpTip helpKey="closing.execute" />
+                    </>
                   ) : (
-                    <button
-                      type="button"
-                      className="k-modal__confirm k-modal__confirm--caution"
-                      onClick={() => setReopenConfirmOpen(true)}
-                    >
-                      {messages.closing.reopenAction}
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        className="k-modal__confirm k-modal__confirm--caution"
+                        onClick={() => setReopenConfirmOpen(true)}
+                      >
+                        {messages.closing.reopenAction}
+                      </button>
+                      <HelpTip helpKey="closing.unlock" />
+                    </>
                   )}
                 </div>
 
@@ -443,8 +456,14 @@ export function MonthlyView() {
                       <th>{messages.monthly.columnDate}</th>
                       <th>{messages.monthly.columnWorked}</th>
                       <th>{messages.monthly.columnBreak}</th>
-                      <th>{messages.monthly.columnLateNight}</th>
-                      <th>{messages.monthly.columnWarning}</th>
+                      <th>
+                        {messages.monthly.columnLateNight}
+                        <HelpTip helpKey="attendance.late-night" />
+                      </th>
+                      <th>
+                        {messages.monthly.columnWarning}
+                        <HelpTip helpKey="attendance.warnings" />
+                      </th>
                       <th>{messages.monthly.columnActions}</th>
                     </tr>
                   </thead>

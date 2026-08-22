@@ -3,6 +3,7 @@
 import type { LeaveBalanceDto, LeaveGrantAllocationDto, MandatoryFiveDaysStatusDto } from "../lib/api";
 import { messages } from "../lib/messages";
 import { formatDaysHoursMinutes } from "../lib/time";
+import { HelpTip } from "./HelpTip";
 
 export interface LeaveBalancePanelProps {
   balance: LeaveBalanceDto;
@@ -91,7 +92,10 @@ export function LeaveBalancePanel({ balance }: LeaveBalancePanelProps) {
   return (
     <>
       <section className="leave__section">
-        <h2 className="leave__section-title">{messages.leave.balanceTitle}</h2>
+        <h2 className="leave__section-title">
+          {messages.leave.balanceTitle}
+          <HelpTip helpKey="leave.grant" />
+        </h2>
         <div className="leave-balance-grid">
           <BalanceCard label={messages.leave.annualLabel} standardDayMinutes={balance.standardDayMinutes} summary={balance.annual} />
           <BalanceCard label={messages.leave.stockedLabel} standardDayMinutes={balance.standardDayMinutes} summary={balance.stocked} />
@@ -99,13 +103,10 @@ export function LeaveBalancePanel({ balance }: LeaveBalancePanelProps) {
       </section>
 
       <section className="leave__section">
-        <h2 className="leave__section-title">{messages.leave.mandatoryTitle}</h2>
-        <p className="leave-help">
-          <span className="leave-help__icon" aria-hidden="true">
-            ℹ
-          </span>
-          <span>{messages.leave.mandatoryHelp}</span>
-        </p>
+        <h2 className="leave__section-title">
+          {messages.leave.mandatoryTitle}
+          <HelpTip helpKey="leave.mandatory-five-days" />
+        </h2>
 
         {balance.mandatoryFiveDays.length === 0 ? (
           <p className="correction-form__empty">{messages.leave.mandatoryNone}</p>

@@ -1,5 +1,7 @@
 ---
 key: closing.unlock
+audience: [admin]
+origin: product
 summary: 確定済みの月次締めを解除して、その月の勤怠記録を再び修正できる状態に戻します。解除・再修正・再締めの操作はすべて監査ログに記録されます。
 ---
 

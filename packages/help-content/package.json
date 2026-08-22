@@ -3,5 +3,16 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "コンテキストヘルプ文言の単一ソース(UI ツールチップ+ドキュメント)"
+  "description": "コンテキストヘルプ文言の単一ソース(UI ツールチップ+ドキュメント)",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "node scripts/generate.mjs",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0"
+  }
 }

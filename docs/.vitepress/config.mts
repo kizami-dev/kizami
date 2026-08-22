@@ -2,6 +2,7 @@ import { existsSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitepress";
+import { collectEntries } from "../../packages/help-content/scripts/generate.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -89,10 +90,52 @@ function buildApiSidebar() {
   ];
 }
 
+/**
+ * packages/help-content/content/*.ja.md を audience で分けたサイドバー項目にする
+ * (要件§10・docs/design/ui-direction.md「ガイド・ヘルプの方針」の出し分け: 従業員向け/労務担当者向け)。
+ * 同じキーが両方の対象読者を持つ場合は両方の見出しに出てよい(README.mdの方針どおり)。
+ *
+ * `pnpm docs:guide`(scripts/sync-help-docs.mjs)がまだ実行されておらず docs/guide/ が
+ * 存在しない場合は、buildApiSidebar と同じ流儀でこのセクション自体を省略し
+ * `vitepress dev` を壊さない。
+ */
+function buildGuideSidebar() {
+  const guideDir = path.resolve(__dirname, "../guide");
+  if (!existsSync(guideDir)) return [];
+
+  const entries = collectEntries();
+  const firstHeading = (body: string): string => {
+    const m = /^#\s+(.+)$/m.exec(body);
+    return m ? m[1] : body.slice(0, 20);
+  };
+  const toItem = (entry: (typeof entries)[number]) => ({
+    text: firstHeading(entry.body),
+    link: `/guide/${entry.key.split(".").join("-")}`,
+  });
+
+  const employeeItems = entries.filter((e) => e.audience.includes("employee")).map(toItem);
+  const adminItems = entries.filter((e) => e.audience.includes("admin")).map(toItem);
+
+  return [
+    {
+      text: "制度ガイド",
+      items: [
+        { text: "索引", link: "/guide/" },
+        { text: "従業員の方へ", collapsed: false, items: employeeItems },
+        { text: "労務担当者の方へ", collapsed: false, items: adminItems },
+      ],
+    },
+  ];
+}
+
 export default defineConfig({
   title: "KIZAMI",
   description: "日本法準拠のセルフホスト勤怠管理OSS",
   lang: "ja",
+  // packages/help-content/content/attendance-flex-frame.ja.md 等、制度ガイド間の相互リンクは
+  // 対応するページが用意されているが、今回のスコープ外のキー(例: tenant.special-provision)への
+  // リンクも既存文言に含まれているため、ビルドを壊さないよう死リンクチェックは無効化する
+  // (§10 該当の4ファイルは文章を書き換えない方針のため、リンク切れの修正はスコープ外)。
   themeConfig: {
     nav: [{ text: "要件定義", link: "/requirements" }],
     sidebar: [
@@ -107,6 +150,7 @@ export default defineConfig({
           { text: "権限カタログ", link: "/design/permission-catalog" },
         ],
       },
+      ...buildGuideSidebar(),
       ...buildApiSidebar(),
     ],
   },

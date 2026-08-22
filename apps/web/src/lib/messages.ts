@@ -590,8 +590,6 @@ export const messages = {
     expiringSoonNote: "60日以内に期限を迎える付与があります。早めの取得をおすすめします。",
 
     mandatoryTitle: "年5日取得義務の状況",
-    mandatoryHelp:
-      "年10日以上付与された従業員は、付与日から1年以内に5日取得させることが法律で義務付けられています(労基法39条7項)。半休は0.5日として数えられますが、時間単位の取得は含められません。",
     mandatoryNone: "対象となる付与(年10日以上)がありません",
     mandatoryTakenLabel: "取得",
     mandatoryRequiredLabel: "必要",
@@ -703,7 +701,6 @@ export const messages = {
 
     hourlySectionTitle: "時間単位年休",
     hourlyEnabledLabel: "時間単位年休を有効にする",
-    hourlyHelp: "労使協定の締結が必要です。年5日分が法律上の上限です(労基法39条4項)。",
     hourlyMaxDaysLabel: "年間上限日数(1〜5)",
 
     halfDaySectionTitle: "半休",

@@ -19,6 +19,7 @@ import { mapLeaveSettingsErrorMessage, messages } from "../lib/messages";
 import { useAuthGuard } from "../lib/useAuthGuard";
 import { AppHeader } from "./AppHeader";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { HelpTip } from "./HelpTip";
 import { SettingsNav } from "./SettingsNav";
 
 interface FormState {
@@ -304,7 +305,10 @@ export function LeaveSettingsView() {
           <>
             <form className="settings-notif__form" onSubmit={handleSave}>
               <section className="settings-notif__section">
-                <h2 className="settings-notif__section-title">{messages.settingsLeave.grantMethodSectionTitle}</h2>
+                <h2 className="settings-notif__section-title">
+                  {messages.settingsLeave.grantMethodSectionTitle}
+                  <HelpTip helpKey="leave.grant" />
+                </h2>
                 <label className="settings-notif__checkbox">
                   <input
                     type="radio"
@@ -338,13 +342,10 @@ export function LeaveSettingsView() {
               </section>
 
               <section className="settings-notif__section">
-                <h2 className="settings-notif__section-title">{messages.settingsLeave.hourlySectionTitle}</h2>
-                <p className="leave-help">
-                  <span className="leave-help__icon" aria-hidden="true">
-                    ℹ
-                  </span>
-                  <span>{messages.settingsLeave.hourlyHelp}</span>
-                </p>
+                <h2 className="settings-notif__section-title">
+                  {messages.settingsLeave.hourlySectionTitle}
+                  <HelpTip helpKey="leave.hourly" />
+                </h2>
                 <label className="settings-notif__checkbox">
                   <input
                     type="checkbox"

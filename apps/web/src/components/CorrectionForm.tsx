@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { api, ApiError, UnauthorizedError, type Punch, type PunchKind } from "../lib/api";
 import { mapCorrectionErrorMessage, messages } from "../lib/messages";
 import { dateWindowJst, formatDateLabel, formatTimeJst, toEpochMinutesJst } from "../lib/time";
+import { HelpTip } from "./HelpTip";
 
 const PUNCH_KIND_OPTIONS: PunchKind[] = ["clock_in", "break_start", "break_end", "clock_out"];
 const MAX_REASON_LENGTH = 500;
@@ -169,7 +170,10 @@ export function CorrectionForm({ date, onClose, onSubmitted, onUnauthorized }: C
 
         <form onSubmit={handleSubmit}>
           <div className="k-modal__body">
-            <p className="correction-form__hint">{messages.corrections.formHint}</p>
+            <p className="correction-form__hint">
+              {messages.corrections.formHint}
+              <HelpTip helpKey="correction.flow" />
+            </p>
 
             <section className="correction-form__section">
               <p className="correction-form__section-title">{messages.corrections.currentPunchesTitle}</p>
