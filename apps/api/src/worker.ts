@@ -9,14 +9,15 @@
  * - DATABASE_URL (既定 "file:./kizami.db"、apps/api/src/node.ts と同じ既定値)
  *
  * このファイルの責務は「BullMQ の repeatable job を定期実行し、スキャン本体(打刻忘れ
- * リマインド・36協定アラート)を呼ぶ」ことだけに限定する。スキャン本体のロジック(検知条件・
- * 重複防止・通知作成)は runReminderScan / runOvertimeAlertScan 側にあり、BullMQ/Valkey に
- * 一切依存しない(要件 §8: キュー層は差し替え可能な抽象。将来 Cloudflare Cron から直接呼ぶ
- * Workers 版エントリを追加する際、reminders.ts / overtime-alerts.ts は変更不要になる想定)。
+ * リマインド・36協定アラート・有給の失効間近/年5日義務アラート)を呼ぶ」ことだけに限定する。
+ * スキャン本体のロジック(検知条件・重複防止・通知作成)は runReminderScan /
+ * runOvertimeAlertScan / runLeaveAlertScan 側にあり、BullMQ/Valkey に一切依存しない
+ * (要件 §8: キュー層は差し替え可能な抽象。将来 Cloudflare Cron から直接呼ぶ Workers 版
+ * エントリを追加する際、reminders.ts / overtime-alerts.ts / leave-alerts.ts は変更不要になる想定)。
  *
- * 2種類のスキャンは同じ repeatable job の中で順に呼ぶ(周期は共通でよい、要件上どちらも
+ * 3種類のスキャンは同じ repeatable job の中で順に呼ぶ(周期は共通でよい、要件上いずれも
  * 「定期スキャンで自己修復する」設計であり別ジョブに分ける必要はない)。ただし
- * 片方が例外を投げても他方のスキャンを止めないよう、それぞれ個別に try/catch する。
+ * どれか1つが例外を投げても他のスキャンを止めないよう、それぞれ個別に try/catch する。
  *
  * 通知チャネルはテナントごとに tenant_notification_settings から組み立てる
  * (apps/api/src/lib/notification-channels.ts)。1回のジョブ実行内では同じテナントに
@@ -30,6 +31,7 @@ import { migrateDb } from "@kizami/db";
 import type { NotificationChannel } from "@kizami/notify";
 import { buildEncryptorFromEnv } from "./lib/encryption.js";
 import { buildNotificationChannels } from "./lib/notification-channels.js";
+import { runLeaveAlertScan } from "./leave-alerts.js";
 import { runOvertimeAlertScan } from "./overtime-alerts.js";
 import { nodemailerSendFn } from "./lib/smtp.js";
 import { runReminderScan } from "./reminders.js";
@@ -114,11 +116,26 @@ async function main(): Promise<void> {
         console.error("[kizami-reminders] overtime-alert scan failed:", err);
       }
 
+      let leaveAlertScanned = 0;
+      let leaveAlertCreated = 0;
+      try {
+        const result = await runLeaveAlertScan(db, { nowMinutes, resolveChannels });
+        leaveAlertScanned = result.scannedUserCount;
+        leaveAlertCreated = result.created.length;
+        console.log(
+          `[kizami-reminders] leave-alert scan: scanned ${result.scannedUserCount} active users, created ${result.created.length} notification(s)`,
+        );
+      } catch (err) {
+        console.error("[kizami-reminders] leave-alert scan failed:", err);
+      }
+
       return {
         scannedUserCount: reminderScanned,
         createdCount: reminderCreated,
         overtimeScannedUserCount: overtimeScanned,
         overtimeCreatedCount: overtimeCreated,
+        leaveAlertScannedUserCount: leaveAlertScanned,
+        leaveAlertCreatedCount: leaveAlertCreated,
       };
     },
     { connection },

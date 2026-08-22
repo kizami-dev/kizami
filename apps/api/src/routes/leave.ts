@@ -116,8 +116,13 @@ function toGrantInputs(rows: LeaveGrant[]): LeaveGrantInput[] {
   return rows.map((g) => ({ id: g.id, leaveType: g.leaveType as LeaveType, grantedOn: g.grantedOn, days: g.days, expiresOn: g.expiresOn }));
 }
 
-/** 残高・年5日・上限判定に必要な文脈をまとめて組み立てる。extraDates は追加で分数解決が必要な日付(申請対象日など)。 */
-interface BalanceContext {
+/**
+ * 残高・年5日・上限判定に必要な文脈をまとめて組み立てる。extraDates は追加で分数解決が必要な日付(申請対象日など)。
+ *
+ * apps/api/src/leave-alerts.ts からも再利用する(失効間近・年5日義務アラートの残高計算は
+ * この GET /leave/balance と完全に同一の組み立てであるべきで、二重管理しない)。
+ */
+export interface BalanceContext {
   grants: LeaveGrantInput[];
   approvedUsages: LeaveUsageInput[];
   settings: ResolvedLeaveSettings;
@@ -126,7 +131,7 @@ interface BalanceContext {
   today: string;
 }
 
-async function loadBalanceContext(db: Database, tenantId: string, userId: string, extraDates: string[] = []): Promise<BalanceContext> {
+export async function loadBalanceContext(db: Database, tenantId: string, userId: string, extraDates: string[] = []): Promise<BalanceContext> {
   const [grantRows, approvedRequests, settings] = await Promise.all([
     listLeaveGrants(db, { tenantId, userId }),
     listAllApprovedLeaveRequests(db, { tenantId, userId }),
