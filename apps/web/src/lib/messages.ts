@@ -286,6 +286,7 @@ export const messages = {
     presets: "権限プリセット",
     tenantProfile: "テナントプロファイル",
     leave: "有給休暇",
+    help: "社内規定",
   },
 
   settingsHub: {
@@ -304,6 +305,8 @@ export const messages = {
     tenantProfileDesc: "企業規模・特例措置対象事業場・特別条項など、集計に影響する属性と適用予定の法改正を確認します。",
     leaveTitle: "有給休暇",
     leaveDesc: "付与方式・時間単位年休・積立休暇のテナント全体の設定を行います。",
+    helpTitle: "社内規定",
+    helpDesc: "ヘルプに表示する自社のルールと、就業規則へのリンクを設定します。",
   },
 
   /** 月次締め・CSVエクスポート(/monthly 画面、v0.3)。要件 §6(締めと出口)・§10(コンテキストヘルプ)。 */
@@ -780,6 +783,61 @@ export const messages = {
       default: "処理に失敗しました。もう一度お試しください",
     },
   },
+
+  /**
+   * 社内規定の編集画面(/settings/help、2026-08-22 追加)。
+   * docs/design/ui-direction.md「ガイド・ヘルプの方針 > 社内規定の記入例」の3原則をそのまま画面上に明示する。
+   */
+  settingsHelp: {
+    title: "社内規定",
+    tagline: "組み込みのヘルプ(法令・KIZAMIの仕様)に、自社のルールを追記できます。",
+    noPermission: "この設定を変更する権限がありません",
+    loadFailed: "情報の取得に失敗しました。もう一度お試しください",
+
+    guidelinesTitle: "書き方のガイドライン",
+    guideline1: "法令の内容は書き写さない — 法令部分は自動で表示されます。重複させると、法改正でKIZAMI側だけが更新され、この欄に古い記述が残って矛盾します",
+    guideline2: "自社で決めたことだけを書く — 期限・窓口・例外の扱いなど",
+    guideline3: "就業規則の該当条文を参照する形が望ましい(例:「詳細は就業規則第○条」)",
+
+    workRulesSectionTitle: "就業規則へのリンク",
+    workRulesDesc: "就業規則(PDF等)のURLを設定すると、ヘルプ画面に「就業規則を見る」リンクが表示されます。",
+    workRulesUrlLabel: "URL",
+    workRulesUrlPlaceholder: "https://example.com/work-rules.pdf",
+    workRulesSave: "保存",
+    workRulesSaving: "保存中…",
+    workRulesSaveSuccess: "就業規則のリンクを保存しました。",
+
+    listTitle: "ヘルプ項目",
+    listEmployeeGroup: "従業員向け",
+    listAdminGroup: "労務担当者向け",
+    originLaw: "法令",
+    originProduct: "KIZAMIの仕様",
+    hasOverrideBadge: "追記あり",
+    selectPrompt: "左の一覧からヘルプ項目を選んでください。",
+
+    referenceTitle: "組み込みの説明",
+    editorTitle: "自社の規定",
+    editorPlaceholderNote: "薄い文字は記入例です。そのまま使う場合はコピーしてください。",
+    bodyLabel: "本文(Markdown)",
+    save: "保存",
+    saving: "保存中…",
+    saveSuccess: "社内規定を保存しました。",
+    deleteConfirmTitle: "社内規定を削除",
+    deleteConfirmMessage: "この項目の自社の規定を削除します。組み込みの説明のみが表示される状態に戻ります。",
+    delete: "削除",
+    deleting: "削除中…",
+    deleteSuccess: "社内規定を削除しました。",
+    empty: "本文が空のため保存すると削除扱いになります。",
+
+    errors: {
+      invalid_help_key: "存在しないヘルプ項目です",
+      invalid_body_md: "本文を確認してください",
+      invalid_url: "URLはhttp(s)形式で入力してください",
+      invalid_body: "入力内容を確認してください",
+      forbidden: "この操作を行う権限がありません",
+      default: "処理に失敗しました。もう一度お試しください",
+    },
+  },
 } as const;
 
 /** apps/api のエラーコード({ error: string })を日本語文言へマッピングする(§10 コンテキストヘルプ・messages.ts 集約方針)。 */
@@ -861,4 +919,11 @@ export function mapLeaveSettingsErrorMessage(body: unknown): string {
   const errors = messages.settingsLeave.errors as Record<string, string | undefined>;
   const code = errorCodeOf(body);
   return (code && errors[code]) ?? messages.settingsLeave.errors.default;
+}
+
+/** 社内規定(PUT/DELETE /help/overrides/:key・PUT /settings/work-rules-url)のエラーマッピング(2026-08-22)。 */
+export function mapHelpSettingsErrorMessage(body: unknown): string {
+  const errors = messages.settingsHelp.errors as Record<string, string | undefined>;
+  const code = errorCodeOf(body);
+  return (code && errors[code]) ?? messages.settingsHelp.errors.default;
 }

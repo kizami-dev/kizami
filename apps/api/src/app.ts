@@ -11,6 +11,7 @@ import { createClosingsRoutes } from "./routes/closings.js";
 import { createCorrectionsRoutes } from "./routes/corrections.js";
 import { createDepartmentsRoutes } from "./routes/departments.js";
 import { createExportsRoutes } from "./routes/exports.js";
+import { createHelpRoutes } from "./routes/help.js";
 import { createMeRoutes } from "./routes/me.js";
 import { createMembersRoutes } from "./routes/members.js";
 import { createNotificationsRoutes } from "./routes/notifications.js";
@@ -72,6 +73,7 @@ export function createApp(deps: CreateAppDeps) {
   authed.route("/corrections", createCorrectionsRoutes(db));
   authed.route("/notifications", createNotificationsRoutes(db));
   authed.route("/settings", createSettingsRoutes(db, { ...(notify ?? {}), encryptor: encryptor ?? null }));
+  authed.route("/help", createHelpRoutes(db));
   authed.route("/departments", createDepartmentsRoutes(db));
   authed.route("/members", createMembersRoutes(db));
   authed.route("/presets", createPresetsRoutes(db));

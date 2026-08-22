@@ -16,6 +16,7 @@ describe("migrate", () => {
         "closing_snapshots",
         "correction_requests",
         "departments",
+        "help_overrides",
         "leave_grants",
         "leave_requests",
         "memberships",
@@ -41,6 +42,7 @@ describe("migrate", () => {
     const rows = await db.select().from(tenants);
     // is_small_or_medium_enterprise / is_special_provision_workplace / special_clause_enabled
     // (2026-08-22 追加, 法令パッケージ結線)は既定値(true/false/false)で入る。
+    // work_rules_url(同日追加, 社内規定追記機能)は既定 null。
     expect(rows).toEqual([
       {
         id: "t1",
@@ -48,6 +50,7 @@ describe("migrate", () => {
         isSmallOrMediumEnterprise: true,
         isSpecialProvisionWorkplace: false,
         specialClauseEnabled: false,
+        workRulesUrl: null,
         createdAt: 0,
       },
     ]);

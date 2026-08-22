@@ -42,3 +42,22 @@ export async function updateTenantLawProfile(db: Database | Transaction, params:
   }
   return row;
 }
+
+/**
+ * 就業規則リンク(work_rules_url)を更新する(UPDATE、現在値のみ)。null で未設定に戻せる。
+ * 呼び出し側(apps/api/src/routes/settings.ts)が監査ログへの記録を担う。
+ */
+export async function updateTenantWorkRulesUrl(
+  db: Database | Transaction,
+  params: { tenantId: string; workRulesUrl: string | null },
+): Promise<Tenant> {
+  const [row] = await db
+    .update(tenants)
+    .set({ workRulesUrl: params.workRulesUrl })
+    .where(eq(tenants.id, params.tenantId))
+    .returning();
+  if (!row) {
+    throw new Error(`updateTenantWorkRulesUrl: tenant not found: ${params.tenantId}`);
+  }
+  return row;
+}

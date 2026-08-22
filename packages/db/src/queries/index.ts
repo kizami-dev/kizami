@@ -2,6 +2,7 @@ export * from "./audit.js";
 export * from "./closings.js";
 export * from "./corrections.js";
 export * from "./departments.js";
+export * from "./help-overrides.js";
 export * from "./members.js";
 export * from "./notification-settings.js";
 export * from "./notifications.js";

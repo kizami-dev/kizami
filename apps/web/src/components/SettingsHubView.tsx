@@ -16,7 +16,8 @@ type SettingsRoute =
   | "/settings/members"
   | "/settings/presets"
   | "/settings/tenant-profile"
-  | "/settings/leave";
+  | "/settings/leave"
+  | "/settings/help";
 
 export function SettingsHubView() {
   const guard = useAuthGuard();
@@ -64,6 +65,13 @@ export function SettingsHubView() {
       to: "/settings/leave" as const,
       title: messages.settingsHub.leaveTitle,
       desc: messages.settingsHub.leaveDesc,
+    },
+    {
+      key: "help",
+      enabled: access.help,
+      to: "/settings/help" as const,
+      title: messages.settingsHub.helpTitle,
+      desc: messages.settingsHub.helpDesc,
     },
   ].filter((c) => c.enabled);
 

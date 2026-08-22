@@ -461,6 +461,12 @@ export interface CreateLeaveGrantInput {
 }
 
 /** 失効した年次有給1件について、積立休暇への振替結果を表す(POST /leave/grants/convert-expired)。 */
+/** GET /help/overrides のレスポンス(認証のみ、権限不要)。 */
+export interface HelpOverridesDto {
+  overrides: Record<string, { bodyMd: string; updatedAt: number }>;
+  workRulesUrl: string | null;
+}
+
 export interface StockConversionCandidateDto {
   sourceGrantId: string;
   leftoverMinutes: number;
@@ -685,6 +691,26 @@ export const api = {
   /** POST /leave/grants/convert-expired(失効年休の積立振替、leave.grant.manage)。 */
   async convertExpiredLeave(userId: string): Promise<{ conversions: StockConversionCandidateDto[]; created: LeaveGrantDto[] }> {
     return request("/leave/grants/convert-expired", { method: "POST", body: JSON.stringify({ userId }) });
+  },
+
+  /** GET /help/overrides(認証のみ、権限不要 — 従業員も自社の規定を読む必要があるため)。 */
+  async getHelpOverrides(): Promise<HelpOverridesDto> {
+    return request("/help/overrides");
+  },
+
+  /** PUT /help/overrides/:key(notification.settings.manage)。bodyMd="" は削除扱い。 */
+  async updateHelpOverride(key: string, bodyMd: string): Promise<{ helpKey?: string; bodyMd?: string; updatedAt?: number; deleted?: boolean }> {
+    return request(`/help/overrides/${encodeURIComponent(key)}`, { method: "PUT", body: JSON.stringify({ bodyMd }) });
+  },
+
+  /** DELETE /help/overrides/:key(notification.settings.manage)。 */
+  async deleteHelpOverride(key: string): Promise<{ deleted: true }> {
+    return request(`/help/overrides/${encodeURIComponent(key)}`, { method: "DELETE" });
+  },
+
+  /** PUT /settings/work-rules-url(notification.settings.manage)。url="" で削除。 */
+  async updateWorkRulesUrl(url: string): Promise<{ workRulesUrl: string | null }> {
+    return request("/settings/work-rules-url", { method: "PUT", body: JSON.stringify({ url }) });
   },
 };
 

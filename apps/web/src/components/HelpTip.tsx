@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { HelpKey } from "../lib/help";
 import { helpDocHref, helpEntry } from "../lib/help";
+import { useHelpOverrides } from "../lib/useHelpOverrides";
 
 export interface HelpTipProps {
   helpKey: HelpKey;
@@ -32,10 +33,21 @@ const VIEWPORT_MARGIN = 12;
  *   `.k-modal { overflow: hidden }` を持ち、`position: absolute` のままだとモーダルの外に出る
  *   ヘルプパネルが枠内で切れてしまうため、トリガーの座標を実測してビューポート基準で置く
  * - 詳細は VitePress の制度ガイドへリンクする
+ * - 組み込みの説明(法令/KIZAMIの仕様)の**下**に、そのキーの「自社の規定」(help_overrides、
+ *   GET /help/overrides は認証のみで読める)があれば追記する。origin: company バッジは
+ *   law/product と視覚的に区別する(help.css の破線バッジ)。社内規定が無いキーでは
+ *   このセクション自体を出さない(空欄を見せない、依頼どおり)。就業規則リンクも
+ *   同じ条件(このキーに社内規定があるとき)で併記する — 独自判断点: 依頼は
+ *   「就業規則URLが設定されていれば」としか書いていないが、全キー共通で無条件に出すと
+ *   ヘルプの本題と関係が薄いキーにまでリンクが出てしまう。社内規定は「詳細は就業規則第○条」
+ *   のように参照する形を推奨している(ui-direction.md 原則3)ため、社内規定と対で出すのが
+ *   自然だと判断した。
  */
 export function HelpTip({ helpKey, className }: HelpTipProps) {
   const entry = helpEntry(helpKey);
   const badgeLabel = entry.origin === "law" && entry.basis ? `${ORIGIN_LABEL.law} · ${entry.basis}` : (ORIGIN_LABEL[entry.origin] ?? entry.origin);
+  const { overrides, workRulesUrl } = useHelpOverrides();
+  const companyOverride = overrides[helpKey];
 
   const detailsRef = useRef<HTMLDetailsElement>(null);
   const triggerRef = useRef<HTMLElement>(null);
@@ -96,6 +108,17 @@ export function HelpTip({ helpKey, className }: HelpTipProps) {
         <a className="help-tip__link" href={helpDocHref(helpKey)} target="_blank" rel="noreferrer">
           詳しく見る →
         </a>
+        {companyOverride ? (
+          <div className="help-tip__company">
+            <span className="help-tip__badge help-tip__badge--company">{ORIGIN_LABEL.company}</span>
+            <p className="help-tip__company-body">{companyOverride.bodyMd}</p>
+            {workRulesUrl ? (
+              <a className="help-tip__link" href={workRulesUrl} target="_blank" rel="noreferrer">
+                就業規則を見る →
+              </a>
+            ) : null}
+          </div>
+        ) : null}
       </div>
     </details>
   );

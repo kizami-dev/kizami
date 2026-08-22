@@ -18,6 +18,12 @@
  *   選択)が、いずれも「36協定アラートの集計に直接影響するテナント設定」として同じ
  *   GET/PUT /settings/tenant-profile にまとめて置く(依頼が3つを列挙する形で依頼している
  *   ことを踏まえた判断)。
+ * - `work_rules_url`: 就業規則(PDF等)へのリンク(2026-08-22、社内規定追記機能の依頼で追加)。
+ *   判断点: 依頼は「tenant_documents テーブルまたは既存のテナント設定への追加」のどちらでもよいと
+ *   しており、就業規則リンクは URL 1本だけの単純な現在値で、版管理も対象読者の絞り込みも不要
+ *   なため、新規テーブルを起こさずこのテーブルに1列追加する(help_overrides のような
+ *   テナント×キーの繰り返し構造を持たない)。GET/PUT /help/overrides・/settings/work-rules-url
+ *   (apps/api/src/routes/help.ts, settings.ts)が読み書きする。
  *
  * 参照: docs/design/v01-data-model.md §組織・認証・権限
  */
@@ -33,6 +39,8 @@ export const tenants = sqliteTable("tenants", {
   isSpecialProvisionWorkplace: integer("is_special_provision_workplace", { mode: "boolean" }).notNull().default(false),
   /** 36協定の特別条項を締結しているか。既定 false(未締結 = 月45h/年360hが絶対上限) */
   specialClauseEnabled: integer("special_clause_enabled", { mode: "boolean" }).notNull().default(false),
+  /** 就業規則(PDF等)へのリンク。未設定なら null */
+  workRulesUrl: text("work_rules_url"),
   /** UTC エポック分 */
   createdAt: integer("created_at").notNull(),
 });

@@ -13,6 +13,17 @@ export interface SettingsAccess {
   tenantProfile: boolean;
   /** GET /settings/leave(leave.grant.manage)。v0.3 追加。 */
   leave: boolean;
+  /**
+   * /settings/help(社内規定の編集)。2026-08-22 追加。
+   *
+   * 判断点: PUT /help/overrides/:key・PUT /settings/work-rules-url は
+   * notification.settings.manage を要求するが、GET /help/overrides はその権限の有無に
+   * 関わらず認証だけで 200 を返す(従業員も読めるようにするため)ため、他の画面のように
+   * 「一覧 GET を叩いて 200/403 で判定する」手が使えない。実際に要求する権限が
+   * notifications と同一(notification.settings.manage)なので、notifications の
+   * プローブ結果をそのまま転用する(追加のリクエストを増やさない)。
+   */
+  help: boolean;
 }
 
 const INITIAL: SettingsAccess = {
@@ -23,6 +34,7 @@ const INITIAL: SettingsAccess = {
   presets: false,
   tenantProfile: false,
   leave: false,
+  help: false,
 };
 
 /**
@@ -56,7 +68,7 @@ export function useSettingsAccess(): SettingsAccess {
       probe(() => api.getLeaveSettings()),
     ]).then(([notifications, departments, members, presets, tenantProfile, leave]) => {
       if (cancelled) return;
-      setAccess({ loading: false, notifications, departments, members, presets, tenantProfile, leave });
+      setAccess({ loading: false, notifications, departments, members, presets, tenantProfile, leave, help: notifications });
     });
 
     return () => {

@@ -32,6 +32,9 @@ importers:
       '@kizami/engine':
         specifier: workspace:*
         version: link:../../packages/engine
+      '@kizami/help-content':
+        specifier: workspace:*
+        version: link:../../packages/help-content
       '@kizami/law':
         specifier: workspace:*
         version: link:../../packages/law

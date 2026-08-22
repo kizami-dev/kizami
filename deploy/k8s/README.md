@@ -153,6 +153,69 @@ kubectl -n kizami rollout restart deployment/kizami
 - `apps/web` の本番ビルドは `WAKU_PUBLIC_API_URL=/api` を焼き込んでいる(`docker/web.Dockerfile` 参照)ため、ブラウザからは常に同一オリジンの `/api/*` を叩く。API を別オリジンで公開する場合はこの前提が崩れるので web イメージの再ビルドが必要。
 - `localhost:3009x` は cloudflared が動く samurai-watch ホストから見た宛先である想定(NodePort はクラスタの全ノードで待受けるため、samurai-watch がクラスタのいずれかのノードに到達できればよい。到達できない場合は cloudflared 側のトンネル先ホスト/IP を該当ノードの IP に置き換えること)。
 
+## 社内規定ドキュメント(docs-local/)
+
+VitePress サイト(`docs/`、`pnpm docs:build`)は、この `deploy/k8s/` 一式には**現時点で
+含まれていない**(`kizami-api` / `kizami-web` のみを配布する)。KIZAMI をフォークせずに
+自社のドキュメントサイトを Docker/k8s 上でホストする場合は、以下のいずれかの方法で
+`docs-local/`(リポジトリルート直下、ビルド時に `docs/company/` へ取り込まれ VitePress
+サイドバーの「社内規定」セクションに出る — `scripts/sync-company-docs.mjs` 参照)を
+差し込む。
+
+**フォーク不要でアップグレードと衝突しない**ことが要件なので、`docs-local/*.md` を
+イメージに `COPY` で焼き込む(=独自イメージをビルドし直す)のではなく、ビルド時または
+実行時にボリュームとして差し込む方式を推奨する。
+
+### Docker(単体コンテナでビルド)
+
+`docs-local/` をコンテナへバインドマウントしてから `pnpm docs:build` を実行する:
+
+```sh
+docker run --rm \
+  -v "$(pwd)":/work -w /work \
+  -v "$(pwd)/docs-local":/work/docs-local:ro \
+  node:22 sh -c "corepack enable && pnpm install --frozen-lockfile && pnpm docs:build"
+```
+
+生成された `docs/.vitepress/dist/` を任意の静的配信コンテナ(nginx 等)にコピーして配信する。
+
+### k8s(initContainer + PVC でビルドしてから配信)
+
+k8s で VitePress サイトを継続的に配信したい場合は、次の形の Deployment を自前で追加する
+(`deployment.yaml` には含まれていない):
+
+1. **`docs-local` 用の PVC**(または ConfigMap。文書量が ConfigMap の1MiB制限に収まるなら
+   ConfigMap で十分)を作成し、社内文書の Markdown をそこに配置する
+2. `initContainer` で KIZAMI のソース一式(git clone や ConfigMap 経由)を取得し、
+   1. の `docs-local` をマウントしたうえで `pnpm docs:build` を実行、結果を
+   `emptyDir`(ビルド成果物用)へ書き出す
+3. メインコンテナ(nginx 等の静的配信サーバー)が同じ `emptyDir` をマウントして配信する
+
+```yaml
+volumes:
+  - name: docs-local
+    persistentVolumeClaim:
+      claimName: kizami-docs-local
+  - name: docs-dist
+    emptyDir: {}
+initContainers:
+  - name: docs-build
+    image: node:22
+    workingDir: /work
+    command: ["sh", "-c", "corepack enable && pnpm install --frozen-lockfile && pnpm docs:build && cp -r docs/.vitepress/dist/. /dist"]
+    volumeMounts:
+      - { name: docs-local, mountPath: /work/docs-local, readOnly: true }
+      - { name: docs-dist, mountPath: /dist }
+containers:
+  - name: docs
+    image: nginx:alpine
+    volumeMounts:
+      - { name: docs-dist, mountPath: /usr/share/nginx/html, readOnly: true }
+```
+
+`docs-local` の中身を更新したら、Pod を再作成(`kubectl rollout restart`)して
+initContainer を再実行すれば反映される。
+
 ## 既知の制約 / 将来課題
 
 - API コンテナは `tsx` でソース(TypeScript)を直接実行している(ビルド済み JS を実行する本来のパイプラインは未整備)。`tsx` は `apps/api/package.json` の `dependencies` に含めてある(詳細は `docker/api.Dockerfile` 冒頭コメント参照)

@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitepress";
@@ -128,6 +128,37 @@ function buildGuideSidebar() {
   ];
 }
 
+/**
+ * `pnpm docs:company`(scripts/sync-company-docs.mjs)が docs-local/ から書き出す
+ * docs/company/*.md をサイドバーの「社内規定」セクションにする(2026-08-22 追加)。
+ *
+ * docs-local/ 自体が無い環境(未導入・まだ何も置いていない)では docs/company/ が
+ * 生成されないため、buildGuideSidebar・buildApiSidebar と同じ流儀でセクション自体を
+ * 省略し `vitepress dev`/`build` を壊さない。
+ */
+function buildCompanyDocsSidebar() {
+  const companyDir = path.resolve(__dirname, "../company");
+  if (!existsSync(companyDir)) return [];
+
+  const entries = readdirSync(companyDir)
+    .filter((name) => name.endsWith(".md") && name !== "index.md")
+    .sort((a, b) => a.localeCompare(b));
+
+  const toItem = (name: string) => {
+    const slug = name.replace(/\.md$/, "");
+    const body = readFileSync(path.join(companyDir, name), "utf8");
+    const heading = /^#\s+(.+)$/m.exec(body)?.[1];
+    return { text: heading ?? slug, link: `/company/${slug}` };
+  };
+
+  return [
+    {
+      text: "社内規定",
+      items: [{ text: "索引", link: "/company/" }, ...entries.map(toItem)],
+    },
+  ];
+}
+
 export default defineConfig({
   title: "KIZAMI",
   description: "日本法準拠のセルフホスト勤怠管理OSS",
@@ -151,6 +182,7 @@ export default defineConfig({
         ],
       },
       ...buildGuideSidebar(),
+      ...buildCompanyDocsSidebar(),
       ...buildApiSidebar(),
     ],
   },

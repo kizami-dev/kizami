@@ -37,6 +37,7 @@ import {
   getTenantLeaveSettings,
   insertAuditLog,
   updateTenantLawProfile,
+  updateTenantWorkRulesUrl,
   upsertNotificationSettings,
   upsertTenantLeaveSettings,
   type Database,
@@ -49,6 +50,7 @@ import { requirePermission } from "../authz.js";
 import { decryptSecret, type Encryptor } from "../lib/encryption.js";
 import { buildNotificationChannels, isNotificationConfigUsable } from "../lib/notification-channels.js";
 import { nowMinutes } from "../lib/time.js";
+import { HELP_OVERRIDES_PERMISSION } from "./help.js";
 
 const NOTIFICATION_SETTINGS_PERMISSION = "notification.settings.manage";
 const TEST_NOTIFICATION_TITLE = "KIZAMI 通知テスト";
@@ -83,6 +85,14 @@ const LEAVE_SETTINGS_PERMISSION = "leave.grant.manage";
  * あることを踏まえ `alert.labor_limit.configure` を採用した(独自判断、完了報告に明記)。
  */
 const TENANT_PROFILE_PERMISSION = "alert.labor_limit.configure";
+
+/**
+ * PUT /settings/work-rules-url(就業規則リンク。2026-08-22、社内規定追記機能で追加)が
+ * 要求する権限。routes/help.ts の HELP_OVERRIDES_PERMISSION と同一(notification.settings.manage
+ * の転用理由は help.ts 冒頭コメント参照) — 就業規則リンクも社内規定と同じ「全社員向けヘルプの
+ * 補足情報」なので、書き込み権限も help_overrides と揃える。
+ */
+const WORK_RULES_URL_PERMISSION = HELP_OVERRIDES_PERMISSION;
 
 export interface SettingsRoutesDeps {
   /** webhookChannel の fetch 差し替え(テスト用)。省略時はグローバル fetch */
@@ -527,6 +537,52 @@ export function createSettingsRoutes(db: Database, deps: SettingsRoutesDeps = {}
       isSpecialProvisionWorkplace: updated.isSpecialProvisionWorkplace,
       specialClauseEnabled: updated.specialClauseEnabled,
     });
+  });
+
+  // ---- PUT /settings/work-rules-url(就業規則リンク。2026-08-22 追加) ----
+  // 読み取りは GET /help/overrides(routes/help.ts、認証のみ)が返す。ここは書き込みのみ。
+  app.put("/work-rules-url", async (c) => {
+    requirePermission(c, WORK_RULES_URL_PERMISSION, "tenant");
+    const user = c.get("user");
+
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "invalid_body" }, 400);
+    }
+    if (typeof body !== "object" || body === null) return c.json({ error: "invalid_body" }, 400);
+    const b = body as Record<string, unknown>;
+
+    // 空文字・null = リンクの削除。それ以外は http/https の URL のみ受け付ける。
+    let workRulesUrl: string | null;
+    if (b.url === null || b.url === "") {
+      workRulesUrl = null;
+    } else if (typeof b.url === "string" && isValidHttpUrl(b.url)) {
+      workRulesUrl = b.url;
+    } else {
+      return c.json({ error: "invalid_url" }, 400);
+    }
+
+    const before = await getTenantById(db, user.tenantId);
+    if (!before) {
+      return c.json({ error: "tenant_not_found" }, 404);
+    }
+
+    const updated = await updateTenantWorkRulesUrl(db, { tenantId: user.tenantId, workRulesUrl });
+
+    const now = nowMinutes();
+    await insertAuditLog(db, {
+      tenantId: user.tenantId,
+      actorId: user.id,
+      action: "work_rules_url.update",
+      targetType: "tenant",
+      targetId: user.tenantId,
+      detail: JSON.stringify({ before: before.workRulesUrl, after: updated.workRulesUrl }),
+      occurredAt: now,
+    });
+
+    return c.json({ workRulesUrl: updated.workRulesUrl });
   });
 
   return app;

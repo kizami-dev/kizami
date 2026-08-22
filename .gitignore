@@ -6,6 +6,13 @@ docs/.vitepress/dist/
 docs/.vitepress/cache/
 docs/api/
 docs/guide/
+docs/company/
+# 導入企業が自社の文書(就業規則の抜粋・運用ルール等)を置く場所。KIZAMI 本体には含めない
+# (pnpm docs:company が docs/company/ へコピーする)。docs-local/README.example.md だけは
+# 置き方・書き方の説明として例外的にコミット対象にする(ディレクトリごと除外すると再 include
+# できないため、"docs-local/" ではなく "docs-local/*" でファイル単位に除外している)。
+docs-local/*
+!docs-local/README.example.md
 *.log
 .env
 .env.*

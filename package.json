@@ -13,7 +13,8 @@
     "docs:dev": "pnpm --filter @kizami/docs dev",
     "docs:api": "node scripts/typedoc-validate.mjs",
     "docs:guide": "pnpm --filter @kizami/help-content build && node scripts/sync-help-docs.mjs",
-    "docs:build": "pnpm docs:api && pnpm docs:guide && pnpm --filter @kizami/docs build"
+    "docs:company": "node scripts/sync-company-docs.mjs",
+    "docs:build": "pnpm docs:api && pnpm docs:guide && pnpm docs:company && pnpm --filter @kizami/docs build"
   },
   "devDependencies": {
     "typescript": "^7.0.2",
