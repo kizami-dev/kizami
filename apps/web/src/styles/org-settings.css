@@ -100,6 +100,23 @@
   text-align: center;
 }
 
+/* 「自分の設定」(全員)/「会社の設定」(管理者向け)のカード群を視覚的に分ける
+ * (docs/requirements.md §7: テナント設定と個人設定を混ぜない)。 */
+.settings-hub__group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.settings-hub__group-title {
+  font-family: var(--font-display);
+  font-size: 0.95rem;
+  letter-spacing: 0.03em;
+  color: var(--k-ink-soft);
+  border-bottom: var(--border-hair);
+  padding-bottom: var(--space-2);
+}
+
 .settings-hub__grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));

@@ -33,6 +33,21 @@
   color: var(--k-ink-soft);
 }
 
+/* テナント設定と個人設定を混同しないための導線バナー(docs/requirements.md §7)。
+ * personal-notifications.css の .settings-personal-notif__banner と対になる。 */
+.settings-notif__distinction-banner {
+  font-size: 0.82rem;
+  color: var(--k-ink-soft);
+  border: var(--border-hair);
+  border-radius: var(--radius-s);
+  padding: var(--space-3);
+  background: rgba(26, 26, 26, 0.03);
+}
+
+.settings-notif__distinction-banner a {
+  color: var(--k-key);
+}
+
 .settings-notif__forbidden {
   border: 1px solid var(--k-magenta);
   color: var(--k-magenta-ink);

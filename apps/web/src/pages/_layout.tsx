@@ -8,6 +8,7 @@ import "../styles/monthly.css";
 import "../styles/corrections.css";
 import "../styles/notifications.css";
 import "../styles/settings.css";
+import "../styles/personal-notifications.css";
 import "../styles/org-settings.css";
 import "../styles/law.css";
 import "../styles/leave.css";

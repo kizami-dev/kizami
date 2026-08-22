@@ -216,9 +216,13 @@ export const messages = {
   },
 
   settingsNotifications: {
-    title: "通知設定",
+    title: "通知設定(会社全体)",
     tagline: "テナント全体の通知チャネル(Webhook・メール)を設定します。",
     noPermission: "この設定を変更する権限がありません",
+    /** docs/requirements.md §7: 個人設定(/settings/notifications/me)との違いを画面上で明示する。 */
+    distinctionBanner:
+      "こちらは会社全体のチャネル(SMTPサーバー・共有Webhookなど)の設定です。自分がどう通知を受け取るか(メール・個人Webhookの有効/無効)は「個人の通知設定」で設定してください。",
+    linkToPersonalSettings: "個人の通知設定を開く →",
 
     webhookSectionTitle: "Webhook",
     webhookEnabledLabel: "Webhook通知を有効にする",
@@ -274,13 +278,78 @@ export const messages = {
     },
   },
 
+  /**
+   * 個人の通知設定(/settings/notifications/me、2026-08-22 追加)。
+   * docs/requirements.md §7「通知設定の2層構造」— テナント設定(settingsNotifications, 上記)とは
+   * 別物。文言でも明確に区別する(依頼「既存の /settings/notifications との違いを画面上で明示する」)。
+   */
+  settingsPersonalNotifications: {
+    title: "個人の通知設定",
+    tagline: "自分がどう通知を受け取るかの設定です。誰でも自分の分だけを変更できます。",
+
+    distinctionBanner:
+      "こちらは自分の受け取り方の設定です。会社全体のチャネル(SMTPサーバー・共有Webhookなど)を設定するには「通知設定(会社全体)」を開いてください。",
+    distinctionBannerNoAccess: "こちらは自分の受け取り方の設定です。会社全体のチャネル設定は管理者にご確認ください。",
+    linkToTenantSettings: "通知設定(会社全体)を開く →",
+
+    categoriesSectionTitle: "通知の種類ごとの受け取り方",
+    categoryColumnInapp: "アプリ内",
+    categoryColumnEmail: "メール",
+    categoryColumnWebhook: "個人Webhook",
+    inappAlwaysOnHint: "アプリ内通知は常にONです(変更できません)。",
+    categories: {
+      missing_clock_out: "打刻忘れ",
+      overtime_alert: "36協定・時間外アラート",
+      leave_alert: "有給の失効間近・年5日取得義務アラート",
+    } as Record<string, string>,
+
+    emailSectionTitle: "通知先メールアドレス",
+    emailAddressLabel: "メールアドレス",
+    emailAddressPlaceholder: "未入力ならアカウントのメールアドレスを使用します",
+    emailAddressEffectiveHint: (email: string) => `現在の宛先: ${email}`,
+
+    webhookSectionTitle: "個人 Webhook",
+    webhookUrlLabel: "Webhook URL",
+    webhookUrlPlaceholder: "https://hooks.example.com/...",
+    webhookUrlConfigured: "設定済み",
+    webhookUrlNotConfigured: "未設定",
+    keepIfBlankHint: "変更しない場合は空のままにしてください",
+
+    save: "保存",
+    saving: "保存中…",
+    saveSuccess: "設定を保存しました。",
+
+    testSend: "テスト送信",
+    testSendConfirmTitle: "テスト通知を送信しますか",
+    testSendConfirmMessage: "保存されている個人Webhookへ実際に1通送信します。",
+    testSendConfirmLabel: "送信する",
+    testSendResultTitle: "テスト送信結果",
+    testSendOk: "成功",
+    testSendFailed: "失敗",
+
+    loading: "読み込み中…",
+    loadFailed: "設定の取得に失敗しました。もう一度お試しください",
+
+    errors: {
+      invalid_body: "入力内容を確認してください",
+      invalid_categories: "通知の種類の指定を確認してください",
+      invalid_email_address: "メールアドレスの形式を確認してください",
+      invalid_webhook_url: "Webhook URLの形式を確認してください(http/httpsで有効なURLを入力してください)",
+      encryption_unavailable: "現在この項目を保存できません。管理者にお問い合わせください",
+      not_configured: "個人Webhookが設定されていません",
+      decryption_failed: "保存された値を読み取れませんでした。もう一度設定し直してください",
+      default: "処理に失敗しました。もう一度お試しください",
+    },
+  },
+
   /** 設定サブナビ(/settings/* 間の行き来。アクセス可能な項目のみ表示)。 */
   settingsNav: {
     label: "設定メニュー",
     /** 自己批評での改善: 単なる「設定」だと他のタブと同格の項目に見えてしまうため、
      * 「一覧に戻る」操作だと分かる文言にする(非エンジニアが迷わないための平易さの要件)。 */
     hubLink: "設定メニュー一覧",
-    notifications: "通知",
+    myNotifications: "個人の通知設定",
+    notifications: "通知設定(会社全体)",
     departments: "部署",
     members: "メンバー",
     presets: "権限プリセット",
@@ -296,7 +365,12 @@ export const messages = {
     title: "設定",
     tagline: "テナントの設定・組織・権限を管理します。アクセスできる項目のみ表示されます。",
     empty: "利用できる設定項目がありません。管理者にお問い合わせください。",
-    notificationsTitle: "通知",
+    /** 個人設定(全員)と会社設定(管理者向け)をカード群として明確に分ける見出し。 */
+    personalGroupTitle: "自分の設定",
+    tenantGroupTitle: "会社の設定",
+    myNotificationsTitle: "個人の通知設定",
+    myNotificationsDesc: "通知の種類ごとに、アプリ内・メール・個人Webhookでの受け取り方を設定します。",
+    notificationsTitle: "通知設定(会社全体)",
     notificationsDesc: "Webhook・メール(SMTP)の通知チャネルを設定します。",
     departmentsTitle: "部署",
     departmentsDesc: "部署ツリーの作成・名称変更・異動・削除を行います。",
@@ -1060,6 +1134,16 @@ export function mapNotificationSettingsErrorMessage(body: unknown): string {
     return errors[code] ?? messages.settingsNotifications.errors.default;
   }
   return messages.settingsNotifications.errors.default;
+}
+
+/** apps/api の個人通知設定エラーコード({ error: string })を日本語文言へマッピングする(messages.ts 集約方針)。 */
+export function mapPersonalNotificationSettingsErrorMessage(body: unknown): string {
+  const errors = messages.settingsPersonalNotifications.errors as Record<string, string | undefined>;
+  if (body && typeof body === "object" && "error" in body && typeof (body as { error: unknown }).error === "string") {
+    const code = (body as { error: string }).error;
+    return errors[code] ?? messages.settingsPersonalNotifications.errors.default;
+  }
+  return messages.settingsPersonalNotifications.errors.default;
 }
 
 function errorCodeOf(body: unknown): string | null {

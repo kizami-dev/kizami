@@ -30,6 +30,7 @@ describe("migrate", () => {
         "tenant_notification_settings",
         "tenant_setting_versions",
         "tenants",
+        "user_notification_settings",
         "user_policy_assignments",
         "users",
         "work_policies",

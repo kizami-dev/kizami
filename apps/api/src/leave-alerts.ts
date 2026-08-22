@@ -57,10 +57,10 @@ export interface RunLeaveAlertScanOptions {
   /** 現在時刻(UTC エポック分)。テストで固定できるよう明示的に渡す */
   nowMinutes: number;
   /**
-   * テナントIDを受け取り、そのテナントの外部チャネル(新規作成できた通知だけに送る)を
-   * 返す。省略時はアプリ内通知のみ。reminders.ts の runReminderScan と同じ契約。
+   * テナントID・ユーザーID・通知種別を受け取り、**本人の**外部チャネル(新規作成できた通知
+   * だけに送る)を返す。省略時はアプリ内通知のみ。reminders.ts の runReminderScan と同じ契約。
    */
-  resolveChannels?: (tenantId: string) => Promise<NotificationChannel[]>;
+  resolveChannels?: (tenantId: string, userId: string, notificationType: string) => Promise<NotificationChannel[]>;
 }
 
 export interface CreatedLeaveAlert {
@@ -145,11 +145,11 @@ async function scanExpiringGrants(
     ctx: Awaited<ReturnType<typeof loadBalanceContext>>;
     stockConversionEnabled: boolean;
     nowMinutesValue: number;
-    channels: NotificationChannel[];
+    resolveChannels: RunLeaveAlertScanOptions["resolveChannels"];
     created: CreatedLeaveAlert[];
   },
 ): Promise<void> {
-  const { tenantId, userId, userEmail, ctx, stockConversionEnabled, nowMinutesValue, channels, created } = params;
+  const { tenantId, userId, userEmail, ctx, stockConversionEnabled, nowMinutesValue, resolveChannels, created } = params;
 
   const balance = calculateBalance(ctx.grants, ctx.approvedUsages, {
     standardDayMinutes: ctx.currentStandardDayMinutes,
@@ -177,10 +177,11 @@ async function scanExpiringGrants(
       includeStockConversionNote,
     });
 
+    const type = `leave_expiring_${stage}d`;
     const notification = await createNotificationIfAbsent(db, {
       tenantId,
       userId,
-      type: `leave_expiring_${stage}d`,
+      type,
       subjectDate: grant.expiresOn,
       title,
       body,
@@ -188,6 +189,7 @@ async function scanExpiringGrants(
     });
     if (notification === null) continue;
 
+    const channels = resolveChannels ? await resolveChannels(tenantId, userId, type) : [];
     const dispatchResults =
       channels.length > 0 ? await dispatch(channels, { to: { email: userEmail }, title, body }) : [];
     created.push({ notification, dispatchResults });
@@ -203,11 +205,11 @@ async function scanMandatoryFiveDays(
     userEmail: string;
     ctx: Awaited<ReturnType<typeof loadBalanceContext>>;
     nowMinutesValue: number;
-    channels: NotificationChannel[];
+    resolveChannels: RunLeaveAlertScanOptions["resolveChannels"];
     created: CreatedLeaveAlert[];
   },
 ): Promise<void> {
-  const { tenantId, userId, userEmail, ctx, nowMinutesValue, channels, created } = params;
+  const { tenantId, userId, userEmail, ctx, nowMinutesValue, resolveChannels, created } = params;
 
   const statuses = checkMandatoryFiveDays(ctx.grants, ctx.approvedUsages, ctx.today);
   const todayEpochDay = epochDayFromDate(ctx.today);
@@ -226,10 +228,11 @@ async function scanMandatoryFiveDays(
       deadline: status.deadline,
     });
 
+    const type = `leave_mandatory5_${stage}d`;
     const notification = await createNotificationIfAbsent(db, {
       tenantId,
       userId,
-      type: `leave_mandatory5_${stage}d`,
+      type,
       subjectDate: status.deadline,
       title,
       body,
@@ -237,6 +240,7 @@ async function scanMandatoryFiveDays(
     });
     if (notification === null) continue;
 
+    const channels = resolveChannels ? await resolveChannels(tenantId, userId, type) : [];
     const dispatchResults =
       channels.length > 0 ? await dispatch(channels, { to: { email: userEmail }, title, body }) : [];
     created.push({ notification, dispatchResults });
@@ -262,7 +266,6 @@ export async function runLeaveAlertScan(db: Database, options: RunLeaveAlertScan
 
   for (const user of activeUsers) {
     try {
-      const channels = resolveChannels ? await resolveChannels(user.tenantId) : [];
       const ctx = await loadBalanceContext(db, user.tenantId, user.id);
 
       await scanExpiringGrants(db, {
@@ -272,7 +275,7 @@ export async function runLeaveAlertScan(db: Database, options: RunLeaveAlertScan
         ctx,
         stockConversionEnabled: ctx.settings.stockConversionEnabled,
         nowMinutesValue,
-        channels,
+        resolveChannels,
         created,
       });
 
@@ -282,7 +285,7 @@ export async function runLeaveAlertScan(db: Database, options: RunLeaveAlertScan
         userEmail: user.email,
         ctx,
         nowMinutesValue,
-        channels,
+        resolveChannels,
         created,
       });
     } catch {

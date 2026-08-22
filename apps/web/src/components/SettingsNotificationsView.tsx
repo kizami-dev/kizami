@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "waku";
+import { Link, useRouter } from "waku";
 import {
   api,
   ApiError,
@@ -182,6 +182,11 @@ export function SettingsNotificationsView() {
         <SettingsNav active="notifications" />
         <h1 className="settings-notif__title">{messages.settingsNotifications.title}</h1>
         <p className="settings-notif__tagline">{messages.settingsNotifications.tagline}</p>
+
+        <p className="settings-notif__distinction-banner">
+          {messages.settingsNotifications.distinctionBanner}{" "}
+          <Link to="/settings/notifications/me">{messages.settingsNotifications.linkToPersonalSettings}</Link>
+        </p>
 
         {forbidden ? (
           <p className="settings-notif__forbidden" role="alert">

@@ -82,11 +82,12 @@ export interface RunOvertimeAlertScanOptions {
   /** 現在時刻(UTC エポック分)。テストで固定できるよう明示的に渡す */
   nowMinutes: number;
   /**
-   * テナントIDを受け取り、そのテナントの外部チャネル(新規作成できた通知だけに送る)を
-   * 返す。省略時はアプリ内通知のみ(既定挙動、どの通知も外部送信しない)。reminders.ts の
-   * runReminderScan と同じ契約(呼び出し側でテナントIDをキーにメモ化してよい)。
+   * テナントID・ユーザーID・通知種別を受け取り、**本人の**外部チャネル(新規作成できた通知
+   * だけに送る)を返す。省略時はアプリ内通知のみ(既定挙動、どの通知も外部送信しない)。
+   * reminders.ts の runReminderScan と同じ契約(呼び出し側でユーザーIDをキーにメモ化してよい。
+   * テナントの SMTP 接続情報はテナント単位でメモ化してよい)。
    */
-  resolveChannels?: (tenantId: string) => Promise<NotificationChannel[]>;
+  resolveChannels?: (tenantId: string, userId: string, notificationType: string) => Promise<NotificationChannel[]>;
 }
 
 export interface CreatedOvertimeAlert {
@@ -303,15 +304,21 @@ function specialMonthCountContent(params: { fiscalYearStartYear: number; count: 
   };
 }
 
-/** notifications へ新規作成できた場合だけ channels へ dispatch し、CreatedOvertimeAlert を返す(重複時は null)。 */
+/**
+ * notifications へ新規作成できた場合だけ、本人の個人チャネル(resolveChannels(tenantId,
+ * userId, type))へ dispatch し、CreatedOvertimeAlert を返す(重複時は null)。
+ * このファイルが作る通知はすべて overtime_* — 本人宛のアラートなので、必ず resolveChannels
+ * 経由で本人の個人チャネルを解決する(テナント共有 Webhook には送らない)。
+ */
 async function tryCreateAndDispatch(
   db: Database,
   params: { tenantId: string; userId: string; type: string; subjectDate: string; title: string; body: string; createdAt: number },
-  channels: NotificationChannel[],
+  resolveChannels: RunOvertimeAlertScanOptions["resolveChannels"],
   email: string,
 ): Promise<CreatedOvertimeAlert | null> {
   const notification = await createNotificationIfAbsent(db, params);
   if (notification === null) return null;
+  const channels = resolveChannels ? await resolveChannels(params.tenantId, params.userId, params.type) : [];
   const dispatchResults =
     channels.length > 0 ? await dispatch(channels, { to: { email }, title: params.title, body: params.body }) : [];
   return { notification, dispatchResults };
@@ -325,7 +332,7 @@ async function scanUser(
   agreement36: LawRules["agreement36"],
   today: LocalToday,
   nowMinutesValue: number,
-  channels: NotificationChannel[],
+  resolveChannels: RunOvertimeAlertScanOptions["resolveChannels"],
   created: CreatedOvertimeAlert[],
 ): Promise<void> {
   const { year, month, day } = today;
@@ -350,7 +357,7 @@ async function scanUser(
     const result = await tryCreateAndDispatch(
       db,
       { tenantId: user.tenantId, userId: user.id, ...params, createdAt: nowMinutesValue },
-      channels,
+      resolveChannels,
       user.email,
     );
     if (result !== null) created.push(result);
@@ -516,8 +523,6 @@ export async function runOvertimeAlertScan(
 
   for (const user of activeUsers) {
     try {
-      const channels = resolveChannels ? await resolveChannels(user.tenantId) : [];
-
       let tenant = tenantCache.get(user.tenantId);
       if (tenant === undefined) {
         tenant = await getTenantById(db, user.tenantId);
@@ -533,7 +538,7 @@ export async function runOvertimeAlertScan(
         isSpecialProvisionWorkplace: tenant.isSpecialProvisionWorkplace,
       });
 
-      await scanUser(db, user, tenant, lawRules.agreement36, today, nowMinutesValue, channels, created);
+      await scanUser(db, user, tenant, lawRules.agreement36, today, nowMinutesValue, resolveChannels, created);
     } catch {
       // ユーザー単位の予期しない失敗(DB エラー等)で他のユーザーの処理を止めない
       // (reminders.ts と同じ方針)

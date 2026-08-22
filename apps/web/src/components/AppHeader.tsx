@@ -19,8 +19,12 @@ export function AppHeader({ displayName, email, active }: AppHeaderProps) {
   // 設定サブ画面(通知/部署/メンバー/権限プリセット)へのアクセス有無。
   // いずれか1つでもアクセスできれば「設定」ナビリンクを表示する
   // (要件: 権限が無いユーザーにはナビにも表示しない)。
+  // 2026-08-22: myNotifications(個人の通知設定)は誰でもアクセスできる(常に true)ため、
+  // これを含めることで「設定」リンクは常に表示される — 権限を一切持たないメンバーも
+  // 自分の通知の受け取り方だけは設定できる必要があるため(docs/requirements.md §7)。
   const settingsAccess = useSettingsAccess();
   const canSeeSettings =
+    settingsAccess.myNotifications ||
     settingsAccess.notifications ||
     settingsAccess.departments ||
     settingsAccess.members ||

@@ -17,6 +17,7 @@ import { createHelpRoutes } from "./routes/help.js";
 import { createMeRoutes } from "./routes/me.js";
 import { createMembersRoutes } from "./routes/members.js";
 import { createNotificationsRoutes } from "./routes/notifications.js";
+import { createNotificationPreferencesRoutes } from "./routes/notification-preferences.js";
 import { createPresetsRoutes } from "./routes/presets.js";
 import { createPunchesRoutes } from "./routes/punches.js";
 import { createSettingsRoutes, type SettingsRoutesDeps } from "./routes/settings.js";
@@ -79,6 +80,14 @@ export function createApp(deps: CreateAppDeps) {
   authed.route("/corrections", createCorrectionsRoutes(db));
   authed.route("/notifications", createNotificationsRoutes(db));
   authed.route("/settings", createSettingsRoutes(db, { ...(notify ?? {}), encryptor: encryptor ?? null }));
+  // 個人の通知受け取り設定(GET/PUT /settings/notifications/me, POST /settings/notifications/me/test)。
+  // 権限チェック無し(認証済み本人のみ、routes/notification-preferences.ts 冒頭コメント参照)。
+  // /settings/notifications(テナント設定, createSettingsRoutes)とはパスの衝突が無いため
+  // 別のサブルータとしてマウントできる("/notifications" 完全一致 vs "/notifications/me")。
+  authed.route(
+    "/settings/notifications",
+    createNotificationPreferencesRoutes(db, { ...(notify ?? {}), encryptor: encryptor ?? null }),
+  );
   authed.route("/help", createHelpRoutes(db));
   authed.route("/departments", createDepartmentsRoutes(db));
   authed.route("/members", createMembersRoutes(db));

@@ -19,4 +19,5 @@ export * from "./punches.js";
 export * from "./settings.js";
 export * from "./tenants.js";
 export * from "./users.js";
+export * from "./user-notification-settings.js";
 export * from "./leave.js";

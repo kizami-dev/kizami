@@ -30,6 +30,8 @@ import type { getConfig as File_SettingsMembers_getConfig } from './pages/settin
 // prettier-ignore
 import type { getConfig as File_SettingsNotifications_getConfig } from './pages/settings/notifications';
 // prettier-ignore
+import type { getConfig as File_SettingsNotificationsMe_getConfig } from './pages/settings/notifications/me';
+// prettier-ignore
 import type { getConfig as File_SettingsPresets_getConfig } from './pages/settings/presets';
 // prettier-ignore
 import type { getConfig as File_SettingsPrivacy_getConfig } from './pages/settings/privacy';
@@ -51,6 +53,7 @@ type Page =
 | ({ path: '/settings/leave' } & GetConfigResponse<typeof File_SettingsLeave_getConfig>)
 | ({ path: '/settings/members' } & GetConfigResponse<typeof File_SettingsMembers_getConfig>)
 | ({ path: '/settings/notifications' } & GetConfigResponse<typeof File_SettingsNotifications_getConfig>)
+| ({ path: '/settings/notifications/me' } & GetConfigResponse<typeof File_SettingsNotificationsMe_getConfig>)
 | ({ path: '/settings/presets' } & GetConfigResponse<typeof File_SettingsPresets_getConfig>)
 | ({ path: '/settings/privacy' } & GetConfigResponse<typeof File_SettingsPrivacy_getConfig>)
 | ({ path: '/settings/tenant-profile' } & GetConfigResponse<typeof File_SettingsTenantProfile_getConfig>);

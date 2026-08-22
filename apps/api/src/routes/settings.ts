@@ -60,7 +60,8 @@ import { buildInternalTerms, buildPrivacyNotice, type PrivacyTemplateInput } fro
 import type { AppEnv } from "../auth/middleware.js";
 import { requirePermission } from "../authz.js";
 import { decryptSecret, type Encryptor } from "../lib/encryption.js";
-import { buildNotificationChannels, isNotificationConfigUsable } from "../lib/notification-channels.js";
+import { isValidHttpUrl, resolveStringField, webhookPreview } from "../lib/field-validation.js";
+import { buildTenantChannels, isNotificationConfigUsable } from "../lib/notification-channels.js";
 import { TZ_OFFSET_MINUTES_JST } from "../lib/settings.js";
 import { nowMinutes, todayLocalDate } from "../lib/time.js";
 import { HELP_OVERRIDES_PERMISSION } from "./help.js";
@@ -171,15 +172,6 @@ export interface SettingsRoutesDeps {
   encryptor?: Encryptor | null;
 }
 
-function webhookPreview(url: string): string | null {
-  try {
-    const parsed = new URL(url);
-    return `${parsed.protocol}//${parsed.host}/...`;
-  } catch {
-    return null;
-  }
-}
-
 async function serialize(settings: TenantNotificationSettings | null, encryptor: Encryptor | null | undefined) {
   if (!settings) {
     return {
@@ -219,25 +211,6 @@ async function serialize(settings: TenantNotificationSettings | null, encryptor:
     updatedAt: settings.updatedAt,
     updatedBy: settings.updatedBy,
   };
-}
-
-type StringFieldResult = { ok: true; value: string | null } | { ok: false };
-
-/** undefined=維持 / null・""=クリア / string=置換、の3値ルールで文字列項目を解決する。 */
-function resolveStringField(value: unknown, current: string | null): StringFieldResult {
-  if (value === undefined) return { ok: true, value: current };
-  if (value === null || value === "") return { ok: true, value: null };
-  if (typeof value === "string") return { ok: true, value };
-  return { ok: false };
-}
-
-function isValidHttpUrl(value: string): boolean {
-  try {
-    const parsed = new URL(value);
-    return parsed.protocol === "http:" || parsed.protocol === "https:";
-  } catch {
-    return false;
-  }
 }
 
 /** "YYYY-MM-DD" の書式チェックのみ(暦としての正当性チェックはしない、既存 routes/leave.ts の DATE_RE と同じ流儀)。 */
@@ -458,7 +431,7 @@ export function createSettingsRoutes(db: Database, deps: SettingsRoutesDeps = {}
       return c.json({ error: "not_configured" }, 400);
     }
 
-    const channels = await buildNotificationChannels(db, user.tenantId, {
+    const channels = await buildTenantChannels(db, user.tenantId, {
       ...(deps.fetchImpl ? { fetchImpl: deps.fetchImpl } : {}),
       ...(deps.smtpSendFn ? { smtpSendFn: deps.smtpSendFn } : {}),
       encryptor: deps.encryptor ?? null,

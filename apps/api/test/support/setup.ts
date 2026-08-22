@@ -20,7 +20,20 @@ import {
   workPolicyVersions,
   type Database,
 } from "@kizami/db";
+import { createEncryptor, type Encryptor } from "@kizami/crypto";
 import { hashPassword } from "../../src/auth/password.js";
+
+/**
+ * テスト専用の固定鍵から Encryptor を作る(暗号化を有効にした状態を再現するため)。
+ * settings-notifications.test.ts に元々あったものと同一実装 — 複数のテスト(個人通知設定を
+ * 含む)から共有して使えるようここに集約する。
+ */
+export function testEncryptor(): Encryptor {
+  const keyBytes = new Uint8Array(32).fill(7);
+  let binary = "";
+  for (const b of keyBytes) binary += String.fromCharCode(b);
+  return createEncryptor(btoa(binary));
+}
 
 export interface SeededTenant {
   db: Database;

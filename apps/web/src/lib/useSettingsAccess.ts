@@ -5,6 +5,14 @@ import { api } from "./api";
 
 export interface SettingsAccess {
   loading: boolean;
+  /**
+   * /settings/notifications/me(個人の通知設定。2026-08-22 追加)。
+   *
+   * 判断点: apiKeys と同じ「自分用なので権限不要」— 認証済みなら誰でも自分の受け取り方を
+   * 設定できるため、権限プローブは不要で常に true。テナント設定(notifications, 下記)とは
+   * 完全に独立して常に表示する(docs/requirements.md §7「通知設定の2層構造」)。
+   */
+  myNotifications: boolean;
   notifications: boolean;
   departments: boolean;
   members: boolean;
@@ -49,6 +57,7 @@ export interface SettingsAccess {
 
 const INITIAL: SettingsAccess = {
   loading: true,
+  myNotifications: true,
   notifications: false,
   departments: false,
   members: false,
@@ -96,6 +105,7 @@ export function useSettingsAccess(): SettingsAccess {
       if (cancelled) return;
       setAccess({
         loading: false,
+        myNotifications: true,
         notifications,
         departments,
         members,

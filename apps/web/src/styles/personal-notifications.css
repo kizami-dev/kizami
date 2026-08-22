@@ -1,0 +1,91 @@
+/**
+ * 個人の通知設定画面(/settings/notifications/me)のスタイル。
+ *
+ * 判断点: settings.css の .settings-notif__section / __field-hint / __actions / __success /
+ * __test-results 等はそのまま再利用する(構造が同一のため二重定義しない)。この
+ * ファイルはこの画面固有のレイアウト(バナー・カテゴリ表)だけを持つ。
+ */
+
+.settings-personal-notif {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+.settings-personal-notif__main {
+  flex: 1;
+  padding: var(--space-5) var(--space-4) var(--space-7);
+  max-width: 40rem;
+  margin: 0 auto;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.settings-personal-notif__title {
+  font-family: var(--font-display);
+  font-size: 1.4rem;
+  letter-spacing: 0.04em;
+}
+
+.settings-personal-notif__tagline {
+  font-size: 0.85rem;
+  color: var(--k-ink-soft);
+}
+
+/* テナント設定(/settings/notifications)との違いを明示するバナー。settings.css の
+ * .settings-notif__distinction-banner と対になる見た目にする。 */
+.settings-personal-notif__banner {
+  font-size: 0.82rem;
+  color: var(--k-ink-soft);
+  border: var(--border-hair);
+  border-radius: var(--radius-s);
+  padding: var(--space-3);
+  background: rgba(0, 163, 217, 0.05);
+}
+
+.settings-personal-notif__banner a {
+  color: var(--k-key);
+}
+
+.settings-personal-notif__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.settings-personal-notif__category-table {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.settings-personal-notif__category-row {
+  display: grid;
+  grid-template-columns: 1fr repeat(3, minmax(4rem, auto));
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+}
+
+.settings-personal-notif__category-row--header {
+  font-size: 0.78rem;
+  color: var(--k-ink-soft);
+  border-bottom: var(--border-hair);
+  padding-bottom: var(--space-2);
+}
+
+.settings-personal-notif__category-row:not(.settings-personal-notif__category-row--header) {
+  border-bottom: 1px solid rgba(26, 26, 26, 0.06);
+}
+
+.settings-personal-notif__category-label {
+  font-size: 0.9rem;
+}
+
+.settings-personal-notif__category-row input[type="checkbox"] {
+  accent-color: var(--k-key);
+  width: 1.05rem;
+  height: 1.05rem;
+}

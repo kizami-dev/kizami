@@ -4,9 +4,13 @@
  * 環境変数:
  * - REDIS_URL (既定 "redis://localhost:6379")
  * - REMINDER_INTERVAL_MINUTES (既定 15)
- * - WEBHOOK_URL (任意。テナントに tenant_notification_settings の行が1つも無い場合だけの
- *   フォールバック。DB 設定があるテナントは常に DB 設定が優先される)
  * - DATABASE_URL (既定 "file:./kizami.db"、apps/api/src/node.ts と同じ既定値)
+ *
+ * 2026-08-22: 3スキャンが作る通知はすべて本人宛(打刻忘れ・36協定アラート・有給失効間近/
+ * 年5日義務)であるため、通知チャネルはテナント共有 Webhook ではなく**本人の個人設定**
+ * (user_notification_settings)から組み立てる(buildPersonalChannels)。以前ここにあった
+ * WEBHOOK_URL 環境変数フォールバックはテナント共有チャネル専用の概念であり、個人チャネルには
+ * 存在しないため廃止した(docs/requirements.md §7)。
  *
  * このファイルの責務は「BullMQ の repeatable job を定期実行し、スキャン本体(打刻忘れ
  * リマインド・36協定アラート・有給の失効間近/年5日義務アラート)を呼ぶ」ことだけに限定する。
@@ -19,10 +23,13 @@
  * 「定期スキャンで自己修復する」設計であり別ジョブに分ける必要はない)。ただし
  * どれか1つが例外を投げても他のスキャンを止めないよう、それぞれ個別に try/catch する。
  *
- * 通知チャネルはテナントごとに tenant_notification_settings から組み立てる
- * (apps/api/src/lib/notification-channels.ts)。1回のジョブ実行内では同じテナントに
- * 複数ユーザーがいても DB を1回しか読まないよう、テナントIDをキーにメモ化する
- * (runReminderScan・runOvertimeAlertScan の両方で共有する)。
+ * 通知チャネルは本人(user_notification_settings)ごとに組み立てる
+ * (apps/api/src/lib/notification-channels.ts の buildPersonalChannels)。1回のジョブ実行内で
+ * 同じユーザーが複数回(打刻忘れ・36協定の複数種別・有給の複数種別)対象になっても DB を
+ * 都度読まないよう、`${tenantId}:${userId}:${category}` をキーにメモ化する(カテゴリの定義は
+ * apps/api/src/lib/notification-preferences.ts に一元化。テナントの SMTP 接続情報自体は
+ * buildPersonalChannels が呼ぶたびに tenant_notification_settings を読むため、テナント単位の
+ * メモ化はしていない — 個人設定側と違って必須ではなく、実装の単純さを優先した判断点)。
  */
 
 import { Queue, Worker } from "bullmq";
@@ -30,7 +37,8 @@ import IORedis from "ioredis";
 import { migrateDb } from "@kizami/db";
 import type { NotificationChannel } from "@kizami/notify";
 import { buildEncryptorFromEnv } from "./lib/encryption.js";
-import { buildNotificationChannels } from "./lib/notification-channels.js";
+import { buildPersonalChannels } from "./lib/notification-channels.js";
+import { resolveNotificationCategory } from "./lib/notification-preferences.js";
 import { runLeaveAlertScan } from "./leave-alerts.js";
 import { runOvertimeAlertScan } from "./overtime-alerts.js";
 import { nodemailerSendFn } from "./lib/smtp.js";
@@ -43,7 +51,6 @@ const JOB_NAME = "kizami-notification-scan";
 
 const redisUrl = process.env.REDIS_URL ?? "redis://localhost:6379";
 const reminderIntervalMinutes = Number(process.env.REMINDER_INTERVAL_MINUTES ?? "15");
-const webhookUrl = process.env.WEBHOOK_URL;
 const databaseUrl = process.env.DATABASE_URL ?? "file:./kizami.db";
 // 秘密情報(webhookUrl・smtpPassword)の復号に使う。未設定/不正なら null
 // (復号できないチャネルは無効化されるだけで、スキャン自体は止めない — notification-channels.ts 参照)。
@@ -71,18 +78,23 @@ async function main(): Promise<void> {
     async () => {
       const nowMinutes = Math.floor(Date.now() / 60_000);
 
-      // テナントごとの通知設定を1回のジョブ実行内で使い回す(同一テナントの複数ユーザーで
-      // DB を何度も読まないためのメモ化)。両方のスキャンが同じキャッシュを共有する。
+      // 本人の個人チャネルを1回のジョブ実行内で使い回す(同一ユーザーが同じカテゴリの
+      // 通知で複数回対象になっても DB を何度も読まないためのメモ化)。3スキャンすべてが
+      // 同じキャッシュを共有する。キーは `${tenantId}:${userId}:${category}`
+      // (カテゴリの定義は lib/notification-preferences.ts に一元化 — 個人設定は
+      // カテゴリ単位で ON/OFF するため、同カテゴリ内の複数 type は同じ結果になる)。
       const channelCache = new Map<string, Promise<NotificationChannel[]>>();
-      const resolveChannels = (tenantId: string): Promise<NotificationChannel[]> => {
-        let cached = channelCache.get(tenantId);
+      const resolveChannels = (tenantId: string, userId: string, notificationType: string): Promise<NotificationChannel[]> => {
+        const category = resolveNotificationCategory(notificationType);
+        const key = `${tenantId}:${userId}:${category}`;
+        let cached = channelCache.get(key);
         if (!cached) {
-          cached = buildNotificationChannels(db, tenantId, {
-            smtpSendFn: nodemailerSendFn,
-            ...(webhookUrl ? { webhookUrlFallback: webhookUrl } : {}),
-            encryptor,
-          });
-          channelCache.set(tenantId, cached);
+          cached = buildPersonalChannels(
+            db,
+            { tenantId, userId, notificationType },
+            { smtpSendFn: nodemailerSendFn, encryptor },
+          );
+          channelCache.set(key, cached);
         }
         return cached;
       };
@@ -154,9 +166,7 @@ async function main(): Promise<void> {
   process.on("SIGTERM", () => void shutdown());
   process.on("SIGINT", () => void shutdown());
 
-  console.log(
-    `kizami reminder worker started (interval=${reminderIntervalMinutes}min, redis=${redisUrl}, webhookFallback=${webhookUrl ? "on" : "off"})`,
-  );
+  console.log(`kizami reminder worker started (interval=${reminderIntervalMinutes}min, redis=${redisUrl})`);
 }
 
 main().catch((err: unknown) => {

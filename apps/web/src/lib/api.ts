@@ -216,6 +216,40 @@ export interface NotificationTestResult {
   error?: string;
 }
 
+/**
+ * 個人の通知受け取り設定(2026-08-22 追加、docs/requirements.md §7「通知設定の2層構造」)。
+ * apps/api/src/routes/notification-preferences.ts の serialize と一致させる。
+ * 上の NotificationSettingsDto(テナント共有のチャネル接続情報)とは別物 — 混同しないこと。
+ */
+export type PersonalNotificationCategory = "missing_clock_out" | "overtime_alert" | "leave_alert";
+
+export interface PersonalNotificationCategoryPrefsDto {
+  /** 常時 true(アプリ内通知はOFFにできない)。 */
+  inapp: true;
+  email: boolean;
+  webhook: boolean;
+}
+
+export interface PersonalNotificationSettingsDto {
+  categories: Record<PersonalNotificationCategory, PersonalNotificationCategoryPrefsDto>;
+  /** value=個人設定の入力値(未入力なら null)。effective=実際に使われる宛先(未入力ならアカウントの email)。 */
+  emailAddress: { value: string | null; effective: string };
+  /** 秘密情報のためマスクして返る(configured/preview のみ、全文は返らない)。 */
+  webhookUrl: { configured: boolean; preview: string | null };
+  updatedAt: number | null;
+}
+
+/**
+ * PUT /settings/notifications/me の入力。categories は省略したカテゴリ・省略したフィールド
+ * (email/webhook)を維持する部分更新。emailAddress/webhookUrl は3値ルール
+ * (省略=維持、空文字=クリア、文字列=置換)— このUIからは空文字での明示的なクリアも提供する。
+ */
+export interface UpdatePersonalNotificationSettingsInput {
+  categories: Partial<Record<PersonalNotificationCategory, { email?: boolean; webhook?: boolean }>>;
+  emailAddress?: string;
+  webhookUrl?: string;
+}
+
 /** 権限のスコープ(狭い→広い: self < department < department_and_descendants < tenant)。packages/authz/src/types.ts と一致。 */
 export type Scope = "self" | "department" | "department_and_descendants" | "tenant";
 
@@ -666,6 +700,23 @@ export const api = {
 
   async testNotificationSettings(): Promise<{ results: NotificationTestResult[] }> {
     return request("/settings/notifications/test", { method: "POST" });
+  },
+
+  /** GET /settings/notifications/me(認証のみ、権限不要 — 自分の設定は誰でも読める)。 */
+  async getPersonalNotificationSettings(): Promise<PersonalNotificationSettingsDto> {
+    return request("/settings/notifications/me");
+  },
+
+  /** PUT /settings/notifications/me(認証のみ、権限不要)。 */
+  async updatePersonalNotificationSettings(
+    input: UpdatePersonalNotificationSettingsInput,
+  ): Promise<PersonalNotificationSettingsDto> {
+    return request("/settings/notifications/me", { method: "PUT", body: JSON.stringify(input) });
+  },
+
+  /** POST /settings/notifications/me/test(個人 Webhook のみが対象。未設定なら 400 not_configured)。 */
+  async testPersonalWebhook(): Promise<{ result: NotificationTestResult | null }> {
+    return request("/settings/notifications/me/test", { method: "POST" });
   },
 
   async listDepartments(): Promise<{ departments: DepartmentDto[] }> {

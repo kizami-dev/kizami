@@ -11,6 +11,7 @@ import { AppHeader } from "./AppHeader";
  * (AppHeader の「設定」リンクの遷移先。要件: 既存の設定ナビから各画面に辿れること)。
  */
 type SettingsRoute =
+  | "/settings/notifications/me"
   | "/settings/notifications"
   | "/settings/departments"
   | "/settings/members"
@@ -25,6 +26,25 @@ type SettingsRoute =
 export function SettingsHubView() {
   const guard = useAuthGuard();
   const access = useSettingsAccess();
+
+  // 「自分の設定」(全員アクセス可)と「会社の設定」(権限が必要)をカード群として分ける
+  // (依頼: テナント設定と個人設定が混ざらないようにする)。
+  const personalCards: { key: string; enabled: boolean; to: SettingsRoute; title: string; desc: string }[] = [
+    {
+      key: "myNotifications",
+      enabled: access.myNotifications,
+      to: "/settings/notifications/me" as const,
+      title: messages.settingsHub.myNotificationsTitle,
+      desc: messages.settingsHub.myNotificationsDesc,
+    },
+    {
+      key: "apiKeys",
+      enabled: access.apiKeys,
+      to: "/settings/api-keys" as const,
+      title: messages.settingsHub.apiKeysTitle,
+      desc: messages.settingsHub.apiKeysDesc,
+    },
+  ].filter((c) => c.enabled);
 
   const cards: { key: string; enabled: boolean; to: SettingsRoute; title: string; desc: string }[] = [
     {
@@ -90,13 +110,6 @@ export function SettingsHubView() {
       title: messages.settingsHub.privacyTitle,
       desc: messages.settingsHub.privacyDesc,
     },
-    {
-      key: "apiKeys",
-      enabled: access.apiKeys,
-      to: "/settings/api-keys" as const,
-      title: messages.settingsHub.apiKeysTitle,
-      desc: messages.settingsHub.apiKeysDesc,
-    },
   ].filter((c) => c.enabled);
 
   if (guard.status === "loading" || access.loading) {
@@ -113,17 +126,38 @@ export function SettingsHubView() {
         <h1 className="settings-hub__title">{messages.settingsHub.title}</h1>
         <p className="settings-hub__tagline">{messages.settingsHub.tagline}</p>
 
-        {cards.length === 0 ? (
+        {personalCards.length === 0 && cards.length === 0 ? (
           <p className="settings-hub__empty">{messages.settingsHub.empty}</p>
         ) : (
-          <div className="settings-hub__grid">
-            {cards.map((c) => (
-              <Link key={c.key} to={c.to} className="settings-hub__card">
-                <span className="settings-hub__card-title">{c.title}</span>
-                <span className="settings-hub__card-desc">{c.desc}</span>
-              </Link>
-            ))}
-          </div>
+          <>
+            {personalCards.length > 0 ? (
+              <section className="settings-hub__group">
+                <h2 className="settings-hub__group-title">{messages.settingsHub.personalGroupTitle}</h2>
+                <div className="settings-hub__grid">
+                  {personalCards.map((c) => (
+                    <Link key={c.key} to={c.to} className="settings-hub__card">
+                      <span className="settings-hub__card-title">{c.title}</span>
+                      <span className="settings-hub__card-desc">{c.desc}</span>
+                    </Link>
+                  ))}
+                </div>
+              </section>
+            ) : null}
+
+            {cards.length > 0 ? (
+              <section className="settings-hub__group">
+                <h2 className="settings-hub__group-title">{messages.settingsHub.tenantGroupTitle}</h2>
+                <div className="settings-hub__grid">
+                  {cards.map((c) => (
+                    <Link key={c.key} to={c.to} className="settings-hub__card">
+                      <span className="settings-hub__card-title">{c.title}</span>
+                      <span className="settings-hub__card-desc">{c.desc}</span>
+                    </Link>
+                  ))}
+                </div>
+              </section>
+            ) : null}
+          </>
         )}
       </main>
     </div>

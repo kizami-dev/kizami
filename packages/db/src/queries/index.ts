@@ -11,5 +11,6 @@ export * from "./permissions.js";
 export * from "./punches.js";
 export * from "./settings.js";
 export * from "./tenants.js";
+export * from "./user-notification-settings.js";
 export * from "./leave.js";
 export * from "./work-policies.js";
