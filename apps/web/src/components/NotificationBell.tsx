@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useRouter } from "waku";
+import { Link, useRouter } from "waku";
+import type { Unstable_RouteHref as RouteHref } from "waku/router/client";
 import { api, ApiError, UnauthorizedError, type NotificationDto } from "../lib/api";
 import { messages } from "../lib/messages";
-import { formatDateLabel, formatDateTimeJst } from "../lib/time";
+import { NotificationListItem } from "./NotificationListItem";
 
 const POLL_INTERVAL_MS = 60_000;
 
@@ -15,8 +16,10 @@ const POLL_INTERVAL_MS = 60_000;
  *   !== "visible")は止める
  * - 一覧を開いても自動で全既読にはしない(要件: ユーザーが意図せず既読にしてしまうのを避ける)。
  *   既読化は各通知の「既読にする」ボタンによる明示操作のみ
- * - 打刻忘れ通知(type === "missing_clock_out")には対象日の月次画面(修正フォーム自動オープン)
- *   への導線を添える
+ * - 各通知には種別に応じた対応画面への導線を添える(lib/notifications.ts の notificationLinkFor
+ *   に集約。打刻忘れ→対象日の月次画面、leave_*→有給画面、overtime_*→対象月の月次画面)
+ * - パネル末尾に通知一覧画面(/notifications、2026-08-22 追加)への導線を置く。ここでは
+ *   直近の一部しか見せないため、過去分を遡りたい場合の入口として機能する
  */
 export function NotificationBell() {
   const router = useRouter();
@@ -135,10 +138,9 @@ export function NotificationBell() {
     }
   }
 
-  function handleOpenCorrection(subjectDate: string) {
+  function handleNavigate(href: RouteHref) {
     setOpen(false);
-    const month = subjectDate.slice(0, 7);
-    router.push(`/monthly?month=${month}&date=${subjectDate}`);
+    router.push(href);
   }
 
   return (
@@ -197,56 +199,23 @@ export function NotificationBell() {
 
           {notifications && notifications.length > 0 ? (
             <ul className="notif-list">
-              {notifications.map((n) => {
-                const isUnread = n.readAt === null;
-                return (
-                  <li key={n.id} className={`notif-item${isUnread ? " notif-item--unread" : ""}`}>
-                    <div className="notif-item__header">
-                      {isUnread ? (
-                        <span className="notif-item__unread-mark" aria-hidden="true">
-                          ●
-                        </span>
-                      ) : null}
-                      <span className="notif-item__title">{n.title}</span>
-                      {isUnread ? <span className="visually-hidden">({messages.notifications.unread})</span> : null}
-                    </div>
-                    <p className="notif-item__body">{n.body}</p>
-                    <div className="notif-item__meta tabular-nums">
-                      {n.subjectDate ? (
-                        <span>
-                          {messages.notifications.subjectDateLabel}: {formatDateLabel(n.subjectDate)}
-                        </span>
-                      ) : null}
-                      <span>
-                        {messages.notifications.receivedAtLabel}: {formatDateTimeJst(n.createdAt)}
-                      </span>
-                    </div>
-                    <div className="notif-item__actions">
-                      {n.type === "missing_clock_out" && n.subjectDate ? (
-                        <button
-                          type="button"
-                          className="notif-item__link-btn"
-                          onClick={() => handleOpenCorrection(n.subjectDate as string)}
-                        >
-                          {messages.notifications.openCorrection}
-                        </button>
-                      ) : null}
-                      {isUnread ? (
-                        <button
-                          type="button"
-                          className="notif-item__read-btn"
-                          onClick={() => handleMarkRead(n.id)}
-                          disabled={pendingReadId === n.id}
-                        >
-                          {messages.notifications.markRead}
-                        </button>
-                      ) : null}
-                    </div>
-                  </li>
-                );
-              })}
+              {notifications.map((n) => (
+                <NotificationListItem
+                  key={n.id}
+                  notification={n}
+                  pending={pendingReadId === n.id}
+                  onNavigate={handleNavigate}
+                  onMarkRead={handleMarkRead}
+                />
+              ))}
             </ul>
           ) : null}
+
+          <div className="notif-panel__footer">
+            <Link to="/notifications" className="notif-panel__view-all" onClick={() => setOpen(false)}>
+              {messages.notifications.viewAll}
+            </Link>
+          </div>
         </div>
       ) : null}
     </div>

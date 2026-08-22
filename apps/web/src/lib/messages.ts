@@ -26,6 +26,8 @@ export const messages = {
     sheetTitle: "メニュー",
     close: "閉じる",
     openNotifications: "通知を見る",
+    /** 通知一覧画面(/notifications、2026-08-22 追加)への導線。openNotifications(ベルを開く)とは別物。 */
+    allNotifications: "すべての通知を見る",
     stampScreenLink: "スタンプ演出のある打刻画面を開く →",
   },
 
@@ -71,6 +73,40 @@ export const messages = {
     quickLinkCorrectionsDesc: "打刻の追加・訂正・取消を申請します。",
     quickLinkLeaveTitle: "有給休暇",
     quickLinkLeaveDesc: "残高の確認、休暇の申請を行います。",
+  },
+
+  /**
+   * ダッシュボードの「はじめに」セクション(2026-08-22 追加)。docs/design/ui-direction.md
+   * 「今後のUI作業 > 5. オンボーディング」。未完了の項目だけを静かに列挙する
+   * (モーダルでは操作を強制しない)。
+   */
+  onboarding: {
+    title: "はじめに",
+    dismiss: "もう表示しない",
+
+    punchTitle: "まず打刻してみましょう",
+    punchReason: "打刻すると、その日から実労働時間の集計が始まります。",
+    punchAction: "打刻画面を開く →",
+
+    notifPrefsTitle: "通知の受け取り方を設定できます",
+    notifPrefsReason: "既定ではアプリ内通知のみです。メールやWebhookでも受け取れます。",
+    notifPrefsAction: "通知設定を開く →",
+
+    attendanceTitle: "勤怠設定がまだ初期値のままです",
+    attendanceReason: "日界・法定休日・GPS・フレックスなどの設定を、実態に合わせて確認してください。",
+    attendanceAction: "勤怠設定を開く →",
+
+    channelsTitle: "通知チャネルが未設定です",
+    channelsReason: "メールやWebhookを設定すると、打刻忘れなどのアラートを従業員に届けられます。",
+    channelsAction: "通知設定(会社全体)を開く →",
+
+    soloTitle: "メンバーがまだ自分だけです",
+    soloReason: "メンバーを招待すると、他の従業員の打刻・申請を管理できるようになります。",
+    soloAction: "メンバーを招待する →",
+
+    hireDateTitle: (count: number) => `入社日が未設定のメンバーが${count}名います`,
+    hireDateReason: "入社日が未設定だと、有給休暇の法定付与日数を自動計算できません。",
+    hireDateAction: "メンバー設定を開く →",
   },
 
   /** テーマ切り替え(ヘッダーのユーザーメニュー内、2026-08-22 ダーク対応で追加)。 */
@@ -301,7 +337,33 @@ export const messages = {
     subjectDateLabel: "対象日",
     receivedAtLabel: "受信",
     openCorrection: "この日の修正申請を開く",
+    /** leave_* 種別からの導線(2026-08-22 追加、通知一覧画面)。 */
+    openLeave: "有給休暇画面を開く",
+    /** overtime_* 種別からの導線(2026-08-22 追加、通知一覧画面)。 */
+    openMonthly: "月次画面を開く",
     loadFailed: "通知の取得に失敗しました。もう一度お試しください",
+    /** ベルのドロップダウン末尾の導線(2026-08-22 追加)。 */
+    viewAll: "すべての通知を見る →",
+  },
+
+  /** 通知一覧画面(/notifications、2026-08-22 追加)。ベルのドロップダウンとは別に過去の通知を遡れる。 */
+  notificationsPage: {
+    title: "通知",
+    tagline: "過去の通知を確認できます。",
+    filterStatusGroupLabel: "既読状態で絞り込み",
+    filterStatusAll: "すべて",
+    filterStatusUnread: "未読のみ",
+    filterTypeGroupLabel: "種別で絞り込み",
+    filterTypeAll: "すべての種別",
+    filterTypeMissingClockOut: "打刻忘れ",
+    filterTypeOvertime: "36協定",
+    filterTypeLeave: "有給",
+    markAllRead: "表示中をまとめて既読にする",
+    markAllReadPending: "処理中…",
+    empty: "通知はありません",
+    emptyFiltered: "この条件に一致する通知はありません",
+    /** APIが最大100件までしか返さないため(仕様上の制約、APIは変更しない)。 */
+    truncatedNotice: "直近100件のみ表示しています。それより古い通知は表示されません。",
   },
 
   settingsNotifications: {

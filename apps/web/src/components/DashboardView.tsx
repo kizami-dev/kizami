@@ -19,6 +19,7 @@ import {
 } from "../lib/api";
 import { getCurrentPositionSafe } from "../lib/geolocation";
 import { messages } from "../lib/messages";
+import { notificationLinkFor } from "../lib/notifications";
 import {
   currentYearMonthJst,
   dateStrFromEpochMinutesJst,
@@ -31,6 +32,7 @@ import {
 import { useAuthGuard } from "../lib/useAuthGuard";
 import { useOnlineStatus } from "../lib/useOnlineStatus";
 import { AppHeader } from "./AppHeader";
+import { OnboardingSection } from "./OnboardingSection";
 
 const MAX_WARNING_DAYS_SHOWN = 5;
 const MAX_NOTIFICATIONS_SHOWN = 3;
@@ -225,6 +227,9 @@ export function DashboardView() {
     <div className="dashboard">
       <AppHeader displayName={guard.user.displayName} email={guard.user.email} active="dashboard" />
       <main className="dashboard__main">
+        {/* ---- 0. はじめに(未完了の項目だけ、2026-08-22 追加) ---- */}
+        <OnboardingSection authed={guard.status === "authed"} refreshKey={reloadKey} />
+
         {/* ---- 1. 打刻: 現在の状態と、その状態で押せるボタン ---- */}
         <section className="dashboard-punch" aria-label={messages.dashboard.punchSectionTitle}>
           <div className={`dashboard-punch__state dashboard-punch__state--${state}`}>
@@ -338,20 +343,20 @@ export function DashboardView() {
                     </span>
                   </p>
                   <ul className="dashboard-todo__notif-list">
-                    {unreadShown.map((n) => (
-                      <li key={n.id} className="dashboard-todo__notif-item">
-                        <span className="dashboard-todo__notif-title">{n.title}</span>
-                        <span className="dashboard-todo__notif-time tabular-nums">{formatDateTimeJst(n.createdAt)}</span>
-                        {n.type === "missing_clock_out" && n.subjectDate ? (
-                          <Link
-                            to={`/monthly?month=${n.subjectDate.slice(0, 7)}&date=${n.subjectDate}`}
-                            className="dashboard-todo__notif-link"
-                          >
-                            {messages.notifications.openCorrection}
-                          </Link>
-                        ) : null}
-                      </li>
-                    ))}
+                    {unreadShown.map((n) => {
+                      const link = notificationLinkFor(n);
+                      return (
+                        <li key={n.id} className="dashboard-todo__notif-item">
+                          <span className="dashboard-todo__notif-title">{n.title}</span>
+                          <span className="dashboard-todo__notif-time tabular-nums">{formatDateTimeJst(n.createdAt)}</span>
+                          {link ? (
+                            <Link to={link.href} className="dashboard-todo__notif-link">
+                              {link.label}
+                            </Link>
+                          ) : null}
+                        </li>
+                      );
+                    })}
                   </ul>
                   {unreadCount > unreadShown.length ? (
                     <p className="dashboard-todo__more">{messages.dashboard.todoNotificationsMore}</p>

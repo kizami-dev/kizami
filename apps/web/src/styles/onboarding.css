@@ -1,0 +1,66 @@
+/**
+ * ダッシュボードの「はじめに」セクション(2026-08-22 追加)のスタイル。
+ * .dashboard-card(dashboard.css)をそのまま外枠に使い、中身だけをここで定義する。
+ * K主体で静かに保つ(意味色を新たに足さない。既存の dashboard-todo__row-link を流用する)。
+ */
+
+.onboarding__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.onboarding__dismiss {
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  color: var(--k-ink-soft);
+  font-size: 0.75rem;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  padding: var(--space-1);
+}
+
+.onboarding__dismiss:hover {
+  color: var(--k-key);
+}
+
+.onboarding__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.onboarding__item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3) 0;
+  border-bottom: var(--border-hair);
+}
+
+.onboarding__item:first-child {
+  padding-top: 0;
+}
+
+.onboarding__item:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.onboarding__item-title {
+  margin: 0;
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: var(--k-key);
+}
+
+.onboarding__item-reason {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--k-ink-soft);
+  line-height: 1.55;
+}

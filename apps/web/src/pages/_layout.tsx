@@ -6,6 +6,7 @@ import "../styles/base.css";
 import "../styles/header.css";
 import "../styles/login.css";
 import "../styles/dashboard.css";
+import "../styles/onboarding.css";
 import "../styles/punch-home.css";
 import "../styles/monthly.css";
 import "../styles/corrections.css";

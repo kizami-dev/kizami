@@ -10,7 +10,11 @@ import { KizamiMark } from "./KizamiMark";
 import { NotificationBell } from "./NotificationBell";
 import { ThemeToggle } from "./ThemeToggle";
 
-export type AppHeaderActive = "dashboard" | "punch" | "monthly" | "corrections" | "settings" | "leave";
+/**
+ * "notifications"(通知一覧画面、2026-08-22 追加)はどのタブ・デスクトップナビにも対応させない
+ * (dashboard と同じ扱い — ベル・「その他」シートからだけ辿り着く二次的な画面のため)。
+ */
+export type AppHeaderActive = "dashboard" | "punch" | "monthly" | "corrections" | "settings" | "leave" | "notifications";
 
 export interface AppHeaderProps {
   displayName: string;
@@ -227,6 +231,9 @@ export function AppHeader({ displayName, email, active }: AppHeaderProps) {
               <button type="button" className="more-sheet__row more-sheet__row--button" onClick={handleOpenNotifications}>
                 {messages.mobileNav.openNotifications}
               </button>
+              <Link to="/notifications" className="more-sheet__row" onClick={() => setSheetOpen(false)}>
+                {messages.mobileNav.allNotifications}
+              </Link>
 
               <div className="more-sheet__theme">
                 <ThemeToggle />
