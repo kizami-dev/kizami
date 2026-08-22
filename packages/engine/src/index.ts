@@ -22,14 +22,14 @@ export function calculate(input: EngineInput): EngineOutput {
     breakSegments,
     input.settingsTimeline,
     input.period,
-    input.paidLeaveDays,
+    input.paidLeave,
   );
 
   const { totals, flexBalance } = calculateFlexBalance(
     days,
     input.settingsTimeline,
     input.period,
-    input.paidLeaveDays,
+    input.paidLeave,
   );
 
   return { days, totals, flexBalance, warnings };

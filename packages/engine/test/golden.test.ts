@@ -39,6 +39,9 @@ describe("golden cases", () => {
           expect(actualDay?.breakMinutes).toBe(expectedDay.break);
           expect(actualDay?.lateNightMinutes).toBe(expectedDay.lateNight);
           expect(actualDay?.isLegalHoliday).toBe(expectedDay.legalHoliday);
+          if (expectedDay.paidLeaveMinutes !== undefined) {
+            expect(actualDay?.paidLeaveMinutes).toBe(expectedDay.paidLeaveMinutes);
+          }
         }
       }
     });

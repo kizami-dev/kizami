@@ -7,6 +7,8 @@ import { insertPunchEvent, listValidPunches, type Database } from "@kizami/db";
 import type { PunchKind } from "@kizami/engine";
 import type { AppEnv } from "../auth/middleware.js";
 import { requireSelf } from "../authz.js";
+import { periodFromDate, resolveAttendanceDate } from "../lib/attendance-date.js";
+import { assertMonthOpen } from "../lib/closing-guard.js";
 import { nowMinutes } from "../lib/time.js";
 
 /** 打刻として受け付ける kind。'void'(取消)はシステム内部専用のため申請者は直接指定できない。 */
@@ -89,6 +91,10 @@ export function createPunchesRoutes(db: Database) {
     if (occurredAtMinutes > now + FUTURE_TOLERANCE_MINUTES) {
       return c.json({ error: "occurred_at_in_future" }, 400);
     }
+
+    // 締め済み月への打刻は全経路で拒否する(docs/requirements.md §6・依頼の禁止事項)。
+    const attendanceDate = await resolveAttendanceDate(db, { tenantId: user.tenantId, occurredAt: occurredAtMinutes });
+    await assertMonthOpen(db, { tenantId: user.tenantId, period: periodFromDate(attendanceDate) });
 
     const forwardedFor = c.req.header("x-forwarded-for");
     const metaIp = forwardedFor ? (forwardedFor.split(",")[0] as string).trim() : null;

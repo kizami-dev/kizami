@@ -5,8 +5,8 @@
  * 清算期間1ヶ月・コアタイムなし。月枠 = floor(週40h(2400分) × 暦日数 / 7)。
  */
 
-import { daysInMonth, findSettingsForDate, formatDateString, isInPeriod } from "./date.js";
-import type { CategorizedMinutes, DailyBreakdown, FlexBalance, PlainDateString, SettingsSpan } from "./types.js";
+import { daysInMonth, isInPeriod } from "./date.js";
+import type { CategorizedMinutes, DailyBreakdown, FlexBalance, PaidLeaveEntry, SettingsSpan } from "./types.js";
 
 const WEEKLY_FRAME_MINUTES = 40 * 60; // 週40時間
 const OVERTIME_60H_THRESHOLD_MINUTES = 60 * 60; // 月60時間
@@ -15,18 +15,16 @@ export function calculateFlexBalance(
   days: DailyBreakdown[],
   settingsTimeline: SettingsSpan[],
   period: { year: number; month: number },
-  paidLeaveDays: PlainDateString[],
+  paidLeave: PaidLeaveEntry[],
 ): { totals: CategorizedMinutes; flexBalance: FlexBalance } {
-  // フレックス設定・月枠は期間初日に有効な設定版を使う
-  const periodStart = formatDateString({ year: period.year, month: period.month, day: 1 });
-  const settings = findSettingsForDate(periodStart, settingsTimeline);
-
   const dim = daysInMonth(period.year, period.month);
   const frameMinutes = Math.floor((WEEKLY_FRAME_MINUTES * dim) / 7);
 
   const workedTotal = days.reduce((sum, d) => sum + d.workedMinutes, 0);
-  const paidLeaveInPeriod = paidLeaveDays.filter((d) => isInPeriod(d, period)).length;
-  const actualMinutes = workedTotal + paidLeaveInPeriod * settings.flex.standardDayMinutes;
+  const paidLeaveMinutesInPeriod = paidLeave
+    .filter((entry) => isInPeriod(entry.date, period))
+    .reduce((sum, entry) => sum + entry.minutes, 0);
+  const actualMinutes = workedTotal + paidLeaveMinutesInPeriod;
 
   const statutory = Math.min(actualMinutes, frameMinutes);
   const overtime = Math.max(0, actualMinutes - frameMinutes);

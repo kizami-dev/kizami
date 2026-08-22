@@ -53,8 +53,18 @@ export interface EngineInput {
   /** from 昇順。期間初日以前に有効な版を必ず1つ含むこと */
   settingsTimeline: SettingsSpan[];
   period: { year: number; month: number };
-  /** 有給取得日(所定労働扱いで枠に算入) */
-  paidLeaveDays: PlainDateString[];
+  /**
+   * 有給取得(所定労働扱いで枠に算入)。
+   * 全休は minutes = 所定労働時間、時間単位年休はその取得分数。
+   * 同じ日に複数エントリがある場合は合算する(午前2時間+午後1時間など)。
+   */
+  paidLeave: PaidLeaveEntry[];
+}
+
+/** 有給の取得。日単位・時間単位のどちらも「その日に何分ぶん有給を使ったか」で表す */
+export interface PaidLeaveEntry {
+  date: PlainDateString;
+  minutes: number;
 }
 
 /**
@@ -105,8 +115,10 @@ export interface DailyBreakdown {
   lateNightMinutes: number;
   isLegalHoliday: boolean;
   legalHolidayMinutes: number;
-  /** 有給日か(枠算入は flexBalance 側で行う) */
+  /** その日に有給を使ったか(全休・時間単位を問わず minutes > 0 なら true) */
   isPaidLeave: boolean;
+  /** その日の有給分数(枠算入は flexBalance 側で行う) */
+  paidLeaveMinutes: number;
 }
 
 export interface FlexBalance {

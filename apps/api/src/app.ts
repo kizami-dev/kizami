@@ -4,16 +4,20 @@ import type { Database } from "@kizami/db";
 import type { Encryptor } from "./lib/encryption.js";
 import { authMiddleware, type AppEnv } from "./auth/middleware.js";
 import { ForbiddenError } from "./authz.js";
+import { MonthClosedError } from "./lib/closing-guard.js";
 import { createAttendanceRoutes } from "./routes/attendance.js";
 import { createAuthRoutes } from "./routes/auth.js";
+import { createClosingsRoutes } from "./routes/closings.js";
 import { createCorrectionsRoutes } from "./routes/corrections.js";
 import { createDepartmentsRoutes } from "./routes/departments.js";
+import { createExportsRoutes } from "./routes/exports.js";
 import { createMeRoutes } from "./routes/me.js";
 import { createMembersRoutes } from "./routes/members.js";
 import { createNotificationsRoutes } from "./routes/notifications.js";
 import { createPresetsRoutes } from "./routes/presets.js";
 import { createPunchesRoutes } from "./routes/punches.js";
 import { createSettingsRoutes, type SettingsRoutesDeps } from "./routes/settings.js";
+import { createLeaveRoutes } from "./routes/leave.js";
 
 export interface CreateAppDeps {
   db: Database;
@@ -71,11 +75,17 @@ export function createApp(deps: CreateAppDeps) {
   authed.route("/departments", createDepartmentsRoutes(db));
   authed.route("/members", createMembersRoutes(db));
   authed.route("/presets", createPresetsRoutes(db));
+  authed.route("/closings", createClosingsRoutes(db));
+  authed.route("/exports", createExportsRoutes(db));
+  authed.route("/leave", createLeaveRoutes(db));
   app.route("/", authed);
 
   app.onError((err, c) => {
     if (err instanceof ForbiddenError) {
       return c.json({ error: "forbidden" }, 403);
+    }
+    if (err instanceof MonthClosedError) {
+      return c.json({ error: "month_closed" }, 409);
     }
     console.error(err);
     return c.json({ error: "internal_error" }, 500);

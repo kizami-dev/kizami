@@ -50,15 +50,17 @@
 - 承認時にトランザクションで punch_events に反映イベントを追記し、`correction_request_id` で紐付ける
 - 状態遷移は `pending → approved / rejected / withdrawn` のみ(approved 後の変更は不可。取り消したい場合は新たな申請)
 
-### closings(締め)と closing_snapshots
+### closing_events(締め)と closing_snapshots
 
-| closings | 備考 |
-| --- | --- |
-| id / tenant_id / period (YYYY-MM) / status | status: `open` / `closed` |
-| closed_by / closed_at | |
-
-- 締め解除は closings を UPDATE せず、**closing_events(追記専用: `close` / `reopen`)**で履歴を持ち、現在状態を導出。「誰がいつ解除したか」要件(§6)を構造で満たす
-- closing_snapshots: 締め確定時の (closing_event_id, user_id, category, minutes)。締め済み期間の表示・エクスポートは常にスナップショットから読む。open 期間はエンジンでオンデマンド計算
+- **closing_events(追記専用)**: (id, tenant_id, period "YYYY-MM", event `close`/`reopen`, actor_id, note, occurred_at)。
+  現在の締め状態はこのイベント列から導出する。**状態を持つ `closings` テーブルは作らない**
+  (2026-08-22 実装時に決定。当初案では status を持つテーブルを併置していたが、
+  イベントから完全に導出できる以上、二重管理は不整合の余地を作るだけだった)。
+  「誰がいつ解除したか」要件(§6)は履歴そのもので満たされる
+- **closing_snapshots**: 締め確定時の (closing_event_id, user_id, category, minutes)。
+  category には区分別時間数5種に加えフレックス収支3種(flexFrame/flexActual/flexDiff)も
+  同じ形式で入れる(別カラムにせず統一)。締め済み期間の表示・エクスポートは常に
+  スナップショットから読む。open 期間はエンジンでオンデマンド計算
 
 ### 組織・認証・権限
 
@@ -80,12 +82,13 @@
 
 ```
 input:  { punches: ValidPunch[], settingsTimeline: Array<{ from: PlainDate, settings: CalcSettings }>,
-          period: { year, month }, paidLeaveDays: PlainDate[] }
+          period: { year, month }, paidLeave: Array<{ date: PlainDate, minutes: number }> }
 output: { days: DailyBreakdown[], totals: CategorizedMinutes,
           flexBalance: { frameMinutes, actualMinutes, diffMinutes } }
 ```
 
 - ValidPunch = 有効イベントのみに絞った `{ kind, occurredAt }`。DB の形をエンジンに持ち込まない
+- `paidLeave` は「その日に何分ぶん有給を使ったか」で表す(2026-08-22 変更)。全休は所定労働時間、半休はその半分、時間単位はその分数。日単位・時間単位を別概念にせず分に統一することで、残高・時効・枠算入のロジックが一本化される
 - settingsTimeline により期間途中の制度・設定変更を日単位で正しく適用(原則6)。「期間中の設定切替」はゴールデンケースの必須ケース群に含める
 - 不正打刻列(clock_in 連打、対応しない break_end 等)の扱いは**エラーではなく警告付き解釈**とし、解釈ルール自体をゴールデンケースで固定する(v0.1 実装時の設計ポイント)
 
@@ -100,7 +103,7 @@ settings:
   flex: { settlement: monthly, core: null }
   break_rule: { mode: punch }   # punch | auto | both
 period: 2026-04
-paid_leave_days: ["2026-04-10"]
+paid_leave_days: ["2026-04-10"]        # 全休(後方互換)。時間単位は paid_leave: [{date, minutes}]
 punches:                        # ローカル時刻(Asia/Tokyo)で記述、ローダーがUTC分へ変換
   - { kind: clock_in,  at: "2026-04-01T09:30" }
   - { kind: clock_out, at: "2026-04-01T19:00" }

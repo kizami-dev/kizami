@@ -32,6 +32,9 @@ importers:
       '@kizami/engine':
         specifier: workspace:*
         version: link:../../packages/engine
+      '@kizami/leave':
+        specifier: workspace:*
+        version: link:../../packages/leave
       '@kizami/notify':
         specifier: workspace:*
         version: link:../../packages/notify
@@ -113,6 +116,10 @@ importers:
         version: 2.9.0
 
   packages/help-content: {}
+
+  packages/law: {}
+
+  packages/leave: {}
 
   packages/notify: {}
 

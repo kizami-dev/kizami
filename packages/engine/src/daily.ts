@@ -13,7 +13,7 @@ import {
   lateNightOverlapMinutes,
   resolveAttendanceDate,
 } from "./date.js";
-import type { DailyBreakdown, PlainDateString, SettingsSpan } from "./types.js";
+import type { DailyBreakdown, PaidLeaveEntry, PlainDateString, SettingsSpan } from "./types.js";
 
 interface DayPiece {
   date: PlainDateString;
@@ -40,7 +40,7 @@ export function buildDailyBreakdown(
   breakSegments: Segment[],
   settingsTimeline: SettingsSpan[],
   period: { year: number; month: number },
-  paidLeaveDays: PlainDateString[],
+  paidLeave: PaidLeaveEntry[],
 ): DailyBreakdown[] {
   const workedByDate = new Map<PlainDateString, number>();
   const lateNightByDate = new Map<PlainDateString, number>();
@@ -65,7 +65,14 @@ export function buildDailyBreakdown(
     }
   }
 
-  const paidLeaveSet = new Set(paidLeaveDays);
+  // 同日に複数エントリがある場合は合算する(午前2時間+午後1時間など)
+  const paidLeaveMinutesByDate = new Map<PlainDateString, number>();
+  for (const entry of paidLeave) {
+    paidLeaveMinutesByDate.set(
+      entry.date,
+      (paidLeaveMinutesByDate.get(entry.date) ?? 0) + entry.minutes,
+    );
+  }
   const totalDays = daysInMonth(period.year, period.month);
   const days: DailyBreakdown[] = [];
 
@@ -74,6 +81,7 @@ export function buildDailyBreakdown(
     const settings = findSettingsForDate(date, settingsTimeline);
     const holiday = isLegalHoliday(date, settings.legalHoliday);
     const rawWorked = workedByDate.get(date) ?? 0;
+    const paidLeaveMinutes = paidLeaveMinutesByDate.get(date) ?? 0;
 
     days.push({
       date,
@@ -82,7 +90,8 @@ export function buildDailyBreakdown(
       lateNightMinutes: lateNightByDate.get(date) ?? 0,
       isLegalHoliday: holiday,
       legalHolidayMinutes: holiday ? rawWorked : 0,
-      isPaidLeave: paidLeaveSet.has(date),
+      isPaidLeave: paidLeaveMinutes > 0,
+      paidLeaveMinutes,
     });
   }
 

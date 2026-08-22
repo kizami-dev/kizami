@@ -62,3 +62,9 @@ export function parseMonthParam(value: string | undefined): ParsedMonth | null {
   if (month < 1 || month > 12) return null;
   return { year, month };
 }
+
+/** 現在時刻をローカル日付 "YYYY-MM-DD" として返す(§5 有給休暇: asOf の既定値に使う)。 */
+export function todayLocalDate(tzOffsetMinutes: number): string {
+  const localMinutes = nowMinutes() + tzOffsetMinutes;
+  return dateFromEpochDay(Math.floor(localMinutes / MINUTES_PER_DAY));
+}

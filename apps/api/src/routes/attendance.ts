@@ -3,10 +3,19 @@
  */
 
 import { Hono } from "hono";
-import { getEffectiveSettingsVersion, listValidPunches, type Database } from "@kizami/db";
-import { calculate, type EngineInput, type PunchKind, type ValidPunch } from "@kizami/engine";
+import {
+  getClosingSnapshots,
+  getClosingState,
+  getEffectiveSettingsVersion,
+  listApprovedLeaveRequestsInRange,
+  listValidPunches,
+  type Database,
+} from "@kizami/db";
+import { calculate, type EngineInput, type PaidLeaveEntry, type PunchKind, type ValidPunch } from "@kizami/engine";
+import { resolveUsageMinutes, type LeaveUnit } from "@kizami/leave";
 import type { AppEnv } from "../auth/middleware.js";
 import { requireSelf } from "../authz.js";
+import { engineOutputFromSnapshots } from "../lib/closing-snapshot.js";
 import {
   dateFromEpochDay,
   daysInMonth,
@@ -16,7 +25,7 @@ import {
   nowMinutes,
   parseMonthParam,
 } from "../lib/time.js";
-import { buildSettingsTimeline, TZ_OFFSET_MINUTES_JST } from "../lib/settings.js";
+import { buildSettingsTimeline, standardDayMinutesForDate, TZ_OFFSET_MINUTES_JST } from "../lib/settings.js";
 
 const MINUTES_PER_DAY = 1440;
 
@@ -127,6 +136,7 @@ export function createAttendanceRoutes(db: Database) {
       return c.json({ error: "invalid_month" }, 400);
     }
     const { year, month } = parsedMonth;
+    const period = formatDate(year, month, 1).slice(0, 7);
 
     const monthStartEpochDay = epochDayFromDate(formatDate(year, month, 1));
     const monthEndEpochDay = monthStartEpochDay + daysInMonth(year, month) - 1;
@@ -138,9 +148,15 @@ export function createAttendanceRoutes(db: Database) {
     const fromMinutes = localMidnightUtcMinutes(monthStartEpochDay - 1, tz);
     const toMinutes = localMidnightUtcMinutes(monthEndEpochDay + 2, tz) - 1;
 
-    const [punchRows, settingsTimeline] = await Promise.all([
+    const [punchRows, settingsTimeline, approvedLeaveRequests] = await Promise.all([
       listValidPunches(db, { tenantId: user.tenantId, userId: user.id, fromMinutes, toMinutes }),
       buildSettingsTimeline(db, {
+        tenantId: user.tenantId,
+        userId: user.id,
+        fromDate: monthStartDate,
+        toDate: monthEndDate,
+      }),
+      listApprovedLeaveRequestsInRange(db, {
         tenantId: user.tenantId,
         userId: user.id,
         fromDate: monthStartDate,
@@ -150,14 +166,37 @@ export function createAttendanceRoutes(db: Database) {
 
     const punches: ValidPunch[] = punchRows.map((p) => ({ kind: p.kind as PunchKind, occurredAt: p.occurredAt }));
 
+    // 承認済みの有給取得日を所定労働扱いでフレックス枠に算入する(§5「集計との連動」)。
+    // 全休は所定労働時間、半休はその半分、時間単位はその申請分数(単位ごとの分数解決は
+    // @kizami/leave の resolveUsageMinutes に委譲する)。同日に複数件(午前+午後の半休等)
+    // ある場合は engine 側(calculateFlexBalance)が同一日付のエントリを合算する。
+    const paidLeave: PaidLeaveEntry[] = approvedLeaveRequests.map((r) => ({
+      date: r.leaveDate,
+      minutes: resolveUsageMinutes(r.unit as LeaveUnit, standardDayMinutesForDate(settingsTimeline, r.leaveDate), r.minutes ?? undefined),
+    }));
+
     const input: EngineInput = {
       punches,
       settingsTimeline,
       period: { year, month },
-      paidLeaveDays: [],
+      paidLeave,
     };
 
-    return c.json(calculate(input));
+    const output = calculate(input);
+
+    // 締め済み月は totals・flexBalance を常にスナップショットから返す(設定変更・制度変更の
+    // 遡及から二重に保護する。docs/design/v01-data-model.md 原則6・依頼の禁止事項)。
+    // days の明細(日別内訳)は再計算のままでよい(依頼の指示通り。表示用の粒度であり、
+    // 締め済みの確定値そのものは totals/flexBalance が担保する)。
+    const closingState = await getClosingState(db, { tenantId: user.tenantId, period });
+    if (closingState.status === "closed") {
+      const snapshots = await getClosingSnapshots(db, { tenantId: user.tenantId, period });
+      const userSnapshots = snapshots.filter((s) => s.userId === user.id);
+      const { totals, flexBalance } = engineOutputFromSnapshots(userSnapshots);
+      return c.json({ ...output, totals, flexBalance, closed: true });
+    }
+
+    return c.json({ ...output, closed: false });
   });
 
   return app;

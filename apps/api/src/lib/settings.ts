@@ -77,10 +77,20 @@ export async function buildSettingsTimeline(db: Database, params: BuildSettingsT
     .where(eq(workPolicyVersions.tenantId, tenantId))
     .orderBy(asc(workPolicyVersions.effectiveFrom));
 
+  // 判断点(バグ修正, 2026-08-22): 変更点(changePoints)には元々「assignments/versions の
+  // effectiveFrom <= toDate」を無条件に含めていたが、これは fromDate より前の変更点も
+  // (テナントの版が複数あり、その中の1つが fromDate より後に始まっていた場合)含んでしまい、
+  // 該当日を「tenantTimeline(fromDate 以前の最新版1件 + 期間内の版)」で解決できず例外に
+  // なるケースがあった(例: テナント設定を fromDate より後の日付に1回変更しただけの、ごく
+  // 普通の運用でも発生する — テナント側は「fromDate 以前の最新版」だけが残るのに対し、
+  // assignment/version 側は無フィルタの全履歴を保持しているため、両者の「変更点集合」の
+  // 前提がズレていた)。fromDate より前の変更点は、どのみち「fromDate 時点で有効な最新値」
+  // (`latestAtOrBefore` が全履歴から正しく引ける)に吸収されるため、個別の span としては
+  // 不要 — `>= fromDate` に絞ることで、tenantTimeline の実際のカバー範囲と整合させる。
   const changePoints = new Set<string>();
   for (const v of tenantTimeline) changePoints.add(v.effectiveFrom);
-  for (const a of assignments) if (a.effectiveFrom <= toDate) changePoints.add(a.effectiveFrom);
-  for (const v of versions) if (v.effectiveFrom <= toDate) changePoints.add(v.effectiveFrom);
+  for (const a of assignments) if (a.effectiveFrom >= fromDate && a.effectiveFrom <= toDate) changePoints.add(a.effectiveFrom);
+  for (const v of versions) if (v.effectiveFrom >= fromDate && v.effectiveFrom <= toDate) changePoints.add(v.effectiveFrom);
 
   const sortedDates = [...changePoints].sort();
 
@@ -115,4 +125,26 @@ export async function buildSettingsTimeline(db: Database, params: BuildSettingsT
 
     return { from: date, settings };
   });
+}
+
+/**
+ * 指定日に有効な標準労働時間(所定労働時間、分)を settingsTimeline から解決する。
+ * 有給休暇(§5)の全休・半休の分数換算に使う(routes/leave.ts)。
+ *
+ * buildSettingsTimeline() が返す SettingsSpan[] は effective-dated(from 昇順、期間初日以前に
+ * 有効な版を必ず1つ含む)前提のため、engine 側の findSettingsForDate と同じ「date 以下で
+ * 最大の from」を選ぶロジックをここでも再実装する(engine パッケージの内部モジュールは
+ * 公開 API に含まれないため import できない — buildSettingsTimeline 自体の判断点コメント参照)。
+ */
+export function standardDayMinutesForDate(settingsTimeline: SettingsSpan[], date: string): number {
+  let chosen: SettingsSpan | null = null;
+  for (const span of settingsTimeline) {
+    if (span.from <= date && (chosen === null || span.from > chosen.from)) {
+      chosen = span;
+    }
+  }
+  if (!chosen) {
+    throw new Error(`no settings resolvable for ${date}`);
+  }
+  return chosen.settings.flex.standardDayMinutes;
 }

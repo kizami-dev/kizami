@@ -62,7 +62,7 @@ describe("GET /attendance/monthly", () => {
       punches,
       settingsTimeline: [{ from: "1970-01-01", settings: SETTINGS }],
       period: { year: 2026, month: 4 },
-      paidLeaveDays: [],
+      paidLeave: [],
     } satisfies EngineInput);
 
     expect(body.totals).toEqual(expected.totals);
@@ -84,7 +84,7 @@ describe("GET /attendance/monthly", () => {
       punches: [],
       settingsTimeline: [{ from: "1970-01-01", settings: SETTINGS }],
       period: { year: 2026, month: 4 },
-      paidLeaveDays: [],
+      paidLeave: [],
     } satisfies EngineInput);
 
     expect(body.totals).toEqual(expected.totals);

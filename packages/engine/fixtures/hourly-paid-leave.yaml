@@ -1,0 +1,51 @@
+# 時間単位年休 — 平日4日勤務+1日は3時間だけ時間単位年休を取得(その日は労働なし)。
+# フレックス実績への算入が「有給日数×所定労働時間」ではなく「有給取得分数の合計」になったことを確認する。
+name: 時間単位年休 — 3時間取得分がフレックス実績に加算される
+law_reference: 労働基準法39条4項(時間単位年休)、労働基準法32条の3(フレックスタイム制)
+settings:
+  tz_offset: 540
+  day_boundary: "00:00"
+  legal_holiday: { weekday: sunday }
+  flex: { settlement: monthly, core: null, standard_day: "08:00" }
+  break_rule: { mode: punch }
+period: 2026-04
+# 新記法: 2026-04-09(木)に3時間(180分)だけ時間単位年休を取得。その日は打刻なし(終日出社せず)。
+paid_leave: [{ date: "2026-04-09", minutes: 180 }]
+punches:
+  # 2026-04-06(月)・04-07(火)・04-08(水)・04-10(金) の4日、09:00-18:00・休憩12:00-13:00 の同一パターン
+  # 04-09(木)は時間単位年休のみで打刻なし
+  - { kind: clock_in,    at: "2026-04-06T09:00" }
+  - { kind: break_start, at: "2026-04-06T12:00" }
+  - { kind: break_end,   at: "2026-04-06T13:00" }
+  - { kind: clock_out,   at: "2026-04-06T18:00" }
+  - { kind: clock_in,    at: "2026-04-07T09:00" }
+  - { kind: break_start, at: "2026-04-07T12:00" }
+  - { kind: break_end,   at: "2026-04-07T13:00" }
+  - { kind: clock_out,   at: "2026-04-07T18:00" }
+  - { kind: clock_in,    at: "2026-04-08T09:00" }
+  - { kind: break_start, at: "2026-04-08T12:00" }
+  - { kind: break_end,   at: "2026-04-08T13:00" }
+  - { kind: clock_out,   at: "2026-04-08T18:00" }
+  - { kind: clock_in,    at: "2026-04-10T09:00" }
+  - { kind: break_start, at: "2026-04-10T12:00" }
+  - { kind: break_end,   at: "2026-04-10T13:00" }
+  - { kind: clock_out,   at: "2026-04-10T18:00" }
+expected:
+  # 手計算:
+  # 1勤務日の実労働 = (12:00-09:00) + (18:00-13:00) = 180 + 300 = 480分。休憩=60分。深夜なし。
+  # 勤務日は 04-06・04-07・04-08・04-10 の4日。いずれも平日(月〜金)で法定休日なし。
+  # worked合計 = 480 * 4 = 1920分
+  # 04-09(木)は打刻なし・時間単位年休180分(=3時間)のみ。worked=0, break=0, paid_leave_minutes=180
+  # frame = floor(2400分/週 * 30暦日 / 7) = floor(72000/7) = floor(10285.714...) = 10285分
+  # actual = worked合計(1920) + 期間内の有給取得分数合計(180) = 2100
+  #   ※ 全休なら standardDayMinutes(480分)が加算されるところ、時間単位年休なので
+  #     実際に取得した180分のみが加算される点が本ケースの検証対象。
+  # diff = 2100 - 10285 = -8185(枠に余裕、超過なし)
+  # overtime = max(0, 2100-10285) = 0 / overtime60h = max(0, 0-3600) = 0
+  totals: { statutory: 2100, overtime: 0, overtime60h: 0, lateNight: 0, statutoryHoliday: 0 }
+  flex_balance: { frame: 10285, actual: 2100, diff: -8185 }
+  warnings: []
+  days:
+    - { date: "2026-04-06", worked: 480, break: 60, late_night: 0, legal_holiday: false, paid_leave_minutes: 0 }
+    - { date: "2026-04-09", worked: 0, break: 0, late_night: 0, legal_holiday: false, paid_leave_minutes: 180 }
+    - { date: "2026-04-10", worked: 480, break: 60, late_night: 0, legal_holiday: false, paid_leave_minutes: 0 }

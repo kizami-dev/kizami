@@ -1,0 +1,240 @@
+import { describe, expect, it } from "vitest";
+import { insertLeaveGrant, uuidv7, workPolicies, workPolicyVersions, userPolicyAssignments, type Database } from "@kizami/db";
+import { createApp } from "../src/app.js";
+import { grantPermission, loginAndGetCookie, setupSecondUser, setupTestDb } from "./support/setup.js";
+
+async function grantAnnual(db: Database, params: { tenantId: string; userId: string; grantedOn: string; days: number; expiresOn: string }) {
+  return insertLeaveGrant(db, {
+    tenantId: params.tenantId,
+    userId: params.userId,
+    leaveType: "annual",
+    grantedOn: params.grantedOn,
+    days: params.days,
+    expiresOn: params.expiresOn,
+    source: "manual",
+    createdAt: 0,
+  });
+}
+
+/** setupSecondUser() は打刻・修正申請テスト用に work_policy を割り当てないため、
+ * 有給の残高計算(buildSettingsTimeline が標準労働時間の解決に work policy を要求する)には
+ * 別途割り当てが必要。 */
+async function assignWorkPolicy(db: Database, params: { tenantId: string; userId: string }): Promise<void> {
+  const workPolicyId = uuidv7();
+  await db.insert(workPolicies).values({ id: workPolicyId, tenantId: params.tenantId, name: "Flex", createdAt: 0 });
+  await db.insert(workPolicyVersions).values({
+    id: uuidv7(),
+    tenantId: params.tenantId,
+    workPolicyId,
+    effectiveFrom: "1970-01-01",
+    settlementPeriod: "monthly",
+    core: null,
+    standardDayMinutes: 480,
+    createdAt: 0,
+  });
+  await db.insert(userPolicyAssignments).values({
+    id: uuidv7(),
+    tenantId: params.tenantId,
+    userId: params.userId,
+    workPolicyId,
+    effectiveFrom: "1970-01-01",
+    createdAt: 0,
+  });
+}
+
+interface LeaveRequestJson {
+  id: string;
+  userId: string;
+  status: string;
+  leaveDate: string;
+  unit: string;
+  minutes: number | null;
+  leaveType: string;
+}
+
+describe("leave requests API", () => {
+  it("POST /leave/requests rejects with 409 insufficient_balance when the user has no grants", async () => {
+    const { db, email, password } = await setupTestDb();
+    const app = createApp({ db });
+    const cookie = await loginAndGetCookie(app, email, password);
+
+    const res = await app.request("/leave/requests", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ leaveDate: "2026-04-10", reason: "私用のため" }),
+    });
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: "insufficient_balance" });
+  });
+
+  it("full_day request -> approve -> withdraw is no longer possible; duplicate full_day on the same date is rejected", async () => {
+    const { db, tenantId, userId, email, password } = await setupTestDb();
+    await grantAnnual(db, { tenantId, userId, grantedOn: "2020-01-01", days: 10, expiresOn: "2099-01-01" });
+    const app = createApp({ db });
+    const cookie = await loginAndGetCookie(app, email, password);
+
+    const createRes = await app.request("/leave/requests", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ leaveDate: "2026-04-10", reason: "私用のため" }),
+    });
+    expect(createRes.status).toBe(201);
+    const created = ((await createRes.json()) as { request: LeaveRequestJson }).request;
+    expect(created.status).toBe("pending");
+    expect(created.unit).toBe("full_day");
+
+    // 同じ日に重複申請 -> 409
+    const dupRes = await app.request("/leave/requests", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ leaveDate: "2026-04-10", reason: "また休みたい" }),
+    });
+    expect(dupRes.status).toBe(409);
+    expect(await dupRes.json()).toEqual({ error: "duplicate_request" });
+
+    const approveRes = await app.request(`/leave/requests/${created.id}/approve`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({}),
+    });
+    expect(approveRes.status).toBe(200);
+    const approved = ((await approveRes.json()) as { request: LeaveRequestJson }).request;
+    expect(approved.status).toBe("approved");
+
+    // 承認済みは pending からの遷移のみ許可される withdraw では動かない
+    const withdrawRes = await app.request(`/leave/requests/${created.id}/withdraw`, {
+      method: "POST",
+      headers: { cookie },
+    });
+    expect(withdrawRes.status).toBe(409);
+  });
+
+  it("reject and withdraw flows work like corrections (pending only, requestedBy only)", async () => {
+    const { db, tenantId, userId, email, password } = await setupTestDb();
+    await grantAnnual(db, { tenantId, userId, grantedOn: "2020-01-01", days: 10, expiresOn: "2099-01-01" });
+    const app = createApp({ db });
+    const cookie = await loginAndGetCookie(app, email, password);
+
+    const rejectTarget = await app.request("/leave/requests", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ leaveDate: "2026-04-10", reason: "A" }),
+    });
+    const rejectId = ((await rejectTarget.json()) as { request: LeaveRequestJson }).request.id;
+    const rejectRes = await app.request(`/leave/requests/${rejectId}/reject`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ note: "業務都合" }),
+    });
+    expect(rejectRes.status).toBe(200);
+    expect(((await rejectRes.json()) as { request: LeaveRequestJson }).request.status).toBe("rejected");
+
+    // 却下後、同じ日に再申請できる(重複防止は pending/approved のみが対象)
+    const retryRes = await app.request("/leave/requests", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ leaveDate: "2026-04-10", reason: "再申請" }),
+    });
+    expect(retryRes.status).toBe(201);
+    const retryId = ((await retryRes.json()) as { request: LeaveRequestJson }).request.id;
+
+    const withdrawRes = await app.request(`/leave/requests/${retryId}/withdraw`, { method: "POST", headers: { cookie } });
+    expect(withdrawRes.status).toBe(200);
+    expect(((await withdrawRes.json()) as { request: LeaveRequestJson }).request.status).toBe("withdrawn");
+  });
+
+  it("a different user cannot approve/reject/withdraw someone else's request (403)", async () => {
+    const { db, tenantId, userId, email, password } = await setupTestDb();
+    const second = await setupSecondUser(db, tenantId);
+    await grantAnnual(db, { tenantId, userId, grantedOn: "2020-01-01", days: 10, expiresOn: "2099-01-01" });
+    const app = createApp({ db });
+    const cookie = await loginAndGetCookie(app, email, password);
+    const secondCookie = await loginAndGetCookie(app, second.email, second.password);
+
+    const createRes = await app.request("/leave/requests", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ leaveDate: "2026-04-10", reason: "A" }),
+    });
+    const id = ((await createRes.json()) as { request: LeaveRequestJson }).request.id;
+
+    const approveRes = await app.request(`/leave/requests/${id}/approve`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: secondCookie },
+      body: JSON.stringify({}),
+    });
+    expect(approveRes.status).toBe(403);
+  });
+
+  it("morning + afternoon half-day requests on the same date both succeed", async () => {
+    const { db, tenantId, userId, email, password } = await setupTestDb();
+    await grantAnnual(db, { tenantId, userId, grantedOn: "2020-01-01", days: 10, expiresOn: "2099-01-01" });
+    const app = createApp({ db });
+    const cookie = await loginAndGetCookie(app, email, password);
+
+    const am = await app.request("/leave/requests", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ leaveDate: "2026-04-10", reason: "午前休", unit: "half_day_am" }),
+    });
+    expect(am.status).toBe(201);
+
+    const pm = await app.request("/leave/requests", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ leaveDate: "2026-04-10", reason: "午後休", unit: "half_day_pm" }),
+    });
+    expect(pm.status).toBe(201);
+
+    // 同じ am をもう一度申請すると 409
+    const dupAm = await app.request("/leave/requests", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ leaveDate: "2026-04-10", reason: "午前休2", unit: "half_day_am" }),
+    });
+    expect(dupAm.status).toBe(409);
+    expect(await dupAm.json()).toEqual({ error: "duplicate_request" });
+  });
+
+  it("hourly requests are rejected with 400 hourly_leave_disabled unless the tenant enabled it", async () => {
+    const { db, tenantId, userId, email, password } = await setupTestDb();
+    await grantAnnual(db, { tenantId, userId, grantedOn: "2020-01-01", days: 10, expiresOn: "2099-01-01" });
+    const app = createApp({ db });
+    const cookie = await loginAndGetCookie(app, email, password);
+
+    const res = await app.request("/leave/requests", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ leaveDate: "2026-04-10", reason: "通院のため", unit: "hourly", minutes: 120 }),
+    });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "hourly_leave_disabled" });
+  });
+
+  describe("GET /leave/balance for other users", () => {
+    it("403 without leave.balance.view", async () => {
+      const { db, tenantId, email, password } = await setupTestDb();
+      const second = await setupSecondUser(db, tenantId);
+      const app = createApp({ db });
+      const cookie = await loginAndGetCookie(app, email, password);
+
+      const res = await app.request(`/leave/balance?userId=${second.userId}`, { headers: { cookie } });
+      expect(res.status).toBe(403);
+    });
+
+    it("200 with leave.balance.view and the target user is in scope", async () => {
+      const { db, tenantId, userId, email, password } = await setupTestDb();
+      const second = await setupSecondUser(db, tenantId);
+      await assignWorkPolicy(db, { tenantId, userId: second.userId });
+      await grantAnnual(db, { tenantId, userId: second.userId, grantedOn: "2020-01-01", days: 10, expiresOn: "2099-01-01" });
+      await grantPermission(db, { tenantId, userId, permission: "leave.balance.view", scope: "tenant" });
+      const app = createApp({ db });
+      const cookie = await loginAndGetCookie(app, email, password);
+
+      const res = await app.request(`/leave/balance?userId=${second.userId}`, { headers: { cookie } });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { annual: { totalGrantedMinutes: number } };
+      expect(body.annual.totalGrantedMinutes).toBe(10 * 480);
+    });
+  });
+});

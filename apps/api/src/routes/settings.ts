@@ -32,12 +32,15 @@
 import { Hono } from "hono";
 import {
   getNotificationSettings,
+  getTenantLeaveSettings,
   insertAuditLog,
   upsertNotificationSettings,
+  upsertTenantLeaveSettings,
   type Database,
   type TenantNotificationSettings,
 } from "@kizami/db";
 import { dispatch, type NotificationMessage, type SmtpSendFn } from "@kizami/notify";
+import { HOURLY_LEAVE_MAX_DAYS_MAX, HOURLY_LEAVE_MAX_DAYS_MIN } from "@kizami/leave";
 import type { AppEnv } from "../auth/middleware.js";
 import { requirePermission } from "../authz.js";
 import { decryptSecret, type Encryptor } from "../lib/encryption.js";
@@ -47,6 +50,20 @@ import { nowMinutes } from "../lib/time.js";
 const NOTIFICATION_SETTINGS_PERMISSION = "notification.settings.manage";
 const TEST_NOTIFICATION_TITLE = "KIZAMI 通知テスト";
 const TEST_NOTIFICATION_BODY = "これは KIZAMI の通知設定を確認するためのテスト通知です。この通知が届いていれば設定は正常に機能しています。";
+
+/**
+ * GET/PUT /settings/leave が要求する権限(2026-08-22 追加)。
+ *
+ * 判断点: docs/design/permission-catalog.md の `tenant_settings.*` グループには
+ * 有給休暇の付与方式・時間単位年休・積立休暇を表す target が定義されていない
+ * (テナント設定リソースの target は calendar/flex/gps/auto_deduction/notification の5種)。
+ * 一方でカタログ§1.4には `leave.grant.manage`(有給休暇の付与・残日数を管理できる。
+ * scope 自部署+配下部署/テナント全体、危険フラグあり)が既に存在し、有給運用の
+ * 管理者権限として意味的に最も近い。ここでは新規キーを追加せず、`leave.grant.manage` を
+ * scope "tenant" で要求することでテナント全体設定相当の権限チェックとする
+ * (依頼「tenant_settings.calendar.manage 相当。適切な権限キーをカタログから選ぶこと」への回答)。
+ */
+const LEAVE_SETTINGS_PERMISSION = "leave.grant.manage";
 
 export interface SettingsRoutesDeps {
   /** webhookChannel の fetch 差し替え(テスト用)。省略時はグローバル fetch */
@@ -308,6 +325,108 @@ export function createSettingsRoutes(db: Database, deps: SettingsRoutesDeps = {}
     });
 
     return c.json({ results });
+  });
+
+  // ---- GET/PUT /settings/leave(§5 有給休暇: 付与方式・時間単位年休・積立休暇) ----
+  app.get("/leave", async (c) => {
+    requirePermission(c, LEAVE_SETTINGS_PERMISSION, "tenant");
+    const user = c.get("user");
+    const settings = await getTenantLeaveSettings(db, user.tenantId);
+    if (!settings) {
+      return c.json({
+        grantMethod: "statutory",
+        fixedDateMmDd: null,
+        hourlyLeaveEnabled: false,
+        hourlyLeaveMaxDays: 5,
+        halfDayLeaveEnabled: true,
+        stockConversionEnabled: false,
+        stockMaxDays: 40,
+        stockExpiresMonths: null,
+        updatedAt: null,
+        updatedBy: null,
+      });
+    }
+    return c.json(settings);
+  });
+
+  app.put("/leave", async (c) => {
+    requirePermission(c, LEAVE_SETTINGS_PERMISSION, "tenant");
+    const user = c.get("user");
+
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "invalid_body" }, 400);
+    }
+    if (typeof body !== "object" || body === null) return c.json({ error: "invalid_body" }, 400);
+    const b = body as Record<string, unknown>;
+
+    if (b.grantMethod !== "statutory" && b.grantMethod !== "fixed_date") {
+      return c.json({ error: "invalid_grant_method" }, 400);
+    }
+    const grantMethod = b.grantMethod;
+
+    let fixedDateMmDd: string | null = null;
+    if (grantMethod === "fixed_date") {
+      if (typeof b.fixedDateMmDd !== "string" || !/^\d{2}-\d{2}$/.test(b.fixedDateMmDd)) {
+        return c.json({ error: "invalid_fixed_date_mm_dd" }, 400);
+      }
+      fixedDateMmDd = b.fixedDateMmDd;
+    }
+
+    if (typeof b.hourlyLeaveEnabled !== "boolean") return c.json({ error: "invalid_hourly_leave_enabled" }, 400);
+    if (typeof b.halfDayLeaveEnabled !== "boolean") return c.json({ error: "invalid_half_day_leave_enabled" }, 400);
+    if (typeof b.stockConversionEnabled !== "boolean") return c.json({ error: "invalid_stock_conversion_enabled" }, 400);
+
+    // 労使協定で5日より少なく定めることは可能だが、5日超は法令上不可(労基法39条4項)
+    if (
+      typeof b.hourlyLeaveMaxDays !== "number" ||
+      !Number.isInteger(b.hourlyLeaveMaxDays) ||
+      b.hourlyLeaveMaxDays < HOURLY_LEAVE_MAX_DAYS_MIN ||
+      b.hourlyLeaveMaxDays > HOURLY_LEAVE_MAX_DAYS_MAX
+    ) {
+      return c.json({ error: "invalid_hourly_leave_max_days" }, 400);
+    }
+
+    if (typeof b.stockMaxDays !== "number" || !Number.isInteger(b.stockMaxDays) || b.stockMaxDays <= 0) {
+      return c.json({ error: "invalid_stock_max_days" }, 400);
+    }
+
+    let stockExpiresMonths: number | null = null;
+    if (b.stockExpiresMonths !== null && b.stockExpiresMonths !== undefined) {
+      if (typeof b.stockExpiresMonths !== "number" || !Number.isInteger(b.stockExpiresMonths) || b.stockExpiresMonths <= 0) {
+        return c.json({ error: "invalid_stock_expires_months" }, 400);
+      }
+      stockExpiresMonths = b.stockExpiresMonths;
+    }
+
+    const now = nowMinutes();
+    const updated = await upsertTenantLeaveSettings(db, {
+      tenantId: user.tenantId,
+      grantMethod,
+      fixedDateMmDd,
+      hourlyLeaveEnabled: b.hourlyLeaveEnabled,
+      hourlyLeaveMaxDays: b.hourlyLeaveMaxDays,
+      halfDayLeaveEnabled: b.halfDayLeaveEnabled,
+      stockConversionEnabled: b.stockConversionEnabled,
+      stockMaxDays: b.stockMaxDays,
+      stockExpiresMonths,
+      updatedAt: now,
+      updatedBy: user.id,
+    });
+
+    await insertAuditLog(db, {
+      tenantId: user.tenantId,
+      actorId: user.id,
+      action: "leave_settings.update",
+      targetType: "tenant_leave_settings",
+      targetId: user.tenantId,
+      detail: JSON.stringify(updated),
+      occurredAt: now,
+    });
+
+    return c.json(updated);
   });
 
   return app;

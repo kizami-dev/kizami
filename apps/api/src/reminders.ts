@@ -174,7 +174,7 @@ export async function calculateMonthlyForUser(
     punches,
     settingsTimeline,
     period: { year, month },
-    paidLeaveDays: [],
+    paidLeave: [],
   };
 
   return { output: calculate(input), settingsTimeline };

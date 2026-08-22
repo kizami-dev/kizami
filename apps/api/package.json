@@ -15,6 +15,7 @@
     "@kizami/crypto": "workspace:*",
     "@kizami/db": "workspace:*",
     "@kizami/engine": "workspace:*",
+    "@kizami/leave": "workspace:*",
     "@kizami/notify": "workspace:*",
     "bullmq": "^6.2.0",
     "drizzle-orm": "0.45.2",

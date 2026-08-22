@@ -9,6 +9,7 @@ import type {
   CalcSettings,
   EngineInput,
   LegalHolidayRule,
+  PaidLeaveEntry,
   PlainDateString,
   PunchKind,
 } from "../../src/types.js";
@@ -55,7 +56,10 @@ interface RawFixture {
     break_rule: { mode: "punch" };
   };
   period: string; // "YYYY-MM"
+  /** 旧記法(後方互換): 全休日の一覧。standard_day 分の全休として解釈する */
   paid_leave_days?: string[];
+  /** 新記法: 日付ごとの有給取得分数(時間単位年休を表現できる) */
+  paid_leave?: Array<{ date: string; minutes: number }>;
   punches: Array<{ kind: PunchKind; at: string }>;
   expected: {
     totals: {
@@ -73,6 +77,7 @@ interface RawFixture {
       break: number;
       late_night: number;
       legal_holiday: boolean;
+      paid_leave_minutes?: number;
     }>;
   };
 }
@@ -96,6 +101,7 @@ export interface GoldenCase {
       break: number;
       lateNight: number;
       legalHoliday: boolean;
+      paidLeaveMinutes?: number;
     }>;
   };
 }
@@ -133,11 +139,23 @@ export function loadGoldenCase(yamlText: string): GoldenCase {
     };
   });
 
+  // 旧記法(paid_leave_days: 全休の日付一覧)は standard_day 分の全休として解釈する。
+  // 新記法(paid_leave: 日付+分数)と両方書かれていれば単純に連結する
+  // (同日エントリの合算はエンジン側 buildDailyBreakdown/calculateFlexBalance が行う)。
+  const legacyPaidLeave: PaidLeaveEntry[] = (raw.paid_leave_days ?? []).map((date) => ({
+    date,
+    minutes: settings.flex.standardDayMinutes,
+  }));
+  const explicitPaidLeave: PaidLeaveEntry[] = (raw.paid_leave ?? []).map((entry) => ({
+    date: entry.date,
+    minutes: entry.minutes,
+  }));
+
   const input: EngineInput = {
     punches,
     settingsTimeline: [{ from: "1970-01-01", settings }],
     period: parsePeriod(raw.period),
-    paidLeaveDays: raw.paid_leave_days ?? [],
+    paidLeave: [...legacyPaidLeave, ...explicitPaidLeave],
   };
 
   const expected: GoldenCase["expected"] = {
@@ -152,6 +170,7 @@ export function loadGoldenCase(yamlText: string): GoldenCase {
       break: d.break,
       lateNight: d.late_night,
       legalHoliday: d.legal_holiday,
+      ...(d.paid_leave_minutes !== undefined ? { paidLeaveMinutes: d.paid_leave_minutes } : {}),
     }));
   }
 

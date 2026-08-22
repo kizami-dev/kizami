@@ -1,0 +1,14 @@
+{
+  "name": "@kizami/leave",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "有給休暇ロジック — 純関数・ランタイム非依存・DB非依存(法定付与・残高FIFO・時効・年5日取得義務・積立休暇)",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  }
+}

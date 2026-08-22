@@ -1,0 +1,14 @@
+{
+  "name": "@kizami/law",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "法令ルールの版管理 — 純関数・ランタイム非依存・依存ゼロ(施行前に将来の版を書いておき、施行日で自動的に切り替わる effective-dated な法令データ)",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  }
+}

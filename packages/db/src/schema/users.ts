@@ -20,6 +20,8 @@ export const users = sqliteTable(
     name: text("name").notNull(),
     /** false = 無効化(退職処理済み)。ログイン不可 */
     isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
+    /** 入社日。ローカル日付 "YYYY-MM-DD"。法定有給付与の計算に使う。null = 未設定(有給自動付与不可) */
+    hireDate: text("hire_date"),
     createdAt: integer("created_at").notNull(),
   },
   (table) => [uniqueIndex("users_tenant_email_idx").on(table.tenantId, table.email)],

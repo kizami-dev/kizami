@@ -30,6 +30,8 @@ import {
 import type { PunchKind } from "@kizami/engine";
 import type { AppEnv } from "../auth/middleware.js";
 import { ForbiddenError, requireSelf } from "../authz.js";
+import { periodFromDate, resolveAttendanceDate } from "../lib/attendance-date.js";
+import { assertMonthOpen } from "../lib/closing-guard.js";
 import { FUTURE_TOLERANCE_MINUTES, isValidPunchKind } from "./punches.js";
 import { nowMinutes } from "../lib/time.js";
 
@@ -177,6 +179,7 @@ export function createCorrectionsRoutes(db: Database) {
     }
 
     let validatedTargetEventId: string | null = null;
+    let targetOccurredAt: number | null = null;
     if (hasTarget) {
       // 自分の有効打刻であること(他人/存在しない/既に無効化済みはすべて null になり 400)
       const target = await getValidPunchEvent(db, { tenantId: user.tenantId, userId: user.id, id: targetEventId as string });
@@ -184,6 +187,21 @@ export function createCorrectionsRoutes(db: Database) {
         return c.json({ error: "invalid_target_event" }, 400);
       }
       validatedTargetEventId = target.id;
+      targetOccurredAt = target.occurredAt;
+    }
+
+    // 締め済み月への修正申請は全経路で拒否する(docs/requirements.md §6・依頼の禁止事項)。
+    // 対象打刻の元の日(訂正・取消)と、申請内容の日(訂正・追加)の両方をチェックする —
+    // 例えば「締め済み月に属する打刻を、開いている月の日時に訂正する」申請も、締め済み月の
+    // データを書き換える(supersede する)行為であるため拒否する。
+    const candidateOccurredAts = [targetOccurredAt, validatedOccurredAt].filter((v): v is number => v !== null);
+    const candidatePeriods = new Set<string>();
+    for (const occurredAt of candidateOccurredAts) {
+      const date = await resolveAttendanceDate(db, { tenantId: user.tenantId, occurredAt });
+      candidatePeriods.add(periodFromDate(date));
+    }
+    for (const period of candidatePeriods) {
+      await assertMonthOpen(db, { tenantId: user.tenantId, period });
     }
 
     const created = await createCorrectionRequest(db, {
@@ -226,15 +244,36 @@ export function createCorrectionsRoutes(db: Database) {
     const now = nowMinutes();
     const selfApproved = existing.requestedBy === user.id;
 
-    // 取消(kind='void')の場合のみ、無効化対象イベントの occurred_at を引き継ぐ必要がある。
+    // 対象打刻の occurred_at を読む(取消の場合は void イベントに引き継ぐ必要があるが、
+    // 訂正の場合も締め済み月ガードで「対象打刻の元の日」を見るために必要)。
     // punch_events は不変(追記専用)なので、トランザクション外で読んでも値がずれる心配はない。
     let voidOccurredAt: number | null = null;
-    if (existing.targetEventId && !existing.proposedKind) {
+    let originalTargetOccurredAt: number | null = null;
+    if (existing.targetEventId) {
       const target = await getPunchEventById(db, existing.targetEventId);
       if (!target) {
         return c.json({ error: "not_found" }, 404);
       }
-      voidOccurredAt = target.occurredAt;
+      originalTargetOccurredAt = target.occurredAt;
+      if (!existing.proposedKind) {
+        voidOccurredAt = target.occurredAt;
+      }
+    }
+
+    // 締め済み月への反映は全経路で拒否する(依頼の禁止事項)。反映先(訂正・追加の
+    // proposedOccurredAt、取消の voidOccurredAt)と、対象打刻の元の日(訂正・取消)の両方を
+    // チェックする(POST /corrections の作成時ガードと同じ理由)。申請作成後に締められた
+    // 場合にも対応できるよう、承認のたびに再評価する。
+    const candidateOccurredAts = [originalTargetOccurredAt, existing.proposedOccurredAt, voidOccurredAt].filter(
+      (v): v is number => v !== null,
+    );
+    const candidatePeriods = new Set<string>();
+    for (const occurredAt of candidateOccurredAts) {
+      const date = await resolveAttendanceDate(db, { tenantId: user.tenantId, occurredAt });
+      candidatePeriods.add(periodFromDate(date));
+    }
+    for (const period of candidatePeriods) {
+      await assertMonthOpen(db, { tenantId: user.tenantId, period });
     }
 
     try {
