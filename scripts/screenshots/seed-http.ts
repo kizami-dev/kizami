@@ -152,10 +152,18 @@ export async function seedHttp(params: SeedHttpParams): Promise<SeedHttpResult> 
   // 休憩打刻が無いこの日だけ、9:00-18:00(9時間)の自動控除ルール(8時間超で60分)が働き、
   // 月次の「自動 1:00」表示のデモになる(他の9日は打刻休憩60分があるため何も変わらない)。
   const autoBreakDemoDate = prevMonthWeekdays[prevMonthWeekdays.length - 1];
+  // 月次(締め済みの前月を写す)に警告行の実例を残すための日。6時間20分・休憩打刻なし:
+  // both の自動控除は控除後(380-45=335 < 360)に閾値を割るため適用されず、
+  // insufficient_break 警告(必要0:45・実際0:00)がそのまま残る。締めても警告は消えない
+  // (集計値はスナップショット保護だが warnings は都度再計算)ことのデモを兼ねる。
+  const insufficientBreakDemoDate = prevMonthWeekdays[prevMonthWeekdays.length - 2];
   for (const date of prevMonthWeekdays) {
     if (autoBreakDemoDate && fmtDate(date) === fmtDate(autoBreakDemoDate)) {
       await client.punch("clock_in", jstMinutes(date, 9, 0));
       await client.punch("clock_out", jstMinutes(date, 18, 0));
+    } else if (insufficientBreakDemoDate && fmtDate(date) === fmtDate(insufficientBreakDemoDate)) {
+      await client.punch("clock_in", jstMinutes(date, 9, 0));
+      await client.punch("clock_out", jstMinutes(date, 15, 20));
     } else {
       await punchNormalDay(client, date);
     }
@@ -169,11 +177,24 @@ export async function seedHttp(params: SeedHttpParams): Promise<SeedHttpResult> 
   const recentDay = pool.pop(); // 直近の勤務日(修正申請の対象にする)
   const missingClockOutDate = pool.pop() ?? recentDay; // 打刻忘れの日(無ければ直近日と兼用)
   const lateNightDay = pool.pop();
+  const insufficientBreakDay = pool.pop(); // 休憩不足警告の日(下記コメント参照)
   const normalDay2 = pool.pop();
   const normalDay1 = pool.pop();
 
   if (normalDay1) await punchNormalDay(client, normalDay1);
   if (normalDay2) await punchNormalDay(client, normalDay2);
+
+  // 警告行(行背景+文言)のデモ: 6時間20分勤務・休憩打刻なし。
+  // - 退勤なし(missing_clock_out)を放置すると後続日の打刻が壊れるため使えない
+  //   (上の missingClockOutDate は「修正申請で直した」ストーリーで警告が消える)
+  // - 休憩ルールは "both" だが、6h超45分ルールは控除後(380-45=335 < 360)に自身の閾値を
+  //   割るため適用されず(packages/engine/src/auto-break.ts の自己無矛盾チェック)、
+  //   自動控除に隠されず insufficient_break 警告(必要0:45・実際0:00)がそのまま残る。
+  //   1日で完結しデータも壊れないため、警告表現の常設デモに最適
+  if (insufficientBreakDay) {
+    await client.punch("clock_in", jstMinutes(insufficientBreakDay, 9, 0));
+    await client.punch("clock_out", jstMinutes(insufficientBreakDay, 15, 20));
+  }
   // 22:00-23:00 が深夜労働になる。休憩は 17-18 時(9-23時の勤務時間内)に収める
   // (休憩が勤務時間の外にあると "break_outside_work" 警告になってしまうため)。
   if (lateNightDay) await punchNormalDay(client, lateNightDay, { start: 13, end: 23, breakStart: 17, breakEnd: 18 });

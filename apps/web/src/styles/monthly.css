@@ -227,6 +227,20 @@
   min-width: 10rem;
 }
 
+/* 上限がないと長い警告文言(休憩不足の不足量付き等)がセルの内在幅いっぱいまで
+   テーブルを押し広げ、操作列がラッパーの横スクロール外へ追い出される。
+   auto レイアウトのテーブルはセル自体の max-width を無視するため、中身のインライン要素を
+   ブロック化して上限をかける(内在幅の計算がこの上限で頭打ちになり、折り返しが効く)。
+   警告が複数ある日は1行1警告で積まれる。 */
+.monthly-table__warning > span {
+  display: block;
+  max-width: 24rem;
+  /* .monthly-table td(0,1,1)の nowrap が td 側の .monthly-table__warning(0,1,0)の
+     normal に勝ってしまい、折り返し指定が実は一度も効いていなかった。継承ではなく
+     span への直接指定なら td の詳細度に関係なく適用される。 */
+  white-space: normal;
+}
+
 /* 勤務列(打刻時刻、2026-08-23 追加)。中抜けは複数行を積む。件数バッジには畳まない(依頼どおり)。 */
 .monthly-table__stretches {
   text-align: left !important;
