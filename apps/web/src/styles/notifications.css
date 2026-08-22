@@ -23,7 +23,7 @@
 }
 
 .notif-bell__btn:hover {
-  background: rgba(26, 26, 26, 0.04);
+  background: color-mix(in srgb, var(--k-key) 4%, transparent);
 }
 
 .notif-bell__badge {
@@ -40,6 +40,19 @@
   font-weight: 700;
   line-height: 1.15rem;
   text-align: center;
+}
+
+/* --k-cyan(原色)は塗りとしてテーマ間で変わらないが、テキストに使う --k-key はダークで
+   反転して明るくなるため、そのままだとバッジの上で読めなくなる。ダーク限定で固定色に
+   上書きする(punch-button と同じ理由、tokens.css 参照)。AA: #00a3d9 vs #1a1a1a = 7.24:1。 */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .notif-bell__badge {
+    color: var(--k-fill-text-dark);
+  }
+}
+
+:root[data-theme="dark"] .notif-bell__badge {
+  color: var(--k-fill-text-dark);
 }
 
 .notif-panel {
@@ -108,7 +121,7 @@
 
 .notif-item--unread {
   border-color: var(--k-cyan-ink);
-  background: rgba(0, 163, 217, 0.05);
+  background: color-mix(in srgb, var(--k-cyan) 5%, transparent);
 }
 
 .notif-item__header {
@@ -163,7 +176,7 @@
 }
 
 .notif-item__link-btn:hover {
-  background: rgba(0, 163, 217, 0.08);
+  background: color-mix(in srgb, var(--k-cyan) 8%, transparent);
 }
 
 .notif-item__read-btn {
@@ -171,7 +184,7 @@
 }
 
 .notif-item__read-btn:hover:not(:disabled) {
-  background: rgba(26, 26, 26, 0.05);
+  background: color-mix(in srgb, var(--k-key) 5%, transparent);
 }
 
 .notif-item__read-btn:disabled {

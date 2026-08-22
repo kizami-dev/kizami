@@ -10,7 +10,7 @@
 }
 
 .help-settings__guidelines {
-  background: rgba(26, 26, 26, 0.03);
+  background: color-mix(in srgb, var(--k-key) 3%, transparent);
 }
 
 .help-settings__guideline-list {
@@ -97,12 +97,12 @@
 
 .help-settings__list-item:hover,
 .help-settings__list-item:focus-visible {
-  background: rgba(26, 26, 26, 0.06);
+  background: color-mix(in srgb, var(--k-key) 6%, transparent);
   outline: none;
 }
 
 .help-settings__list-item--active {
-  background: rgba(26, 26, 26, 0.1);
+  background: color-mix(in srgb, var(--k-key) 10%, transparent);
   font-weight: 700;
 }
 
@@ -129,7 +129,7 @@
   border: var(--border-hair);
   border-radius: var(--radius-m);
   padding: var(--space-4);
-  background: rgba(26, 26, 26, 0.02);
+  background: color-mix(in srgb, var(--k-key) 2%, transparent);
 }
 
 .help-settings__reference-summary {

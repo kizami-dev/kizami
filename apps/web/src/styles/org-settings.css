@@ -36,7 +36,7 @@
 .settings-nav__divider {
   width: 1px;
   align-self: stretch;
-  background: rgba(26, 26, 26, 0.14);
+  background: color-mix(in srgb, var(--k-key) 14%, transparent);
 }
 
 .settings-nav__tabs {
@@ -136,7 +136,7 @@
 
 .settings-hub__card:hover {
   border-color: var(--k-key);
-  background: rgba(26, 26, 26, 0.03);
+  background: color-mix(in srgb, var(--k-key) 3%, transparent);
 }
 
 .settings-hub__card-title {
@@ -186,7 +186,7 @@
 .org-settings__forbidden {
   border: 1px solid var(--k-magenta);
   color: var(--k-magenta-ink);
-  background: rgba(229, 0, 126, 0.06);
+  background: color-mix(in srgb, var(--k-magenta) 6%, transparent);
   border-radius: var(--radius-s);
   padding: var(--space-4);
   font-size: 0.92rem;
@@ -215,7 +215,7 @@
 }
 
 .org-settings__primary-btn:hover {
-  background: #000;
+  background: var(--k-key-strong);
 }
 
 .org-settings__table-wrap {
@@ -235,7 +235,7 @@
 .org-table td {
   padding: var(--space-3);
   text-align: left;
-  border-bottom: 1px solid rgba(26, 26, 26, 0.08);
+  border-bottom: 1px solid color-mix(in srgb, var(--k-key) 8%, transparent);
   vertical-align: top;
 }
 
@@ -258,7 +258,7 @@
   border-radius: var(--radius-s);
   padding: var(--space-2);
   font-size: 0.85rem;
-  background: #fff;
+  background: var(--k-surface);
   font-family: inherit;
   max-width: 12rem;
 }
@@ -282,7 +282,7 @@
   border-radius: var(--radius-s);
   padding: var(--space-2);
   font-size: 0.85rem;
-  background: #fff;
+  background: var(--k-surface);
   font-family: inherit;
 }
 
@@ -310,7 +310,7 @@
 }
 
 .org-table__detail-cell {
-  background: rgba(26, 26, 26, 0.02);
+  background: color-mix(in srgb, var(--k-key) 2%, transparent);
   padding: var(--space-5) !important;
 }
 
@@ -336,7 +336,7 @@
   flex-wrap: wrap;
   gap: var(--space-3);
   padding: var(--space-3) var(--space-4);
-  border-bottom: 1px solid rgba(26, 26, 26, 0.08);
+  border-bottom: 1px solid color-mix(in srgb, var(--k-key) 8%, transparent);
 }
 
 .dept-tree__item:last-child > .dept-tree__row {
@@ -364,7 +364,7 @@
 }
 
 .dept-tree__btn:hover {
-  background: rgba(26, 26, 26, 0.05);
+  background: color-mix(in srgb, var(--k-key) 5%, transparent);
   color: var(--k-key);
 }
 
@@ -374,7 +374,7 @@
 }
 
 .dept-tree__btn--danger:hover {
-  background: rgba(229, 0, 126, 0.08);
+  background: color-mix(in srgb, var(--k-magenta) 8%, transparent);
 }
 
 /* ---- チップ(割当プリセット・種別バッジ共通) ---- */
@@ -565,7 +565,7 @@
 }
 
 .preset-form__entry {
-  border-top: 1px solid rgba(26, 26, 26, 0.08);
+  border-top: 1px solid color-mix(in srgb, var(--k-key) 8%, transparent);
   padding-top: var(--space-3);
 }
 
@@ -635,7 +635,7 @@
   border-radius: var(--radius-s);
   padding: var(--space-1) var(--space-2);
   font-size: 0.85rem;
-  background: #fff;
+  background: var(--k-surface);
   font-family: inherit;
 }
 
@@ -652,7 +652,7 @@
 .preset-form__dangerous-note {
   font-size: 0.8rem;
   color: var(--k-magenta-ink);
-  background: rgba(229, 0, 126, 0.06);
+  background: color-mix(in srgb, var(--k-magenta) 6%, transparent);
   border-radius: var(--radius-s);
   padding: var(--space-2) var(--space-3);
 }

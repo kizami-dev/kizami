@@ -35,7 +35,7 @@
 }
 
 .monthly__nav-link:hover {
-  background: rgba(26, 26, 26, 0.04);
+  background: color-mix(in srgb, var(--k-key) 4%, transparent);
 }
 
 .monthly__title {
@@ -64,12 +64,12 @@
   border-radius: 999px;
   background: repeating-linear-gradient(
     90deg,
-    rgba(0, 163, 217, 0.12),
-    rgba(0, 163, 217, 0.12) 6px,
-    rgba(0, 163, 217, 0.2) 6px,
-    rgba(0, 163, 217, 0.2) 12px
+    color-mix(in srgb, var(--k-cyan) 12%, transparent),
+    color-mix(in srgb, var(--k-cyan) 12%, transparent) 6px,
+    color-mix(in srgb, var(--k-cyan) 20%, transparent) 6px,
+    color-mix(in srgb, var(--k-cyan) 20%, transparent) 12px
   );
-  border: 1px solid rgba(0, 110, 153, 0.3);
+  border: 1px solid color-mix(in srgb, var(--k-cyan-ink) 30%, transparent);
   overflow: hidden;
   position: relative;
 }
@@ -156,7 +156,7 @@
 .monthly-table td {
   padding: var(--space-2) var(--space-3);
   text-align: right;
-  border-bottom: 1px solid rgba(26, 26, 26, 0.08);
+  border-bottom: 1px solid color-mix(in srgb, var(--k-key) 8%, transparent);
   white-space: nowrap;
 }
 
@@ -267,7 +267,7 @@
 .closing-diff__table td {
   padding: var(--space-2) var(--space-3);
   text-align: right;
-  border-bottom: 1px solid rgba(26, 26, 26, 0.08);
+  border-bottom: 1px solid color-mix(in srgb, var(--k-key) 8%, transparent);
   white-space: nowrap;
 }
 

@@ -67,7 +67,7 @@
   border-radius: var(--radius-s);
   padding: var(--space-3);
   font-size: 1rem;
-  background: #fff;
+  background: var(--k-surface);
 }
 
 .login-field input:focus-visible {
@@ -79,7 +79,7 @@
   color: var(--k-magenta-ink);
   font-size: 0.85rem;
   border: 1px solid var(--k-magenta);
-  background: rgba(229, 0, 126, 0.06);
+  background: color-mix(in srgb, var(--k-magenta) 6%, transparent);
   border-radius: var(--radius-s);
   padding: var(--space-3);
 }
@@ -97,7 +97,7 @@
 }
 
 .login-submit:hover:not(:disabled) {
-  background: #000;
+  background: var(--k-key-strong);
 }
 
 .login-submit:disabled {

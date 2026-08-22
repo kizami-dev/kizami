@@ -78,11 +78,12 @@
   font-size: 1.6rem;
   letter-spacing: 0.08em;
   color: var(--stamp-color, var(--k-key));
-  /* 静止時の版ズレはインキの気配程度に薄く(メイン色の可読性を優先) */
+  /* 静止時の版ズレはインキの気配程度に薄く(メイン色の可読性を優先)。
+     --k-*-mis はダークで不透明度を上げる(tokens.css)。 */
   text-shadow:
-    2px 1.5px 0 color-mix(in srgb, var(--k-cyan) 30%, transparent),
-    -2px -1.5px 0 color-mix(in srgb, var(--k-magenta) 30%, transparent),
-    1.5px -2px 0 color-mix(in srgb, var(--k-yellow) 40%, transparent);
+    2px 1.5px 0 var(--k-cyan-mis),
+    -2px -1.5px 0 var(--k-magenta-mis),
+    1.5px -2px 0 var(--k-yellow-mis);
 }
 
 .stamp--out {
@@ -115,9 +116,9 @@
   }
   100% {
     text-shadow:
-      2px 1.5px 0 color-mix(in srgb, var(--k-cyan) 30%, transparent),
-      -2px -1.5px 0 color-mix(in srgb, var(--k-magenta) 30%, transparent),
-      1.5px -2px 0 color-mix(in srgb, var(--k-yellow) 40%, transparent);
+      2px 1.5px 0 var(--k-cyan-mis),
+      -2px -1.5px 0 var(--k-magenta-mis),
+      1.5px -2px 0 var(--k-yellow-mis);
     transform: scale(1);
   }
 }
@@ -198,10 +199,39 @@
 }
 
 .punch-button:disabled {
-  background: #e7e7e3;
+  background: var(--k-disabled-bg);
   color: var(--k-ink-soft);
   box-shadow: none;
   opacity: 0.75;
+}
+
+/*
+ * ダークでは CMY 原色塗り(--k-cyan/--k-yellow/--k-magenta)が変わらないまま
+ * --k-key が反転(暗→明)するため、既定のテキスト色(親の color: var(--k-key)、
+ * --out は var(--k-paper))のままだと反転後にコントラストが崩れる
+ * (シアン/イエロー塗り+反転後の明文字、マゼンタ塗り+反転後の暗文字)。
+ * ライトの見た目は変えず、ダーク限定でテキスト色だけ固定値に上書きする(独自判断)。
+ * AA: シアン #00a3d9 / イエロー #ffd400 vs #1a1a1a = 7.24:1 / 14.67:1、
+ *     マゼンタ #e5007e vs #ffffff = 4.53:1。
+ */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .punch-button--in,
+  :root:not([data-theme="light"]) .punch-button--break {
+    color: var(--k-fill-text-dark);
+  }
+
+  :root:not([data-theme="light"]) .punch-button--out {
+    color: var(--k-fill-text-light);
+  }
+}
+
+:root[data-theme="dark"] .punch-button--in,
+:root[data-theme="dark"] .punch-button--break {
+  color: var(--k-fill-text-dark);
+}
+
+:root[data-theme="dark"] .punch-button--out {
+  color: var(--k-fill-text-light);
 }
 
 .punch-pad__hint {
@@ -224,7 +254,7 @@
   color: var(--k-magenta-ink);
   font-size: 0.85rem;
   border: 1px solid var(--k-magenta);
-  background: rgba(229, 0, 126, 0.06);
+  background: color-mix(in srgb, var(--k-magenta) 6%, transparent);
   border-radius: var(--radius-s);
   padding: var(--space-3);
   text-align: center;
@@ -237,7 +267,7 @@
   color: var(--k-ink-soft);
   font-size: 0.85rem;
   border: 1px solid var(--k-ink-soft);
-  background: rgba(26, 26, 26, 0.04);
+  background: color-mix(in srgb, var(--k-key) 4%, transparent);
   border-radius: var(--radius-s);
   padding: var(--space-3);
   text-align: center;
@@ -323,7 +353,7 @@
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-m);
   border: 2px solid var(--chip-color, var(--k-key));
-  background: #fff;
+  background: var(--k-surface);
   min-width: 4.5rem;
 }
 

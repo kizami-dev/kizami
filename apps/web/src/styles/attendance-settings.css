@@ -35,7 +35,7 @@
 .attendance-settings__forbidden {
   border: 1px solid var(--k-magenta);
   color: var(--k-magenta-ink);
-  background: rgba(229, 0, 126, 0.06);
+  background: color-mix(in srgb, var(--k-magenta) 6%, transparent);
   border-radius: var(--radius-s);
   padding: var(--space-4);
   font-size: 0.92rem;
@@ -117,7 +117,7 @@
   font-size: 0.82rem;
   color: var(--k-key);
   border: 1px solid var(--k-key);
-  background: rgba(0, 0, 0, 0.02);
+  background: color-mix(in srgb, var(--k-key) 2%, transparent);
   border-radius: var(--radius-s);
   padding: var(--space-3);
 }
@@ -175,7 +175,7 @@
 .attendance-settings__gps-warning {
   border: 1px solid var(--k-magenta);
   color: var(--k-magenta-ink);
-  background: rgba(229, 0, 126, 0.06);
+  background: color-mix(in srgb, var(--k-magenta) 6%, transparent);
   border-radius: var(--radius-s);
   padding: var(--space-3);
   font-size: 0.85rem;
@@ -191,7 +191,7 @@
   color: var(--k-cyan-ink);
   font-size: 0.85rem;
   border: 1px solid var(--k-cyan);
-  background: rgba(0, 163, 217, 0.06);
+  background: color-mix(in srgb, var(--k-cyan) 6%, transparent);
   border-radius: var(--radius-s);
   padding: var(--space-3);
 }

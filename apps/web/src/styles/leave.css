@@ -60,7 +60,7 @@
   border: var(--border-hair);
   border-radius: var(--radius-s);
   padding: var(--space-3);
-  background: rgba(26, 26, 26, 0.02);
+  background: color-mix(in srgb, var(--k-key) 2%, transparent);
 }
 
 .leave-help__icon {
@@ -109,7 +109,7 @@
 
 .leave-expiring {
   border: 1px solid var(--k-yellow-ink);
-  background: rgba(255, 212, 0, 0.12);
+  background: color-mix(in srgb, var(--k-yellow) 12%, transparent);
   border-radius: var(--radius-s);
   padding: var(--space-3);
   font-size: 0.82rem;
@@ -151,7 +151,7 @@
 .leave-grant-table td {
   padding: var(--space-2) var(--space-3);
   text-align: right;
-  border-bottom: 1px solid rgba(26, 26, 26, 0.08);
+  border-bottom: 1px solid color-mix(in srgb, var(--k-key) 8%, transparent);
   white-space: nowrap;
 }
 
@@ -214,7 +214,7 @@
 
 .leave-mandatory-item--shortage {
   border-color: var(--k-yellow-ink);
-  background: rgba(255, 212, 0, 0.08);
+  background: color-mix(in srgb, var(--k-yellow) 8%, transparent);
 }
 
 .leave-mandatory-item--shortage .leave-mandatory-item__status {
@@ -257,7 +257,7 @@
   border-color: var(--k-key);
   color: var(--k-key);
   font-weight: 700;
-  background: rgba(26, 26, 26, 0.04);
+  background: color-mix(in srgb, var(--k-key) 4%, transparent);
 }
 
 .leave-hourly-hint {
@@ -267,7 +267,7 @@
 
 .leave-target-month-closed {
   border: 1px solid var(--k-yellow-ink);
-  background: rgba(255, 212, 0, 0.1);
+  background: color-mix(in srgb, var(--k-yellow) 10%, transparent);
   color: var(--k-yellow-ink);
   border-radius: var(--radius-s);
   padding: var(--space-3);
@@ -304,7 +304,7 @@
 .leave-admin-result {
   font-size: 0.85rem;
   border: 1px solid var(--k-cyan);
-  background: rgba(0, 163, 217, 0.06);
+  background: color-mix(in srgb, var(--k-cyan) 6%, transparent);
   color: var(--k-cyan-ink);
   border-radius: var(--radius-s);
   padding: var(--space-3);
@@ -321,7 +321,7 @@
 .leave-admin-result-table td {
   padding: var(--space-1) var(--space-2);
   text-align: right;
-  border-bottom: 1px solid rgba(0, 110, 153, 0.15);
+  border-bottom: 1px solid color-mix(in srgb, var(--k-cyan-ink) 15%, transparent);
 }
 
 .leave-admin-result-table th:first-child,

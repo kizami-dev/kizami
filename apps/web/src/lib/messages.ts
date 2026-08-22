@@ -18,6 +18,14 @@ export const messages = {
     logout: "ログアウト",
   },
 
+  /** テーマ切り替え(ヘッダーのユーザーメニュー内、2026-08-22 ダーク対応で追加)。 */
+  theme: {
+    label: "テーマ",
+    system: "システム設定に従う",
+    light: "ライト",
+    dark: "ダーク",
+  },
+
   /** スコープの日本語名(要件 §4)。狭い→広い: self < department < department_and_descendants < tenant。 */
   scopeLabel: {
     self: "本人のみ",

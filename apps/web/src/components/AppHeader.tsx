@@ -7,6 +7,7 @@ import { messages } from "../lib/messages";
 import { useSettingsAccess } from "../lib/useSettingsAccess";
 import { KizamiMark } from "./KizamiMark";
 import { NotificationBell } from "./NotificationBell";
+import { ThemeToggle } from "./ThemeToggle";
 
 export interface AppHeaderProps {
   displayName: string;
@@ -77,6 +78,7 @@ export function AppHeader({ displayName, email, active }: AppHeaderProps) {
           <summary>{displayName} ▾</summary>
           <div className="k-header__menu">
             <span className="k-header__menu-email">{email}</span>
+            <ThemeToggle />
             <button type="button" className="k-header__logout" onClick={handleLogout} disabled={loggingOut}>
               {messages.nav.logout}
             </button>

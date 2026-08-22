@@ -34,7 +34,7 @@
   font-size: 0.76rem;
   padding: 1px var(--space-2);
   border-radius: 999px;
-  border: 1px solid rgba(26, 26, 26, 0.2);
+  border: 1px solid color-mix(in srgb, var(--k-key) 20%, transparent);
   color: var(--k-ink-soft);
   white-space: nowrap;
 }
@@ -47,7 +47,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  background: rgba(229, 0, 126, 0.04);
+  background: color-mix(in srgb, var(--k-magenta) 4%, transparent);
 }
 
 .api-keys__reveal-warning {

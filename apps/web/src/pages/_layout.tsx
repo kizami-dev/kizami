@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { PwaRegister } from "../components/PwaRegister";
+import { THEME_INIT_SCRIPT } from "../lib/theme";
 import "../styles/tokens.css";
 import "../styles/base.css";
 import "../styles/header.css";
@@ -46,6 +47,18 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
           public ディレクトリ規約でルート相対に配信される。 */}
       <link rel="manifest" href="/manifest.json" />
       <meta name="theme-color" content="#1A1A1A" />
+
+      {/* ダークテーマの FOUC(初期表示のちらつき)防止(2026-08-22 追加)。
+          localStorage の保存値を読み、ハイドレーション前に同期実行して data-theme 属性・
+          theme-color メタを確定させる(詳細は lib/theme.ts 参照)。上の <meta name="theme-color">
+          より後ろに置く必要がある(このスクリプトは document.querySelector でそのメタ要素を
+          探すため、HTML 中でメタより前にあると要素がまだ存在せず更新できない)。 */}
+      <script
+        // biome-ignore lint: THEME_INIT_SCRIPT は lib/theme.ts が生成する固定ロジック文字列
+        // (ユーザー入力を含まない)。JSON.stringify でリテラルを埋め込んでいるため安全。
+        dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }}
+      />
+
       <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
       <link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png" />
       {/* iOS Safari はホーム画面追加時、manifest.json ではなくこの2つのメタタグ・リンクを見る。 */}

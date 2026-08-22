@@ -10,7 +10,7 @@
 .k-modal__backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(26, 26, 26, 0.42);
+  background: var(--k-scrim);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -60,7 +60,7 @@
 }
 
 .k-modal__close:hover {
-  background: rgba(26, 26, 26, 0.06);
+  background: color-mix(in srgb, var(--k-key) 6%, transparent);
 }
 
 .k-modal__body {
@@ -89,7 +89,7 @@
 }
 
 .k-modal__cancel:hover:not(:disabled) {
-  background: rgba(26, 26, 26, 0.04);
+  background: color-mix(in srgb, var(--k-key) 4%, transparent);
 }
 
 .k-modal__confirm {
@@ -106,15 +106,28 @@
 }
 
 .k-modal__confirm--neutral:hover:not(:disabled) {
-  background: #000;
+  background: var(--k-key-strong);
 }
 
+/* --k-magenta-fill は常に濃いマゼンタ固定(tokens.css)。ink 変種と違いダークでも
+   明るくならないため、上の --k-modal__confirm の color: var(--k-paper) は
+   ダークで暗転してしまう(paper が反転するため)。テキスト色をダーク限定で上書きする。 */
 .k-modal__confirm--caution {
-  background: var(--k-magenta-ink);
+  background: var(--k-magenta-fill);
 }
 
 .k-modal__confirm--caution:hover:not(:disabled) {
-  background: #8a004c;
+  background: var(--k-magenta-fill-hover);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .k-modal__confirm--caution {
+    color: var(--k-fill-text-light);
+  }
+}
+
+:root[data-theme="dark"] .k-modal__confirm--caution {
+  color: var(--k-fill-text-light);
 }
 
 .k-modal__confirm:disabled,
@@ -197,7 +210,7 @@
   border-color: var(--k-key);
   color: var(--k-key);
   font-weight: 700;
-  background: rgba(26, 26, 26, 0.04);
+  background: color-mix(in srgb, var(--k-key) 4%, transparent);
 }
 
 .correction-field {
@@ -219,7 +232,7 @@
   border-radius: var(--radius-s);
   padding: var(--space-3);
   font-size: 0.95rem;
-  background: #fff;
+  background: var(--k-surface);
   font-family: inherit;
 }
 
@@ -250,7 +263,7 @@
   color: var(--k-magenta-ink);
   font-size: 0.85rem;
   border: 1px solid var(--k-magenta);
-  background: rgba(229, 0, 126, 0.06);
+  background: color-mix(in srgb, var(--k-magenta) 6%, transparent);
   border-radius: var(--radius-s);
   padding: var(--space-3);
 }
@@ -398,7 +411,7 @@
 }
 
 .correction-card__btn--approve:hover {
-  background: rgba(0, 163, 217, 0.08);
+  background: color-mix(in srgb, var(--k-cyan) 8%, transparent);
 }
 
 .correction-card__btn--reject {
@@ -407,7 +420,7 @@
 }
 
 .correction-card__btn--reject:hover {
-  background: rgba(229, 0, 126, 0.08);
+  background: color-mix(in srgb, var(--k-magenta) 8%, transparent);
 }
 
 .correction-card__btn--withdraw {
@@ -415,7 +428,7 @@
 }
 
 .correction-card__btn--withdraw:hover {
-  background: rgba(26, 26, 26, 0.04);
+  background: color-mix(in srgb, var(--k-key) 4%, transparent);
 }
 
 /* ---- 月次テーブル: 修正導線 ---- */
@@ -434,7 +447,7 @@
 }
 
 .monthly-table__correct-btn:hover {
-  background: rgba(26, 26, 26, 0.05);
+  background: color-mix(in srgb, var(--k-key) 5%, transparent);
 }
 
 .monthly-table__correct-btn--warn {

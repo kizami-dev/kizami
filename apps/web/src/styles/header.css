@@ -75,7 +75,7 @@
 }
 
 .k-header__user summary:hover {
-  background: rgba(26, 26, 26, 0.04);
+  background: color-mix(in srgb, var(--k-key) 4%, transparent);
 }
 
 .k-header__menu {
@@ -112,5 +112,53 @@
 }
 
 .k-header__logout:hover {
-  background: rgba(229, 0, 126, 0.08);
+  background: color-mix(in srgb, var(--k-magenta) 8%, transparent);
+}
+
+/* ---- テーマ切り替え(ThemeToggle、ユーザーメニュー内) ---- */
+
+.k-header__theme {
+  border-top: var(--border-hair);
+  margin-top: var(--space-1);
+  padding-top: var(--space-2);
+}
+
+.k-header__theme-label {
+  display: block;
+  padding: var(--space-1) var(--space-3);
+  font-size: 0.72rem;
+  color: var(--k-ink-soft);
+}
+
+.k-header__theme-options {
+  display: flex;
+  flex-direction: column;
+}
+
+.k-header__theme-option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-s);
+  font-size: 0.85rem;
+  color: var(--k-key);
+}
+
+.k-header__theme-option:hover {
+  background: color-mix(in srgb, var(--k-key) 4%, transparent);
+}
+
+.k-header__theme-option[aria-checked="true"] {
+  font-weight: 700;
+}
+
+.k-header__theme-option-mark {
+  flex-shrink: 0;
+  width: 1em;
+  color: var(--k-cyan-ink);
 }

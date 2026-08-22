@@ -51,7 +51,7 @@
 .help-tip[open] .help-tip__trigger {
   border-color: var(--k-key);
   color: var(--k-key);
-  background: rgba(26, 26, 26, 0.06);
+  background: color-mix(in srgb, var(--k-key) 6%, transparent);
 }
 
 .help-tip__panel {
@@ -95,7 +95,7 @@
 .help-tip__badge--product {
   border: none;
   color: var(--k-ink-soft);
-  background: rgba(26, 26, 26, 0.08);
+  background: color-mix(in srgb, var(--k-key) 8%, transparent);
 }
 
 /* 自社の規定(将来のテナントオーバーライド表示用) */

@@ -16,7 +16,7 @@
   padding: var(--space-3) var(--space-4);
   font-size: 0.85rem;
   line-height: 1.7;
-  background: rgba(26, 26, 26, 0.03);
+  background: color-mix(in srgb, var(--k-key) 3%, transparent);
   color: var(--k-key);
 }
 
@@ -47,7 +47,7 @@
   font-family: var(--font-mono, monospace);
   font-size: 0.8rem;
   line-height: 1.7;
-  background: rgba(26, 26, 26, 0.02);
+  background: color-mix(in srgb, var(--k-key) 2%, transparent);
 }
 
 .privacy-template__actions {

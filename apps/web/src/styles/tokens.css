@@ -3,7 +3,14 @@
  *
  * インキ原色(--k-cyan 等)は塗り・大型要素専用。テキストには AA を満たす
  * ink 変種(--k-*-ink)を使う。--k-yellow はテキスト使用禁止(コントラスト不足)。
- * ダーク対応は v0.1 スコープ外(トークンの意味は崩さない)。
+ *
+ * ダーク対応(2026-08-22)。3段構成(Artifact ガイドラインと同じ):
+ *   1. :root … 完全なライトパレット(このファイルの元の値のまま、変更禁止)
+ *   2. @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { … } }
+ *      … OS がダークで、かつユーザーがライトを明示選択していない場合
+ *   3. :root[data-theme="dark"] { … } … 明示選択が OS 設定に勝つ(常時適用)
+ * どちらのダークブロックも「値の再定義」のみを行い、参照側の CSS は変更しない
+ * (トークン設計の規律を守る)。
  */
 :root {
   /* 地・キー */
@@ -11,15 +18,39 @@
   --k-key: #1a1a1a;
   --k-ink-soft: #55565a;
 
-  /* CMY: 塗り・マーク用(原色) */
+  /* CMY: 塗り・マーク用(原色)。ダークでもそのまま使える値のため、テーマで再定義しない。 */
   --k-cyan: #00a3d9;
   --k-magenta: #e5007e;
   --k-yellow: #ffd400;
 
-  /* CMY: テキスト・アイコン線用(AA 準拠 ink 変種) */
+  /* CMY: テキスト・アイコン線用(AA 準拠 ink 変種)。ダークでは明るい変種に置き換える(下記参照)。 */
   --k-cyan-ink: #006e99;
   --k-magenta-ink: #b80065;
   --k-yellow-ink: #8a6d00;
+
+  /*
+   * 塗り/テキストの役割分離トークン(2026-08-22 ダーク対応で追加、独自判断)。
+   *
+   * 既存デザインの一部は ink 変種や原色そのものを「小さな塗り」(打刻ボタン・バッジ・
+   * 確認ダイアログの危険操作ボタン)として使い、その上に --k-paper / --k-key を乗せていた。
+   * ライトではたまたま「ink 変種 = 暗い塗りに白系テキスト」「paper = 明・key = 暗」の関係が
+   * 一致していたため問題が出なかったが、ダークで --k-key と --k-paper が反転すると、
+   * 塗りは(原色のまま)明るい/濃いままなのにテキストだけ反転してコントラストが壊れる
+   * (例: シアン塗り+反転後の白文字、マゼンタ系塗り+反転後の暗文字)。
+   * そのため「原色塗りの上のテキスト」だけは、テーマに関係なく常に安全な固定色を使う。
+   * 対象コンポーネント側では、このコミットで該当箇所だけをダーク限定で上書きしている
+   * (ライトの見た目・CSSは無変更)。コントラスト比は各値のコメントを参照。
+   */
+  /* シアン/イエロー原色塗り(明るい)の上のテキスト。両テーマで固定(常に暗色)。 */
+  --k-fill-text-dark: #1a1a1a;
+  /* マゼンタ系の濃い塗りの上のテキスト。両テーマで固定(常に明色)。 */
+  --k-fill-text-light: #ffffff;
+  /* 危険操作ボタン(確認ダイアログの「caution」)専用の塗り。旧 --k-magenta-ink のライト値と
+     同一(見た目は無変更)だが、ink 変種がテキスト用にダークで明るくなっても、この塗りは
+     常に濃いままにするため独立させた。AA: #b80065 vs #ffffff = 6.51:1、hover #8a004c vs
+     #ffffff = 9.61:1。 */
+  --k-magenta-fill: #b80065;
+  --k-magenta-fill-hover: #8a004c;
 
   /* 書体 */
   --font-display: "Shippori Antique B1", serif;
@@ -43,7 +74,106 @@
   --space-7: 48px;
 
   --shadow-card: 0 1px 2px rgba(26, 26, 26, 0.08), 0 8px 24px rgba(26, 26, 26, 0.06);
-  --border-hair: 1px solid rgba(26, 26, 26, 0.14);
+  /* --k-key から color-mix で導出。--k-key がテーマごとに再定義されるため、このトークン自体は
+     テーマごとに再定義しなくても自動追従する(ライトでは元の rgba(26, 26, 26, 0.14) と
+     計算結果が完全一致=見た目無変更)。 */
+  --border-hair: 1px solid color-mix(in srgb, var(--k-key) 14%, transparent);
 
-  --focus-ring: 0 0 0 3px rgba(0, 110, 153, 0.45);
+  /* --k-cyan-ink から color-mix で導出。border-hair と同じ理由で自動追従する
+     (ライトでは元の rgba(0, 110, 153, 0.45) と完全一致)。 */
+  --focus-ring: 0 0 0 3px color-mix(in srgb, var(--k-cyan-ink) 45%, transparent);
+
+  /* カード面より一段明るい「浮いた」面(入力欄・チップ・select 等、元々 #fff 直書きだった箇所)。
+     ライトでは #ffffff で既存の見た目と同一。--k-paper(地)とは意図的に別トークン。 */
+  --k-surface: #ffffff;
+
+  /* 打刻ボタン等の disabled 塗り(旧 #e7e7e3 直書き)。 */
+  --k-disabled-bg: #e7e7e3;
+
+  /* --k-key 塗りボタン(login-submit 等)の hover。--k-key より「さらに強い」方向
+     (ライトは黒、ダークは白)。--k-key 自体がテーマで反転するため、hover 側も対で反転させる。 */
+  --k-key-strong: #000000;
+
+  /* モーダルの背景幕。ページの明暗に関わらず「奥を暗く沈める」役割は変えない
+     (--k-key 由来にすると暗地では明るい幕になってしまうため独立トークン)。 */
+  --k-scrim: rgba(26, 26, 26, 0.42);
+
+  /* 状態スタンプの版ズレ(text-shadow)。ライトは元の color-mix 式と同一値。 */
+  --k-cyan-mis: color-mix(in srgb, var(--k-cyan) 30%, transparent);
+  --k-magenta-mis: color-mix(in srgb, var(--k-magenta) 30%, transparent);
+  --k-yellow-mis: color-mix(in srgb, var(--k-yellow) 40%, transparent);
+
+  color-scheme: light;
+}
+
+/* ---- ダーク: OS 設定準拠(ユーザーがライトを明示選択していない場合のみ) ---- */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    /* 地・キー。純黒/純白を避け、わずかに青みのある暗色・紙白寄りの明色にする。 */
+    --k-paper: #141618;
+    --k-key: #f2f2ee;
+    /* AA: paper #141618 vs key #f2f2ee = 16.16:1 */
+    --k-ink-soft: #a9aba8;
+    /* AA: paper #141618 vs ink-soft #a9aba8 = 7.84:1 */
+
+    /* ink 変種: ダークでは明るい変種に置き換える(暗い地では暗すぎるため)。 */
+    --k-cyan-ink: #5cc8f0;
+    /* AA: paper #141618 vs cyan-ink #5cc8f0 = 9.48:1 */
+    --k-magenta-ink: #ff7ec4;
+    /* AA: paper #141618 vs magenta-ink #ff7ec4 = 7.80:1 */
+    --k-yellow-ink: #eac53f;
+    /* AA: paper #141618 vs yellow-ink #eac53f = 10.85:1 */
+
+    --k-surface: #1d2023;
+    --k-disabled-bg: #2e3134;
+    /* AA: disabled-bg #2e3134 vs ink-soft #a9aba8 = 5.66:1(disabled ラベルの可読性) */
+
+    --k-scrim: rgba(0, 0, 0, 0.6);
+
+    /* --k-key 反転(暗→明)に伴い、K塗りボタンの hover は「さらに強い」方向(白側)へ。 */
+    --k-key-strong: #ffffff;
+
+    /* 影は暗地でほぼ効かないため、細い縁取り+濃い影に置き換える。 */
+    --shadow-card: 0 0 0 1px color-mix(in srgb, var(--k-key) 8%, transparent), 0 8px 24px rgba(0, 0, 0, 0.55);
+
+    /* 版ズレは暗地だと薄く見えなくなるため不透明度を上げる(30/30/40% → 55/55/65%)。 */
+    --k-cyan-mis: color-mix(in srgb, var(--k-cyan) 55%, transparent);
+    --k-magenta-mis: color-mix(in srgb, var(--k-magenta) 55%, transparent);
+    --k-yellow-mis: color-mix(in srgb, var(--k-yellow) 65%, transparent);
+
+    color-scheme: dark;
+  }
+}
+
+/* ---- ダーク: 明示選択(OS 設定より優先) ---- */
+:root[data-theme="dark"] {
+  --k-paper: #141618;
+  --k-key: #f2f2ee;
+  --k-ink-soft: #a9aba8;
+
+  --k-cyan-ink: #5cc8f0;
+  --k-magenta-ink: #ff7ec4;
+  --k-yellow-ink: #eac53f;
+
+  --k-surface: #1d2023;
+  --k-disabled-bg: #2e3134;
+
+  --k-scrim: rgba(0, 0, 0, 0.6);
+
+  --k-key-strong: #ffffff;
+
+  --shadow-card: 0 0 0 1px color-mix(in srgb, var(--k-key) 8%, transparent), 0 8px 24px rgba(0, 0, 0, 0.55);
+
+  --k-cyan-mis: color-mix(in srgb, var(--k-cyan) 55%, transparent);
+  --k-magenta-mis: color-mix(in srgb, var(--k-magenta) 55%, transparent);
+  --k-yellow-mis: color-mix(in srgb, var(--k-yellow) 65%, transparent);
+
+  color-scheme: dark;
+}
+
+/* ライトの明示選択(OS がダークでも、ユーザーがライトを選んでいれば常にこちら)。
+   値は :root の既定と同一だが、color-scheme だけは明示的に light に固定する
+   (ネイティブフォームコントロールが OS のダーク設定に引っ張られないように)。 */
+:root[data-theme="light"] {
+  color-scheme: light;
 }
