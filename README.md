@@ -25,6 +25,21 @@
 
 詳細は [docs/requirements.md](docs/requirements.md) を参照。
 
+## スクリーンショット
+
+<p align="center">
+  <img src="docs/public/readme/dashboard-light.png" width="49%" alt="ダッシュボード(ライト)" />
+  <img src="docs/public/readme/punch-light.png" width="49%" alt="打刻画面(ライト)" />
+</p>
+<p align="center">
+  <img src="docs/public/readme/monthly-dark.png" width="49%" alt="月次(ダーク・締め済み)" />
+  <img src="docs/public/readme/leave-light.png" width="49%" alt="有給休暇(ライト)" />
+</p>
+
+全画面(ログイン〜設定の各画面)をライト/ダーク・デスクトップ/モバイルで並べた一覧は
+`pnpm screenshots` を実行すると `docs/public/screenshots/index.html` に生成されます
+(手順は [撮り直す手順](#スクリーンショットの撮り直し) を参照)。
+
 ## リポジトリ構成
 
 ```
@@ -41,6 +56,25 @@ docs               VitePress ドキュメント+要件定義
 pnpm install
 pnpm test
 ```
+
+### スクリーンショットの撮り直し
+
+```sh
+pnpm screenshots
+```
+
+一時的な DB・API・Web サーバーを起動し、見栄えのするデモデータ(数日分の打刻・有給の
+付与と取得・修正申請・通知・部署とメンバー・カスタム権限プリセット・月次締め等)を投入した
+うえで、[Playwright](https://playwright.dev/) が全画面をライト/ダーク × デスクトップ/モバイルで
+撮影します。撮影後はプロセス停止・一時 DB 削除まで自動で行われ、本番環境
+(kizami.bktsk.com 等)には一切接続しません。Node 26 が必要です([mise](https://mise.jdx.dev/)
+等で用意してください)。
+
+- 出力先: `docs/public/screenshots/`(`.gitignore` 対象。撮り直すたびに再生成される生成物のため)
+- 一覧ページ: `docs/public/screenshots/index.html` をブラウザで開くと、画面ごとにライト/ダークを
+  並べて確認・拡大表示できます(デスクトップ/モバイルはタブで切り替え)
+- README に載せる画像を更新したい場合は、生成された PNG から良いものを選んで
+  `docs/public/readme/`(こちらはコミット対象)へ上書きコピーしてください
 
 ## License
 
