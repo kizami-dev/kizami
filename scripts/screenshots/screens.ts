@@ -21,6 +21,12 @@ export interface Screen {
   mobile: boolean;
   /** 撮影前に待つ追加のセレクタ(データ読み込み完了の目印)。省略時は body のみ待つ。 */
   waitForSelector?: string;
+  /**
+   * requiresAuth 画面を、テナント管理者以外のユーザーとして撮る場合のキー。
+   * capture.ts の CaptureParams.extraSessionCookies に対応するキーを指定する。
+   * 省略時は管理者セッション(既定)で撮る。
+   */
+  authAs?: string;
 }
 
 export const SCREENS: Screen[] = [
@@ -55,6 +61,15 @@ export const SCREENS: Screen[] = [
     caption: "先月分。区分別の集計とフレックス収支バー、締め済みバッジ。",
     requiresAuth: true,
     mobile: true,
+  },
+  {
+    slug: "monthly-fixed",
+    path: "/monthly",
+    title: "月次(固定時間制)",
+    caption: "固定時間制メンバー本人としてログインした今月分。時間外・法定内残業の併記と36協定バー。",
+    requiresAuth: true,
+    mobile: true,
+    authAs: "fixed-member",
   },
   {
     slug: "corrections",

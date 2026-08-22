@@ -49,9 +49,16 @@ async function newAuthedContext(browser: Browser, sessionCookie: string, viewpor
   return context;
 }
 
+const ADMIN_SESSION_KEY = "admin";
+
 export interface CaptureParams {
   sessionCookie: string;
   vars: Record<string, string>;
+  /**
+   * テナント管理者以外のユーザーとして撮る画面(Screen.authAs)のための追加セッション。
+   * キーは Screen.authAs の値と対応させる。
+   */
+  extraSessionCookies?: Record<string, string>;
 }
 
 export async function captureAll(params: CaptureParams): Promise<CapturedShot[]> {
@@ -69,18 +76,28 @@ export async function captureAll(params: CaptureParams): Promise<CapturedShot[]>
         const anonContext = screensForViewport.some((s) => !s.requiresAuth)
           ? await browser.newContext({ viewport: VIEWPORTS[viewport], colorScheme: theme })
           : null;
-        const authedContext = screensForViewport.some((s) => s.requiresAuth)
-          ? await newAuthedContext(browser, params.sessionCookie, viewport, theme)
-          : null;
+
+        // authAs ごとに authed context を作る(既定は "admin" = params.sessionCookie)。
+        // 遅延生成にし、実際にその画面が撮られるときだけ Cookie を解決する。
+        const authedContexts = new Map<string, BrowserContext>();
+        async function getAuthedContext(authAs: string): Promise<BrowserContext> {
+          const existing = authedContexts.get(authAs);
+          if (existing) return existing;
+          const cookie = authAs === ADMIN_SESSION_KEY ? params.sessionCookie : params.extraSessionCookies?.[authAs];
+          if (!cookie) throw new Error(`capture.ts: no session cookie registered for authAs="${authAs}"`);
+          const ctx = await newAuthedContext(browser, cookie, viewport, theme);
+          authedContexts.set(authAs, ctx);
+          return ctx;
+        }
 
         for (const screen of screensForViewport) {
-          const context = screen.requiresAuth ? authedContext : anonContext;
+          const context = screen.requiresAuth ? await getAuthedContext(screen.authAs ?? ADMIN_SESSION_KEY) : anonContext;
           if (!context) continue;
           const shot = await captureOne(context, screen, viewport, theme, params.vars);
           shots.push(shot);
         }
 
-        await authedContext?.close();
+        for (const ctx of authedContexts.values()) await ctx.close();
         await anonContext?.close();
       }
     }

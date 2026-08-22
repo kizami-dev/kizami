@@ -161,4 +161,15 @@ export class ApiClient {
   createApiKey(input: { name: string; scopes: string[]; expiresAt?: number | null }): Promise<{ apiKey: { id: string; token: string } }> {
     return this.request("POST", "/api-keys", input);
   }
+
+  /**
+   * POST /auto-break-waivers(休憩自動控除の打ち消し申請、2026-08-23 追加)。
+   * 本人分のみ作成できる(targetUserId 指定は無い)。
+   */
+  createAutoBreakWaiver(input: {
+    waiveDate: string;
+    reason: string;
+  }): Promise<{ waiver: { id: string; status: string; waiveDate: string; reason: string }; targetMonthClosed: boolean }> {
+    return this.request("POST", "/auto-break-waivers", input);
+  }
 }

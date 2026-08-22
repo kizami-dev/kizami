@@ -104,7 +104,7 @@ async function main(): Promise<void> {
     await waitForHttp(WEB_BASE_URL, { timeoutMs: 30_000 });
 
     console.log("[screenshots] [5/7] デモデータ(打刻・修正申請・有給・設定)を投入中...");
-    const { sessionCookie } = await seedHttp({
+    const { sessionCookie, fixedMemberSessionCookie } = await seedHttp({
       apiBaseUrl: API_BASE_URL,
       extraUsers: extra.users,
       departments: extra.departments,
@@ -112,7 +112,11 @@ async function main(): Promise<void> {
 
     console.log("[screenshots] [6/7] Playwright で撮影中...");
     const prevMonth = fmtMonth(addMonths(jstToday(), -1));
-    const shots = await captureAll({ sessionCookie, vars: { prevMonth } });
+    const shots = await captureAll({
+      sessionCookie,
+      vars: { prevMonth },
+      extraSessionCookies: { "fixed-member": fixedMemberSessionCookie },
+    });
 
     console.log("[screenshots] [7/7] 一覧ページを生成中...");
     generateGallery(shots);

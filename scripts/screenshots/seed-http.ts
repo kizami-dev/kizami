@@ -33,6 +33,8 @@ export interface SeedHttpParams {
 export interface SeedHttpResult {
   sessionCookie: string;
   adminId: string;
+  /** v0.5: 固定時間制メンバー(member2)としてログインしたセッション(monthly-fixed 画面用)。 */
+  fixedMemberSessionCookie: string;
 }
 
 /** 1日ぶんの勤務(既定 9:00-18:00, 休憩12:00-13:00)を打刻として積む。休憩は勤務時間内に収める。 */
@@ -57,10 +59,15 @@ export async function seedHttp(params: SeedHttpParams): Promise<SeedHttpResult> 
   const adminId = login.user.id;
 
   const byKey = new Map(params.extraUsers.map((u) => [u.key, u.id] as const));
+  const emailByKey = new Map(params.extraUsers.map((u) => [u.key, u.email] as const));
   const managerId = byKey.get("manager");
   const member1Id = byKey.get("member1");
   const member2Id = byKey.get("member2");
-  if (!managerId || !member1Id || !member2Id) throw new Error("extra demo users were not created (dev-screenshot-seed.ts)");
+  const member1Email = emailByKey.get("member1");
+  const member2Email = emailByKey.get("member2");
+  if (!managerId || !member1Id || !member2Id || !member1Email || !member2Email) {
+    throw new Error("extra demo users were not created (dev-screenshot-seed.ts)");
+  }
 
   // --- 部署・メンバー・権限プリセット -------------------------------------------------
   const presetsRes = await client.listPresets();
@@ -138,8 +145,20 @@ export async function seedHttp(params: SeedHttpParams): Promise<SeedHttpResult> 
   const prevMonth = addMonths(today, -1);
   const prevMonthAllWeekdays = weekdaysInMonth(prevMonth.y, prevMonth.m);
   const prevMonthWeekdays = prevMonthAllWeekdays.slice(-10);
+  // このうち最後の1日(月末に最も近い平日)だけは休憩打刻なしの9時間拘束にする。
+  // テナントの休憩ルールは "both"(併用)で、これは apps/api/src/dev-screenshot-seed.ts が
+  // 先月分より前から効くように直接投入済み(HTTP の POST /settings/attendance は
+  // effectiveFrom を過去日にできないため、過去月の集計に反映させるには直接投入するしかない)。
+  // 休憩打刻が無いこの日だけ、9:00-18:00(9時間)の自動控除ルール(8時間超で60分)が働き、
+  // 月次の「自動 1:00」表示のデモになる(他の9日は打刻休憩60分があるため何も変わらない)。
+  const autoBreakDemoDate = prevMonthWeekdays[prevMonthWeekdays.length - 1];
   for (const date of prevMonthWeekdays) {
-    await punchNormalDay(client, date);
+    if (autoBreakDemoDate && fmtDate(date) === fmtDate(autoBreakDemoDate)) {
+      await client.punch("clock_in", jstMinutes(date, 9, 0));
+      await client.punch("clock_out", jstMinutes(date, 18, 0));
+    } else {
+      await punchNormalDay(client, date);
+    }
   }
   const prevMonthPeriod = fmtMonth(prevMonth);
   await client.closeMonth(prevMonthPeriod, "先月分を確認のうえ締めます");
@@ -203,6 +222,53 @@ export async function seedHttp(params: SeedHttpParams): Promise<SeedHttpResult> 
   const nowMinutes = Math.floor(Date.now() / 60_000);
   await client.punch("clock_in", nowMinutes - 30);
 
+  // --- v0.5: 休憩自動控除の打ち消し申請(member1 が本人として申請する) --------------------
+  // corrections 画面の承認キューは「自分以外の申請が一覧に含まれるか」で表示可否を決める
+  // (apps/web/src/components/CorrectionsView.tsx の hasApprovePermission)。管理者(client)
+  // 自身の申請だけでは承認キューが出ないため、あえて member1 を申請者にする。
+  const member1Client = new ApiClient(params.apiBaseUrl);
+  // 全デモアカウントは apps/api/src/dev-screenshot-seed.ts の DEMO_PASSWORD で共通
+  // (= config.ts の ADMIN_PASSWORD と同じ文字列)。
+  await member1Client.login(member1Email, ADMIN_PASSWORD);
+  const member1Pool = weekdaysBeforeTodayInCurrentMonth();
+  const waiverDemoDate = member1Pool.pop();
+  if (waiverDemoDate) {
+    // 休憩打刻なしの9時間拘束 → 自動控除(1時間)が発生する日を作り、それに対して
+    // 打ち消しを申請する、という一貫したストーリーにする。
+    await member1Client.punch("clock_in", jstMinutes(waiverDemoDate, 9, 0));
+    await member1Client.punch("clock_out", jstMinutes(waiverDemoDate, 18, 0));
+    await member1Client.createAutoBreakWaiver({
+      waiveDate: fmtDate(waiverDemoDate),
+      reason: "来客対応が続き、休憩を取れませんでした。",
+    });
+  }
+
+  // --- v0.5: 固定時間制メンバー(member2)の打刻 --------------------------------------------
+  // work_policy は apps/api/src/dev-screenshot-seed.ts が member2 だけに直接割り当て済み
+  // (所定労働時間 7時間)。ここでは本人としてログインし、月次画面の「時間外」「法定内残業」
+  // 「36協定バー」が一通り出るよう3日ぶん打刻する(いずれも昼休憩60分を打刻するため、
+  // 上の "both" 自動控除ルールとは無関係 — 実労働時間はそのまま拘束時間から60分を引いた値)。
+  const fixedMemberClient = new ApiClient(params.apiBaseUrl);
+  await fixedMemberClient.login(member2Email, ADMIN_PASSWORD);
+  const fixedMemberPool = weekdaysBeforeTodayInCurrentMonth();
+  const fixedStandardDay = fixedMemberPool.pop(); // 所定どおり7時間(比較用のベースライン)
+  const fixedWithinStatutoryDay = fixedMemberPool.pop(); // 実労働7.5時間 → 法定内残業30分のみ
+  const fixedOvertimeDay = fixedMemberPool.pop(); // 実労働9時間 → 法定内残業1時間 + 時間外1時間
+  // punchNormalDay は時刻を整数時のみ扱うため、17:30 のような半端な時刻は個別に打刻する。
+  if (fixedStandardDay) {
+    await punchNormalDay(fixedMemberClient, fixedStandardDay, { start: 9, end: 17, breakStart: 12, breakEnd: 13 });
+  }
+  if (fixedWithinStatutoryDay) {
+    await fixedMemberClient.punch("clock_in", jstMinutes(fixedWithinStatutoryDay, 9, 0));
+    await fixedMemberClient.punch("break_start", jstMinutes(fixedWithinStatutoryDay, 12, 0));
+    await fixedMemberClient.punch("break_end", jstMinutes(fixedWithinStatutoryDay, 13, 0));
+    await fixedMemberClient.punch("clock_out", jstMinutes(fixedWithinStatutoryDay, 17, 30));
+  }
+  if (fixedOvertimeDay) {
+    await punchNormalDay(fixedMemberClient, fixedOvertimeDay, { start: 9, end: 19, breakStart: 12, breakEnd: 13 });
+  }
+  const fixedMemberSessionCookie = fixedMemberClient.getSessionCookie();
+
   // --- テナント設定・個人設定・連携設定 --------------------------------------------------
   await client.updateTenantProfile({
     isSmallOrMediumEnterprise: true,
@@ -226,6 +292,8 @@ export async function seedHttp(params: SeedHttpParams): Promise<SeedHttpResult> 
       missing_clock_out: { email: true, webhook: false },
       overtime_alert: { email: true, webhook: true },
       leave_alert: { email: false, webhook: true },
+      // v0.5 追加: 修正系申請(休憩自動控除の打ち消しなど)の承認・却下通知。
+      correction_alert: { email: true, webhook: false },
     },
     emailAddress: "admin-personal@example.com",
     webhookUrl: "https://hooks.example.com/personal-demo",
@@ -246,12 +314,21 @@ export async function seedHttp(params: SeedHttpParams): Promise<SeedHttpResult> 
   // dayBoundaryMinutes は 0(変更なし)に固定する: ここを動かすと、撮影時刻が早朝(境界の前)
   // だった場合に「本日の出勤」打刻が前日扱いに再計算されてしまい、打刻画面の「勤務中」表示が
   // 崩れる(実装時に手元で確認した挙動 — 属する勤怠日は挿入時ではなく参照時に都度再計算される)。
+  // breakRule は apps/api/src/dev-screenshot-seed.ts が既に "both"(併用)へ直接書き換え済み
+  // (先月・今月の過去日にも遡って効かせるため、HTTP 経由〔effectiveFrom は今日以降しか
+  // 許されない〕ではなく直接 INSERT している)。ここではその値を変えず維持し、
   // GPS・法定休日ルールなど他のフィールドだけで「新しい版が追加された」ことを示す。
   await client.createAttendanceSettingVersion({
     effectiveFrom: fmtDate(today),
     dayBoundaryMinutes: 0,
     legalHolidayRule: { kind: "weekday", weekday: 0 },
-    breakRule: { mode: "punch" },
+    breakRule: {
+      mode: "both",
+      rules: [
+        { overMinutes: 360, deductMinutes: 45 },
+        { overMinutes: 480, deductMinutes: 60 },
+      ],
+    },
     gpsEnabled: true,
     gpsRetentionDays: 90,
     // 週の起算曜日。固定時間制の「週40時間超」の判定に使う(就業規則に定めが無ければ
@@ -272,5 +349,5 @@ export async function seedHttp(params: SeedHttpParams): Promise<SeedHttpResult> 
     expiresAt: jstMinutes(addDays(today, 180), 0, 0),
   });
 
-  return { sessionCookie: client.getSessionCookie(), adminId };
+  return { sessionCookie: client.getSessionCookie(), adminId, fixedMemberSessionCookie };
 }

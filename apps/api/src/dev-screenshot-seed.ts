@@ -23,11 +23,13 @@ import {
   departments as departmentsTable,
   memberships,
   notifications,
+  tenantSettingVersions,
   tenants,
   userPolicyAssignments,
   users,
   uuidv7,
   workPolicies,
+  workPolicyVersions,
   type Database,
   migrateDb,
 } from "@kizami/db";
@@ -78,12 +80,26 @@ interface DemoUserSpec {
   email: string;
   hireDate: string;
   department: "hq" | "sales" | "dev";
+  /**
+   * true の場合、テナント既定のフレックス work_policies ではなく params.fixedWorkPolicyId
+   * (v0.5 固定時間制デモ用に別途作成する work_policies 行)を割り当てる。
+   * user_policy_assignments は user 単位のため、この1人だけをテナント全体を変えずに
+   * 固定時間制へ切り替えられる(依頼の判断点どおり)。
+   */
+  useFixedPolicy?: boolean;
 }
 
 const DEMO_USERS: DemoUserSpec[] = [
   { key: "manager", name: "佐藤 直人", email: "manager@kizami.example", hireDate: "2021-04-01", department: "sales" },
   { key: "member1", name: "鈴木 愛", email: "member1@kizami.example", hireDate: "2023-07-01", department: "sales" },
-  { key: "member2", name: "田中 拓海", email: "member2@kizami.example", hireDate: "2024-10-01", department: "dev" },
+  {
+    key: "member2",
+    name: "田中 拓海",
+    email: "member2@kizami.example",
+    hireDate: "2024-10-01",
+    department: "dev",
+    useFixedPolicy: true,
+  },
 ];
 
 const DEMO_PASSWORD = "kizami-demo-pass";
@@ -95,9 +111,92 @@ async function findWorkPolicyId(db: Database, tenantId: string): Promise<string>
   return row.id;
 }
 
+/**
+ * v0.5 固定時間制デモ用の work_policies を新規作成する(テナント既定の「標準」フレックス
+ * policy とは別行)。POST /settings/work-policy はテナントに1つしかない既定 policy
+ * (getOrCreateTenantWorkPolicy)しか操作できず、ユーザー単位で別制度を割り当てる手段が
+ * HTTP には無い(仕組みの確認結果)。そのためここでは packages/db のテーブルへ直接
+ * INSERT する(apps/api の既存機能は変更していない — このファイル自体がその例外)。
+ *
+ * 所定労働時間は 7 時間(420分)にする: 8時間(法定)ちょうどの日を挟むだけでは
+ * 「法定内残業」(所定超〜法定内)が絶対に出せない(所定=法定だと隙間が無い)ため、
+ * 所定を法定より短くしておかないとデモしたい2つの表示(時間外/法定内残業の併記)を
+ * 両方見せられない。
+ */
+async function createFixedWorkPolicy(db: Database, tenantId: string): Promise<string> {
+  // 冪等(dev-screenshot-seed.ts の他の関数と同じ流儀): 同名の policy が既にあれば作り直さない。
+  const existingRows = await db.select().from(workPolicies).where(eq(workPolicies.tenantId, tenantId));
+  const existing = existingRows.find((p) => p.name === "固定時間制(デモ)");
+  if (existing) return existing.id;
+
+  const now = Math.floor(Date.now() / 60_000);
+  const workPolicyId = uuidv7();
+  await db.insert(workPolicies).values({ id: workPolicyId, tenantId, name: "固定時間制(デモ)", createdAt: now });
+  await db.insert(workPolicyVersions).values({
+    id: uuidv7(),
+    tenantId,
+    workPolicyId,
+    effectiveFrom: "1970-01-01",
+    kind: "fixed",
+    settlementPeriod: "monthly", // fixed では無視される placeholder(packages/db/src/schema/settings.ts のコメント参照)
+    core: null,
+    standardDayMinutes: 420,
+    createdAt: now,
+  });
+  return workPolicyId;
+}
+
+/**
+ * 休憩ルールを "both"(併用)にするテナント設定版を、既存の初回版(pnpm seed が入れる
+ * effectiveFrom "1970-01-01" / breakRule "punch")の直後から効かせる。
+ *
+ * POST /settings/attendance は effectiveFrom が今日より前だと 409 を返すため、HTTP 経由では
+ * 過去日(先月締め・今月の既存デモ打刻日)に "both" を遡って効かせられない。ここで直接
+ * INSERT することで、先月の集計(締め処理はこの後 seed-http.ts が実行)や今月の既存デモ日
+ * すべてに "both" ルールが効いた状態で計算させる。dayBoundaryMinutes・legalHolidayRule・
+ * gpsEnabled 等は初回版から変更しない(日界を動かすと打刻画面の「勤務中」表示が崩れる —
+ * scripts/screenshots/seed-http.ts の同種コメント参照)。breakRule だけを変える。
+ *
+ * effectiveFrom は "1970-01-02"(初回版の翌日)にする。初回版と同日にすると
+ * `latestAtOrBefore` の tie-break(effectiveFrom が同じ行は先に見つかった方が勝つ、
+ * apps/api/src/lib/settings.ts)が配列の走査順に依存し不安定になるため、確実に
+ * 上書きされる別日にする。
+ */
+async function insertBothModeBreakRuleVersion(db: Database, tenantId: string): Promise<void> {
+  // 冪等: この日付の版が既にあれば何もしない(重複挿入すると latestAtOrBefore の
+  // tie-break が不安定になる、この関数自体のコメント参照)。
+  const existingRows = await db.select().from(tenantSettingVersions).where(eq(tenantSettingVersions.tenantId, tenantId));
+  if (existingRows.some((v) => v.effectiveFrom === "1970-01-02")) return;
+
+  const now = Math.floor(Date.now() / 60_000);
+  await db.insert(tenantSettingVersions).values({
+    id: uuidv7(),
+    tenantId,
+    effectiveFrom: "1970-01-02",
+    dayBoundaryMinutes: 0,
+    legalHolidayRule: JSON.stringify({ kind: "weekday", weekday: 0 }),
+    breakRule: JSON.stringify({
+      mode: "both",
+      rules: [
+        { overMinutes: 360, deductMinutes: 45 },
+        { overMinutes: 480, deductMinutes: 60 },
+      ],
+    }),
+    gpsEnabled: false,
+    gpsRetentionDays: null,
+    weekStartWeekday: 0,
+    createdAt: now,
+  });
+}
+
 async function insertDemoUsers(
   db: Database,
-  params: { tenantId: string; workPolicyId: string; departmentIdByKey: Record<"hq" | "sales" | "dev", string> },
+  params: {
+    tenantId: string;
+    workPolicyId: string;
+    fixedWorkPolicyId: string;
+    departmentIdByKey: Record<"hq" | "sales" | "dev", string>;
+  },
 ): Promise<Array<{ key: string; id: string; email: string }>> {
   const now = Math.floor(Date.now() / 60_000);
   const passwordHash = await hashPassword(DEMO_PASSWORD);
@@ -132,7 +231,7 @@ async function insertDemoUsers(
       id: uuidv7(),
       tenantId: params.tenantId,
       userId,
-      workPolicyId: params.workPolicyId,
+      workPolicyId: spec.useFixedPolicy ? params.fixedWorkPolicyId : params.workPolicyId,
       effectiveFrom: "1970-01-01",
       createdAt: now,
     });
@@ -236,6 +335,12 @@ async function main(): Promise<void> {
 
   const workPolicyId = await findWorkPolicyId(db, tenantId);
 
+  // v0.5: 休憩ルールを "both" にする版を先月・今月の既存デモ打刻日より前から効かせておく
+  // (HTTP 経由だと過去日に遡れないため、ここで直接 INSERT する)。
+  await insertBothModeBreakRuleVersion(db, tenantId);
+  // v0.5: 固定時間制メンバー用の別 work_policies を用意する(テナント既定は変えない)。
+  const fixedWorkPolicyId = await createFixedWorkPolicy(db, tenantId);
+
   // 部署(本社をルート、営業部・開発部を配下に)。既存なら流用する(冪等)。
   const now = Math.floor(Date.now() / 60_000);
   async function ensureDepartment(name: string, parentId: string | null): Promise<string> {
@@ -259,6 +364,7 @@ async function main(): Promise<void> {
   const createdUsers = await insertDemoUsers(db, {
     tenantId,
     workPolicyId,
+    fixedWorkPolicyId,
     departmentIdByKey: { hq: hqId, sales: salesId, dev: devId },
   });
 
