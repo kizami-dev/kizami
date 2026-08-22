@@ -128,7 +128,11 @@ describe("members API", () => {
 
   it("GET lists a second user with no department/presets as null/empty", async () => {
     const { db, tenantId, userId, email, password } = await setupTestDb();
-    await grantPermission(db, { tenantId, userId, permission: "member.view", scope: "department" });
+    // tenant スコープ: この検証はスコープ絞り込みの対象ではなく、無所属メンバーの
+    // department/presetNames のシリアライズ(null/[]になること)を見たいだけのため、
+    // department スコープ(かつ actor 自身も無所属)だと apps/api/src/lib/scope.ts の
+    // 「無所属なら本人のみ」規則により second user がそもそも見えなくなってしまう。
+    await grantPermission(db, { tenantId, userId, permission: "member.view", scope: "tenant" });
     const second = await setupSecondUser(db, tenantId);
     const app = createApp({ db });
     const cookie = await loginAndGetCookie(app, email, password);

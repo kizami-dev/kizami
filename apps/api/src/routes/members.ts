@@ -10,9 +10,11 @@
  * `assignPresetsToMember()` に委譲する(依頼の section 分けでは C. presets.ts の管轄だが、
  * URL は /members/:id/presets にネストするため、ハンドラ自体はこのファイルに置く)。
  *
- * 判断点(スコープの粒度): routes/departments.ts と同じ理由により、対象メンバーが
- * actor 自身の部署配下かという resource 単位の絞り込みは行わず、要求スコープ(department)
- * 以上を持っていればテナント内の任意メンバーを一覧・編集できる粗い粒度で実装した。
+ * スコープの粒度: requirePermission は「保持スコープが最低限 department 以上か」までしか
+ * 見ないため、対象メンバーが実際に actor の管轄下(所属部署・その配下)にいるかは
+ * apps/api/src/lib/scope.ts の resolveAccessibleUserIds() で別途絞り込む
+ * (以前はここが未実装で、department_and_descendants しか持たないユーザーでも
+ * テナント全体を操作できてしまっていた)。
  */
 
 import { Hono } from "hono";
@@ -27,7 +29,8 @@ import {
   type Database,
 } from "@kizami/db";
 import type { AppEnv } from "../auth/middleware.js";
-import { requirePermission } from "../authz.js";
+import { ForbiddenError, requirePermission } from "../authz.js";
+import { resolveAccessibleUserIds } from "../lib/scope.js";
 import { nowMinutes } from "../lib/time.js";
 import { ASSIGNMENT_MANAGE_PERMISSION, assignPresetsToMember } from "./presets.js";
 
@@ -52,11 +55,17 @@ export function createMembersRoutes(db: Database) {
     requirePermission(c, VIEW_PERMISSION, "department");
     const user = c.get("user");
 
-    const [allUsers, membershipRows, presetNameRows] = await Promise.all([
+    const accessibleUserIds = await resolveAccessibleUserIds(db, {
+      actor: { id: user.id, tenantId: user.tenantId, permissions: c.get("permissions") },
+      permission: VIEW_PERMISSION,
+    });
+
+    const [tenantUsers, membershipRows, presetNameRows] = await Promise.all([
       listTenantUsers(db, user.tenantId),
       listTenantMembershipsWithDepartment(db, user.tenantId),
       listTenantAssignedPresetNames(db, user.tenantId),
     ]);
+    const allUsers = accessibleUserIds === "all" ? tenantUsers : tenantUsers.filter((u) => accessibleUserIds.has(u.id));
 
     // membershipRows は createdAt 降順。1ユーザーに複数行あり得るため最初に出現した
     // (=最新の)行だけを採用する(packages/db/src/queries/members.ts の規約)。
@@ -94,6 +103,16 @@ export function createMembersRoutes(db: Database) {
     const target = await getUserById(db, { tenantId: user.tenantId, id });
     if (!target) return c.json({ error: "not_found" }, 404);
 
+    // 404(存在しない)を先に判定してから、実在する対象がスコープ外かを判定する
+    // (対象の有無を先に漏らさない一般的な優先順位に加え、既存テストの404期待とも整合する)。
+    const accessibleUserIds = await resolveAccessibleUserIds(db, {
+      actor: { id: user.id, tenantId: user.tenantId, permissions: c.get("permissions") },
+      permission: EDIT_PERMISSION,
+    });
+    if (accessibleUserIds !== "all" && !accessibleUserIds.has(id)) {
+      throw new ForbiddenError(`target user ${id} is outside actor's scope`);
+    }
+
     const body = await parseJsonBody(c);
     if (body === null) return c.json({ error: "invalid_body" }, 400);
     if (body.departmentId === undefined) {
@@ -130,6 +149,14 @@ export function createMembersRoutes(db: Database) {
 
     const target = await getUserById(db, { tenantId: actor.tenantId, id: targetId });
     if (!target) return c.json({ error: "not_found" }, 404);
+
+    const accessibleUserIds = await resolveAccessibleUserIds(db, {
+      actor: { id: actor.id, tenantId: actor.tenantId, permissions: c.get("permissions") },
+      permission: ASSIGNMENT_MANAGE_PERMISSION,
+    });
+    if (accessibleUserIds !== "all" && !accessibleUserIds.has(targetId)) {
+      throw new ForbiddenError(`target user ${targetId} is outside actor's scope`);
+    }
 
     const body = await parseJsonBody(c);
     if (
