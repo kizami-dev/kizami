@@ -1,4 +1,93 @@
+import { existsSync, readdirSync, statSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitepress";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+/**
+ * `pnpm docs:api`(TypeDoc + typedoc-plugin-markdown)が生成する docs/api/ を
+ * 読み取ってサイドバー項目を自動生成する。
+ *
+ * - docs/api/ が存在しない場合(まだ `pnpm docs:api` を実行していない)は
+ *   「APIリファレンス」セクション自体を省略し、`vitepress dev` が壊れないようにする
+ * - 各パッケージディレクトリ(@kizami/xxx)配下の functions/interfaces/type-aliases/
+ *   variables/namespaces を再帰的にたどってサブメニューにする
+ */
+
+const apiDir = path.resolve(__dirname, "../api");
+
+interface ApiSidebarItem {
+  text: string;
+  link?: string;
+  collapsed?: boolean;
+  items?: ApiSidebarItem[];
+}
+
+function toRoute(relPath: string): string {
+  // Windows パス区切りを URL 用に正規化
+  return `/api/${relPath.split(path.sep).join("/")}`;
+}
+
+/** ディレクトリ配下の README.md 以外の .md ファイル・サブディレクトリをサイドバー項目に変換する */
+function dirToSidebarItems(absDir: string, relDir: string): ApiSidebarItem[] {
+  const entries = readdirSync(absDir).sort((a, b) => a.localeCompare(b));
+  const items: ApiSidebarItem[] = [];
+
+  for (const entry of entries) {
+    const absEntry = path.join(absDir, entry);
+    const relEntry = path.join(relDir, entry);
+    const isDir = statSync(absEntry).isDirectory();
+
+    if (isDir) {
+      const hasReadme = existsSync(path.join(absEntry, "README.md"));
+      const children = dirToSidebarItems(absEntry, relEntry);
+      items.push({
+        text: entry,
+        collapsed: true,
+        ...(hasReadme ? { link: `${toRoute(relEntry)}/` } : {}),
+        ...(children.length > 0 ? { items: children } : {}),
+      });
+      continue;
+    }
+
+    if (entry === "README.md" || !entry.endsWith(".md")) continue;
+
+    const name = entry.replace(/\.md$/, "");
+    items.push({
+      text: name,
+      link: toRoute(path.join(relDir, name)),
+    });
+  }
+
+  return items;
+}
+
+function buildApiSidebar() {
+  if (!existsSync(apiDir)) return [];
+
+  const scopeDir = path.join(apiDir, "@kizami");
+  if (!existsSync(scopeDir)) return [];
+
+  const packages = readdirSync(scopeDir)
+    .filter((name) => statSync(path.join(scopeDir, name)).isDirectory())
+    .sort((a, b) => a.localeCompare(b));
+
+  return [
+    {
+      text: "APIリファレンス",
+      items: [
+        { text: "概要", link: "/api/" },
+        ...packages.map((pkg) => ({
+          text: `@kizami/${pkg}`,
+          collapsed: true,
+          link: `${toRoute(path.join("@kizami", pkg))}/`,
+          items: dirToSidebarItems(path.join(scopeDir, pkg), path.join("@kizami", pkg)),
+        })),
+      ],
+    },
+  ];
+}
 
 export default defineConfig({
   title: "KIZAMI",
@@ -18,6 +107,7 @@ export default defineConfig({
           { text: "権限カタログ", link: "/design/permission-catalog" },
         ],
       },
+      ...buildApiSidebar(),
     ],
   },
 });

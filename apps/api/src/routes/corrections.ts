@@ -10,11 +10,21 @@
  * 認可(暫定運用, 2026-08-21 決定): 単独テナント運用で申請が滞留しないよう、
  * 自分が提出した申請の承認・却下を許可する。監査ログには selfApproved を残す。
  * 他人の申請の承認は今回スコープ外(403)。
+ *
+ * 締め後修正(amend, v0.4): POST / は締め済み月でも申請を作成できる(申請は意思表示の記録に
+ * 過ぎない)。レスポンスの `targetMonthClosed` で対象月が締め済みかどうかを示し、UI が警告を
+ * 出せるようにする。承認(POST /:id/approve)は締め済み月に影響する場合のみ `closing.unlock`
+ * 権限を要求し(assertAmendAllowed)、許可されれば月を開けずに反映し、対象ユーザーの
+ * スナップショットを再計算して新しい世代を保存 + closing_events に `amend` を追記する
+ * (apps/api/src/lib/closing-guard.ts・closing-amend.ts 参照)。
  */
 
 import { Hono } from "hono";
 import {
+  appendClosingEvent,
   createCorrectionRequest,
+  getClosingSnapshots,
+  getClosingState,
   getCorrectionRequest,
   getPunchEventById,
   getValidPunchEvent,
@@ -22,6 +32,7 @@ import {
   insertPunchEvent,
   isUniqueConstraintError,
   listCorrectionRequests,
+  saveClosingSnapshots,
   updateCorrectionStatus,
   type CorrectionRequest,
   type CorrectionStatus,
@@ -31,9 +42,11 @@ import type { PunchKind } from "@kizami/engine";
 import type { AppEnv } from "../auth/middleware.js";
 import { ForbiddenError, requireSelf } from "../authz.js";
 import { periodFromDate, resolveAttendanceDate } from "../lib/attendance-date.js";
-import { assertMonthOpen } from "../lib/closing-guard.js";
+import { assertAmendAllowed } from "../lib/closing-guard.js";
+import { computeMonthlyOutputForUser } from "../lib/closing-amend.js";
+import { engineOutputFromSnapshots, snapshotInputsFromEngineOutput } from "../lib/closing-snapshot.js";
 import { FUTURE_TOLERANCE_MINUTES, isValidPunchKind } from "./punches.js";
-import { nowMinutes } from "../lib/time.js";
+import { nowMinutes, parseMonthParam } from "../lib/time.js";
 
 const MAX_REASON_LENGTH = 500;
 
@@ -190,18 +203,23 @@ export function createCorrectionsRoutes(db: Database) {
       targetOccurredAt = target.occurredAt;
     }
 
-    // 締め済み月への修正申請は全経路で拒否する(docs/requirements.md §6・依頼の禁止事項)。
-    // 対象打刻の元の日(訂正・取消)と、申請内容の日(訂正・追加)の両方をチェックする —
-    // 例えば「締め済み月に属する打刻を、開いている月の日時に訂正する」申請も、締め済み月の
-    // データを書き換える(supersede する)行為であるため拒否する。
+    // 締め後修正(amend): 申請自体は締め済み月でも作成できる(意思表示の記録に過ぎない —
+    // 承認時にのみ closing.unlock を要求する。POST /:id/approve 参照)。対象打刻の元の日
+    // (訂正・取消)と、申請内容の日(訂正・追加)のいずれかが締め済み月なら
+    // targetMonthClosed=true を返し、UI が警告を出せるようにする。
     const candidateOccurredAts = [targetOccurredAt, validatedOccurredAt].filter((v): v is number => v !== null);
     const candidatePeriods = new Set<string>();
     for (const occurredAt of candidateOccurredAts) {
       const date = await resolveAttendanceDate(db, { tenantId: user.tenantId, occurredAt });
       candidatePeriods.add(periodFromDate(date));
     }
+    let targetMonthClosed = false;
     for (const period of candidatePeriods) {
-      await assertMonthOpen(db, { tenantId: user.tenantId, period });
+      const state = await getClosingState(db, { tenantId: user.tenantId, period });
+      if (state.status === "closed") {
+        targetMonthClosed = true;
+        break;
+      }
     }
 
     const created = await createCorrectionRequest(db, {
@@ -215,7 +233,7 @@ export function createCorrectionsRoutes(db: Database) {
       createdAt: nowMinutes(),
     });
 
-    return c.json({ request: serializeCorrectionRequest(created) }, 201);
+    return c.json({ request: serializeCorrectionRequest(created), targetMonthClosed }, 201);
   });
 
   app.post("/:id/approve", async (c) => {
@@ -260,10 +278,8 @@ export function createCorrectionsRoutes(db: Database) {
       }
     }
 
-    // 締め済み月への反映は全経路で拒否する(依頼の禁止事項)。反映先(訂正・追加の
-    // proposedOccurredAt、取消の voidOccurredAt)と、対象打刻の元の日(訂正・取消)の両方を
-    // チェックする(POST /corrections の作成時ガードと同じ理由)。申請作成後に締められた
-    // 場合にも対応できるよう、承認のたびに再評価する。
+    // 反映先(訂正・追加の proposedOccurredAt、取消の voidOccurredAt)と、対象打刻の元の日
+    // (訂正・取消)の両方を対象月として集める(POST /corrections の作成時と同じ理由)。
     const candidateOccurredAts = [originalTargetOccurredAt, existing.proposedOccurredAt, voidOccurredAt].filter(
       (v): v is number => v !== null,
     );
@@ -272,12 +288,21 @@ export function createCorrectionsRoutes(db: Database) {
       const date = await resolveAttendanceDate(db, { tenantId: user.tenantId, occurredAt });
       candidatePeriods.add(periodFromDate(date));
     }
-    for (const period of candidatePeriods) {
-      await assertMonthOpen(db, { tenantId: user.tenantId, period });
-    }
+
+    const permissions = c.get("permissions");
 
     try {
       const result = await db.transaction(async (tx) => {
+        // 締め済み月への反映は closing.unlock を持つ場合のみ許可する(assertAmendAllowed)。
+        // 申請作成後に締められた場合にも対応できるよう、書き込み直前(tx 内)で再評価する。
+        // closed だった period は amendedPeriods に集め、反映後にスナップショットを
+        // 再計算・保存し amend イベントを追記する(依頼: 同一トランザクションで行う)。
+        const amendedPeriods: string[] = [];
+        for (const period of candidatePeriods) {
+          const wasClosed = await assertAmendAllowed(tx, { tenantId: user.tenantId, period, permissions });
+          if (wasClosed) amendedPeriods.push(period);
+        }
+
         let newEvent;
         if (existing.targetEventId && existing.proposedKind && existing.proposedOccurredAt !== null) {
           // 訂正
@@ -344,17 +369,77 @@ export function createCorrectionsRoutes(db: Database) {
             selfApproved,
             targetEventId: existing.targetEventId,
             appliedEventId: newEvent.id,
+            amendedPeriods,
           }),
           occurredAt: now,
         });
 
-        return { correctionRequest: updated, newEvent };
+        // amend: 影響を受けた締め済み月ごとに、対象ユーザーの集計を再計算し新しい
+        // スナップショット世代として保存 + closing_events に amend を追記する。
+        for (const period of amendedPeriods) {
+          const parsedMonth = parseMonthParam(period);
+          if (!parsedMonth) {
+            throw new Error(`amendedPeriods contained an unparsable period: ${period}`);
+          }
+
+          const beforeSnapshots = (await getClosingSnapshots(tx, { tenantId: user.tenantId, period })).filter(
+            (s) => s.userId === existing.userId,
+          );
+          const before = engineOutputFromSnapshots(beforeSnapshots);
+
+          const output = await computeMonthlyOutputForUser(tx, {
+            tenantId: user.tenantId,
+            userId: existing.userId,
+            year: parsedMonth.year,
+            month: parsedMonth.month,
+          });
+
+          const amendEvent = await appendClosingEvent(tx, {
+            tenantId: user.tenantId,
+            period,
+            event: "amend",
+            actorId: user.id,
+            note: null,
+            correctionRequestId: existing.id,
+            occurredAt: now,
+          });
+
+          await saveClosingSnapshots(
+            tx,
+            snapshotInputsFromEngineOutput({
+              tenantId: user.tenantId,
+              closingEventId: amendEvent.id,
+              userId: existing.userId,
+              totals: output.totals,
+              flexBalance: output.flexBalance,
+            }),
+          );
+
+          await insertAuditLog(tx, {
+            tenantId: user.tenantId,
+            actorId: user.id,
+            action: "closing.amend",
+            targetType: "closing",
+            targetId: period,
+            detail: JSON.stringify({
+              period,
+              correctionRequestId: existing.id,
+              before,
+              after: { totals: output.totals, flexBalance: output.flexBalance },
+            }),
+            occurredAt: now,
+          });
+        }
+
+        return { correctionRequest: updated, newEvent, amendedPeriods };
       });
 
       return c.json(
         {
           request: serializeCorrectionRequest(result.correctionRequest),
           appliedEvent: { id: result.newEvent.id, kind: result.newEvent.kind, occurredAt: result.newEvent.occurredAt },
+          amended: result.amendedPeriods.length > 0,
+          amendedPeriods: result.amendedPeriods,
         },
         200,
       );

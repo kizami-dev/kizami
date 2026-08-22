@@ -1,0 +1,2 @@
+ALTER TABLE `closing_events` ADD `correction_request_id` text REFERENCES correction_requests(id);--> statement-breakpoint
+ALTER TABLE `closing_events` ADD `leave_request_id` text REFERENCES leave_requests(id);

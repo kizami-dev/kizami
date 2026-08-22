@@ -78,6 +78,9 @@ function serializeEvent(event: ClosingEvent) {
     event: event.event,
     actorId: event.actorId,
     note: event.note,
+    // event='amend' のとき、由来となった申請(いずれか一方のみ非null)。close/reopen は両方 null。
+    correctionRequestId: event.correctionRequestId,
+    leaveRequestId: event.leaveRequestId,
     occurredAt: event.occurredAt,
   };
 }

@@ -4,7 +4,7 @@
  * node:crypto は使わず globalThis.crypto (WebCrypto) のみに依存する(Node / workerd 両対応。
  * apps/api/src/auth/password.ts の PBKDF2 実装と同じ方針)。
  *
- * 保存形式: "enc:v1:<ivBase64>:<ciphertextBase64>"。バージョンを埋め込むことで、将来の
+ * 保存形式: `"enc:v1:<ivBase64>:<ciphertextBase64>"`。バージョンを埋め込むことで、将来の
  * アルゴリズム変更・鍵ローテーションに備える(未知のバージョンは「復号できない値」として
  * 扱い null を返す — plaintext と誤認しない)。
  *
@@ -20,7 +20,7 @@ const IV_BYTES = 12; // AES-GCM 推奨サイズ
 const KEY_BYTES = 32; // AES-256
 
 export interface Encryptor {
-  /** 平文を暗号化し "enc:v1:<ivBase64>:<ciphertextBase64>" を返す。 */
+  /** 平文を暗号化し `"enc:v1:<ivBase64>:<ciphertextBase64>"` を返す。 */
   encrypt(plain: string): Promise<string>;
   /**
    * 保存値を復号する。"enc:" プレフィクスが無ければ平文とみなしそのまま返す。

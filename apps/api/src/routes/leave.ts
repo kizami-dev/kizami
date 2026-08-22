@@ -12,10 +12,21 @@
  * 残高・消化の計算は @kizami/leave(純関数・分単位)に委譲する。DB 層(leave_grants /
  * leave_requests)は日数・分をそのまま保存するだけで、FIFO・時効・年5日・時間単位年休の
  * 年度上限といったロジックは一切持たない。
+ *
+ * 締め後修正(amend, v0.4): POST /requests は元々締めガードを持たなかった(締め済み月でも
+ * 作成できていた)ため変更不要。レスポンスに `targetMonthClosed` を追加し、UI が警告を
+ * 出せるようにするのみ。POST /requests/:id/approve は新たに `assertAmendAllowed` を通す:
+ * 対象日が締め済み月に属す場合、`closing.unlock` を持つ場合のみ承認でき、月を開けずに
+ * 対象ユーザーのスナップショットを再計算・新世代保存 + closing_events に amend を追記する
+ * (routes/corrections.ts の POST /:id/approve と同じ形。有給取得は集計(フレックス実績)に
+ * 影響するため、打刻修正と同様に amend の対象にする)。
  */
 
 import { Hono } from "hono";
 import {
+  appendClosingEvent,
+  getClosingSnapshots,
+  getClosingState,
   getTenantLeaveSettings,
   getUserById,
   insertAuditLog,
@@ -26,6 +37,7 @@ import {
   listGrantedOnDates,
   listLeaveGrants,
   listLeaveRequests,
+  saveClosingSnapshots,
   createLeaveRequest,
   getLeaveRequest,
   updateLeaveRequestStatus,
@@ -51,13 +63,19 @@ import {
 } from "@kizami/leave";
 import type { AppEnv } from "../auth/middleware.js";
 import { ForbiddenError, requirePermission } from "../authz.js";
+import { assertAmendAllowed } from "../lib/closing-guard.js";
+import { computeMonthlyOutputForUser } from "../lib/closing-amend.js";
+import { engineOutputFromSnapshots, snapshotInputsFromEngineOutput } from "../lib/closing-snapshot.js";
 import { resolveAccessibleUserIds } from "../lib/scope.js";
 import { buildSettingsTimeline, standardDayMinutesForDate, TZ_OFFSET_MINUTES_JST } from "../lib/settings.js";
-import { nowMinutes, todayLocalDate } from "../lib/time.js";
+import { nowMinutes, parseMonthParam, todayLocalDate } from "../lib/time.js";
 
 const BALANCE_VIEW_PERMISSION = "leave.balance.view";
 const GRANT_MANAGE_PERMISSION = "leave.grant.manage";
 const MAX_REASON_LENGTH = 500;
+
+/** pending 以外からの承認操作を、行が見つからなかった場合と区別するための内部シグナル(routes/corrections.ts と同じ形)。 */
+class NotPendingConflictError extends Error {}
 /** stocked 付与で「無期限」を表す番兵日付(leave_grants.expires_on は NOT NULL のため)。 */
 const STOCK_NO_EXPIRY_DATE = "9999-12-31";
 
@@ -343,7 +361,13 @@ export function createLeaveRoutes(db: Database) {
       createdAt: nowMinutes(),
     });
 
-    return c.json({ request: serializeLeaveRequest(created) }, 201);
+    // 締め後修正(amend): 申請自体は締め済み月でも作成できる。leaveDate の属する月が
+    // 締め済みなら targetMonthClosed=true を返し、UI が警告を出せるようにする
+    // (承認時にのみ closing.unlock を要求する — POST /requests/:id/approve 参照)。
+    const targetPeriod = leaveDate.slice(0, 7);
+    const targetPeriodState = await getClosingState(db, { tenantId: user.tenantId, period: targetPeriod });
+
+    return c.json({ request: serializeLeaveRequest(created), targetMonthClosed: targetPeriodState.status === "closed" }, 201);
   });
 
   // ---- POST /leave/requests/:id/approve ----
@@ -395,29 +419,111 @@ export function createLeaveRoutes(db: Database) {
 
     const now = nowMinutes();
     const selfApproved = existing.requestedBy === user.id;
+    const period = existing.leaveDate.slice(0, 7);
+    const parsedMonth = parseMonthParam(period);
+    if (!parsedMonth) {
+      throw new Error(`leave_request ${existing.id} has an unparsable leaveDate: ${existing.leaveDate}`);
+    }
 
-    const updated = await updateLeaveRequestStatus(db, {
-      id: existing.id,
-      tenantId: user.tenantId,
-      fromStatus: "pending",
-      status: "approved",
-      decidedBy: user.id,
-      decidedAt: now,
-      decisionNote: note,
-    });
-    if (!updated) return c.json({ error: "not_pending" }, 409);
+    const permissions = c.get("permissions");
 
-    await insertAuditLog(db, {
-      tenantId: user.tenantId,
-      actorId: user.id,
-      action: "leave_request.approve",
-      targetType: "leave_request",
-      targetId: existing.id,
-      detail: JSON.stringify({ selfApproved, leaveDate: existing.leaveDate, unit: existing.unit, leaveType: existing.leaveType }),
-      occurredAt: now,
-    });
+    // 締め後修正(amend): 対象日が締め済み月なら closing.unlock を持つ場合のみ承認できる。
+    // 反映(status 更新)・監査ログ・(必要なら)スナップショット再計算・amend 追記を
+    // 同一トランザクションで行う(routes/corrections.ts の POST /:id/approve と同じ形)。
+    let result: { updated: LeaveRequest; amended: boolean };
+    try {
+      result = await db.transaction(async (tx) => {
+        const wasClosed = await assertAmendAllowed(tx, { tenantId: user.tenantId, period, permissions });
 
-    return c.json({ request: serializeLeaveRequest(updated) }, 200);
+        const updatedRow = await updateLeaveRequestStatus(tx, {
+          id: existing.id,
+          tenantId: user.tenantId,
+          fromStatus: "pending",
+          status: "approved",
+          decidedBy: user.id,
+          decidedAt: now,
+          decisionNote: note,
+        });
+        if (!updatedRow) {
+          throw new NotPendingConflictError();
+        }
+
+        await insertAuditLog(tx, {
+          tenantId: user.tenantId,
+          actorId: user.id,
+          action: "leave_request.approve",
+          targetType: "leave_request",
+          targetId: existing.id,
+          detail: JSON.stringify({
+            selfApproved,
+            leaveDate: existing.leaveDate,
+            unit: existing.unit,
+            leaveType: existing.leaveType,
+            amended: wasClosed,
+          }),
+          occurredAt: now,
+        });
+
+        if (wasClosed) {
+          const beforeSnapshots = (await getClosingSnapshots(tx, { tenantId: user.tenantId, period })).filter(
+            (s) => s.userId === existing.userId,
+          );
+          const before = engineOutputFromSnapshots(beforeSnapshots);
+
+          const output = await computeMonthlyOutputForUser(tx, {
+            tenantId: user.tenantId,
+            userId: existing.userId,
+            year: parsedMonth.year,
+            month: parsedMonth.month,
+          });
+
+          const amendEvent = await appendClosingEvent(tx, {
+            tenantId: user.tenantId,
+            period,
+            event: "amend",
+            actorId: user.id,
+            note: null,
+            leaveRequestId: existing.id,
+            occurredAt: now,
+          });
+
+          await saveClosingSnapshots(
+            tx,
+            snapshotInputsFromEngineOutput({
+              tenantId: user.tenantId,
+              closingEventId: amendEvent.id,
+              userId: existing.userId,
+              totals: output.totals,
+              flexBalance: output.flexBalance,
+            }),
+          );
+
+          await insertAuditLog(tx, {
+            tenantId: user.tenantId,
+            actorId: user.id,
+            action: "closing.amend",
+            targetType: "closing",
+            targetId: period,
+            detail: JSON.stringify({
+              period,
+              leaveRequestId: existing.id,
+              before,
+              after: { totals: output.totals, flexBalance: output.flexBalance },
+            }),
+            occurredAt: now,
+          });
+        }
+
+        return { updated: updatedRow, amended: wasClosed };
+      });
+    } catch (err) {
+      if (err instanceof NotPendingConflictError) {
+        return c.json({ error: "not_pending" }, 409);
+      }
+      throw err;
+    }
+
+    return c.json({ request: serializeLeaveRequest(result.updated), amended: result.amended }, 200);
   });
 
   // ---- POST /leave/requests/:id/reject ----

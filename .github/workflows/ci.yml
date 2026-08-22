@@ -25,5 +25,9 @@ jobs:
 
       - run: pnpm test
 
+      # docs:api が失敗する = 公開APIが壊れたリンク({@link})や非公開の型を露出させている
+      # (設計の綻び)。docs:build は typedoc 生成物を含めた VitePress のフルビルドまで検証する。
+      - run: pnpm docs:build
+
       # Future: Add matrix tests across Node versions and runtimes
       # e.g. Node/workerd × SQLite/PostgreSQL/D1 combinations

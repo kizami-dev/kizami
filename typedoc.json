@@ -1,0 +1,33 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "entryPointStrategy": "packages",
+  "entryPoints": [
+    "packages/engine",
+    "packages/db",
+    "packages/authz",
+    "packages/notify",
+    "packages/crypto",
+    "packages/leave",
+    "packages/law"
+  ],
+  "plugin": ["typedoc-plugin-markdown"],
+  "out": "docs/api",
+  "readme": "none",
+  "sanitizeComments": true,
+  "packagesRequiringDocumentation": [
+    "@kizami/engine",
+    "@kizami/db",
+    "@kizami/authz",
+    "@kizami/notify",
+    "@kizami/crypto",
+    "@kizami/leave",
+    "@kizami/law"
+  ],
+  "validation": {
+    "invalidLink": true,
+    "notExported": true,
+    "notDocumented": true
+  },
+  "treatWarningsAsErrors": false,
+  "treatValidationWarningsAsErrors": false
+}

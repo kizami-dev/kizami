@@ -43,8 +43,11 @@ export interface ListValidPunchesParams {
 /**
  * 有効打刻(他イベントの supersedes_id に参照されておらず、kind != 'void')のみを
  * occurred_at 昇順で返す。
+ *
+ * `Database | Transaction` を受け取る(apps/api/src/lib/closing-amend.ts が締め後修正の
+ * 反映と同一トランザクションで月次を再計算するために必要)。
  */
-export async function listValidPunches(db: Database, params: ListValidPunchesParams): Promise<PunchEvent[]> {
+export async function listValidPunches(db: Database | Transaction, params: ListValidPunchesParams): Promise<PunchEvent[]> {
   const superseding = alias(punchEvents, "superseding");
 
   return db

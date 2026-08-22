@@ -185,9 +185,14 @@ export async function getLeaveRequest(db: Database, id: string): Promise<LeaveRe
   return rows[0] ?? null;
 }
 
-/** GET /attendance/monthly の paidLeave 組み立て、および残高・年5日計算の入力に使う。 */
+/**
+ * GET /attendance/monthly の paidLeave 組み立て、および残高・年5日計算の入力に使う。
+ *
+ * `Database | Transaction` を受け取る(apps/api/src/lib/closing-amend.ts が締め後修正の
+ * 反映と同一トランザクションで月次を再計算するために必要)。
+ */
 export async function listApprovedLeaveRequestsInRange(
-  db: Database,
+  db: Database | Transaction,
   params: { tenantId: string; userId: string; fromDate: string; toDate: string },
 ): Promise<LeaveRequest[]> {
   return db

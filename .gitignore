@@ -4,6 +4,7 @@ dist/
 .waku/
 docs/.vitepress/dist/
 docs/.vitepress/cache/
+docs/api/
 *.log
 .env
 .env.*

@@ -7,6 +7,7 @@ import {
   getClosingSnapshots,
   getClosingState,
   getEffectiveSettingsVersion,
+  getOriginalClosingSnapshots,
   listApprovedLeaveRequestsInRange,
   listValidPunches,
   type Database,
@@ -188,15 +189,29 @@ export function createAttendanceRoutes(db: Database) {
     // 遡及から二重に保護する。docs/design/v01-data-model.md 原則6・依頼の禁止事項)。
     // days の明細(日別内訳)は再計算のままでよい(依頼の指示通り。表示用の粒度であり、
     // 締め済みの確定値そのものは totals/flexBalance が担保する)。
+    //
+    // 締め後修正(amend, v0.4): closingState.history に amend イベントが含まれていれば、
+    // 現在の totals/flexBalance(最新世代)は当初の確定値から書き換わっている。UI が
+    // 「何が・いくら変わったか」を出せるよう、amended フラグと当初世代(最初の close)の
+    // 値(originalTotals/originalFlexBalance)を一緒に返す(給与の差額調整に必要 — 依頼)。
     const closingState = await getClosingState(db, { tenantId: user.tenantId, period });
     if (closingState.status === "closed") {
       const snapshots = await getClosingSnapshots(db, { tenantId: user.tenantId, period });
       const userSnapshots = snapshots.filter((s) => s.userId === user.id);
       const { totals, flexBalance } = engineOutputFromSnapshots(userSnapshots);
-      return c.json({ ...output, totals, flexBalance, closed: true });
+
+      const amended = closingState.history.some((e) => e.event === "amend");
+      if (amended) {
+        const originalSnapshots = await getOriginalClosingSnapshots(db, { tenantId: user.tenantId, period });
+        const userOriginalSnapshots = originalSnapshots.filter((s) => s.userId === user.id);
+        const { totals: originalTotals, flexBalance: originalFlexBalance } = engineOutputFromSnapshots(userOriginalSnapshots);
+        return c.json({ ...output, totals, flexBalance, closed: true, amended: true, originalTotals, originalFlexBalance });
+      }
+
+      return c.json({ ...output, totals, flexBalance, closed: true, amended: false });
     }
 
-    return c.json({ ...output, closed: false });
+    return c.json({ ...output, closed: false, amended: false });
   });
 
   return app;

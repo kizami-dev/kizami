@@ -1,6 +1,10 @@
 /**
- * 締め済み月への変更が全経路(打刻・修正申請の作成・承認)で拒否されることのテスト。
- * 参照: apps/api/src/lib/closing-guard.ts、依頼の禁止事項。
+ * 締め済み月への変更ガードのテスト。参照: apps/api/src/lib/closing-guard.ts。
+ *
+ * - POST /punches: 締め済み月への直接打刻は引き続き全経路で拒否する(意図的な制約)
+ * - POST /corrections: 締め済み月でも申請の*作成*はできる(targetMonthClosed で示す)。
+ *   承認(POST /:id/approve)は closing.unlock を持つ場合のみ許可する(締め後修正 = amend、
+ *   apps/api/test/closing-amend.test.ts でより詳しくカバーする)
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -75,7 +79,7 @@ describe("month-closed guard", () => {
     expect(res.status).toBe(201);
   });
 
-  it("POST /corrections (addition) rejects a proposedOccurredAt inside a closed month", async () => {
+  it("POST /corrections (addition) can still be created for a closed month, with targetMonthClosed=true", async () => {
     const { db, tenantId, userId, email, password } = await setupTestDb();
     await grantPermission(db, { tenantId, userId, permission: "closing.execute", scope: "tenant" });
     const app = createApp({ db });
@@ -92,11 +96,11 @@ describe("month-closed guard", () => {
         reason: "忘れていた",
       }),
     });
-    expect(res.status).toBe(409);
-    expect((await res.json()) as { error: string }).toEqual({ error: "month_closed" });
+    expect(res.status).toBe(201);
+    expect((await res.json()) as { targetMonthClosed: boolean }).toMatchObject({ targetMonthClosed: true });
   });
 
-  it("POST /corrections (correction of an existing punch) rejects when the target's original month is closed, even if the proposed date is in an open month", async () => {
+  it("POST /corrections (correction of an existing punch) can still be created when the target's original month is closed, with targetMonthClosed=true", async () => {
     const { db, tenantId, userId, email, password } = await setupTestDb();
     await grantPermission(db, { tenantId, userId, permission: "closing.execute", scope: "tenant" });
     const app = createApp({ db });
@@ -114,7 +118,7 @@ describe("month-closed guard", () => {
 
     await closePeriod(app, cookie, "2026-03");
 
-    // 訂正申請: 対象は締め済み(3月)の打刻、提案内容は開いている(4月)日時 — それでも拒否される
+    // 訂正申請: 対象は締め済み(3月)の打刻、提案内容は開いている(4月)日時 — 作成自体は成功する
     const res = await app.request("/corrections", {
       method: "POST",
       headers: { "content-type": "application/json", cookie },
@@ -125,11 +129,11 @@ describe("month-closed guard", () => {
         reason: "日付の訂正",
       }),
     });
-    expect(res.status).toBe(409);
-    expect((await res.json()) as { error: string }).toEqual({ error: "month_closed" });
+    expect(res.status).toBe(201);
+    expect((await res.json()) as { targetMonthClosed: boolean }).toMatchObject({ targetMonthClosed: true });
   });
 
-  it("POST /corrections/:id/approve rejects when the reflection destination is a month closed after the request was created", async () => {
+  it("POST /corrections/:id/approve rejects with month_closed_requires_unlock when the actor lacks closing.unlock for the closed reflection month", async () => {
     const { db, tenantId, userId, email, password } = await setupTestDb();
     await grantPermission(db, { tenantId, userId, permission: "closing.execute", scope: "tenant" });
     const app = createApp({ db });
@@ -148,17 +152,17 @@ describe("month-closed guard", () => {
     expect(createRes.status).toBe(201);
     const created = ((await createRes.json()) as { request: { id: string } }).request;
 
-    // 申請作成後に4月を締める
+    // 申請作成後に4月を締める(actor は closing.execute のみで closing.unlock は持たない)
     await closePeriod(app, cookie, "2026-04");
 
-    // 承認しようとすると、反映先(4月)が締め済みのため拒否される
+    // 承認しようとすると、反映先(4月)が締め済みで closing.unlock を持たないため拒否される
     const approveRes = await app.request(`/corrections/${created.id}/approve`, {
       method: "POST",
       headers: { "content-type": "application/json", cookie },
       body: JSON.stringify({}),
     });
     expect(approveRes.status).toBe(409);
-    expect((await approveRes.json()) as { error: string }).toEqual({ error: "month_closed" });
+    expect((await approveRes.json()) as { error: string }).toEqual({ error: "month_closed_requires_unlock" });
   });
 
   it("reopening a month allows punches again", async () => {

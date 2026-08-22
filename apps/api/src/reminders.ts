@@ -24,6 +24,7 @@ import { eq } from "drizzle-orm";
 import { createNotificationIfAbsent, listValidPunches, users, type Database, type Notification } from "@kizami/db";
 import { calculate, type CalcSettings, type EngineInput, type PunchKind, type SettingsSpan, type ValidPunch } from "@kizami/engine";
 import { dispatch, type DispatchResult, type NotificationChannel } from "@kizami/notify";
+import { computeMonthlyForUser } from "./lib/closing-amend.js";
 import { buildSettingsTimeline, TZ_OFFSET_MINUTES_JST } from "./lib/settings.js";
 import { dateFromEpochDay, daysInMonth, epochDayFromDate, formatDate, localMidnightUtcMinutes } from "./lib/time.js";
 
@@ -147,37 +148,19 @@ export interface MonthlyCalcResult {
  * calculate() 結果」を土台にする点は打刻忘れリマインドと同じであるため、月次集計の
  * 組み立てロジックを二重管理しない)。
  */
+/**
+ * 1人・1ヶ月分の集計。**承認済み有給を含む**(lib/closing-amend.ts の実装に委譲)。
+ *
+ * 2026-08-22: 以前はここに独立実装があり `paidLeave: []` 固定だったため、
+ * 締め処理・打刻忘れリマインド・36協定アラートが揃って有給を無視していた
+ * (確定値に有給が反映されない、時間外の見込みが過大になる)。
+ * 締め後修正の実装で有給込みの計算が用意されたのを機に一本化した。
+ */
 export async function calculateMonthlyForUser(
   db: Database,
   params: { tenantId: string; userId: string; year: number; month: number },
 ): Promise<MonthlyCalcResult> {
-  const { tenantId, userId, year, month } = params;
-  const tz = TZ_OFFSET_MINUTES_JST;
-
-  const monthStartEpochDay = epochDayFromDate(formatDate(year, month, 1));
-  const monthEndEpochDay = monthStartEpochDay + daysInMonth(year, month) - 1;
-  const monthStartDate = dateFromEpochDay(monthStartEpochDay);
-  const monthEndDate = dateFromEpochDay(monthEndEpochDay);
-
-  // 月初日界の前後1日のはみ出しを含めて有効打刻を取得する(attendance.ts /monthly と同じ余裕幅)
-  const fromMinutes = localMidnightUtcMinutes(monthStartEpochDay - 1, tz);
-  const toMinutes = localMidnightUtcMinutes(monthEndEpochDay + 2, tz) - 1;
-
-  const [punchRows, settingsTimeline] = await Promise.all([
-    listValidPunches(db, { tenantId, userId, fromMinutes, toMinutes }),
-    buildSettingsTimeline(db, { tenantId, userId, fromDate: monthStartDate, toDate: monthEndDate }),
-  ]);
-
-  const punches: ValidPunch[] = punchRows.map((p) => ({ kind: p.kind as PunchKind, occurredAt: p.occurredAt }));
-
-  const input: EngineInput = {
-    punches,
-    settingsTimeline,
-    period: { year, month },
-    paidLeave: [],
-  };
-
-  return { output: calculate(input), settingsTimeline };
+  return computeMonthlyForUser(db, params);
 }
 
 function missingClockOutNotificationContent(date: string): { title: string; body: string } {

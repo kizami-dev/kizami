@@ -69,7 +69,7 @@ export function resolveLawRules(date: string, profile: TenantLawProfile): LawRul
 }
 
 /**
- * 期間 [fromDate, toDate](ローカル日付、両端含む)内で法令が変わる日をすべて洗い出し、
+ * 期間 fromDate〜toDate(ローカル日付、両端含む)内で法令が変わる日をすべて洗い出し、
  * engine の SettingsSpan と同じ形( { from, ... } の配列、from 昇順)で返す。
  * 期間初日以前に有効な版を必ず1つ含む(先頭要素の from は fromDate そのもの)。
  */

@@ -10,7 +10,9 @@
     "build": "pnpm -r build",
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck",
-    "docs:dev": "pnpm --filter @kizami/docs dev"
+    "docs:dev": "pnpm --filter @kizami/docs dev",
+    "docs:api": "node scripts/typedoc-validate.mjs",
+    "docs:build": "pnpm docs:api && pnpm --filter @kizami/docs build"
   },
   "devDependencies": {
     "typescript": "^7.0.2",

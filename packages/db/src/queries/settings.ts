@@ -3,7 +3,7 @@
  */
 
 import { and, asc, desc, eq, gte, lte } from "drizzle-orm";
-import type { Database } from "../migrate.js";
+import type { Database, Transaction } from "../migrate.js";
 import { tenantSettingVersions } from "../schema/index.js";
 
 export type TenantSettingVersion = typeof tenantSettingVersions.$inferSelect;
@@ -14,9 +14,15 @@ export interface GetEffectiveSettingsVersionParams {
   onDate: string;
 }
 
-/** effective_from <= onDate の最新版を1件返す(存在しなければ null)。 */
+/**
+ * effective_from <= onDate の最新版を1件返す(存在しなければ null)。
+ *
+ * `Database | Transaction` を受け取る(apps/api/src/lib/closing-amend.ts が締め後修正の
+ * 反映と同一トランザクションで月次を再計算するために必要 — 経由する
+ * buildSettingsTimeline/getSettingsTimeline も同じ理由で widen してある)。
+ */
 export async function getEffectiveSettingsVersion(
-  db: Database,
+  db: Database | Transaction,
   params: GetEffectiveSettingsVersionParams,
 ): Promise<TenantSettingVersion | null> {
   const rows = await db
@@ -41,7 +47,7 @@ export interface GetSettingsTimelineParams {
  * 「期間初日(fromDate)以前の最新版1件」+「期間内([fromDate, toDate])の版全部」。
  * 前者と後者が同一行になる場合(ちょうど fromDate 始まりの版がある場合)は重複させない。
  */
-export async function getSettingsTimeline(db: Database, params: GetSettingsTimelineParams): Promise<TenantSettingVersion[]> {
+export async function getSettingsTimeline(db: Database | Transaction, params: GetSettingsTimelineParams): Promise<TenantSettingVersion[]> {
   const latestBeforeOrOnFrom = await getEffectiveSettingsVersion(db, { tenantId: params.tenantId, onDate: params.fromDate });
 
   const withinPeriod = await db

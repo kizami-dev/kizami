@@ -4,7 +4,7 @@ import type { Database } from "@kizami/db";
 import type { Encryptor } from "./lib/encryption.js";
 import { authMiddleware, type AppEnv } from "./auth/middleware.js";
 import { ForbiddenError } from "./authz.js";
-import { MonthClosedError } from "./lib/closing-guard.js";
+import { MonthClosedError, MonthClosedRequiresUnlockError } from "./lib/closing-guard.js";
 import { createAttendanceRoutes } from "./routes/attendance.js";
 import { createAuthRoutes } from "./routes/auth.js";
 import { createClosingsRoutes } from "./routes/closings.js";
@@ -83,6 +83,9 @@ export function createApp(deps: CreateAppDeps) {
   app.onError((err, c) => {
     if (err instanceof ForbiddenError) {
       return c.json({ error: "forbidden" }, 403);
+    }
+    if (err instanceof MonthClosedRequiresUnlockError) {
+      return c.json({ error: "month_closed_requires_unlock" }, 409);
     }
     if (err instanceof MonthClosedError) {
       return c.json({ error: "month_closed" }, 409);

@@ -8,7 +8,7 @@
  */
 
 import { and, asc, eq } from "drizzle-orm";
-import { getSettingsTimeline, userPolicyAssignments, workPolicyVersions, type Database } from "@kizami/db";
+import { getSettingsTimeline, userPolicyAssignments, workPolicyVersions, type Database, type Transaction } from "@kizami/db";
 import type { CalcSettings, LegalHolidayRule, SettingsSpan } from "@kizami/engine";
 
 /** Asia/Tokyo 固定(分)。テナントTZが設定可能になるのは v1.0 以降の想定。 */
@@ -44,8 +44,14 @@ export interface BuildSettingsTimelineParams {
  * 変更点(from 値)は「テナント設定の版」「ユーザーの制度割当」「割当先の制度の版」の
  * いずれかが変わりうる日の和集合とし、各変更点で3者を独立に(effectiveFrom <= date の
  * 最新行として)解決してマージする。
+ *
+ * `Database | Transaction` を受け取る(apps/api/src/lib/closing-amend.ts が締め後修正の
+ * 反映と同一トランザクションで月次を再計算するために必要)。
  */
-export async function buildSettingsTimeline(db: Database, params: BuildSettingsTimelineParams): Promise<SettingsSpan[]> {
+export async function buildSettingsTimeline(
+  db: Database | Transaction,
+  params: BuildSettingsTimelineParams,
+): Promise<SettingsSpan[]> {
   const { tenantId, userId, fromDate, toDate } = params;
 
   const tenantTimeline = await getSettingsTimeline(db, { tenantId, fromDate, toDate });
