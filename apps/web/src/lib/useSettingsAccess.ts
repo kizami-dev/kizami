@@ -24,6 +24,12 @@ export interface SettingsAccess {
    * プローブ結果をそのまま転用する(追加のリクエストを増やさない)。
    */
   help: boolean;
+  /**
+   * /settings/privacy(個人情報まわりの雛形。2026-08-22 追加)。
+   * GET /settings/privacy-templates が要求する権限は help と同一(notification.settings.manage)
+   * なので、help と同様に notifications のプローブ結果を転用する(追加のリクエストを増やさない)。
+   */
+  privacy: boolean;
 }
 
 const INITIAL: SettingsAccess = {
@@ -35,6 +41,7 @@ const INITIAL: SettingsAccess = {
   tenantProfile: false,
   leave: false,
   help: false,
+  privacy: false,
 };
 
 /**
@@ -68,7 +75,17 @@ export function useSettingsAccess(): SettingsAccess {
       probe(() => api.getLeaveSettings()),
     ]).then(([notifications, departments, members, presets, tenantProfile, leave]) => {
       if (cancelled) return;
-      setAccess({ loading: false, notifications, departments, members, presets, tenantProfile, leave, help: notifications });
+      setAccess({
+        loading: false,
+        notifications,
+        departments,
+        members,
+        presets,
+        tenantProfile,
+        leave,
+        help: notifications,
+        privacy: notifications,
+      });
     });
 
     return () => {

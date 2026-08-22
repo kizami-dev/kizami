@@ -181,6 +181,10 @@ export default defineConfig({
           { text: "権限カタログ", link: "/design/permission-catalog" },
         ],
       },
+      {
+        text: "導入ガイド",
+        items: [{ text: "個人情報まわりの導入対応", link: "/onboarding/privacy-setup" }],
+      },
       ...buildGuideSidebar(),
       ...buildCompanyDocsSidebar(),
       ...buildApiSidebar(),

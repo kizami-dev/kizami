@@ -32,6 +32,7 @@
 
 import { Hono } from "hono";
 import {
+  getEffectiveSettingsVersion,
   getNotificationSettings,
   getTenantById,
   getTenantLeaveSettings,
@@ -45,11 +46,13 @@ import {
 } from "@kizami/db";
 import { dispatch, type NotificationMessage, type SmtpSendFn } from "@kizami/notify";
 import { HOURLY_LEAVE_MAX_DAYS_MAX, HOURLY_LEAVE_MAX_DAYS_MIN } from "@kizami/leave";
+import { buildInternalTerms, buildPrivacyNotice, type PrivacyTemplateInput } from "@kizami/privacy-template";
 import type { AppEnv } from "../auth/middleware.js";
 import { requirePermission } from "../authz.js";
 import { decryptSecret, type Encryptor } from "../lib/encryption.js";
 import { buildNotificationChannels, isNotificationConfigUsable } from "../lib/notification-channels.js";
-import { nowMinutes } from "../lib/time.js";
+import { TZ_OFFSET_MINUTES_JST } from "../lib/settings.js";
+import { nowMinutes, todayLocalDate } from "../lib/time.js";
 import { HELP_OVERRIDES_PERMISSION } from "./help.js";
 
 const NOTIFICATION_SETTINGS_PERMISSION = "notification.settings.manage";
@@ -93,6 +96,31 @@ const TENANT_PROFILE_PERMISSION = "alert.labor_limit.configure";
  * 補足情報」なので、書き込み権限も help_overrides と揃える。
  */
 const WORK_RULES_URL_PERMISSION = HELP_OVERRIDES_PERMISSION;
+
+/**
+ * GET /settings/privacy-templates(個人情報まわりの雛形。2026-08-22 追加)が要求する権限。
+ *
+ * 依頼どおり「権限は社内規定の編集と同じもの」— HELP_OVERRIDES_PERMISSION
+ * (notification.settings.manage の転用。理由は help.ts 冒頭コメント参照)をそのまま使う。
+ */
+const PRIVACY_TEMPLATES_PERMISSION = HELP_OVERRIDES_PERMISSION;
+
+/**
+ * 打刻記録本体(出勤・退勤・休憩時刻等)の保存期間の説明文。
+ *
+ * 判断点(独自判断、完了報告に明記): tenant_setting_versions には GPS 座標専用の
+ * `gpsRetentionDays` はあるが、打刻記録本体そのものの保存期間を表すテナント設定は
+ * 存在しない(勤怠データは「賃金台帳・労働者名簿」の基礎資料として労働基準法109条が
+ * 定める保存義務にそのまま従う運用のため、テナントごとに変わる値ではない)。
+ * そのため、この説明文は入力ではなく固定文言としてここで組み立て、
+ * PrivacyTemplateInput.recordRetentionDescription に渡す。
+ *
+ * 法令上の根拠(2026-08-22 時点でウェブ検索により確認済み、詳細は完了報告参照):
+ * 労働基準法109条は記録の保存期間を「5年間」と定めるが、令和2年改正の経過措置(同法附則143条2項)
+ * により当分の間は3年間で足りる。
+ */
+const RECORD_RETENTION_DESCRIPTION =
+  "打刻記録(出勤・退勤・休憩時刻等)は、労働基準法第109条が定める記録の保存義務にもとづき、最後の記載日から5年間(令和2年改正の経過措置により当分の間は3年間)保存します。";
 
 export interface SettingsRoutesDeps {
   /** webhookChannel の fetch 差し替え(テスト用)。省略時はグローバル fetch */
@@ -583,6 +611,43 @@ export function createSettingsRoutes(db: Database, deps: SettingsRoutesDeps = {}
     });
 
     return c.json({ workRulesUrl: updated.workRulesUrl });
+  });
+
+  // ---- GET /settings/privacy-templates(個人情報まわりの雛形。2026-08-22 追加) ----
+  // docs/design/ui-direction.md「個人情報まわりの雛形」: 現在のテナント設定(GPSの有効/無効・
+  // 保持期間・就業規則リンク)から生成した雛形2種を返す。generatedFrom は「どの設定値をもとに
+  // 生成したか」を担当者が確認できるように、実際に使った入力をそのまま返す。
+  app.get("/privacy-templates", async (c) => {
+    requirePermission(c, PRIVACY_TEMPLATES_PERMISSION, "tenant");
+    const user = c.get("user");
+
+    const tenant = await getTenantById(db, user.tenantId);
+    if (!tenant) {
+      return c.json({ error: "tenant_not_found" }, 404);
+    }
+
+    // GPS の有効/無効・保持期間は effective-dated な tenant_setting_versions が持つため、
+    // 「今日」時点で有効な版を解決する(buildSettingsTimeline と同じ TZ 前提)。
+    const today = todayLocalDate(TZ_OFFSET_MINUTES_JST);
+    const settingsVersion = await getEffectiveSettingsVersion(db, { tenantId: user.tenantId, onDate: today });
+
+    // 判断点: 開示・訂正等の請求窓口(contactPoint)を保持するテナント設定は現状存在しない
+    // (work_rules_url のような単一列すら未定義)。新規スキーマ追加は依頼のスコープ外と判断し、
+    // 常に null を渡す(生成される雛形側がプレースホルダの記入例を表示する)。完了報告に明記。
+    const generatedFrom: PrivacyTemplateInput = {
+      tenantName: tenant.name,
+      gpsEnabled: settingsVersion?.gpsEnabled ?? false,
+      gpsRetentionDays: settingsVersion?.gpsRetentionDays ?? null,
+      recordRetentionDescription: RECORD_RETENTION_DESCRIPTION,
+      workRulesUrl: tenant.workRulesUrl,
+      contactPoint: null,
+    };
+
+    return c.json({
+      privacyNotice: buildPrivacyNotice(generatedFrom),
+      internalTerms: buildInternalTerms(generatedFrom),
+      generatedFrom,
+    });
   });
 
   return app;

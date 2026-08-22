@@ -1,0 +1,14 @@
+{
+  "name": "@kizami/privacy-template",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "従業員向けプライバシー通知・社内利用規約の雛形を、テナント設定から組み立てる純関数(ランタイム非依存)",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  }
+}

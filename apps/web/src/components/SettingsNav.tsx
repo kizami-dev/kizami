@@ -4,7 +4,7 @@ import { Link } from "waku";
 import { messages } from "../lib/messages";
 import { useSettingsAccess } from "../lib/useSettingsAccess";
 
-export type SettingsSection = "notifications" | "departments" | "members" | "presets" | "tenantProfile" | "leave" | "help";
+export type SettingsSection = "notifications" | "departments" | "members" | "presets" | "tenantProfile" | "leave" | "help" | "privacy";
 
 type SettingsRoute =
   | "/settings/notifications"
@@ -13,7 +13,8 @@ type SettingsRoute =
   | "/settings/presets"
   | "/settings/tenant-profile"
   | "/settings/leave"
-  | "/settings/help";
+  | "/settings/help"
+  | "/settings/privacy";
 
 /**
  * /settings/* 画面間の行き来用サブナビ(要件: 既存の設定ナビから各画面へ辿れること)。
@@ -36,6 +37,7 @@ export function SettingsNav({ active }: { active: SettingsSection }) {
     },
     { key: "leave", to: "/settings/leave", label: messages.settingsNav.leave, enabled: access.leave },
     { key: "help", to: "/settings/help", label: messages.settingsNav.help, enabled: access.help },
+    { key: "privacy", to: "/settings/privacy", label: messages.settingsNav.privacy, enabled: access.privacy },
   ];
   const visible = items.filter((i) => i.enabled);
   if (visible.length === 0) return null;

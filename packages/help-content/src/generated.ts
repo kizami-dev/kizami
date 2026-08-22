@@ -16,7 +16,7 @@ export type HelpAudience = "employee" | "admin";
 export type HelpOrigin = "law" | "product" | "company";
 
 /** 参照キー(ドット区切り)の文字列リテラルunion。存在しないキーの参照はコンパイルエラーになる。 */
-export type HelpKey = "agreement36.limits" | "attendance.day-boundary" | "attendance.flex-frame" | "attendance.late-night" | "attendance.legal-holiday" | "attendance.minute-unit" | "attendance.warnings" | "closing.amend" | "closing.execute" | "closing.unlock" | "correction.flow" | "law.versioning" | "leave.grant" | "leave.hourly" | "leave.mandatory-five-days" | "overtime.60h" | "permission.presets" | "tenant.special-provision";
+export type HelpKey = "agreement36.limits" | "attendance.day-boundary" | "attendance.flex-frame" | "attendance.late-night" | "attendance.legal-holiday" | "attendance.minute-unit" | "attendance.warnings" | "closing.amend" | "closing.execute" | "closing.unlock" | "correction.flow" | "law.versioning" | "leave.grant" | "leave.hourly" | "leave.mandatory-five-days" | "overtime.60h" | "permission.presets" | "privacy.internal-terms-template" | "privacy.notice-template" | "tenant.special-provision";
 
 /** 1件のヘルプエントリ(packages/help-content/README.md のfrontmatter仕様に対応)。 */
 export interface HelpEntry {
@@ -169,6 +169,22 @@ export const HELP: Record<HelpKey, HelpEntry> = {
     origin: "product",
     summary: "権限プリセットは複数を割り当てると合算され、承認・実行などの操作系の権限には対応する閲覧権限が自動的に含まれます。特定の権限を打ち消す拒否ルールはありません。",
     body: "# 権限プリセットの考え方\n\n権限プリセットは、権限のON/OFFと適用範囲(スコープ)を組み合わせて定義する、割り当て単位です。\n\n## 複数割当は合算される\n\n1人のメンバーに複数のプリセットを割り当てた場合、持てる権限は**合算(足し算)**されます。\n同じ権限に異なるスコープが割り当てられている場合は、広い方のスコープが有効になります。\n\n## 操作は閲覧を含意する\n\n承認・実行・管理などの操作系の権限をONにすると、その操作に必要な範囲の閲覧権限は\n自動的に有効になります。たとえば「打刻修正申請を承認できる」をONにすると、対象範囲の\n修正申請・勤怠記録の閲覧も別途ONにしなくても行えます。\n\n## 拒否(deny)ルールは存在しない\n\nKIZAMI の権限モデルには、特定の権限を明示的に打ち消す「拒否」ルールがありません。\n複数のプリセットを割り当てた結果、意図せず広い権限を持たせてしまわないよう、割当時には\nそれぞれのプリセットが実際にONにしている権限の一覧を確認してください。",
+  },
+  "privacy.internal-terms-template": {
+    key: "privacy.internal-terms-template",
+    audience: ["employee","admin"],
+    origin: "product",
+    summary: "正確な打刻の義務・代理打刻の禁止など、打刻に関する社内利用規約の雛形を「設定 > 個人情報」画面から取得できます。",
+    body: "# 打刻に関する社内利用規約の雛形\n\n正確な打刻の義務・代理打刻の禁止・打刻を忘れた場合の修正申請の手続き・不正打刻の扱いを\nまとめた社内利用規約の雛形を、「設定 > 個人情報」画面から取得できます。\n\nこの雛形はそのまま就業規則の一部にする、あるいは別紙として従業員に周知するなど、\n自社の運用に合わせて活用してください。就業規則へのリンクを設定している場合は、\n雛形の末尾に自動的に案内が付きます。",
+    companyExample: "本規約は就業規則第◯条(服務規律)の一部として扱います。違反時の取扱いは就業規則の懲戒規定によります。",
+  },
+  "privacy.notice-template": {
+    key: "privacy.notice-template",
+    audience: ["employee","admin"],
+    origin: "product",
+    summary: "打刻・IP・UA・GPS座標などの個人情報について、従業員に公表するプライバシー通知の雛形を「設定 > 個人情報」画面から取得できます。現在のGPS設定・保存期間から自動生成されます。",
+    body: "# 従業員向けプライバシー通知の雛形\n\n打刻記録・IPアドレス・ユーザーエージェント・GPS座標(有効な場合)は従業員の個人情報です。\nこれらの取得目的・保存期間を従業員に公表する義務(個人情報保護法第17条・第18条・第21条)を\n負うのは、KIZAMI プロジェクトではなく**導入企業**です。\n\nKIZAMI は「設定 > 個人情報」画面から、現在のテナント設定(GPSの有効/無効・保持期間)を\n反映したプライバシー通知の雛形を自動生成します。GPSが無効な場合は位置情報に関する項目は\n表示されません。\n\n## 使い方\n\n1. 「設定 > 個人情報」画面で生成された文面を確認する\n2. 自社の実情(開示・訂正の請求窓口など)に合わせて見直す\n3. 従業員へ周知する(掲示・イントラ掲載・雇用契約書への添付など、方法は自社で選ぶ)\n\n生成される文面はあくまで雛形であり、法的助言ではありません。内容に不安がある場合は\n社会保険労務士・弁護士等の専門家に確認してください。",
+    companyExample: "当社では2026年8月に本雛形をもとにプライバシー通知を作成し、イントラの「お知らせ」に掲載しました。\n改定した場合は、掲載日をここに追記してください。",
   },
   "tenant.special-provision": {
     key: "tenant.special-provision",

@@ -287,6 +287,7 @@ export const messages = {
     tenantProfile: "テナントプロファイル",
     leave: "有給休暇",
     help: "社内規定",
+    privacy: "個人情報",
   },
 
   settingsHub: {
@@ -307,6 +308,8 @@ export const messages = {
     leaveDesc: "付与方式・時間単位年休・積立休暇のテナント全体の設定を行います。",
     helpTitle: "社内規定",
     helpDesc: "ヘルプに表示する自社のルールと、就業規則へのリンクを設定します。",
+    privacyTitle: "個人情報",
+    privacyDesc: "従業員向けプライバシー通知・社内利用規約の雛形を、現在の設定から確認します。",
   },
 
   /** 月次締め・CSVエクスポート(/monthly 画面、v0.3)。要件 §6(締めと出口)・§10(コンテキストヘルプ)。 */
@@ -837,6 +840,42 @@ export const messages = {
       forbidden: "この操作を行う権限がありません",
       default: "処理に失敗しました。もう一度お試しください",
     },
+  },
+
+  /**
+   * 個人情報まわりの雛形画面(/settings/privacy、2026-08-22 追加)。
+   * docs/design/ui-direction.md「個人情報まわりの雛形」の要件どおり、雛形であって
+   * 法的助言ではないことを画面上に常時表示する。
+   */
+  settingsPrivacy: {
+    title: "個人情報",
+    tagline: "従業員向けプライバシー通知・社内利用規約の雛形を、現在の設定から生成します。",
+    noPermission: "この設定を見る権限がありません",
+    loadFailed: "情報の取得に失敗しました。もう一度お試しください",
+
+    disclaimer:
+      "この文面は KIZAMI が提供する雛形です。自社の実情に合わせて必ず見直し、必要に応じて専門家(社会保険労務士・弁護士等)に確認してください。法的助言ではありません。",
+
+    generatedFromTitle: "この雛形のもとになった設定",
+    generatedFromGpsOn: "GPS: 有効",
+    generatedFromGpsOff: "GPS: 無効",
+    generatedFromRetention: (days: number) => `位置情報の保持期間: ${days}日`,
+    generatedFromRetentionSame: "位置情報の保持期間: 打刻記録と同一",
+    generatedFromNote: "GPSの有効/無効や保持期間は「設定 > テナントプロファイル」等、テナント設定側の変更に応じて次回表示時に更新されます。",
+
+    noticeSectionTitle: "従業員向けプライバシー通知",
+    noticeSectionDesc: "取得する項目・利用目的・保存期間・開示等の請求先をまとめた雛形です。従業員への周知にご利用ください。",
+    termsSectionTitle: "社内利用規約(打刻に関するルール)",
+    termsSectionDesc: "正確な打刻の義務・代理打刻の禁止・修正申請の手続きなどをまとめた雛形です。",
+
+    copy: "コピー",
+    copied: "コピーしました",
+    copyFailed: "コピーに失敗しました。手動で選択してコピーしてください",
+    download: "Markdownをダウンロード",
+    registerAsCompanyRule: "社内規定として登録",
+    registering: "登録中…",
+    registerSuccess: "社内規定として登録しました。「設定 > 社内規定」から編集できます。",
+    registerFailed: "登録に失敗しました。もう一度お試しください",
   },
 } as const;
 

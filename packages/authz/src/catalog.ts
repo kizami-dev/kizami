@@ -179,7 +179,9 @@ export const PERMISSION_CATALOG: readonly PermissionCatalogEntry[] = [
     "部署ツリーを管理できる",
     "部署の作成・編集・異動(部署ツリーの構成変更)を行える",
     DEPT_AND_DESCENDANTS_UP,
-    false,
+    // 2026-08-22 に危険フラグへ格上げ。スコープの実判定(apps/api/src/lib/scope.ts)が入り、
+    // 部署の移動が「誰が誰を閲覧・承認できるか」を変えるようになったため、実質的に権限変更にあたる。
+    true,
   ),
 
   // 1.10 テナント設定

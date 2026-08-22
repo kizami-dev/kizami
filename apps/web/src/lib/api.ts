@@ -467,6 +467,23 @@ export interface HelpOverridesDto {
   workRulesUrl: string | null;
 }
 
+/**
+ * GET /settings/privacy-templates(notification.settings.manage、社内規定編集と同じ権限)のレスポンス。
+ * generatedFrom は「どの設定値から生成したか」を担当者が確認できるように、実際に使った入力を返す。
+ */
+export interface PrivacyTemplatesDto {
+  privacyNotice: string;
+  internalTerms: string;
+  generatedFrom: {
+    tenantName: string;
+    gpsEnabled: boolean;
+    gpsRetentionDays: number | null;
+    recordRetentionDescription: string;
+    workRulesUrl: string | null;
+    contactPoint: string | null;
+  };
+}
+
 export interface StockConversionCandidateDto {
   sourceGrantId: string;
   leftoverMinutes: number;
@@ -711,6 +728,11 @@ export const api = {
   /** PUT /settings/work-rules-url(notification.settings.manage)。url="" で削除。 */
   async updateWorkRulesUrl(url: string): Promise<{ workRulesUrl: string | null }> {
     return request("/settings/work-rules-url", { method: "PUT", body: JSON.stringify({ url }) });
+  },
+
+  /** GET /settings/privacy-templates(notification.settings.manage)。現在の設定から生成された雛形2種を返す。 */
+  async getPrivacyTemplates(): Promise<PrivacyTemplatesDto> {
+    return request("/settings/privacy-templates");
   },
 };
 

@@ -44,6 +44,9 @@ importers:
       '@kizami/notify':
         specifier: workspace:*
         version: link:../../packages/notify
+      '@kizami/privacy-template':
+        specifier: workspace:*
+        version: link:../../packages/privacy-template
       bullmq:
         specifier: ^6.2.0
         version: 6.2.0(ioredis@6.0.0)
@@ -151,6 +154,8 @@ importers:
   packages/leave: {}
 
   packages/notify: {}
+
+  packages/privacy-template: {}
 
 packages:
 

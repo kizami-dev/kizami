@@ -17,7 +17,8 @@ type SettingsRoute =
   | "/settings/presets"
   | "/settings/tenant-profile"
   | "/settings/leave"
-  | "/settings/help";
+  | "/settings/help"
+  | "/settings/privacy";
 
 export function SettingsHubView() {
   const guard = useAuthGuard();
@@ -72,6 +73,13 @@ export function SettingsHubView() {
       to: "/settings/help" as const,
       title: messages.settingsHub.helpTitle,
       desc: messages.settingsHub.helpDesc,
+    },
+    {
+      key: "privacy",
+      enabled: access.privacy,
+      to: "/settings/privacy" as const,
+      title: messages.settingsHub.privacyTitle,
+      desc: messages.settingsHub.privacyDesc,
     },
   ].filter((c) => c.enabled);
 

@@ -1,0 +1,55 @@
+/**
+ * 個人情報まわりの雛形画面(/settings/privacy)のスタイル。
+ *
+ * .settings-notif__*(settings.css)の枠組みをそのまま使い、この画面固有の
+ * 「雛形カード + 免責の注記」だけをここに足す(help-settings.css と同じ方針)。
+ */
+
+.privacy-template__main {
+  max-width: 52rem;
+}
+
+.privacy-template__disclaimer {
+  border: var(--border-hair);
+  border-left: 4px solid var(--k-key);
+  border-radius: var(--radius-s);
+  padding: var(--space-3) var(--space-4);
+  font-size: 0.85rem;
+  line-height: 1.7;
+  background: rgba(26, 26, 26, 0.03);
+  color: var(--k-key);
+}
+
+.privacy-template__generated-from-list {
+  margin: 0;
+  padding-left: 1.2rem;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: 0.88rem;
+}
+
+.privacy-template__card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.privacy-template__body {
+  max-height: 28rem;
+  overflow-y: auto;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  border: var(--border-hair);
+  border-radius: var(--radius-m);
+  padding: var(--space-4);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.8rem;
+  line-height: 1.7;
+  background: rgba(26, 26, 26, 0.02);
+}
+
+.privacy-template__actions {
+  flex-wrap: wrap;
+}

@@ -19,6 +19,7 @@
     "@kizami/law": "workspace:*",
     "@kizami/leave": "workspace:*",
     "@kizami/notify": "workspace:*",
+    "@kizami/privacy-template": "workspace:*",
     "bullmq": "^6.2.0",
     "drizzle-orm": "0.45.2",
     "hono": "^4.13.3",
