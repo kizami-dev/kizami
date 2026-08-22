@@ -34,18 +34,28 @@ import { Hono } from "hono";
 import {
   getEffectiveSettingsVersion,
   getNotificationSettings,
+  getOrCreateTenantWorkPolicy,
   getTenantById,
   getTenantLeaveSettings,
+  getTenantWorkPolicy,
   insertAuditLog,
+  insertTenantSettingVersion,
+  insertWorkPolicyVersion,
+  listTenantSettingVersions,
+  listWorkPolicyVersions,
   updateTenantLawProfile,
+  updateTenantPrivacyContact,
   updateTenantWorkRulesUrl,
   upsertNotificationSettings,
   upsertTenantLeaveSettings,
   type Database,
   type TenantNotificationSettings,
+  type TenantSettingVersion,
+  type WorkPolicyVersion,
 } from "@kizami/db";
 import { dispatch, type NotificationMessage, type SmtpSendFn } from "@kizami/notify";
 import { HOURLY_LEAVE_MAX_DAYS_MAX, HOURLY_LEAVE_MAX_DAYS_MIN } from "@kizami/leave";
+import type { LegalHolidayRule } from "@kizami/engine";
 import { buildInternalTerms, buildPrivacyNotice, type PrivacyTemplateInput } from "@kizami/privacy-template";
 import type { AppEnv } from "../auth/middleware.js";
 import { requirePermission } from "../authz.js";
@@ -104,6 +114,33 @@ const WORK_RULES_URL_PERMISSION = HELP_OVERRIDES_PERMISSION;
  * (notification.settings.manage の転用。理由は help.ts 冒頭コメント参照)をそのまま使う。
  */
 const PRIVACY_TEMPLATES_PERMISSION = HELP_OVERRIDES_PERMISSION;
+
+/**
+ * GET/POST /settings/attendance(日界・法定休日・休憩ルール・GPS の版管理。2026-08-22 追加)が
+ * 要求する権限。
+ *
+ * 判断点(完了報告に明記): この1エンドポイントは1行(tenant_setting_versions の1版)に
+ * 日界・法定休日・休憩ルール・GPS の4項目をまとめて持つため、カタログ上は別々の権限キー
+ * (`tenant_settings.calendar.manage` と `tenant_settings.gps.manage`)に分かれる項目が
+ * 同じ POST 1回に載る。依頼の「項目ごとに正しく振り分けること」を満たすため、
+ * ①GET/POST とも常に `tenant_settings.calendar.manage` を要求し(日界・法定休日・休憩ルールは
+ * 常にこの権限で編集できる)、②POST で GPS の値(gpsEnabled/gpsRetentionDays)が現在の
+ * 実効値から変わる場合のみ、追加で `tenant_settings.gps.manage` も要求する(値を変えず
+ * そのまま送っただけなら calendar.manage だけで通る)。これにより「カレンダー担当者は
+ * GPSを勝手に有効化できない」が両立する。
+ */
+const ATTENDANCE_CALENDAR_PERMISSION = "tenant_settings.calendar.manage";
+const ATTENDANCE_GPS_PERMISSION = "tenant_settings.gps.manage";
+
+/** GET/POST /settings/work-policy(フレックス設定の版管理。2026-08-22 追加)が要求する権限。 */
+const WORK_POLICY_PERMISSION = "tenant_settings.flex.manage";
+
+/**
+ * GET/PUT /settings/privacy-contact(保存期間の説明文・開示請求窓口。2026-08-22 追加)が
+ * 要求する権限。判断点: この2項目は GET /settings/privacy-templates の入力そのものなので、
+ * 同エンドポイントと同じ PRIVACY_TEMPLATES_PERMISSION(上で定義済み。HELP_OVERRIDES_PERMISSION の
+ * 転用)をそのまま使う(新規の権限キーは増やさない)。
+ */
 
 /**
  * 打刻記録本体(出勤・退勤・休憩時刻等)の保存期間の説明文。
@@ -203,6 +240,41 @@ function isValidHttpUrl(value: string): boolean {
   }
 }
 
+/** "YYYY-MM-DD" の書式チェックのみ(暦としての正当性チェックはしない、既存 routes/leave.ts の DATE_RE と同じ流儀)。 */
+const LOCAL_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+function isValidLocalDate(value: unknown): value is string {
+  return typeof value === "string" && LOCAL_DATE_RE.test(value);
+}
+
+/**
+ * LegalHolidayRule(packages/engine の型)のランタイム検証。
+ * kind: "weekday"(0〜6) または kind: "dates"(1件以上、要素は LOCAL_DATE_RE 形式)。
+ */
+function isValidLegalHolidayRule(value: unknown): value is LegalHolidayRule {
+  if (typeof value !== "object" || value === null) return false;
+  const v = value as Record<string, unknown>;
+  if (v.kind === "weekday") {
+    return typeof v.weekday === "number" && Number.isInteger(v.weekday) && v.weekday >= 0 && v.weekday <= 6;
+  }
+  if (v.kind === "dates") {
+    return Array.isArray(v.dates) && v.dates.length > 0 && v.dates.every((d) => isValidLocalDate(d));
+  }
+  return false;
+}
+
+/**
+ * breakRule のランタイム検証。判断点(完了報告に明記): DB スキーマのコメント
+ * (packages/db/src/schema/settings.ts)は将来値として "auto"/"both" を挙げているが、
+ * engine の CalcSettings["breakRule"] は v0.1 時点で `{ mode: "punch" }` しか受け付けない
+ * (packages/engine/src/types.ts)。未実装のモードを保存できてしまうと集計側が誤ったキャストで
+ * 静かに壊れるため、ここでは "punch" のみを許可する(engine 側が対応したら緩める)。
+ */
+function isValidBreakRule(value: unknown): value is { mode: "punch" } {
+  if (typeof value !== "object" || value === null) return false;
+  return (value as Record<string, unknown>).mode === "punch";
+}
+
 interface PutBody {
   webhookEnabled?: unknown;
   webhookUrl?: unknown;
@@ -223,6 +295,40 @@ async function parseJsonBody(c: { req: { json: () => Promise<unknown> } }): Prom
   }
   if (typeof body !== "object" || body === null) return null;
   return body as PutBody;
+}
+
+/** GET /settings/attendance のレスポンス要素(1版分)。DB の JSON 文字列をパースして返す。 */
+function serializeTenantSettingVersion(v: TenantSettingVersion) {
+  return {
+    effectiveFrom: v.effectiveFrom,
+    dayBoundaryMinutes: v.dayBoundaryMinutes,
+    legalHolidayRule: JSON.parse(v.legalHolidayRule) as LegalHolidayRule,
+    breakRule: JSON.parse(v.breakRule) as { mode: "punch" },
+    gpsEnabled: v.gpsEnabled,
+    gpsRetentionDays: v.gpsRetentionDays,
+    createdAt: v.createdAt,
+  };
+}
+
+/** GET /settings/work-policy のレスポンス要素(1版分)。 */
+function serializeWorkPolicyVersion(v: WorkPolicyVersion) {
+  return {
+    effectiveFrom: v.effectiveFrom,
+    settlementPeriod: v.settlementPeriod,
+    standardDayMinutes: v.standardDayMinutes,
+    createdAt: v.createdAt,
+  };
+}
+
+async function parseJsonRecord(c: { req: { json: () => Promise<unknown> } }): Promise<Record<string, unknown> | null> {
+  let body: unknown;
+  try {
+    body = await c.req.json();
+  } catch {
+    return null;
+  }
+  if (typeof body !== "object" || body === null) return null;
+  return body as Record<string, unknown>;
 }
 
 export function createSettingsRoutes(db: Database, deps: SettingsRoutesDeps = {}) {
@@ -631,16 +737,16 @@ export function createSettingsRoutes(db: Database, deps: SettingsRoutesDeps = {}
     const today = todayLocalDate(TZ_OFFSET_MINUTES_JST);
     const settingsVersion = await getEffectiveSettingsVersion(db, { tenantId: user.tenantId, onDate: today });
 
-    // 判断点: 開示・訂正等の請求窓口(contactPoint)を保持するテナント設定は現状存在しない
-    // (work_rules_url のような単一列すら未定義)。新規スキーマ追加は依頼のスコープ外と判断し、
-    // 常に null を渡す(生成される雛形側がプレースホルダの記入例を表示する)。完了報告に明記。
+    // 保存期間の説明文・開示請求窓口は GET/PUT /settings/privacy-contact(下記)で
+    // テナントごとに設定できる(2026-08-22 追加)。未設定(null)の場合は今まで通り
+    // 固定文言/プレースホルダにフォールバックする。
     const generatedFrom: PrivacyTemplateInput = {
       tenantName: tenant.name,
       gpsEnabled: settingsVersion?.gpsEnabled ?? false,
       gpsRetentionDays: settingsVersion?.gpsRetentionDays ?? null,
-      recordRetentionDescription: RECORD_RETENTION_DESCRIPTION,
+      recordRetentionDescription: tenant.recordRetentionDescription ?? RECORD_RETENTION_DESCRIPTION,
       workRulesUrl: tenant.workRulesUrl,
-      contactPoint: null,
+      contactPoint: tenant.privacyContactPoint,
     };
 
     return c.json({
@@ -648,6 +754,253 @@ export function createSettingsRoutes(db: Database, deps: SettingsRoutesDeps = {}
       internalTerms: buildInternalTerms(generatedFrom),
       generatedFrom,
     });
+  });
+
+  // ---- GET/POST /settings/attendance(日界・法定休日・休憩ルール・GPS の版管理。2026-08-22 追加) ----
+  // 原則6(docs/design/v01-data-model.md): 編集UIは新しい版を追加しかできない。既存の版は
+  // 一切 UPDATE しない(過去の計算結果を変えないため)。
+
+  app.get("/attendance", async (c) => {
+    requirePermission(c, ATTENDANCE_CALENDAR_PERMISSION, "tenant");
+    const user = c.get("user");
+
+    const history = await listTenantSettingVersions(db, user.tenantId);
+    const today = todayLocalDate(TZ_OFFSET_MINUTES_JST);
+    const effective = await getEffectiveSettingsVersion(db, { tenantId: user.tenantId, onDate: today });
+
+    return c.json({
+      effective: effective ? serializeTenantSettingVersion(effective) : null,
+      history: history.map(serializeTenantSettingVersion),
+    });
+  });
+
+  app.post("/attendance", async (c) => {
+    // 日界・法定休日・休憩ルールは常に calendar.manage で編集できる(GPS 判断は下記参照)。
+    requirePermission(c, ATTENDANCE_CALENDAR_PERMISSION, "tenant");
+    const user = c.get("user");
+
+    const body = await parseJsonRecord(c);
+    if (body === null) return c.json({ error: "invalid_body" }, 400);
+
+    if (!isValidLocalDate(body.effectiveFrom)) return c.json({ error: "invalid_effective_from" }, 400);
+    const effectiveFrom = body.effectiveFrom;
+
+    if (
+      typeof body.dayBoundaryMinutes !== "number" ||
+      !Number.isInteger(body.dayBoundaryMinutes) ||
+      body.dayBoundaryMinutes < 0 ||
+      body.dayBoundaryMinutes > 1439
+    ) {
+      return c.json({ error: "invalid_day_boundary_minutes" }, 400);
+    }
+    const dayBoundaryMinutes = body.dayBoundaryMinutes;
+
+    if (!isValidLegalHolidayRule(body.legalHolidayRule)) return c.json({ error: "invalid_legal_holiday_rule" }, 400);
+    const legalHolidayRule = body.legalHolidayRule;
+
+    if (!isValidBreakRule(body.breakRule)) return c.json({ error: "invalid_break_rule" }, 400);
+    const breakRule = body.breakRule;
+
+    if (typeof body.gpsEnabled !== "boolean") return c.json({ error: "invalid_gps_enabled" }, 400);
+    const gpsEnabled = body.gpsEnabled;
+
+    let gpsRetentionDays: number | null = null;
+    if (body.gpsRetentionDays !== null && body.gpsRetentionDays !== undefined) {
+      if (typeof body.gpsRetentionDays !== "number" || !Number.isInteger(body.gpsRetentionDays) || body.gpsRetentionDays <= 0) {
+        return c.json({ error: "invalid_gps_retention_days" }, 400);
+      }
+      gpsRetentionDays = body.gpsRetentionDays;
+    }
+
+    // 過去日の版追加は禁止(当日以降のみ許可) — 過去の計算結果を変えてしまうため。
+    const today = todayLocalDate(TZ_OFFSET_MINUTES_JST);
+    if (effectiveFrom < today) {
+      return c.json({ error: "effective_from_in_past" }, 409);
+    }
+
+    const history = await listTenantSettingVersions(db, user.tenantId);
+    if (history.some((v) => v.effectiveFrom === effectiveFrom)) {
+      return c.json({ error: "version_already_exists" }, 409);
+    }
+
+    // GPS の値(gpsEnabled/gpsRetentionDays)が現在の最新版から変わる場合のみ、追加で
+    // gps.manage を要求する(定数 ATTENDANCE_GPS_PERMISSION のコメント参照)。
+    const latest = history.length > 0 ? (history[history.length - 1] as TenantSettingVersion) : null;
+    const gpsChanged = latest === null || latest.gpsEnabled !== gpsEnabled || latest.gpsRetentionDays !== gpsRetentionDays;
+    if (gpsChanged) {
+      requirePermission(c, ATTENDANCE_GPS_PERMISSION, "tenant");
+    }
+
+    const now = nowMinutes();
+    const inserted = await insertTenantSettingVersion(db, {
+      tenantId: user.tenantId,
+      effectiveFrom,
+      dayBoundaryMinutes,
+      legalHolidayRule: JSON.stringify(legalHolidayRule),
+      breakRule: JSON.stringify(breakRule),
+      gpsEnabled,
+      gpsRetentionDays,
+      createdAt: now,
+    });
+
+    await insertAuditLog(db, {
+      tenantId: user.tenantId,
+      actorId: user.id,
+      action: "tenant_setting_version.create",
+      targetType: "tenant_setting_versions",
+      targetId: inserted.id,
+      detail: JSON.stringify({
+        before: latest ? serializeTenantSettingVersion(latest) : null,
+        after: serializeTenantSettingVersion(inserted),
+      }),
+      occurredAt: now,
+    });
+
+    return c.json({ version: serializeTenantSettingVersion(inserted) }, 201);
+  });
+
+  // ---- GET/POST /settings/work-policy(フレックス設定の版管理。2026-08-22 追加) ----
+  app.get("/work-policy", async (c) => {
+    requirePermission(c, WORK_POLICY_PERMISSION, "tenant");
+    const user = c.get("user");
+
+    const policy = await getTenantWorkPolicy(db, user.tenantId);
+    if (!policy) {
+      // work_policies が未作成のテナント(seed を経ていないテスト DB 等)。POST 時に遅延作成する。
+      return c.json({ effective: null, history: [] as ReturnType<typeof serializeWorkPolicyVersion>[] });
+    }
+
+    const history = await listWorkPolicyVersions(db, { tenantId: user.tenantId, workPolicyId: policy.id });
+    const today = todayLocalDate(TZ_OFFSET_MINUTES_JST);
+    let effective: WorkPolicyVersion | null = null;
+    for (const v of history) {
+      if (v.effectiveFrom <= today && (effective === null || v.effectiveFrom > effective.effectiveFrom)) {
+        effective = v;
+      }
+    }
+
+    return c.json({
+      effective: effective ? serializeWorkPolicyVersion(effective) : null,
+      history: history.map(serializeWorkPolicyVersion),
+    });
+  });
+
+  app.post("/work-policy", async (c) => {
+    requirePermission(c, WORK_POLICY_PERMISSION, "tenant");
+    const user = c.get("user");
+
+    const body = await parseJsonRecord(c);
+    if (body === null) return c.json({ error: "invalid_body" }, 400);
+
+    if (!isValidLocalDate(body.effectiveFrom)) return c.json({ error: "invalid_effective_from" }, 400);
+    const effectiveFrom = body.effectiveFrom;
+
+    // v0.1 はフレックスの清算期間 "monthly" のみ対応(packages/engine の FlexSettings.settlement)。
+    if (body.settlementPeriod !== "monthly") {
+      return c.json({ error: "invalid_settlement_period" }, 400);
+    }
+    const settlementPeriod = body.settlementPeriod;
+
+    if (
+      typeof body.standardDayMinutes !== "number" ||
+      !Number.isInteger(body.standardDayMinutes) ||
+      body.standardDayMinutes <= 0 ||
+      body.standardDayMinutes > 1440
+    ) {
+      return c.json({ error: "invalid_standard_day_minutes" }, 400);
+    }
+    const standardDayMinutes = body.standardDayMinutes;
+
+    const today = todayLocalDate(TZ_OFFSET_MINUTES_JST);
+    if (effectiveFrom < today) {
+      return c.json({ error: "effective_from_in_past" }, 409);
+    }
+
+    const now = nowMinutes();
+    const policy = await getOrCreateTenantWorkPolicy(db, { tenantId: user.tenantId, name: "標準フレックス", createdAt: now });
+    const history = await listWorkPolicyVersions(db, { tenantId: user.tenantId, workPolicyId: policy.id });
+    if (history.some((v) => v.effectiveFrom === effectiveFrom)) {
+      return c.json({ error: "version_already_exists" }, 409);
+    }
+
+    const inserted = await insertWorkPolicyVersion(db, {
+      tenantId: user.tenantId,
+      workPolicyId: policy.id,
+      effectiveFrom,
+      settlementPeriod,
+      standardDayMinutes,
+      createdAt: now,
+    });
+
+    const latest = history.length > 0 ? (history[history.length - 1] as WorkPolicyVersion) : null;
+    await insertAuditLog(db, {
+      tenantId: user.tenantId,
+      actorId: user.id,
+      action: "work_policy_version.create",
+      targetType: "work_policy_versions",
+      targetId: inserted.id,
+      detail: JSON.stringify({
+        before: latest ? serializeWorkPolicyVersion(latest) : null,
+        after: serializeWorkPolicyVersion(inserted),
+      }),
+      occurredAt: now,
+    });
+
+    return c.json({ version: serializeWorkPolicyVersion(inserted) }, 201);
+  });
+
+  // ---- GET/PUT /settings/privacy-contact(保存期間の説明文・開示請求窓口。2026-08-22 追加) ----
+  // GET /settings/privacy-templates(上記)がこの2値を読む(未設定なら固定文言/プレースホルダ)。
+  app.get("/privacy-contact", async (c) => {
+    requirePermission(c, PRIVACY_TEMPLATES_PERMISSION, "tenant");
+    const user = c.get("user");
+
+    const tenant = await getTenantById(db, user.tenantId);
+    if (!tenant) return c.json({ error: "tenant_not_found" }, 404);
+
+    return c.json({
+      recordRetentionDescription: tenant.recordRetentionDescription,
+      privacyContactPoint: tenant.privacyContactPoint,
+    });
+  });
+
+  app.put("/privacy-contact", async (c) => {
+    requirePermission(c, PRIVACY_TEMPLATES_PERMISSION, "tenant");
+    const user = c.get("user");
+
+    const body = await parseJsonRecord(c);
+    if (body === null) return c.json({ error: "invalid_body" }, 400);
+
+    const before = await getTenantById(db, user.tenantId);
+    if (!before) return c.json({ error: "tenant_not_found" }, 404);
+
+    // undefined=維持 / null・""=クリア / string=置換(PUT /settings/notifications と同じ3値ルール)。
+    const descResult = resolveStringField(body.recordRetentionDescription, before.recordRetentionDescription);
+    if (!descResult.ok) return c.json({ error: "invalid_record_retention_description" }, 400);
+    const contactResult = resolveStringField(body.privacyContactPoint, before.privacyContactPoint);
+    if (!contactResult.ok) return c.json({ error: "invalid_privacy_contact_point" }, 400);
+
+    const updated = await updateTenantPrivacyContact(db, {
+      tenantId: user.tenantId,
+      recordRetentionDescription: descResult.value,
+      privacyContactPoint: contactResult.value,
+    });
+
+    const now = nowMinutes();
+    await insertAuditLog(db, {
+      tenantId: user.tenantId,
+      actorId: user.id,
+      action: "privacy_contact.update",
+      targetType: "tenant",
+      targetId: user.tenantId,
+      detail: JSON.stringify({
+        before: { recordRetentionDescription: before.recordRetentionDescription, privacyContactPoint: before.privacyContactPoint },
+        after: { recordRetentionDescription: updated.recordRetentionDescription, privacyContactPoint: updated.privacyContactPoint },
+      }),
+      occurredAt: now,
+    });
+
+    return c.json({ recordRetentionDescription: updated.recordRetentionDescription, privacyContactPoint: updated.privacyContactPoint });
   });
 
   return app;

@@ -83,4 +83,42 @@ describe("GET /settings/privacy-templates", () => {
     expect(body.privacyNotice).toContain("https://example.com/work-rules.pdf");
     expect(body.internalTerms).toContain("https://example.com/work-rules.pdf");
   });
+
+  it("falls back to the fixed record retention text and a null contact point when unset", async () => {
+    const { db, tenantId, userId, email, password } = await setupTestDb();
+    await grantPermission(db, { tenantId, userId, permission: PERMISSION, scope: "tenant" });
+    const app = createApp({ db });
+    const cookie = await loginAndGetCookie(app, email, password);
+
+    const res = await app.request("/settings/privacy-templates", { headers: { cookie } });
+    const body = await res.json();
+
+    expect(body.generatedFrom.contactPoint).toBeNull();
+    expect(body.generatedFrom.recordRetentionDescription).toContain("労働基準法第109条");
+    expect(body.privacyNotice).toContain("ここに開示・訂正等の請求を受け付ける窓口を記載してください");
+  });
+
+  it("uses PUT /settings/privacy-contact values once set", async () => {
+    const { db, tenantId, userId, email, password } = await setupTestDb();
+    await grantPermission(db, { tenantId, userId, permission: PERMISSION, scope: "tenant" });
+    const app = createApp({ db });
+    const cookie = await loginAndGetCookie(app, email, password);
+
+    const putRes = await app.request("/settings/privacy-contact", {
+      method: "PUT",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({
+        recordRetentionDescription: "打刻記録は10年間保存します。",
+        privacyContactPoint: "総務部 privacy@example.com",
+      }),
+    });
+    expect(putRes.status).toBe(200);
+
+    const res = await app.request("/settings/privacy-templates", { headers: { cookie } });
+    const body = await res.json();
+
+    expect(body.generatedFrom.recordRetentionDescription).toBe("打刻記録は10年間保存します。");
+    expect(body.generatedFrom.contactPoint).toBe("総務部 privacy@example.com");
+    expect(body.privacyNotice).toContain("総務部 privacy@example.com");
+  });
 });

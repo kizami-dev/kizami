@@ -30,6 +30,13 @@ export interface SettingsAccess {
    * なので、help と同様に notifications のプローブ結果を転用する(追加のリクエストを増やさない)。
    */
   privacy: boolean;
+  /**
+   * /settings/attendance(テナント設定の版管理: 日界・法定休日・休憩ルール・GPS・フレックス。
+   * 2026-08-22 追加)。GET /settings/attendance(tenant_settings.calendar.manage)と
+   * GET /settings/work-policy(tenant_settings.flex.manage)は別々の権限なので、
+   * どちらか一方でも通れば画面自体は表示する(画面側は各セクションを個別に出し分ける)。
+   */
+  attendance: boolean;
 }
 
 const INITIAL: SettingsAccess = {
@@ -42,6 +49,7 @@ const INITIAL: SettingsAccess = {
   leave: false,
   help: false,
   privacy: false,
+  attendance: false,
 };
 
 /**
@@ -73,7 +81,9 @@ export function useSettingsAccess(): SettingsAccess {
       probe(() => api.listPresets()),
       probe(() => api.getTenantProfile()),
       probe(() => api.getLeaveSettings()),
-    ]).then(([notifications, departments, members, presets, tenantProfile, leave]) => {
+      probe(() => api.getAttendanceSettings()),
+      probe(() => api.getWorkPolicySettings()),
+    ]).then(([notifications, departments, members, presets, tenantProfile, leave, attendanceSettings, workPolicySettings]) => {
       if (cancelled) return;
       setAccess({
         loading: false,
@@ -85,6 +95,7 @@ export function useSettingsAccess(): SettingsAccess {
         leave,
         help: notifications,
         privacy: notifications,
+        attendance: attendanceSettings || workPolicySettings,
       });
     });
 

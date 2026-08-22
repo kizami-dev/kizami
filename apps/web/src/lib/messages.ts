@@ -288,6 +288,7 @@ export const messages = {
     leave: "有給休暇",
     help: "社内規定",
     privacy: "個人情報",
+    attendance: "勤怠ルール",
   },
 
   settingsHub: {
@@ -302,6 +303,8 @@ export const messages = {
     membersDesc: "メンバーの所属変更、権限プリセットの割当、実効権限の確認を行います。",
     presetsTitle: "権限プリセット",
     presetsDesc: "権限のON/OFFとスコープを組み合わせたプリセットを作成・編集します。",
+    attendanceTitle: "勤怠ルール",
+    attendanceDesc: "日界・法定休日・休憩ルール・GPS・フレックス設定を、版を追加する形で変更します。",
     tenantProfileTitle: "テナントプロファイル",
     tenantProfileDesc: "企業規模・特例措置対象事業場・特別条項など、集計に影響する属性と適用予定の法改正を確認します。",
     leaveTitle: "有給休暇",
@@ -431,6 +434,90 @@ export const messages = {
     },
   },
 
+  /**
+   * 勤怠ルールの版管理(/settings/attendance、2026-08-22 追加)。
+   * docs/design/v01-data-model.md 原則6(effective-dated): 編集は新しい版の追加のみ。
+   * 既存の版は変更されない(過去の計算結果は変わらない)。
+   */
+  settingsAttendance: {
+    title: "勤怠ルール",
+    tagline: "日界・法定休日・休憩ルール・GPS・フレックス設定を、版を追加する形で変更します。",
+    noPermission: "この設定を変更する権限がありません",
+    loadFailed: "設定の取得に失敗しました。もう一度お試しください",
+
+    currentTitle: "現在有効な設定",
+    currentEffectiveFrom: "この版が有効になった日",
+    dayBoundaryLabel: "日界(1日の起算時刻)",
+    legalHolidayLabel: "法定休日",
+    legalHolidayWeekday: "曜日指定",
+    legalHolidayDates: "暦日指定",
+    breakRuleLabel: "休憩ルール",
+    breakRulePunch: "打刻方式",
+    gpsLabel: "GPS打刻",
+    gpsEnabledYes: "有効",
+    gpsEnabledNo: "無効",
+    gpsRetentionLabel: "GPS座標の保持期間",
+    gpsRetentionSameAsAttendance: "勤怠データと同一",
+    gpsRetentionDaysUnit: "日",
+    flexLabel: "フレックス設定",
+    flexSettlementMonthly: "月次清算",
+    flexStandardDayMinutesLabel: "標準労働時間(1日、分)",
+    noVersionYet: "まだ設定がありません",
+
+    weekdayLabel: {
+      0: "日曜日",
+      1: "月曜日",
+      2: "火曜日",
+      3: "水曜日",
+      4: "木曜日",
+      5: "金曜日",
+      6: "土曜日",
+    } satisfies Record<0 | 1 | 2 | 3 | 4 | 5 | 6, string>,
+
+    formTitle: "新しい版を追加",
+    effectiveFromLabel: "適用開始日",
+    effectiveFromHint: "この変更は指定日以降の計算にのみ影響し、過去の集計は変わりません。",
+    dayBoundaryHint: "0時=00:00起算。深夜勤務がある職場は例えば05:00(300分)にすると日をまたぐ勤務が1日にまとまります。",
+    legalHolidayKindLabel: "指定方法",
+    legalHolidayWeekdayValueLabel: "休日とする曜日",
+    legalHolidayDatesValueLabel: "休日とする日付(カンマ区切り、YYYY-MM-DD)",
+    legalHolidayDatesPlaceholder: "例: 2026-05-05,2026-05-06",
+    gpsEnabledCheckbox: "GPS打刻を有効にする",
+    gpsWarning: "従業員に取得することを明示する必要があります。プライバシー通知の雛形をご確認ください。",
+    gpsWarningLink: "個人情報の設定を見る →",
+    gpsRetentionInputLabel: "保持期間(空欄なら勤怠データと同一)",
+    flexStandardDayMinutesHint: "有給取得日にこの分数が労働時間として枠に算入されます。",
+
+    submit: "この内容で版を追加",
+    submitting: "追加中…",
+    submitSuccess: "新しい版を追加しました。",
+
+    workPolicyFormTitle: "フレックス設定の新しい版を追加",
+    workPolicyNoPermission: "フレックス設定を変更する権限がありません",
+
+    historyTitle: "版の履歴",
+    workPolicyHistoryTitle: "フレックス設定の版の履歴",
+    historyEmpty: "まだ履歴がありません",
+    historyColumnEffectiveFrom: "適用開始日",
+    historyColumnSummary: "内容",
+
+    errors: {
+      invalid_body: "入力内容を確認してください",
+      invalid_effective_from: "適用開始日を確認してください",
+      invalid_day_boundary_minutes: "日界は0〜1439の範囲(分)で入力してください",
+      invalid_legal_holiday_rule: "法定休日の指定を確認してください",
+      invalid_break_rule: "休憩ルールを確認してください",
+      invalid_gps_enabled: "入力内容を確認してください",
+      invalid_gps_retention_days: "GPS座標の保持期間は1以上の整数で入力してください",
+      invalid_settlement_period: "清算期間はこのバージョンでは「月次清算」のみ選べます",
+      invalid_standard_day_minutes: "標準労働時間は1〜1440の範囲(分)で入力してください",
+      effective_from_in_past: "適用開始日は本日以降のみ指定できます(過去の計算結果が変わってしまうため)",
+      version_already_exists: "その適用開始日にはすでに版があります。別の日付を指定してください",
+      forbidden: "この操作を行う権限がありません",
+      default: "処理に失敗しました。もう一度お試しください",
+    },
+  },
+
   departments: {
     title: "部署管理",
     tagline: "部署ツリーの作成・名称変更・異動・削除を行います。",
@@ -479,6 +566,7 @@ export const messages = {
     columnEmail: "メールアドレス",
     columnDepartment: "所属部署",
     columnPresets: "割当プリセット",
+    columnHireDate: "入社日",
     columnActions: "操作",
     noDepartment: "未所属",
     noPresets: "割当なし",
@@ -488,6 +576,13 @@ export const messages = {
 
     departmentChangeLabel: "所属部署を変更",
     departmentChangeSaved: "所属部署を変更しました",
+
+    hireDateLabel: "入社日を設定",
+    hireDateSave: "保存",
+    hireDateSaving: "保存中…",
+    hireDateSaved: "入社日を保存しました",
+    hireDateUnset: "未設定",
+    hireDateWarning: "入社日が未設定のため、法定付与(有給休暇)が計算できません",
 
     presetAssignTitle: "割り当てるプリセット",
     presetAssignHint: "チェックを変更すると、下の「できること」にすぐ反映されます。保存するまで実際の割当は変わりません。",
@@ -509,6 +604,7 @@ export const messages = {
     errors: {
       invalid_body: "入力内容を確認してください",
       invalid_department_id: "指定した部署が見つかりません",
+      invalid_hire_date: "入社日はYYYY-MM-DD形式で入力してください",
       not_found: "対象のメンバーが見つかりません",
       invalid_preset_id: "指定した権限プリセットが見つかりません",
       self_escalation: "自分自身に新しい権限を付けることはできません",
@@ -965,4 +1061,14 @@ export function mapHelpSettingsErrorMessage(body: unknown): string {
   const errors = messages.settingsHelp.errors as Record<string, string | undefined>;
   const code = errorCodeOf(body);
   return (code && errors[code]) ?? messages.settingsHelp.errors.default;
+}
+
+/**
+ * 勤怠ルールの版管理(POST /settings/attendance・POST /settings/work-policy)のエラーマッピング
+ * (2026-08-22 追加)。
+ */
+export function mapAttendanceSettingsErrorMessage(body: unknown): string {
+  const errors = messages.settingsAttendance.errors as Record<string, string | undefined>;
+  const code = errorCodeOf(body);
+  return (code && errors[code]) ?? messages.settingsAttendance.errors.default;
 }

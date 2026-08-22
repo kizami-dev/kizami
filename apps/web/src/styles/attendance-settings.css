@@ -1,0 +1,204 @@
+/**
+ * 勤怠ルールの版管理画面(/settings/attendance、2026-08-22 追加)。
+ * docs/design/ui-direction.md の方針どおり K 主体で静かに保つ(設定系画面と同じ扱い)。
+ * GPS 警告は個人情報に関わるため注意色(マゼンタ)を使う(tenant-profile の forbidden と同じ扱い)。
+ */
+
+.attendance-settings {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+.attendance-settings__main {
+  flex: 1;
+  padding: var(--space-5) var(--space-4) var(--space-7);
+  max-width: 44rem;
+  margin: 0 auto;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.attendance-settings__title {
+  font-family: var(--font-display);
+  font-size: 1.4rem;
+  letter-spacing: 0.04em;
+}
+
+.attendance-settings__tagline {
+  font-size: 0.85rem;
+  color: var(--k-ink-soft);
+}
+
+.attendance-settings__forbidden {
+  border: 1px solid var(--k-magenta);
+  color: var(--k-magenta-ink);
+  background: rgba(229, 0, 126, 0.06);
+  border-radius: var(--radius-s);
+  padding: var(--space-4);
+  font-size: 0.92rem;
+}
+
+.attendance-settings__section {
+  border: var(--border-hair);
+  border-radius: var(--radius-m);
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.attendance-settings__section-title {
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  letter-spacing: 0.02em;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.attendance-settings__current {
+  border: var(--border-hair);
+  border-radius: var(--radius-s);
+  padding: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.attendance-settings__current-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  font-size: 0.88rem;
+}
+
+.attendance-settings__current-label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--k-ink-soft);
+}
+
+.attendance-settings__current-value {
+  font-family: var(--font-mono);
+}
+
+.attendance-settings__current-effective-from {
+  font-size: 0.78rem;
+  color: var(--k-ink-soft);
+}
+
+.attendance-settings__empty {
+  color: var(--k-ink-soft);
+  font-size: 0.85rem;
+}
+
+.attendance-settings__form-title {
+  font-family: var(--font-display);
+  font-size: 0.95rem;
+  letter-spacing: 0.02em;
+  margin-top: var(--space-2);
+}
+
+.attendance-settings__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.attendance-settings__effective-hint {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: 0.82rem;
+  color: var(--k-key);
+  border: 1px solid var(--k-key);
+  background: rgba(0, 0, 0, 0.02);
+  border-radius: var(--radius-s);
+  padding: var(--space-3);
+}
+
+.attendance-settings__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: 0.88rem;
+}
+
+.attendance-settings__field > span:first-child {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-weight: 700;
+}
+
+.attendance-settings__field input,
+.attendance-settings__field select {
+  border: var(--border-hair);
+  border-radius: var(--radius-s);
+  padding: var(--space-2) var(--space-3);
+  font-size: 0.9rem;
+  background: var(--k-paper);
+  color: inherit;
+}
+
+.attendance-settings__field-hint {
+  font-size: 0.76rem;
+  color: var(--k-ink-soft);
+}
+
+.attendance-settings__checkbox {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.attendance-settings__checkbox input[type="checkbox"] {
+  accent-color: var(--k-key);
+  width: 1.05rem;
+  height: 1.05rem;
+}
+
+.attendance-settings__radio {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.86rem;
+}
+
+.attendance-settings__gps-warning {
+  border: 1px solid var(--k-magenta);
+  color: var(--k-magenta-ink);
+  background: rgba(229, 0, 126, 0.06);
+  border-radius: var(--radius-s);
+  padding: var(--space-3);
+  font-size: 0.85rem;
+}
+
+.attendance-settings__gps-warning a {
+  color: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+}
+
+.attendance-settings__success {
+  color: var(--k-cyan-ink);
+  font-size: 0.85rem;
+  border: 1px solid var(--k-cyan);
+  background: rgba(0, 163, 217, 0.06);
+  border-radius: var(--radius-s);
+  padding: var(--space-3);
+}
+
+.attendance-settings__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}

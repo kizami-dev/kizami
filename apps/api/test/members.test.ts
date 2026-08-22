@@ -126,6 +126,119 @@ describe("members API", () => {
     expect(res.status).toBe(404);
   });
 
+  it("GET includes hireDate (null by default from setupTestDb)", async () => {
+    const { db, tenantId, userId, email, password } = await setupTestDb();
+    await grantPermission(db, { tenantId, userId, permission: "member.view", scope: "tenant" });
+    const app = createApp({ db });
+    const cookie = await loginAndGetCookie(app, email, password);
+
+    const res = await app.request("/members", { headers: { cookie } });
+    const body = (await res.json()) as { members: { id: string; hireDate: string | null }[] };
+    const me = body.members.find((m) => m.id === userId);
+    expect(me?.hireDate).toBeNull();
+  });
+
+  it("PATCH sets hireDate, GET reflects it, and an audit log entry is recorded", async () => {
+    const { db, tenantId, userId, email, password } = await setupTestDb();
+    await grantPermission(db, { tenantId, userId, permission: "member.profile.edit", scope: "department" });
+    await grantPermission(db, { tenantId, userId, permission: "member.view", scope: "tenant" });
+    const app = createApp({ db });
+    const cookie = await loginAndGetCookie(app, email, password);
+
+    const patchRes = await app.request(`/members/${userId}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ hireDate: "2020-04-01" }),
+    });
+    expect(patchRes.status).toBe(200);
+    expect(await patchRes.json()).toEqual({ member: { id: userId, hireDate: "2020-04-01" } });
+
+    const res = await app.request("/members", { headers: { cookie } });
+    const body = (await res.json()) as { members: { id: string; hireDate: string | null }[] };
+    expect(body.members.find((m) => m.id === userId)?.hireDate).toBe("2020-04-01");
+
+    expect(await auditActionsFor(db, tenantId)).toContain("member.update");
+  });
+
+  it("PATCH rejects a malformed hireDate with 400 invalid_hire_date", async () => {
+    const { db, tenantId, userId, email, password } = await setupTestDb();
+    await grantPermission(db, { tenantId, userId, permission: "member.profile.edit", scope: "department" });
+    const app = createApp({ db });
+    const cookie = await loginAndGetCookie(app, email, password);
+
+    const res = await app.request(`/members/${userId}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ hireDate: "not-a-date" }),
+    });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "invalid_hire_date" });
+  });
+
+  it("PATCH with hireDate: null clears a previously set hire date", async () => {
+    const { db, tenantId, userId, email, password } = await setupTestDb();
+    await grantPermission(db, { tenantId, userId, permission: "member.profile.edit", scope: "department" });
+    const app = createApp({ db });
+    const cookie = await loginAndGetCookie(app, email, password);
+
+    await app.request(`/members/${userId}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ hireDate: "2020-04-01" }),
+    });
+    const res = await app.request(`/members/${userId}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ hireDate: null }),
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ member: { id: userId, hireDate: null } });
+  });
+
+  it("hireDate enables the statutory leave auto-grant that otherwise fails with hire_date_not_set", async () => {
+    const { db, tenantId, userId, email, password } = await setupTestDb();
+    await grantPermission(db, { tenantId, userId, permission: "member.profile.edit", scope: "department" });
+    await grantPermission(db, { tenantId, userId, permission: "leave.grant.manage", scope: "tenant" });
+    const app = createApp({ db });
+    const cookie = await loginAndGetCookie(app, email, password);
+
+    // 法定付与の実行には有給の制度設定(GET/PUT /settings/leave)が事前に必要。
+    await app.request("/settings/leave", {
+      method: "PUT",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({
+        grantMethod: "statutory",
+        hourlyLeaveEnabled: false,
+        hourlyLeaveMaxDays: 5,
+        halfDayLeaveEnabled: true,
+        stockConversionEnabled: false,
+        stockMaxDays: 40,
+        stockExpiresMonths: null,
+      }),
+    });
+
+    const before = await app.request("/leave/grants/auto", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ userId }),
+    });
+    expect(before.status).toBe(400);
+    expect(await before.json()).toEqual({ error: "hire_date_not_set" });
+
+    await app.request(`/members/${userId}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ hireDate: "2020-04-01" }),
+    });
+
+    const after = await app.request("/leave/grants/auto", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ userId }),
+    });
+    expect(after.status).toBe(201);
+  });
+
   it("GET lists a second user with no department/presets as null/empty", async () => {
     const { db, tenantId, userId, email, password } = await setupTestDb();
     // tenant スコープ: この検証はスコープ絞り込みの対象ではなく、無所属メンバーの
@@ -145,6 +258,7 @@ describe("members API", () => {
       name: "Second User",
       email: second.email,
       isActive: true,
+      hireDate: null,
       department: null,
       presetNames: [],
     });

@@ -61,3 +61,32 @@ export async function updateTenantWorkRulesUrl(
   }
   return row;
 }
+
+export interface UpdateTenantPrivacyContactParams {
+  tenantId: string;
+  recordRetentionDescription: string | null;
+  privacyContactPoint: string | null;
+}
+
+/**
+ * 保存期間の説明文・開示請求窓口(record_retention_description / privacy_contact_point)を
+ * 更新する(UPDATE、現在値のみ)。null で未設定に戻せる(GET /settings/privacy-templates が
+ * 固定文言/プレースホルダにフォールバックする)。呼び出し側が監査ログへの記録を担う。
+ */
+export async function updateTenantPrivacyContact(
+  db: Database | Transaction,
+  params: UpdateTenantPrivacyContactParams,
+): Promise<Tenant> {
+  const [row] = await db
+    .update(tenants)
+    .set({
+      recordRetentionDescription: params.recordRetentionDescription,
+      privacyContactPoint: params.privacyContactPoint,
+    })
+    .where(eq(tenants.id, params.tenantId))
+    .returning();
+  if (!row) {
+    throw new Error(`updateTenantPrivacyContact: tenant not found: ${params.tenantId}`);
+  }
+  return row;
+}

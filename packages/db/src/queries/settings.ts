@@ -5,6 +5,7 @@
 import { and, asc, desc, eq, gte, lte } from "drizzle-orm";
 import type { Database, Transaction } from "../migrate.js";
 import { tenantSettingVersions } from "../schema/index.js";
+import { uuidv7 } from "../uuid.js";
 
 export type TenantSettingVersion = typeof tenantSettingVersions.$inferSelect;
 
@@ -66,4 +67,60 @@ export async function getSettingsTimeline(db: Database | Transaction, params: Ge
   const combined = latestBeforeOrOnFrom !== null && !alreadyIncluded ? [latestBeforeOrOnFrom, ...withinPeriod] : withinPeriod;
 
   return [...combined].sort((a, b) => (a.effectiveFrom < b.effectiveFrom ? -1 : a.effectiveFrom > b.effectiveFrom ? 1 : 0));
+}
+
+/**
+ * テナントの全版を effective_from 昇順で返す(版の履歴表示・編集画面の GET /settings/attendance 用)。
+ * 追記専用テーブルなので全件返しても件数は「変更した回数」に収まる想定。
+ */
+export async function listTenantSettingVersions(db: Database | Transaction, tenantId: string): Promise<TenantSettingVersion[]> {
+  return db
+    .select()
+    .from(tenantSettingVersions)
+    .where(eq(tenantSettingVersions.tenantId, tenantId))
+    .orderBy(asc(tenantSettingVersions.effectiveFrom));
+}
+
+export interface InsertTenantSettingVersionParams {
+  tenantId: string;
+  /** ローカル日付 "YYYY-MM-DD"。この日から有効 */
+  effectiveFrom: string;
+  dayBoundaryMinutes: number;
+  /** LegalHolidayRule の JSON 文字列 */
+  legalHolidayRule: string;
+  /** breakRule の JSON 文字列 */
+  breakRule: string;
+  gpsEnabled: boolean;
+  gpsRetentionDays: number | null;
+  /** UTC エポック分 */
+  createdAt: number;
+}
+
+/**
+ * 新しい版を1件追記する(UPDATE ではない — 既存の版は一切変更しない)。
+ * 過去日禁止・重複禁止のバリデーションは呼び出し側(apps/api/src/routes/settings.ts)が行う
+ * (原則6: 編集UIは新しい版を追加しかできない。docs/design/v01-data-model.md 参照)。
+ */
+export async function insertTenantSettingVersion(
+  db: Database | Transaction,
+  params: InsertTenantSettingVersionParams,
+): Promise<TenantSettingVersion> {
+  const [row] = await db
+    .insert(tenantSettingVersions)
+    .values({
+      id: uuidv7(),
+      tenantId: params.tenantId,
+      effectiveFrom: params.effectiveFrom,
+      dayBoundaryMinutes: params.dayBoundaryMinutes,
+      legalHolidayRule: params.legalHolidayRule,
+      breakRule: params.breakRule,
+      gpsEnabled: params.gpsEnabled,
+      gpsRetentionDays: params.gpsRetentionDays,
+      createdAt: params.createdAt,
+    })
+    .returning();
+  if (!row) {
+    throw new Error("insertTenantSettingVersion: insert returned no row");
+  }
+  return row;
 }

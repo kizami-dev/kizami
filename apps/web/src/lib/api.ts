@@ -244,6 +244,8 @@ export interface MemberDto {
   name: string;
   email: string;
   isActive: boolean;
+  /** 入社日 "YYYY-MM-DD"。null = 未設定(法定付与の自動計算ができない)。 */
+  hireDate: string | null;
   department: { id: string; name: string } | null;
   presetNames: string[];
 }
@@ -318,6 +320,64 @@ export interface TenantLawProfileDto {
   isSmallOrMediumEnterprise: boolean;
   isSpecialProvisionWorkplace: boolean;
   specialClauseEnabled: boolean;
+}
+
+/** LegalHolidayRule(packages/engine の型、apps/web は依存を増やさずここに再定義)。 */
+export type LegalHolidayRuleDto = { kind: "weekday"; weekday: 0 | 1 | 2 | 3 | 4 | 5 | 6 } | { kind: "dates"; dates: string[] };
+
+/**
+ * テナント設定の版(apps/api/src/routes/settings.ts の GET/POST /settings/attendance と一致)。
+ * effective-dated(原則6): 編集は「新しい版を追加」のみで、既存の版は変更されない。
+ */
+export interface AttendanceSettingVersionDto {
+  effectiveFrom: string;
+  dayBoundaryMinutes: number;
+  legalHolidayRule: LegalHolidayRuleDto;
+  breakRule: { mode: "punch" };
+  gpsEnabled: boolean;
+  gpsRetentionDays: number | null;
+  createdAt: number;
+}
+
+/** GET /settings/attendance のレスポンス。 */
+export interface AttendanceSettingsDto {
+  effective: AttendanceSettingVersionDto | null;
+  history: AttendanceSettingVersionDto[];
+}
+
+/** POST /settings/attendance の入力。新しい版を1件追加する(UPDATE ではない)。 */
+export interface CreateAttendanceSettingVersionInput {
+  effectiveFrom: string;
+  dayBoundaryMinutes: number;
+  legalHolidayRule: LegalHolidayRuleDto;
+  breakRule: { mode: "punch" };
+  gpsEnabled: boolean;
+  gpsRetentionDays: number | null;
+}
+
+/** work_policy_versions(フレックス設定)の版(apps/api/src/routes/settings.ts の GET/POST /settings/work-policy と一致)。 */
+export interface WorkPolicyVersionDto {
+  effectiveFrom: string;
+  settlementPeriod: string;
+  standardDayMinutes: number;
+  createdAt: number;
+}
+
+export interface WorkPolicySettingsDto {
+  effective: WorkPolicyVersionDto | null;
+  history: WorkPolicyVersionDto[];
+}
+
+export interface CreateWorkPolicyVersionInput {
+  effectiveFrom: string;
+  settlementPeriod: string;
+  standardDayMinutes: number;
+}
+
+/** GET/PUT /settings/privacy-contact(保存期間の説明文・開示請求窓口)。 */
+export interface PrivacyContactDto {
+  recordRetentionDescription: string | null;
+  privacyContactPoint: string | null;
 }
 
 /**
@@ -595,6 +655,11 @@ export const api = {
     return request(`/members/${id}`, { method: "PATCH", body: JSON.stringify({ departmentId }) });
   },
 
+  /** PATCH /members/:id { hireDate }(member.profile.edit)。null で未設定に戻せる。 */
+  async updateMemberHireDate(id: string, hireDate: string | null): Promise<{ member: { id: string; hireDate: string | null } }> {
+    return request(`/members/${id}`, { method: "PATCH", body: JSON.stringify({ hireDate }) });
+  },
+
   async assignMemberPresets(id: string, presetIds: string[]): Promise<{ presetIds: string[] }> {
     return request(`/members/${id}/presets`, { method: "PUT", body: JSON.stringify({ presetIds }) });
   },
@@ -733,6 +798,41 @@ export const api = {
   /** GET /settings/privacy-templates(notification.settings.manage)。現在の設定から生成された雛形2種を返す。 */
   async getPrivacyTemplates(): Promise<PrivacyTemplatesDto> {
     return request("/settings/privacy-templates");
+  },
+
+  /** GET /settings/attendance(tenant_settings.calendar.manage)。現在有効な版+版の履歴。 */
+  async getAttendanceSettings(): Promise<AttendanceSettingsDto> {
+    return request("/settings/attendance");
+  },
+
+  /**
+   * POST /settings/attendance。新しい版を1件追加する(UPDATE ではない)。
+   * effectiveFrom が過去日なら 409 effective_from_in_past、既存版と同日なら 409 version_already_exists。
+   * GPS の値(gpsEnabled/gpsRetentionDays)が現在の実効値から変わる場合は
+   * tenant_settings.gps.manage も必要(calendar.manage だけだと 403)。
+   */
+  async createAttendanceSettingVersion(input: CreateAttendanceSettingVersionInput): Promise<{ version: AttendanceSettingVersionDto }> {
+    return request("/settings/attendance", { method: "POST", body: JSON.stringify(input) });
+  },
+
+  /** GET /settings/work-policy(tenant_settings.flex.manage)。現在有効な版+版の履歴。 */
+  async getWorkPolicySettings(): Promise<WorkPolicySettingsDto> {
+    return request("/settings/work-policy");
+  },
+
+  /** POST /settings/work-policy。新しい版を1件追加する(UPDATE ではない)。 */
+  async createWorkPolicyVersion(input: CreateWorkPolicyVersionInput): Promise<{ version: WorkPolicyVersionDto }> {
+    return request("/settings/work-policy", { method: "POST", body: JSON.stringify(input) });
+  },
+
+  /** GET /settings/privacy-contact(notification.settings.manage、社内規定編集と同じ権限)。 */
+  async getPrivacyContact(): Promise<PrivacyContactDto> {
+    return request("/settings/privacy-contact");
+  },
+
+  /** PUT /settings/privacy-contact。省略=維持、null/""=クリア、文字列=置換。 */
+  async updatePrivacyContact(input: { recordRetentionDescription?: string | null; privacyContactPoint?: string | null }): Promise<PrivacyContactDto> {
+    return request("/settings/privacy-contact", { method: "PUT", body: JSON.stringify(input) });
   },
 };
 

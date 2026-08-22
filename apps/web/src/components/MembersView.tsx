@@ -44,6 +44,13 @@ export function MembersView() {
   const [deptChangePendingId, setDeptChangePendingId] = useState<string | null>(null);
   const [deptChangeError, setDeptChangeError] = useState<{ memberId: string; message: string } | null>(null);
 
+  // 入社日(2026-08-22 追加)。department の <select> と違い date input は逐次コミットしないほうが
+  // 扱いやすいため、行ごとの下書き(hireDateDrafts)を保持して明示的な保存ボタンで確定する。
+  const [hireDateDrafts, setHireDateDrafts] = useState<Record<string, string>>({});
+  const [hireDatePendingId, setHireDatePendingId] = useState<string | null>(null);
+  const [hireDateError, setHireDateError] = useState<{ memberId: string; message: string } | null>(null);
+  const [hireDateSavedId, setHireDateSavedId] = useState<string | null>(null);
+
   useEffect(() => {
     if (guard.status !== "authed") return;
     let cancelled = false;
@@ -125,6 +132,34 @@ export function MembersView() {
     }
   }
 
+  function hireDateDraftFor(member: MemberDto): string {
+    return hireDateDrafts[member.id] ?? member.hireDate ?? "";
+  }
+
+  async function handleHireDateSave(member: MemberDto) {
+    const draft = hireDateDraftFor(member).trim();
+    const value = draft === "" ? null : draft;
+    setHireDatePendingId(member.id);
+    setHireDateError(null);
+    setHireDateSavedId(null);
+    try {
+      await api.updateMemberHireDate(member.id, value);
+      setHireDateSavedId(member.id);
+      setReloadKey((k) => k + 1);
+    } catch (err) {
+      if (err instanceof UnauthorizedError) {
+        router.push("/login");
+        return;
+      }
+      setHireDateError({
+        memberId: member.id,
+        message: err instanceof ApiError ? mapMemberErrorMessage(err.body) : messages.errors.network,
+      });
+    } finally {
+      setHireDatePendingId(null);
+    }
+  }
+
   async function handleAssignSave(memberId: string) {
     setAssignPending(true);
     setAssignError(null);
@@ -196,6 +231,7 @@ export function MembersView() {
                     <th>{messages.members.columnName}</th>
                     <th>{messages.members.columnEmail}</th>
                     <th>{messages.members.columnDepartment}</th>
+                    <th>{messages.members.columnHireDate}</th>
                     <th>{messages.members.columnPresets}</th>
                     <th>{messages.members.columnActions}</th>
                   </tr>
@@ -233,6 +269,38 @@ export function MembersView() {
                             ) : null}
                           </td>
                           <td>
+                            <div className="member-hire-date">
+                              <input
+                                type="date"
+                                aria-label={messages.members.hireDateLabel}
+                                value={hireDateDraftFor(member)}
+                                disabled={hireDatePendingId === member.id}
+                                onChange={(e) => setHireDateDrafts((prev) => ({ ...prev, [member.id]: e.target.value }))}
+                              />
+                              <button
+                                type="button"
+                                className="org-table__link-btn"
+                                disabled={hireDatePendingId === member.id}
+                                onClick={() => handleHireDateSave(member)}
+                              >
+                                {hireDatePendingId === member.id ? messages.members.hireDateSaving : messages.members.hireDateSave}
+                              </button>
+                              {!member.hireDate ? (
+                                <p className="member-hire-date__warning" role="alert">
+                                  {messages.members.hireDateWarning}
+                                </p>
+                              ) : null}
+                              {hireDateError?.memberId === member.id ? (
+                                <p className="correction-error" role="alert">
+                                  {hireDateError.message}
+                                </p>
+                              ) : null}
+                              {hireDateSavedId === member.id ? (
+                                <p className="settings-notif__success">{messages.members.hireDateSaved}</p>
+                              ) : null}
+                            </div>
+                          </td>
+                          <td>
                             {member.presetNames.length > 0 ? (
                               <div className="chip-row">
                                 {member.presetNames.map((name, i) => (
@@ -253,7 +321,7 @@ export function MembersView() {
                         </tr>
                         {isExpanded ? (
                           <tr key={`${member.id}-detail`}>
-                            <td colSpan={5} className="org-table__detail-cell">
+                            <td colSpan={6} className="org-table__detail-cell">
                               <div className="member-detail">
                                 <section className="member-detail__section">
                                   <h2 className="member-detail__section-title">{messages.members.presetAssignTitle}</h2>

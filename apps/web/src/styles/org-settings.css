@@ -252,6 +252,28 @@
   gap: var(--space-3);
 }
 
+/* 入社日(メンバー管理、2026-08-22 追加)。 */
+.member-hire-date {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+}
+
+.member-hire-date input[type="date"] {
+  border: var(--border-hair);
+  border-radius: var(--radius-s);
+  padding: var(--space-2);
+  font-size: 0.85rem;
+  background: #fff;
+  font-family: inherit;
+}
+
+.member-hire-date__warning {
+  color: var(--k-magenta-ink);
+  font-size: 0.76rem;
+}
+
 .org-table__link-btn {
   background: none;
   border: none;

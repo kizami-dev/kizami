@@ -25,6 +25,7 @@ import {
   listTenantAssignedPresetNames,
   listTenantMembershipsWithDepartment,
   listTenantUsers,
+  updateUserHireDate,
   upsertMembership,
   type Database,
 } from "@kizami/db";
@@ -36,6 +37,9 @@ import { ASSIGNMENT_MANAGE_PERMISSION, assignPresetsToMember } from "./presets.j
 
 const VIEW_PERMISSION = "member.view";
 const EDIT_PERMISSION = "member.profile.edit";
+
+/** "YYYY-MM-DD" の書式チェックのみ(既存 routes/leave.ts の DATE_RE と同じ流儀)。 */
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 async function parseJsonBody(c: { req: { json: () => Promise<unknown> } }): Promise<Record<string, unknown> | null> {
   let body: unknown;
@@ -89,6 +93,9 @@ export function createMembersRoutes(db: Database) {
         name: u.name,
         email: u.email,
         isActive: u.isActive,
+        // 入社日(2026-08-22 追加)。法定付与の計算に使う(routes/leave.ts の
+        // POST /leave/grants/auto)。null = 未設定 → 法定付与ができない(画面側で警告表示)。
+        hireDate: u.hireDate,
         department: departmentByUser.get(u.id) ?? null,
         presetNames: presetNamesByUser.get(u.id) ?? [],
       })),
@@ -115,19 +122,40 @@ export function createMembersRoutes(db: Database) {
 
     const body = await parseJsonBody(c);
     if (body === null) return c.json({ error: "invalid_body" }, 400);
-    if (body.departmentId === undefined) {
-      // v0.2 では所属変更のみサポート(依頼の範囲: {departmentId?})
+    // 対応フィールド: departmentId(所属変更、v0.2) / hireDate(入社日、2026-08-22 追加)。
+    // どちらも省略可能な PATCH(部分更新)だが、両方省略は無効なリクエストとして拒否する。
+    if (body.departmentId === undefined && body.hireDate === undefined) {
       return c.json({ error: "invalid_body" }, 400);
     }
-    if (typeof body.departmentId !== "string") {
-      return c.json({ error: "invalid_department_id" }, 400);
+
+    let departmentId: string | undefined;
+    if (body.departmentId !== undefined) {
+      if (typeof body.departmentId !== "string") {
+        return c.json({ error: "invalid_department_id" }, 400);
+      }
+      const department = await getDepartmentById(db, { tenantId: user.tenantId, id: body.departmentId });
+      if (!department) return c.json({ error: "invalid_department_id" }, 400);
+      departmentId = department.id;
     }
 
-    const department = await getDepartmentById(db, { tenantId: user.tenantId, id: body.departmentId });
-    if (!department) return c.json({ error: "invalid_department_id" }, 400);
+    let hireDate: string | null | undefined;
+    if (body.hireDate !== undefined) {
+      if (body.hireDate === null) {
+        hireDate = null;
+      } else if (typeof body.hireDate === "string" && DATE_RE.test(body.hireDate)) {
+        hireDate = body.hireDate;
+      } else {
+        return c.json({ error: "invalid_hire_date" }, 400);
+      }
+    }
 
     const now = nowMinutes();
-    await upsertMembership(db, { tenantId: user.tenantId, userId: target.id, departmentId: department.id, createdAt: now });
+    if (departmentId !== undefined) {
+      await upsertMembership(db, { tenantId: user.tenantId, userId: target.id, departmentId, createdAt: now });
+    }
+    if (hireDate !== undefined) {
+      await updateUserHireDate(db, { tenantId: user.tenantId, userId: target.id, hireDate });
+    }
 
     await insertAuditLog(db, {
       tenantId: user.tenantId,
@@ -135,11 +163,17 @@ export function createMembersRoutes(db: Database) {
       action: "member.update",
       targetType: "user",
       targetId: target.id,
-      detail: JSON.stringify({ departmentId: department.id }),
+      detail: JSON.stringify({ ...(departmentId !== undefined ? { departmentId } : {}), ...(hireDate !== undefined ? { hireDate } : {}) }),
       occurredAt: now,
     });
 
-    return c.json({ member: { id: target.id, departmentId: department.id } });
+    return c.json({
+      member: {
+        id: target.id,
+        ...(departmentId !== undefined ? { departmentId } : {}),
+        ...(hireDate !== undefined ? { hireDate } : {}),
+      },
+    });
   });
 
   app.put("/:id/presets", async (c) => {

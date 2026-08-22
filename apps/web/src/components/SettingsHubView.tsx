@@ -18,7 +18,8 @@ type SettingsRoute =
   | "/settings/tenant-profile"
   | "/settings/leave"
   | "/settings/help"
-  | "/settings/privacy";
+  | "/settings/privacy"
+  | "/settings/attendance";
 
 export function SettingsHubView() {
   const guard = useAuthGuard();
@@ -52,6 +53,13 @@ export function SettingsHubView() {
       to: "/settings/presets" as const,
       title: messages.settingsHub.presetsTitle,
       desc: messages.settingsHub.presetsDesc,
+    },
+    {
+      key: "attendance",
+      enabled: access.attendance,
+      to: "/settings/attendance" as const,
+      title: messages.settingsHub.attendanceTitle,
+      desc: messages.settingsHub.attendanceDesc,
     },
     {
       key: "tenantProfile",

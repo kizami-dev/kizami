@@ -4,7 +4,16 @@ import { Link } from "waku";
 import { messages } from "../lib/messages";
 import { useSettingsAccess } from "../lib/useSettingsAccess";
 
-export type SettingsSection = "notifications" | "departments" | "members" | "presets" | "tenantProfile" | "leave" | "help" | "privacy";
+export type SettingsSection =
+  | "notifications"
+  | "departments"
+  | "members"
+  | "presets"
+  | "tenantProfile"
+  | "leave"
+  | "help"
+  | "privacy"
+  | "attendance";
 
 type SettingsRoute =
   | "/settings/notifications"
@@ -14,7 +23,8 @@ type SettingsRoute =
   | "/settings/tenant-profile"
   | "/settings/leave"
   | "/settings/help"
-  | "/settings/privacy";
+  | "/settings/privacy"
+  | "/settings/attendance";
 
 /**
  * /settings/* 画面間の行き来用サブナビ(要件: 既存の設定ナビから各画面へ辿れること)。
@@ -29,6 +39,12 @@ export function SettingsNav({ active }: { active: SettingsSection }) {
     { key: "departments", to: "/settings/departments", label: messages.settingsNav.departments, enabled: access.departments },
     { key: "members", to: "/settings/members", label: messages.settingsNav.members, enabled: access.members },
     { key: "presets", to: "/settings/presets", label: messages.settingsNav.presets, enabled: access.presets },
+    {
+      key: "attendance",
+      to: "/settings/attendance",
+      label: messages.settingsNav.attendance,
+      enabled: access.attendance,
+    },
     {
       key: "tenantProfile",
       to: "/settings/tenant-profile",

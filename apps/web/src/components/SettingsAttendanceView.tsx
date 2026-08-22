@@ -1,0 +1,562 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { Link, useRouter } from "waku";
+import {
+  api,
+  ApiError,
+  UnauthorizedError,
+  type AttendanceSettingsDto,
+  type AttendanceSettingVersionDto,
+  type LegalHolidayRuleDto,
+  type WorkPolicySettingsDto,
+  type WorkPolicyVersionDto,
+} from "../lib/api";
+import { mapAttendanceSettingsErrorMessage, messages } from "../lib/messages";
+import { currentYearMonthJst, dateStrFromEpochMinutesJst, formatMonthParam, nowMinutes, shiftMonth } from "../lib/time";
+import { useAuthGuard } from "../lib/useAuthGuard";
+import { AppHeader } from "./AppHeader";
+import { HelpTip } from "./HelpTip";
+import { SettingsNav } from "./SettingsNav";
+
+/** 分(0〜1439) → "HH:MM"。 */
+function minutesToHm(minutes: number): string {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return `${h < 10 ? `0${h}` : h}:${m < 10 ? `0${m}` : m}`;
+}
+
+/** "HH:MM" → 分(0〜1439)。不正な形式は null。 */
+function hmToMinutes(hm: string): number | null {
+  const match = /^(\d{1,2}):(\d{2})$/.exec(hm);
+  if (!match) return null;
+  const h = Number(match[1]);
+  const m = Number(match[2]);
+  if (h < 0 || h > 23 || m < 0 || m > 59) return null;
+  return h * 60 + m;
+}
+
+const WEEKDAY_LABELS = messages.settingsAttendance.weekdayLabel;
+
+function summarizeLegalHoliday(rule: LegalHolidayRuleDto): string {
+  if (rule.kind === "weekday") {
+    return `${messages.settingsAttendance.legalHolidayWeekday}: ${WEEKDAY_LABELS[rule.weekday]}`;
+  }
+  return `${messages.settingsAttendance.legalHolidayDates}: ${rule.dates.join("、")}`;
+}
+
+function summarizeAttendanceVersion(v: AttendanceSettingVersionDto): string {
+  const gps = v.gpsEnabled
+    ? `GPS: ${messages.settingsAttendance.gpsEnabledYes}${v.gpsRetentionDays ? `(${v.gpsRetentionDays}${messages.settingsAttendance.gpsRetentionDaysUnit})` : ""}`
+    : `GPS: ${messages.settingsAttendance.gpsEnabledNo}`;
+  return `${messages.settingsAttendance.dayBoundaryLabel} ${minutesToHm(v.dayBoundaryMinutes)} / ${summarizeLegalHoliday(v.legalHolidayRule)} / ${gps}`;
+}
+
+function summarizeWorkPolicyVersion(v: WorkPolicyVersionDto): string {
+  return `${messages.settingsAttendance.flexStandardDayMinutesLabel}: ${v.standardDayMinutes}分`;
+}
+
+interface AttendanceFormState {
+  effectiveFrom: string;
+  dayBoundaryHm: string;
+  legalHolidayKind: "weekday" | "dates";
+  legalHolidayWeekday: 0 | 1 | 2 | 3 | 4 | 5 | 6;
+  legalHolidayDatesText: string;
+  gpsEnabled: boolean;
+  gpsRetentionDays: string;
+}
+
+function defaultNextMonthFirstDay(): string {
+  const next = shiftMonth(currentYearMonthJst(), 1);
+  return `${formatMonthParam(next)}-01`;
+}
+
+function initialAttendanceForm(effective: AttendanceSettingVersionDto | null): AttendanceFormState {
+  return {
+    effectiveFrom: defaultNextMonthFirstDay(),
+    dayBoundaryHm: effective ? minutesToHm(effective.dayBoundaryMinutes) : "00:00",
+    legalHolidayKind: effective?.legalHolidayRule.kind ?? "weekday",
+    legalHolidayWeekday: effective?.legalHolidayRule.kind === "weekday" ? effective.legalHolidayRule.weekday : 0,
+    legalHolidayDatesText: effective?.legalHolidayRule.kind === "dates" ? effective.legalHolidayRule.dates.join(",") : "",
+    gpsEnabled: effective?.gpsEnabled ?? false,
+    gpsRetentionDays: effective?.gpsRetentionDays != null ? String(effective.gpsRetentionDays) : "",
+  };
+}
+
+interface WorkPolicyFormState {
+  effectiveFrom: string;
+  standardDayMinutes: string;
+}
+
+function initialWorkPolicyForm(effective: WorkPolicyVersionDto | null): WorkPolicyFormState {
+  return {
+    effectiveFrom: defaultNextMonthFirstDay(),
+    standardDayMinutes: effective ? String(effective.standardDayMinutes) : "480",
+  };
+}
+
+/**
+ * 勤怠ルールの版管理画面(/settings/attendance、2026-08-22 追加)。
+ *
+ * docs/design/v01-data-model.md 原則6(effective-dated)を UI 上でも徹底する:
+ * - 「現在有効な設定」と「版の履歴」を必ず両方表示する
+ * - 新しい版の追加フォームには「過去の集計は変わらない」ことを明示する一文を必ず添える
+ * - GPS を有効にする変更には追加の警告(プライバシー通知の雛形への導線)を出す
+ *
+ * 日界・法定休日・休憩ルール・GPS(tenant_setting_versions)とフレックス設定
+ * (work_policy_versions)は別の権限(tenant_settings.calendar.manage / .gps.manage /
+ * .flex.manage)で保護されているため、2つの GET を独立に叩き、それぞれ 403 なら
+ * そのセクションだけ非表示にする(依頼「権限がなければナビにも出さない」は
+ * useSettingsAccess 側で担保し、ここでは「見えるが一部だけ触れない」状態も自然に扱う)。
+ */
+export function SettingsAttendanceView() {
+  const router = useRouter();
+  const guard = useAuthGuard();
+
+  const [attendance, setAttendance] = useState<AttendanceSettingsDto | null>(null);
+  const [attendanceForbidden, setAttendanceForbidden] = useState(false);
+  const [workPolicy, setWorkPolicy] = useState<WorkPolicySettingsDto | null>(null);
+  const [workPolicyForbidden, setWorkPolicyForbidden] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+
+  const [attendanceForm, setAttendanceForm] = useState<AttendanceFormState | null>(null);
+  const [attendanceSaving, setAttendanceSaving] = useState(false);
+  const [attendanceError, setAttendanceError] = useState<string | null>(null);
+  const [attendanceSuccess, setAttendanceSuccess] = useState(false);
+
+  const [workPolicyForm, setWorkPolicyForm] = useState<WorkPolicyFormState | null>(null);
+  const [workPolicySaving, setWorkPolicySaving] = useState(false);
+  const [workPolicyError, setWorkPolicyError] = useState<string | null>(null);
+  const [workPolicySuccess, setWorkPolicySuccess] = useState(false);
+
+  useEffect(() => {
+    if (guard.status !== "authed") return;
+    let cancelled = false;
+    setLoading(true);
+    setLoadError(null);
+    setAttendanceForbidden(false);
+    setWorkPolicyForbidden(false);
+
+    Promise.allSettled([api.getAttendanceSettings(), api.getWorkPolicySettings()])
+      .then(([attendanceRes, workPolicyRes]) => {
+        if (cancelled) return;
+
+        if (attendanceRes.status === "fulfilled") {
+          setAttendance(attendanceRes.value);
+          setAttendanceForm(initialAttendanceForm(attendanceRes.value.effective));
+        } else if (attendanceRes.reason instanceof UnauthorizedError) {
+          router.push("/login");
+          return;
+        } else if (attendanceRes.reason instanceof ApiError && attendanceRes.reason.status === 403) {
+          setAttendanceForbidden(true);
+        } else {
+          setLoadError(messages.settingsAttendance.loadFailed);
+        }
+
+        if (workPolicyRes.status === "fulfilled") {
+          setWorkPolicy(workPolicyRes.value);
+          setWorkPolicyForm(initialWorkPolicyForm(workPolicyRes.value.effective));
+        } else if (workPolicyRes.reason instanceof UnauthorizedError) {
+          router.push("/login");
+          return;
+        } else if (workPolicyRes.reason instanceof ApiError && workPolicyRes.reason.status === 403) {
+          setWorkPolicyForbidden(true);
+        } else {
+          setLoadError(messages.settingsAttendance.loadFailed);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [guard.status, reloadKey]);
+
+  async function handleAttendanceSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!attendanceForm) return;
+
+    const dayBoundaryMinutes = hmToMinutes(attendanceForm.dayBoundaryHm);
+    if (dayBoundaryMinutes === null) {
+      setAttendanceError(messages.settingsAttendance.errors.invalid_day_boundary_minutes);
+      return;
+    }
+
+    const legalHolidayRule: LegalHolidayRuleDto =
+      attendanceForm.legalHolidayKind === "weekday"
+        ? { kind: "weekday", weekday: attendanceForm.legalHolidayWeekday }
+        : { kind: "dates", dates: attendanceForm.legalHolidayDatesText.split(",").map((d) => d.trim()).filter((d) => d.length > 0) };
+
+    const gpsRetentionDays = attendanceForm.gpsRetentionDays.trim() === "" ? null : Number(attendanceForm.gpsRetentionDays);
+
+    setAttendanceSaving(true);
+    setAttendanceError(null);
+    setAttendanceSuccess(false);
+    try {
+      await api.createAttendanceSettingVersion({
+        effectiveFrom: attendanceForm.effectiveFrom,
+        dayBoundaryMinutes,
+        legalHolidayRule,
+        breakRule: { mode: "punch" },
+        gpsEnabled: attendanceForm.gpsEnabled,
+        gpsRetentionDays,
+      });
+      setAttendanceSuccess(true);
+      setReloadKey((k) => k + 1);
+    } catch (err) {
+      if (err instanceof UnauthorizedError) {
+        router.push("/login");
+        return;
+      }
+      setAttendanceError(err instanceof ApiError ? mapAttendanceSettingsErrorMessage(err.body) : messages.errors.network);
+    } finally {
+      setAttendanceSaving(false);
+    }
+  }
+
+  async function handleWorkPolicySubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!workPolicyForm) return;
+
+    const standardDayMinutes = Number(workPolicyForm.standardDayMinutes);
+    if (!Number.isInteger(standardDayMinutes) || standardDayMinutes <= 0) {
+      setWorkPolicyError(messages.settingsAttendance.errors.invalid_standard_day_minutes);
+      return;
+    }
+
+    setWorkPolicySaving(true);
+    setWorkPolicyError(null);
+    setWorkPolicySuccess(false);
+    try {
+      await api.createWorkPolicyVersion({
+        effectiveFrom: workPolicyForm.effectiveFrom,
+        settlementPeriod: "monthly",
+        standardDayMinutes,
+      });
+      setWorkPolicySuccess(true);
+      setReloadKey((k) => k + 1);
+    } catch (err) {
+      if (err instanceof UnauthorizedError) {
+        router.push("/login");
+        return;
+      }
+      setWorkPolicyError(err instanceof ApiError ? mapAttendanceSettingsErrorMessage(err.body) : messages.errors.network);
+    } finally {
+      setWorkPolicySaving(false);
+    }
+  }
+
+  if (guard.status === "loading" || loading) {
+    return <p className="monthly-loading">{messages.loading}</p>;
+  }
+  if (guard.status === "error" || !guard.user) {
+    return <p className="monthly-error">{messages.errors.network}</p>;
+  }
+
+  const todayDate = dateStrFromEpochMinutesJst(nowMinutes());
+  const showNothing = attendanceForbidden && workPolicyForbidden;
+
+  return (
+    <div className="attendance-settings">
+      <AppHeader displayName={guard.user.displayName} email={guard.user.email} active="settings" />
+      <main className="attendance-settings__main">
+        <SettingsNav active="attendance" />
+        <h1 className="attendance-settings__title">{messages.settingsAttendance.title}</h1>
+        <p className="attendance-settings__tagline">{messages.settingsAttendance.tagline}</p>
+
+        {showNothing ? (
+          <p className="attendance-settings__forbidden" role="alert">
+            {messages.settingsAttendance.noPermission}
+          </p>
+        ) : null}
+        {loadError ? <p className="monthly-error">{loadError}</p> : null}
+
+        {!attendanceForbidden && attendance && attendanceForm ? (
+          <section className="attendance-settings__section">
+            <h2 className="attendance-settings__section-title">{messages.settingsAttendance.currentTitle}</h2>
+            {attendance.effective ? (
+              <div className="attendance-settings__current">
+                <div className="attendance-settings__current-row">
+                  <span className="attendance-settings__current-label">
+                    {messages.settingsAttendance.dayBoundaryLabel}
+                    <HelpTip helpKey="attendance.day-boundary" />
+                  </span>
+                  <span className="attendance-settings__current-value tabular-nums">{minutesToHm(attendance.effective.dayBoundaryMinutes)}</span>
+                </div>
+                <div className="attendance-settings__current-row">
+                  <span className="attendance-settings__current-label">
+                    {messages.settingsAttendance.legalHolidayLabel}
+                    <HelpTip helpKey="attendance.legal-holiday" />
+                  </span>
+                  <span className="attendance-settings__current-value">{summarizeLegalHoliday(attendance.effective.legalHolidayRule)}</span>
+                </div>
+                <div className="attendance-settings__current-row">
+                  <span className="attendance-settings__current-label">{messages.settingsAttendance.breakRuleLabel}</span>
+                  <span className="attendance-settings__current-value">{messages.settingsAttendance.breakRulePunch}</span>
+                </div>
+                <div className="attendance-settings__current-row">
+                  <span className="attendance-settings__current-label">{messages.settingsAttendance.gpsLabel}</span>
+                  <span className="attendance-settings__current-value">
+                    {attendance.effective.gpsEnabled ? messages.settingsAttendance.gpsEnabledYes : messages.settingsAttendance.gpsEnabledNo}
+                    {attendance.effective.gpsEnabled ? (
+                      <>
+                        {" "}
+                        (
+                        {attendance.effective.gpsRetentionDays != null
+                          ? `${attendance.effective.gpsRetentionDays}${messages.settingsAttendance.gpsRetentionDaysUnit}`
+                          : messages.settingsAttendance.gpsRetentionSameAsAttendance}
+                        )
+                      </>
+                    ) : null}
+                  </span>
+                </div>
+                <p className="attendance-settings__current-effective-from tabular-nums">
+                  {messages.settingsAttendance.currentEffectiveFrom}: {attendance.effective.effectiveFrom}
+                </p>
+              </div>
+            ) : (
+              <p className="attendance-settings__empty">{messages.settingsAttendance.noVersionYet}</p>
+            )}
+
+            <h3 className="attendance-settings__form-title">{messages.settingsAttendance.formTitle}</h3>
+            <form className="attendance-settings__form" onSubmit={handleAttendanceSubmit}>
+              <p className="attendance-settings__effective-hint">
+                {messages.settingsAttendance.effectiveFromHint}
+                <HelpTip helpKey="law.versioning" />
+              </p>
+
+              <label className="attendance-settings__field">
+                <span>{messages.settingsAttendance.effectiveFromLabel}</span>
+                <input
+                  type="date"
+                  min={todayDate}
+                  value={attendanceForm.effectiveFrom}
+                  onChange={(e) => setAttendanceForm((prev) => (prev ? { ...prev, effectiveFrom: e.target.value } : prev))}
+                  required
+                />
+              </label>
+
+              <label className="attendance-settings__field">
+                <span>
+                  {messages.settingsAttendance.dayBoundaryLabel}
+                  <HelpTip helpKey="attendance.day-boundary" />
+                </span>
+                <input
+                  type="time"
+                  value={attendanceForm.dayBoundaryHm}
+                  onChange={(e) => setAttendanceForm((prev) => (prev ? { ...prev, dayBoundaryHm: e.target.value } : prev))}
+                  required
+                />
+                <span className="attendance-settings__field-hint">{messages.settingsAttendance.dayBoundaryHint}</span>
+              </label>
+
+              <fieldset className="attendance-settings__field">
+                <legend>
+                  {messages.settingsAttendance.legalHolidayLabel}
+                  <HelpTip helpKey="attendance.legal-holiday" />
+                </legend>
+                <label className="attendance-settings__radio">
+                  <input
+                    type="radio"
+                    name="legalHolidayKind"
+                    checked={attendanceForm.legalHolidayKind === "weekday"}
+                    onChange={() => setAttendanceForm((prev) => (prev ? { ...prev, legalHolidayKind: "weekday" } : prev))}
+                  />
+                  {messages.settingsAttendance.legalHolidayWeekday}
+                </label>
+                {attendanceForm.legalHolidayKind === "weekday" ? (
+                  <select
+                    aria-label={messages.settingsAttendance.legalHolidayWeekdayValueLabel}
+                    value={attendanceForm.legalHolidayWeekday}
+                    onChange={(e) =>
+                      setAttendanceForm((prev) =>
+                        prev ? { ...prev, legalHolidayWeekday: Number(e.target.value) as 0 | 1 | 2 | 3 | 4 | 5 | 6 } : prev,
+                      )
+                    }
+                  >
+                    {([0, 1, 2, 3, 4, 5, 6] as const).map((w) => (
+                      <option key={w} value={w}>
+                        {WEEKDAY_LABELS[w]}
+                      </option>
+                    ))}
+                  </select>
+                ) : null}
+                <label className="attendance-settings__radio">
+                  <input
+                    type="radio"
+                    name="legalHolidayKind"
+                    checked={attendanceForm.legalHolidayKind === "dates"}
+                    onChange={() => setAttendanceForm((prev) => (prev ? { ...prev, legalHolidayKind: "dates" } : prev))}
+                  />
+                  {messages.settingsAttendance.legalHolidayDates}
+                </label>
+                {attendanceForm.legalHolidayKind === "dates" ? (
+                  <input
+                    type="text"
+                    aria-label={messages.settingsAttendance.legalHolidayDatesValueLabel}
+                    placeholder={messages.settingsAttendance.legalHolidayDatesPlaceholder}
+                    value={attendanceForm.legalHolidayDatesText}
+                    onChange={(e) => setAttendanceForm((prev) => (prev ? { ...prev, legalHolidayDatesText: e.target.value } : prev))}
+                  />
+                ) : null}
+              </fieldset>
+
+              <label className="attendance-settings__checkbox">
+                <input
+                  type="checkbox"
+                  checked={attendanceForm.gpsEnabled}
+                  onChange={(e) => setAttendanceForm((prev) => (prev ? { ...prev, gpsEnabled: e.target.checked } : prev))}
+                />
+                {messages.settingsAttendance.gpsEnabledCheckbox}
+              </label>
+              {attendanceForm.gpsEnabled ? (
+                <>
+                  <p className="attendance-settings__gps-warning" role="alert">
+                    {messages.settingsAttendance.gpsWarning}{" "}
+                    <Link to="/settings/privacy">{messages.settingsAttendance.gpsWarningLink}</Link>
+                  </p>
+                  <label className="attendance-settings__field">
+                    <span>{messages.settingsAttendance.gpsRetentionInputLabel}</span>
+                    <input
+                      type="number"
+                      min={1}
+                      value={attendanceForm.gpsRetentionDays}
+                      onChange={(e) => setAttendanceForm((prev) => (prev ? { ...prev, gpsRetentionDays: e.target.value } : prev))}
+                    />
+                  </label>
+                </>
+              ) : null}
+
+              {attendanceError ? (
+                <p className="correction-error" role="alert">
+                  {attendanceError}
+                </p>
+              ) : null}
+              {attendanceSuccess ? <p className="attendance-settings__success">{messages.settingsAttendance.submitSuccess}</p> : null}
+
+              <div className="attendance-settings__actions">
+                <button type="submit" className="k-modal__confirm k-modal__confirm--neutral" disabled={attendanceSaving}>
+                  {attendanceSaving ? messages.settingsAttendance.submitting : messages.settingsAttendance.submit}
+                </button>
+              </div>
+            </form>
+
+            <h3 className="attendance-settings__form-title">{messages.settingsAttendance.historyTitle}</h3>
+            {attendance.history.length === 0 ? (
+              <p className="attendance-settings__empty">{messages.settingsAttendance.historyEmpty}</p>
+            ) : (
+              <table className="org-table">
+                <thead>
+                  <tr>
+                    <th>{messages.settingsAttendance.historyColumnEffectiveFrom}</th>
+                    <th>{messages.settingsAttendance.historyColumnSummary}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...attendance.history].reverse().map((v) => (
+                    <tr key={v.effectiveFrom}>
+                      <td className="tabular-nums">{v.effectiveFrom}</td>
+                      <td>{summarizeAttendanceVersion(v)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </section>
+        ) : null}
+
+        {!workPolicyForbidden && workPolicy && workPolicyForm ? (
+          <section className="attendance-settings__section">
+            <h2 className="attendance-settings__section-title">
+              {messages.settingsAttendance.flexLabel}
+              <HelpTip helpKey="attendance.flex-frame" />
+            </h2>
+            {workPolicy.effective ? (
+              <div className="attendance-settings__current">
+                <div className="attendance-settings__current-row">
+                  <span className="attendance-settings__current-label">{messages.settingsAttendance.flexStandardDayMinutesLabel}</span>
+                  <span className="attendance-settings__current-value tabular-nums">{workPolicy.effective.standardDayMinutes}</span>
+                </div>
+                <p className="attendance-settings__current-effective-from tabular-nums">
+                  {messages.settingsAttendance.currentEffectiveFrom}: {workPolicy.effective.effectiveFrom}
+                </p>
+              </div>
+            ) : (
+              <p className="attendance-settings__empty">{messages.settingsAttendance.noVersionYet}</p>
+            )}
+
+            <h3 className="attendance-settings__form-title">{messages.settingsAttendance.workPolicyFormTitle}</h3>
+            <form className="attendance-settings__form" onSubmit={handleWorkPolicySubmit}>
+              <p className="attendance-settings__effective-hint">
+                {messages.settingsAttendance.effectiveFromHint}
+                <HelpTip helpKey="law.versioning" />
+              </p>
+              <label className="attendance-settings__field">
+                <span>{messages.settingsAttendance.effectiveFromLabel}</span>
+                <input
+                  type="date"
+                  min={todayDate}
+                  value={workPolicyForm.effectiveFrom}
+                  onChange={(e) => setWorkPolicyForm((prev) => (prev ? { ...prev, effectiveFrom: e.target.value } : prev))}
+                  required
+                />
+              </label>
+              <label className="attendance-settings__field">
+                <span>{messages.settingsAttendance.flexStandardDayMinutesLabel}</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={1440}
+                  value={workPolicyForm.standardDayMinutes}
+                  onChange={(e) => setWorkPolicyForm((prev) => (prev ? { ...prev, standardDayMinutes: e.target.value } : prev))}
+                  required
+                />
+                <span className="attendance-settings__field-hint">{messages.settingsAttendance.flexStandardDayMinutesHint}</span>
+              </label>
+
+              {workPolicyError ? (
+                <p className="correction-error" role="alert">
+                  {workPolicyError}
+                </p>
+              ) : null}
+              {workPolicySuccess ? <p className="attendance-settings__success">{messages.settingsAttendance.submitSuccess}</p> : null}
+
+              <div className="attendance-settings__actions">
+                <button type="submit" className="k-modal__confirm k-modal__confirm--neutral" disabled={workPolicySaving}>
+                  {workPolicySaving ? messages.settingsAttendance.submitting : messages.settingsAttendance.submit}
+                </button>
+              </div>
+            </form>
+
+            <h3 className="attendance-settings__form-title">{messages.settingsAttendance.workPolicyHistoryTitle}</h3>
+            {workPolicy.history.length === 0 ? (
+              <p className="attendance-settings__empty">{messages.settingsAttendance.historyEmpty}</p>
+            ) : (
+              <table className="org-table">
+                <thead>
+                  <tr>
+                    <th>{messages.settingsAttendance.historyColumnEffectiveFrom}</th>
+                    <th>{messages.settingsAttendance.historyColumnSummary}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...workPolicy.history].reverse().map((v) => (
+                    <tr key={v.effectiveFrom}>
+                      <td className="tabular-nums">{v.effectiveFrom}</td>
+                      <td>{summarizeWorkPolicyVersion(v)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </section>
+        ) : null}
+      </main>
+    </div>
+  );
+}

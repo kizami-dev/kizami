@@ -14,6 +14,8 @@ import type { getConfig as File_Login_getConfig } from './pages/login';
 // prettier-ignore
 import type { getConfig as File_Monthly_getConfig } from './pages/monthly';
 // prettier-ignore
+import type { getConfig as File_SettingsAttendance_getConfig } from './pages/settings/attendance';
+// prettier-ignore
 import type { getConfig as File_SettingsDepartments_getConfig } from './pages/settings/departments';
 // prettier-ignore
 import type { getConfig as File_SettingsHelp_getConfig } from './pages/settings/help';
@@ -39,6 +41,7 @@ type Page =
 | ({ path: '/leave' } & GetConfigResponse<typeof File_Leave_getConfig>)
 | ({ path: '/login' } & GetConfigResponse<typeof File_Login_getConfig>)
 | ({ path: '/monthly' } & GetConfigResponse<typeof File_Monthly_getConfig>)
+| ({ path: '/settings/attendance' } & GetConfigResponse<typeof File_SettingsAttendance_getConfig>)
 | ({ path: '/settings/departments' } & GetConfigResponse<typeof File_SettingsDepartments_getConfig>)
 | ({ path: '/settings/help' } & GetConfigResponse<typeof File_SettingsHelp_getConfig>)
 | ({ path: '/settings' } & GetConfigResponse<typeof File_SettingsIndex_getConfig>)

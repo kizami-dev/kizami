@@ -14,6 +14,7 @@ import "../styles/leave.css";
 import "../styles/help.css";
 import "../styles/help-settings.css";
 import "../styles/privacy-settings.css";
+import "../styles/attendance-settings.css";
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
   return (

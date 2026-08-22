@@ -24,6 +24,13 @@
  *   なため、新規テーブルを起こさずこのテーブルに1列追加する(help_overrides のような
  *   テナント×キーの繰り返し構造を持たない)。GET/PUT /help/overrides・/settings/work-rules-url
  *   (apps/api/src/routes/help.ts, settings.ts)が読み書きする。
+ * - `record_retention_description` / `privacy_contact_point`(2026-08-22、テナント設定編集機能
+ *   で追加): 個人情報の雛形(@kizami/privacy-template)が固定文言/null で埋めていた2項目を
+ *   テナントごとに設定できるようにする。判断点: どちらも「その時点の1つの現在値」であり、
+ *   打刻計算に影響する effective-dated な値(原則6の対象)ではなく、`work_rules_url` と同じ
+ *   性質(単純な現在値のテキスト)なのでここに直接列を追加する(新規テーブルは起こさない)。
+ *   GET/PUT /settings/privacy-contact(apps/api/src/routes/settings.ts)が読み書きし、
+ *   GET /settings/privacy-templates が未設定時のフォールバック(固定文言/null)付きで使う。
  *
  * 参照: docs/design/v01-data-model.md §組織・認証・権限
  */
@@ -41,6 +48,10 @@ export const tenants = sqliteTable("tenants", {
   specialClauseEnabled: integer("special_clause_enabled", { mode: "boolean" }).notNull().default(false),
   /** 就業規則(PDF等)へのリンク。未設定なら null */
   workRulesUrl: text("work_rules_url"),
+  /** 打刻記録の保存期間の説明文(個人情報の雛形に使う)。未設定なら null(固定文言にフォールバック) */
+  recordRetentionDescription: text("record_retention_description"),
+  /** 開示・訂正等の請求を受け付ける窓口(個人情報の雛形に使う)。未設定なら null(記入例プレースホルダにフォールバック) */
+  privacyContactPoint: text("privacy_contact_point"),
   /** UTC エポック分 */
   createdAt: integer("created_at").notNull(),
 });

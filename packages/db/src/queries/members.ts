@@ -28,6 +28,25 @@ export async function getUserById(db: Database, params: { tenantId: string; id: 
   return rows[0] ?? null;
 }
 
+/**
+ * 入社日(hire_date)を更新する(UPDATE、現在値のみ — users テーブルは effective-dated ではない)。
+ * null で未設定に戻せる。呼び出し側(apps/api/src/routes/members.ts)が監査ログへの記録を担う。
+ */
+export async function updateUserHireDate(
+  db: Database,
+  params: { tenantId: string; userId: string; hireDate: string | null },
+): Promise<MemberUser> {
+  const [row] = await db
+    .update(users)
+    .set({ hireDate: params.hireDate })
+    .where(and(eq(users.tenantId, params.tenantId), eq(users.id, params.userId)))
+    .returning();
+  if (!row) {
+    throw new Error(`updateUserHireDate: user not found: ${params.userId}`);
+  }
+  return row;
+}
+
 export interface MembershipDepartmentRow {
   userId: string;
   departmentId: string;
