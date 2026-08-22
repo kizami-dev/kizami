@@ -1,0 +1,272 @@
+/**
+ * ホーム(ダッシュボード、`/`、2026-08-22 新設)のスタイル。
+ * docs/design/ui-direction.md の方針どおり K 主体で静かに保つ。意味色は状態のみ
+ * (打刻の状態バッジ=出勤系C/休憩系Y/退勤中はink-soft、警告=Y、フレックス収支=C)。
+ * カード類は settings-hub__card 等の既存パターンを再利用し、新規クラスは最小限にする。
+ */
+
+.dashboard {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+.dashboard__main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  padding: var(--space-5) var(--space-4) var(--space-7);
+  max-width: 38rem;
+  margin: 0 auto;
+  width: 100%;
+}
+
+/* ---- 1. 打刻(最上部、カード枠なしでヘッダーから自然に続く「主役」の扱い) ---- */
+
+.dashboard-punch {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  text-align: center;
+}
+
+.dashboard-punch__state {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--space-2) var(--space-5);
+  border-radius: 999px;
+  border: 2px solid var(--dp-state-color, var(--k-ink-soft));
+}
+
+.dashboard-punch__state-label {
+  font-family: var(--font-display);
+  font-size: 1.1rem;
+  letter-spacing: 0.06em;
+  color: var(--dp-state-color, var(--k-ink-soft));
+}
+
+.dashboard-punch__state--out {
+  --dp-state-color: var(--k-ink-soft);
+}
+
+.dashboard-punch__state--working {
+  --dp-state-color: var(--k-cyan-ink);
+}
+
+.dashboard-punch__state--onBreak {
+  --dp-state-color: var(--k-yellow-ink);
+}
+
+.dashboard-punch__gps-note {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--k-ink-soft);
+}
+
+.dashboard-punch__pad {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-3);
+  width: 100%;
+}
+
+.dashboard-punch__pad .punch-button {
+  min-height: 4.5rem;
+  font-size: 0.95rem;
+}
+
+.dashboard-punch__stamp-link {
+  font-size: 0.82rem;
+  color: var(--k-cyan-ink);
+}
+
+/* ---- 2〜4. カードセクション共通 ---- */
+
+.dashboard-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  border: var(--border-hair);
+  border-radius: var(--radius-m);
+  background: var(--k-surface);
+  padding: var(--space-4);
+}
+
+.dashboard-card__title {
+  font-family: var(--font-display);
+  font-size: 1rem;
+  letter-spacing: 0.04em;
+  color: var(--k-key);
+}
+
+.dashboard-card__link {
+  align-self: flex-start;
+  font-size: 0.82rem;
+  color: var(--k-cyan-ink);
+}
+
+/* ---- 2. 今日/今月の要点 ---- */
+
+.dashboard-today-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.dashboard-today-row__label {
+  font-size: 0.85rem;
+  color: var(--k-ink-soft);
+}
+
+.dashboard-today-row__value {
+  font-family: var(--font-mono);
+  font-size: 1.4rem;
+  font-weight: 600;
+  color: var(--k-key);
+}
+
+/* このセクション内の .flex-balance はカード枠なしにして、二重の枠にしない */
+.dashboard-card > .flex-balance {
+  border: none;
+  padding: 0;
+}
+
+/* ---- 3. 要対応 ---- */
+
+.dashboard-todo__empty {
+  color: var(--k-ink-soft);
+  font-size: 0.9rem;
+  text-align: center;
+  padding: var(--space-3) 0;
+}
+
+.dashboard-todo {
+  display: flex;
+  flex-direction: column;
+}
+
+.dashboard-todo__group {
+  padding: var(--space-3) 0;
+  border-bottom: var(--border-hair);
+}
+
+.dashboard-todo__group:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.dashboard-todo__group:first-child {
+  padding-top: 0;
+}
+
+.dashboard-todo__group-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: var(--k-key);
+  margin: 0 0 var(--space-2);
+}
+
+.dashboard-todo__count {
+  color: var(--k-ink-soft);
+  font-weight: 400;
+  font-size: 0.85rem;
+}
+
+.dashboard-todo__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-size: 0.88rem;
+  margin: 0;
+  padding: var(--space-1) 0;
+}
+
+.dashboard-todo__row-link {
+  flex-shrink: 0;
+  font-size: 0.8rem;
+  color: var(--k-cyan-ink);
+  white-space: nowrap;
+}
+
+.dashboard-todo__notif-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.dashboard-todo__notif-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-2);
+  font-size: 0.85rem;
+}
+
+.dashboard-todo__notif-title {
+  color: var(--k-key);
+}
+
+.dashboard-todo__notif-time {
+  color: var(--k-ink-soft);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+}
+
+.dashboard-todo__notif-link {
+  font-size: 0.78rem;
+  color: var(--k-cyan-ink);
+  flex-basis: 100%;
+}
+
+.dashboard-todo__more {
+  margin: var(--space-1) 0 0;
+  font-size: 0.78rem;
+  color: var(--k-ink-soft);
+}
+
+.dashboard-todo__warning-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.dashboard-todo__warning-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.88rem;
+  color: var(--k-yellow-ink);
+}
+
+.dashboard-todo__warning-item > span:not(.monthly-table__warning-mark) {
+  color: var(--k-key);
+}
+
+.dashboard-todo__warning-item .dashboard-todo__row-link {
+  margin-left: auto;
+}
+
+.dashboard-todo__load-failed {
+  margin: var(--space-2) 0 0;
+  font-size: 0.78rem;
+  color: var(--k-ink-soft);
+}
+
+@media (max-width: 420px) {
+  .dashboard-punch__pad .punch-button {
+    min-height: 3.75rem;
+    font-size: 0.85rem;
+  }
+}

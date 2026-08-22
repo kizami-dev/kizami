@@ -53,6 +53,14 @@
   font-weight: 700;
 }
 
+/* ヘッダー右側(通知ベル+ユーザーメニュー)。モバイルではユーザーメニューだけ隠す
+   (中身は下部タブバーの「その他」シートへ移す。通知ベルは常に見えるようにする)。 */
+.k-header__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
 .k-header__user {
   position: relative;
 }
@@ -115,7 +123,7 @@
   background: color-mix(in srgb, var(--k-magenta) 8%, transparent);
 }
 
-/* ---- テーマ切り替え(ThemeToggle、ユーザーメニュー内) ---- */
+/* ---- テーマ切り替え(ThemeToggle、ユーザーメニュー・「その他」シートで共有) ---- */
 
 .k-header__theme {
   border-top: var(--border-hair);
@@ -161,4 +169,224 @@
   flex-shrink: 0;
   width: 1em;
   color: var(--k-cyan-ink);
+}
+
+/* ============================================================
+   モバイル下部固定タブバー + 「その他」シート(2026-08-22 ナビ作り直し)
+   ============================================================
+   デスクトップ(641px〜)ではどちらも display:none。モバイル(〜640px)では
+   .k-header__nav / .k-header__user を隠し、代わりにこちらを表示する。
+   常に DOM には置き CSS のみで出し分ける(通知ベルの二重ポーリングを避けるため、
+   通知ベル自体は .k-header__actions の1箇所にしか置かない)。
+*/
+
+.k-tabbar {
+  display: none;
+}
+
+@media (max-width: 640px) {
+  .k-header__nav,
+  .k-header__user {
+    display: none;
+  }
+
+  .k-tabbar {
+    display: flex;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 90;
+    background: var(--k-paper);
+    border-top: var(--border-hair);
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+
+  /* タブバーの分だけ、各画面の本文末尾が隠れないように余白を足す。
+     :has() でタブバーの存在を検知し、本文側(main)の変更なしに一括対応する
+     (全ページで <main class="…__main"> という共通構造のため成立する。独自判断)。 */
+  body:has(.k-tabbar) main {
+    padding-bottom: calc(4.75rem + env(safe-area-inset-bottom));
+  }
+}
+
+.k-tabbar__item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: 3.25rem;
+  padding: var(--space-1) 0;
+  text-decoration: none;
+  color: var(--k-ink-soft);
+  background: none;
+  border: none;
+  border-top: 2px solid transparent;
+  font-family: inherit;
+}
+
+.k-tabbar__icon {
+  flex-shrink: 0;
+}
+
+.k-tabbar__label {
+  font-size: 0.68rem;
+  line-height: 1.2;
+}
+
+.k-tabbar__item[aria-current="page"] {
+  color: var(--k-key);
+  border-top-color: var(--k-cyan);
+  font-weight: 700;
+}
+
+/* ---- 「その他」シート ---- */
+
+.more-sheet__backdrop {
+  position: fixed;
+  inset: 0;
+  background: var(--k-scrim);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  z-index: 95;
+}
+
+.more-sheet {
+  width: 100%;
+  max-width: 32rem;
+  max-height: min(80dvh, 40rem);
+  overflow-y: auto;
+  background: var(--k-paper);
+  border-radius: var(--radius-l) var(--radius-l) 0 0;
+  box-shadow: var(--shadow-card);
+  padding: var(--space-2) var(--space-4) var(--space-4);
+  padding-bottom: max(var(--space-4), env(safe-area-inset-bottom));
+  animation: more-sheet-in 180ms ease-out;
+}
+
+@keyframes more-sheet-in {
+  0% {
+    transform: translateY(100%);
+  }
+  100% {
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .more-sheet {
+    animation: none;
+  }
+}
+
+.more-sheet__handle {
+  width: 2.5rem;
+  height: 4px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--k-key) 20%, transparent);
+  margin: var(--space-1) auto var(--space-3);
+}
+
+/* 2行(氏名/メール)+右上に固定した閉じるボタン、という構造を position で明示する
+   (flex の wrap 挙動に頼うと氏名が極端に狭い幅に潰れ、1文字ずつ縦に折り返すバグを
+   起こしたため — 2026-08-22 実機確認で発見・修正)。 */
+.more-sheet__header {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 2.5rem var(--space-3) 0;
+  border-bottom: var(--border-hair);
+  margin-bottom: var(--space-2);
+}
+
+.more-sheet__name {
+  display: block;
+  font-weight: 700;
+  color: var(--k-key);
+}
+
+.more-sheet__email {
+  display: block;
+  font-size: 0.78rem;
+  color: var(--k-ink-soft);
+  word-break: break-all;
+}
+
+.more-sheet__close {
+  position: absolute;
+  top: 0;
+  right: 0;
+  flex-shrink: 0;
+  width: 2rem;
+  height: 2rem;
+  border: none;
+  background: none;
+  font-size: 1.3rem;
+  line-height: 1;
+  color: var(--k-ink-soft);
+  border-radius: var(--radius-s);
+}
+
+.more-sheet__close:hover {
+  background: color-mix(in srgb, var(--k-key) 6%, transparent);
+}
+
+.more-sheet__body {
+  display: flex;
+  flex-direction: column;
+}
+
+.more-sheet__row {
+  display: block;
+  width: 100%;
+  text-align: left;
+  text-decoration: none;
+  background: none;
+  border: none;
+  padding: var(--space-3) var(--space-1);
+  border-bottom: var(--border-hair);
+  font-size: 0.95rem;
+  color: var(--k-key);
+  font-family: inherit;
+}
+
+.more-sheet__row--button {
+  cursor: pointer;
+}
+
+.more-sheet__row--logout {
+  color: var(--k-magenta-ink);
+  border-bottom: none;
+  margin-top: var(--space-1);
+}
+
+.more-sheet__theme {
+  padding: var(--space-1) 0;
+}
+
+.more-sheet__theme .k-header__theme {
+  border-top: none;
+  margin-top: 0;
+  padding-top: 0;
+}
+
+.more-sheet__theme .k-header__theme-label {
+  padding-left: var(--space-1);
+}
+
+.more-sheet__theme .k-header__theme-option {
+  padding-left: var(--space-1);
+}
+
+@media (min-width: 641px) {
+  .more-sheet__backdrop,
+  .k-tabbar {
+    display: none;
+  }
 }

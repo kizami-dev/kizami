@@ -10,12 +10,67 @@ export const messages = {
   tagline: "1分単位で時を刻む勤怠管理。",
 
   nav: {
-    home: "打刻",
+    dashboard: "ホーム",
+    punch: "打刻",
     monthly: "月次",
     corrections: "申請",
     leave: "有給",
     settings: "設定",
     logout: "ログアウト",
+  },
+
+  /** モバイル下部タブバー・「その他」シート(2026-08-22 ナビ作り直しで追加)。 */
+  mobileNav: {
+    more: "その他",
+    moreAriaLabel: "その他のメニューを開く",
+    sheetTitle: "メニュー",
+    close: "閉じる",
+    openNotifications: "通知を見る",
+    stampScreenLink: "スタンプ演出のある打刻画面を開く →",
+  },
+
+  /** ホーム(ダッシュボード、2026-08-22 新設)。docs/design/ui-direction.md「今後のUI作業 > 4」。 */
+  dashboard: {
+    title: "ホーム",
+    punchSectionTitle: "打刻",
+    todayTitle: "今日・今月",
+    todayWorkedLabel: "今日の実労働",
+    monthFlexLabel: "今月のフレックス収支",
+    monthFlexMoreLink: "月次を見る →",
+
+    todoTitle: "要対応",
+    todoEmpty: "対応が必要なものはありません。",
+    todoLoadFailed: "一部の情報を取得できませんでした。",
+
+    todoNotificationsTitle: "未読の通知",
+    todoNotificationsCountSuffix: "件",
+    todoNotificationsMore: "ほかにも未読があります",
+
+    todoApprovalsTitle: "承認待ちの申請",
+    todoApprovalsCorrections: "打刻の修正申請",
+    todoApprovalsLeave: "休暇申請",
+    todoApprovalsCountSuffix: "件",
+    todoApprovalsGoCorrections: "修正申請を見る →",
+    todoApprovalsGoLeave: "有給休暇を見る →",
+
+    todoWarningsTitle: "打刻に警告のある日",
+    todoWarningsMore: (n: number) => `ほかに${n}日`,
+    todoWarningsFix: "修正する",
+
+    todoDeadlinesTitle: "期限が近い義務",
+    todoDeadlinesMandatoryPrefix: "年5日取得義務まであと",
+    todoDeadlinesMandatorySuffix: "日分不足しています(期限: ",
+    todoDeadlinesMandatorySuffix2: ")",
+    todoDeadlinesExpiring: "まもなく失効する有給休暇があります",
+    todoDeadlinesGoLeave: "有給休暇を見る →",
+
+    quickLinksTitle: "よく使う画面",
+    quickLinkMonthlyTitle: "月次",
+    quickLinkMonthlyDesc: "実労働・フレックス収支・警告のある日を確認します。",
+    quickLinkCorrectionsTitle: "申請",
+    quickLinkCorrectionsDesc: "打刻の追加・訂正・取消を申請します。",
+    quickLinkLeaveTitle: "有給休暇",
+    quickLinkLeaveDesc: "残高の確認、休暇の申請を行います。",
   },
 
   /** テーマ切り替え(ヘッダーのユーザーメニュー内、2026-08-22 ダーク対応で追加)。 */

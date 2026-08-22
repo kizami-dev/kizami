@@ -145,6 +145,7 @@ export function NotificationBell() {
     <div className="notif-bell" ref={containerRef}>
       <button
         type="button"
+        id="notif-bell-trigger"
         className="notif-bell__btn"
         aria-haspopup="true"
         aria-expanded={open}

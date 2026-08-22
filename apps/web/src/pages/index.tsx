@@ -1,7 +1,7 @@
-import { PunchHome } from "../components/PunchHome";
+import { DashboardView } from "../components/DashboardView";
 
 export default async function HomePage() {
-  return <PunchHome />;
+  return <DashboardView />;
 }
 
 export const getConfig = async () => {
