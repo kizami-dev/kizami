@@ -189,7 +189,7 @@ export async function getValidShiftDayForDate(
 }
 
 /**
- * 有効な shift_days を [fromDate, toDate](両端含む)で返す(date 昇順)。
+ * 有効な shift_days を fromDate〜toDate(両端含む)で返す(date 昇順)。
  * engine の `EngineInput.shifts` にそのまま変換して渡す入力になる
  * (docs/design/shift-work.md 決定事項5)。
  */

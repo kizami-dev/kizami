@@ -96,7 +96,7 @@ interface VariableDayCalc {
   statutoryOvertimeMinutes: number;
 }
 
-/** [fromDate, toDate](両端含む、ローカル日付の文字列比較で判定)における日別実労働(分)。 */
+/** fromDate〜toDate(両端含む、ローカル日付の文字列比較で判定)における日別実労働(分)。 */
 function workedMinutesByDateInRange(
   workedSegments: Segment[],
   settingsTimeline: SettingsSpan[],
