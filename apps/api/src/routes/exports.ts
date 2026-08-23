@@ -51,6 +51,7 @@ import type { AppEnv } from "../auth/middleware.js";
 import { requirePermission } from "../authz.js";
 import { buildAllowanceTimeline, resolveAllowanceColumnsForPeriod, type AllowanceColumn } from "../lib/allowances.js";
 import { engineOutputFromSnapshots, sumFixedBreakdown, type SnapshotTotals } from "../lib/closing-snapshot.js";
+import { buildTenantMonthlyContext } from "../lib/closing-amend.js";
 import { resolveAccessibleUserIds } from "../lib/scope.js";
 import { dateFromEpochDay, daysInMonth, epochDayFromDate, formatDate, nowMinutes, parseMonthParam } from "../lib/time.js";
 import { calculateMonthlyForUser } from "../reminders.js";
@@ -331,9 +332,15 @@ export function createExportsRoutes(db: Database) {
         rows.push(buildRow({ user: u, period, current, closed, original, columns: allowanceColumns }));
       }
     } else {
+      // N+1解消: 未締め月のCSVは対象ユーザー全員が同じテナント・同じ月なので、
+      // law/allowance/テナント設定版を1回だけ構築してユーザーごとの再取得を避ける
+      // (apps/api/src/lib/closing-amend.ts 冒頭の判断点参照)。構築自体が失敗した場合は
+      // 以前と同じく以降の per-user 呼び出しにフォールバックさせる(挙動不変。
+      // apps/api/src/routes/closings.ts の同種コメント参照)。
+      const tenantContext = await buildTenantMonthlyContext(db, { tenantId: user.tenantId, year, month }).catch(() => undefined);
       for (const u of targetUsers) {
         try {
-          const { output } = await calculateMonthlyForUser(db, { tenantId: user.tenantId, userId: u.id, year, month });
+          const { output } = await calculateMonthlyForUser(db, { tenantId: user.tenantId, userId: u.id, year, month }, tenantContext);
           const current = monthlyFiguresFromEngineOutput(output);
           // 未締めの月には amend という概念が無い(そもそも確定値が存在しない)ため、
           // compare=original が指定されていても current をそのまま original として扱う(diff=0)。

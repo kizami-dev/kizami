@@ -73,8 +73,11 @@ export interface CalcSettings {
 
 /**
  * 自動控除のルール1件(docs/design/breaks.md「採る設計」)。
- * 実労働(休憩控除後)が `overMinutes` を超えたら、合計 `deductMinutes` になるまで控除する。
- * 判定・適用の詳細な意味論(閾値の選び方・punch/both との組み合わせ)は auto-break.ts 参照。
+ * 実労働(休憩控除後)が `overMinutes` を超えたら発動し、`deductMinutes`(モードによる調整後)
+ * と「実労働 − overMinutes」の小さい方を実効控除として控除する — 控除しても実労働が
+ * `overMinutes` を割り込むことはない。複数ルールが同時に発動する場合は実効控除が最大の
+ * ものを採用する(同値なら `overMinutes` が大きい方)。判定・適用の詳細な意味論(閾値の
+ * 選び方・punch/both との組み合わせ)は auto-break.ts の selectRule 参照。
  */
 export interface AutoBreakRule {
   overMinutes: number;

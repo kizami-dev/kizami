@@ -63,6 +63,17 @@ describe("buildPrivacyNotice", () => {
     expect(notice).toContain("労働基準法第109条");
   });
 
+  it("利用目的の変更時の通知の根拠は個人情報保護法第21条第3項(第17条第3項ではない)", () => {
+    const notice = buildPrivacyNotice(BASE);
+    expect(notice).toContain("利用目的を変更する場合は、あらためて従業員に通知します(個人情報保護法第21条第3項)。");
+    expect(notice).not.toContain("第17条第3項");
+  });
+
+  it("取得する情報にメールアドレス(アカウント管理・招待リンクの送付)を含む", () => {
+    const notice = buildPrivacyNotice(BASE);
+    expect(notice).toContain("メールアドレス(アカウント管理・招待リンクの送付)");
+  });
+
   it("contactPoint が未設定なら記入例のプレースホルダを出す", () => {
     const notice = buildPrivacyNotice({ ...BASE, contactPoint: null });
     expect(notice).toContain("ここに開示・訂正等の請求を受け付ける窓口を記載してください");

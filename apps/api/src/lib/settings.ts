@@ -8,7 +8,15 @@
  */
 
 import { and, asc, eq } from "drizzle-orm";
-import { getSettingsTimeline, getTenantById, userPolicyAssignments, workPolicyVersions, type Database, type Transaction } from "@kizami/db";
+import {
+  getSettingsTimeline,
+  getTenantById,
+  userPolicyAssignments,
+  workPolicyVersions,
+  type Database,
+  type Transaction,
+  type TenantSettingVersion,
+} from "@kizami/db";
 import type { BreakRule, CalcSettings, LawTimelineSpan, LegalHolidayRule, SettingsSpan } from "@kizami/engine";
 import { buildLawTimeline } from "@kizami/law";
 
@@ -30,6 +38,35 @@ function latestAtOrBefore<T extends EffectiveDatedRow>(rows: T[], date: string):
   return chosen;
 }
 
+/** workPolicyVersions から buildSettingsTimeline が使う列だけを取り出した行の形。 */
+export type WorkPolicyVersionRow = {
+  effectiveFrom: string;
+  workPolicyId: string;
+  kind: string;
+  settlementPeriod: string;
+  standardDayMinutes: number;
+};
+
+/**
+ * テナント全体の work_policy_versions を取得する(userId に依存しないテナント単位のデータ)。
+ * buildSettingsTimeline 自身のフォールバック(precomputedTenant 省略時)と、
+ * apps/api/src/lib/closing-amend.ts の TenantMonthlyContext 構築の両方から使う共通クエリ
+ * (同じ SELECT を2箇所に書かない)。
+ */
+export async function fetchWorkPolicyVersionRowsForTenant(db: Database | Transaction, tenantId: string): Promise<WorkPolicyVersionRow[]> {
+  return db
+    .select({
+      effectiveFrom: workPolicyVersions.effectiveFrom,
+      workPolicyId: workPolicyVersions.workPolicyId,
+      kind: workPolicyVersions.kind,
+      settlementPeriod: workPolicyVersions.settlementPeriod,
+      standardDayMinutes: workPolicyVersions.standardDayMinutes,
+    })
+    .from(workPolicyVersions)
+    .where(eq(workPolicyVersions.tenantId, tenantId))
+    .orderBy(asc(workPolicyVersions.effectiveFrom));
+}
+
 export interface BuildSettingsTimelineParams {
   tenantId: string;
   userId: string;
@@ -37,6 +74,18 @@ export interface BuildSettingsTimelineParams {
   fromDate: string;
   /** ローカル日付 "YYYY-MM-DD"(対象期間末日) */
   toDate: string;
+  /**
+   * テナント単位の事前計算済みデータ(N+1解消、レビュー指摘)。同一テナント・同一期間について
+   * 複数ユーザー分をまとめて計算する呼び出し元(apps/api/src/lib/closing-amend.ts の
+   * TenantMonthlyContext)が、tenant_setting_versions・work_policy_versions の取得を
+   * ユーザーごとに繰り返さないよう1回分の結果を渡せる。どちらも tenantId・fromDate・toDate
+   * だけで決まり userId には依存しないため、テナント内の全ユーザーで共有できる値。
+   * 省略時はこれまでどおり自前で取得する(後方互換)。
+   */
+  precomputedTenant?: {
+    tenantTimeline: TenantSettingVersion[];
+    workPolicyVersionRows: WorkPolicyVersionRow[];
+  };
 }
 
 /**
@@ -53,9 +102,9 @@ export async function buildSettingsTimeline(
   db: Database | Transaction,
   params: BuildSettingsTimelineParams,
 ): Promise<SettingsSpan[]> {
-  const { tenantId, userId, fromDate, toDate } = params;
+  const { tenantId, userId, fromDate, toDate, precomputedTenant } = params;
 
-  const tenantTimeline = await getSettingsTimeline(db, { tenantId, fromDate, toDate });
+  const tenantTimeline = precomputedTenant ? precomputedTenant.tenantTimeline : await getSettingsTimeline(db, { tenantId, fromDate, toDate });
   if (tenantTimeline.length === 0) {
     throw new Error(`no tenant settings version effective on or before ${fromDate}`);
   }
@@ -73,17 +122,7 @@ export async function buildSettingsTimeline(
     throw new Error(`no work policy assigned to user ${userId} on or before ${fromDate}`);
   }
 
-  const versions = await db
-    .select({
-      effectiveFrom: workPolicyVersions.effectiveFrom,
-      workPolicyId: workPolicyVersions.workPolicyId,
-      kind: workPolicyVersions.kind,
-      settlementPeriod: workPolicyVersions.settlementPeriod,
-      standardDayMinutes: workPolicyVersions.standardDayMinutes,
-    })
-    .from(workPolicyVersions)
-    .where(eq(workPolicyVersions.tenantId, tenantId))
-    .orderBy(asc(workPolicyVersions.effectiveFrom));
+  const versions = precomputedTenant ? precomputedTenant.workPolicyVersionRows : await fetchWorkPolicyVersionRowsForTenant(db, tenantId);
 
   // 判断点(バグ修正, 2026-08-22): 変更点(changePoints)には元々「assignments/versions の
   // effectiveFrom <= toDate」を無条件に含めていたが、これは fromDate より前の変更点も

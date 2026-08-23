@@ -208,6 +208,24 @@ export const en = {
     tenant: "Entire tenant",
   } satisfies Record<"self" | "department" | "department_and_descendants" | "tenant", string>,
 
+  permissions: {
+    categoryLabel: {
+      attendance: "Punches, requests & approvals",
+      leave: "Leave",
+      closing: "Closing & exports",
+      org: "Members & organization",
+      settings: "Settings & permissions",
+      other: "Other",
+    } as Record<string, string>,
+    internalViewLabel: {
+      "department.view": "View department tree",
+      "tenant_settings.view": "View tenant settings",
+      "permission_preset.view": "View permission preset list",
+      "permission_assignment.effective_view": "View a member's effective permissions (what they can do)",
+      "api_key.view": "View API key list",
+    } as Record<string, string>,
+  },
+
   login: {
     title: "KIZAMI",
     tagline: "Attendance management, tracked to the minute",
@@ -251,6 +269,10 @@ export const en = {
     expiredTitle: "This invitation has expired",
     expiredMessage: "This invitation has expired. Please ask your administrator to reissue it.",
     acceptedRedirecting: "Sign-up complete. Redirecting…",
+
+    sessionIssuanceFailedTitle: "Your account has been created",
+    sessionIssuanceFailedMessage: "Your account has been created. Please sign in from the login page.",
+    goToLogin: "Go to login",
 
     errors: {
       invalid_password: "Password must be at least 12 characters",
@@ -491,6 +513,10 @@ export const en = {
     confirmProceed: "Proceed",
 
     empty: "No requests yet",
+
+    queueSectionTitle: "Correction requests awaiting approval",
+    queueSectionTagline: "Requests awaiting approval within your approval scope.",
+    queueEmpty: "No requests awaiting approval",
 
     errors: {
       already_superseded: "This punch has already been corrected by another request",
@@ -942,7 +968,7 @@ export const en = {
 
     specialProvisionLabel: "Special-provision workplace",
     specialProvisionHint:
-      "Workplaces in commerce, film/theater, health services, or entertainment with 9 or fewer regular employees have a statutory weekly working-hours limit of 44 hours (Labor Standards Act Article 40).",
+      "Workplaces in commerce, film/theater, health services, or entertainment with fewer than 10 regular employees have a statutory weekly working-hours limit of 44 hours (Labor Standards Act Article 40).",
 
     specialClauseLabel: "Article 36 agreement's special clause is in effect",
     specialClauseHint:
@@ -1434,6 +1460,11 @@ export const en = {
 
     requestsTitle: "Requests",
     requestsEmpty: "No requests yet",
+
+    queueSectionTitle: "Leave requests awaiting approval",
+    queueSectionTagline: "Requests awaiting approval within your approval scope.",
+    queueEmpty: "No requests awaiting approval",
+
     columnDate: "Target date",
     columnUnit: "Unit",
     columnLeaveType: "Type",

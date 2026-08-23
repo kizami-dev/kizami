@@ -23,7 +23,7 @@ export function EffectivePermissionsPanel({ entries }: EffectivePermissionsPanel
     <div className="effective-perms">
       {groups.map((group) => (
         <section key={group.id} className="effective-perms__group">
-          <h3 className="effective-perms__group-title">{group.labelJa}</h3>
+          <h3 className="effective-perms__group-title">{messages.permissions.categoryLabel[group.id]}</h3>
           <ul className="effective-perms__list">
             {group.entries.map((catalogEntry) => {
               const entry = entryByKey.get(catalogEntry.key);

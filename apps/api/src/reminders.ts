@@ -26,7 +26,12 @@ import { eq } from "drizzle-orm";
 import { createNotificationIfAbsent, listValidPunches, users, type Database, type Notification } from "@kizami/db";
 import { calculate, type CalcSettings, type EngineInput, type PunchKind, type SettingsSpan, type ValidPunch } from "@kizami/engine";
 import { dispatch, type DispatchResult, type NotificationChannel } from "@kizami/notify";
-import { computeMonthlyForUser } from "./lib/closing-amend.js";
+import {
+  computeMonthlyForUser,
+  getOrBuildTenantMonthlyContext,
+  type TenantMonthlyContext,
+  type TenantMonthlyContextCache,
+} from "./lib/closing-amend.js";
 import { buildSettingsTimeline, TZ_OFFSET_MINUTES_JST } from "./lib/settings.js";
 import { dateFromEpochDay, daysInMonth, epochDayFromDate, formatDate, localMidnightUtcMinutes } from "./lib/time.js";
 
@@ -157,12 +162,19 @@ export interface MonthlyCalcResult {
  * 締め処理・打刻忘れリマインド・36協定アラートが揃って有給を無視していた
  * (確定値に有給が反映されない、時間外の見込みが過大になる)。
  * 締め後修正の実装で有給込みの計算が用意されたのを機に一本化した。
+ *
+ * `tenantContext` は省略可能(N+1解消、apps/api/src/lib/closing-amend.ts 冒頭の判断点参照)。
+ * テナント内の全ユーザーをループする呼び出し元(closings.ts・overtime-alerts.ts・
+ * このファイルの runReminderScan)は、ループの前に buildTenantMonthlyContext /
+ * getOrBuildTenantMonthlyContext で1回だけ構築したものをここへ渡す。省略時は
+ * computeMonthlyForUser が従来どおり自前で取得するため、挙動・クエリ回数とも変わらない。
  */
 export async function calculateMonthlyForUser(
   db: Database,
   params: { tenantId: string; userId: string; year: number; month: number },
+  tenantContext?: TenantMonthlyContext,
 ): Promise<MonthlyCalcResult> {
-  return computeMonthlyForUser(db, params);
+  return computeMonthlyForUser(db, params, tenantContext);
 }
 
 function missingClockOutNotificationContent(date: string): { title: string; body: string } {
@@ -188,6 +200,10 @@ export async function runReminderScan(db: Database, options: RunReminderScanOpti
   const activeUsers = await listActiveUsers(db);
 
   const created: CreatedReminder[] = [];
+  // N+1解消: targetMonths は nowMinutes だけで決まり全ユーザー共通なので、同じテナント・
+  // 同じ月の law/allowance/テナント設定版は複数ユーザーで使い回せる
+  // (apps/api/src/lib/closing-amend.ts 冒頭の判断点参照)。
+  const tenantContextCache: TenantMonthlyContextCache = new Map();
 
   for (const user of activeUsers) {
     const channels = resolveChannels
@@ -197,7 +213,8 @@ export async function runReminderScan(db: Database, options: RunReminderScanOpti
     for (const { year, month } of targetMonths) {
       let result: MonthlyCalcResult;
       try {
-        result = await calculateMonthlyForUser(db, { tenantId: user.tenantId, userId: user.id, year, month });
+        const tenantContext = await getOrBuildTenantMonthlyContext(tenantContextCache, db, { tenantId: user.tenantId, year, month });
+        result = await calculateMonthlyForUser(db, { tenantId: user.tenantId, userId: user.id, year, month }, tenantContext);
       } catch {
         // テナント設定・制度割当がまだ揃っていないユーザー/月はスキャン対象外として静かにスキップする
         // (未設定は他のエンドポイントでも起こりうる状態であり、リマインドスキャン全体を落とす理由にはしない)

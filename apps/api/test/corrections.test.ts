@@ -1,6 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createDepartment, upsertMembership, uuidv7 } from "@kizami/db";
 import { createApp } from "../src/app.js";
-import { jstMinutes, loginAndGetCookie, setupSecondUser, setupTestDb } from "./support/setup.js";
+import { grantPermission, jstMinutes, loginAndGetCookie, setupSecondUser, setupTestDb } from "./support/setup.js";
+
+/** このファイルの承認系テストは軒並み自己承認を行うため、共通ヘルパーにまとめる
+ * (2026-08-23: 承認は attendance.correction.approve 権限ベースに統一された —
+ * routes/corrections.ts のヘッダコメント参照。自己承認であってもこの権限が要る)。 */
+async function grantApprovePermission(db: Parameters<typeof grantPermission>[0], tenantId: string, userId: string) {
+  await grantPermission(db, { tenantId, userId, permission: "attendance.correction.approve", scope: "tenant" });
+}
 
 // テスト対象期間(2026-04)の内側、日界・月境界から十分離れた安全な時刻に固定する。
 const FIXED_NOW = new Date("2026-04-15T03:00:00.000Z"); // JST 2026-04-15 12:00
@@ -31,7 +39,8 @@ describe("correction request flow", () => {
   });
 
   it("case 1: addition request -> approve -> reflected in GET /attendance/monthly (missing clock-out day counts correctly)", async () => {
-    const { db, email, password } = await setupTestDb();
+    const { db, tenantId, userId, email, password } = await setupTestDb();
+    await grantApprovePermission(db, tenantId, userId);
     const app = createApp({ db });
     const cookie = await loginAndGetCookie(app, email, password);
 
@@ -81,7 +90,8 @@ describe("correction request flow", () => {
   });
 
   it("case 2: correction request -> approve -> original event superseded, new event valid", async () => {
-    const { db, email, password } = await setupTestDb();
+    const { db, tenantId, userId, email, password } = await setupTestDb();
+    await grantApprovePermission(db, tenantId, userId);
     const app = createApp({ db });
     const cookie = await loginAndGetCookie(app, email, password);
 
@@ -130,7 +140,8 @@ describe("correction request flow", () => {
   });
 
   it("case 3: cancellation request -> approve -> target event invalidated", async () => {
-    const { db, email, password } = await setupTestDb();
+    const { db, tenantId, userId, email, password } = await setupTestDb();
+    await grantApprovePermission(db, tenantId, userId);
     const app = createApp({ db });
     const cookie = await loginAndGetCookie(app, email, password);
 
@@ -175,7 +186,8 @@ describe("correction request flow", () => {
   });
 
   it("case 4: a second approval targeting the same already-superseded event returns 409 already_superseded", async () => {
-    const { db, email, password } = await setupTestDb();
+    const { db, tenantId, userId, email, password } = await setupTestDb();
+    await grantApprovePermission(db, tenantId, userId);
     const app = createApp({ db });
     const cookie = await loginAndGetCookie(app, email, password);
 
@@ -320,7 +332,8 @@ describe("correction request flow", () => {
     }
 
     it("returns 409 not_pending when approving a request that is not pending", async () => {
-      const { db, email, password } = await setupTestDb();
+      const { db, tenantId, userId, email, password } = await setupTestDb();
+      await grantApprovePermission(db, tenantId, userId);
       const app = createApp({ db });
       const cookie = await loginAndGetCookie(app, email, password);
 
@@ -342,7 +355,8 @@ describe("correction request flow", () => {
     });
 
     it("returns 409 not_pending when approving a withdrawn request", async () => {
-      const { db, email, password } = await setupTestDb();
+      const { db, tenantId, userId, email, password } = await setupTestDb();
+      await grantApprovePermission(db, tenantId, userId);
       const app = createApp({ db });
       const cookie = await loginAndGetCookie(app, email, password);
 
@@ -363,8 +377,9 @@ describe("correction request flow", () => {
       expect(await approveRes.json()).toEqual({ error: "not_pending" });
     });
 
-    it("self-approval records selfApproved: true (v0.1 provisional authorization)", async () => {
-      const { db, email, password } = await setupTestDb();
+    it("self-approval records selfApproved: true when the actor holds attendance.correction.approve", async () => {
+      const { db, tenantId, userId, email, password } = await setupTestDb();
+      await grantApprovePermission(db, tenantId, userId);
       const app = createApp({ db });
       const cookie = await loginAndGetCookie(app, email, password);
 
@@ -378,6 +393,143 @@ describe("correction request flow", () => {
       const approved = ((await approveRes.json()) as { request: CorrectionRequestJson }).request;
       expect(approved.decidedBy).toBe(approved.requestedBy);
       expect(approved.decisionNote).toBe("self-approved for single-tenant ops");
+    });
+  });
+
+  // 2026-08-23: 承認方式を requestedBy 自身のみの自己承認から attendance.correction.approve
+  // 権限ベース(+ スコープ)へ統一(routes/corrections.ts ヘッダコメント参照)。
+  describe("permission-based authorization", () => {
+    async function createPendingRequest(app: ReturnType<typeof createApp>, cookie: string) {
+      const res = await app.request("/corrections", {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie },
+        body: JSON.stringify({ proposedKind: "clock_in", proposedOccurredAt: jstMinutes(2026, 4, 1, 9, 0), reason: "reason" }),
+      });
+      return ((await res.json()) as { request: CorrectionRequestJson }).request;
+    }
+
+    it("even self-approval is rejected with 403 without attendance.correction.approve", async () => {
+      const { db, email, password } = await setupTestDb();
+      const app = createApp({ db });
+      const cookie = await loginAndGetCookie(app, email, password);
+
+      const req = await createPendingRequest(app, cookie);
+      const approveRes = await app.request(`/corrections/${req.id}/approve`, {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie },
+        body: JSON.stringify({}),
+      });
+      expect(approveRes.status).toBe(403);
+
+      const rejectRes = await app.request(`/corrections/${req.id}/reject`, {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie },
+        body: JSON.stringify({}),
+      });
+      expect(rejectRes.status).toBe(403);
+    });
+
+    it("a tenant-scoped approver can approve another user's request", async () => {
+      const { db, tenantId, userId, email, password } = await setupTestDb();
+      await grantApprovePermission(db, tenantId, userId);
+      const requester = await setupSecondUser(db, tenantId);
+      const app = createApp({ db });
+      const approverCookie = await loginAndGetCookie(app, email, password);
+      const requesterCookie = await loginAndGetCookie(app, requester.email, requester.password);
+
+      const req = await createPendingRequest(app, requesterCookie);
+      const approveRes = await app.request(`/corrections/${req.id}/approve`, {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie: approverCookie },
+        body: JSON.stringify({}),
+      });
+      expect(approveRes.status).toBe(200);
+      const approved = ((await approveRes.json()) as { request: CorrectionRequestJson }).request;
+      expect(approved.decidedBy).toBe(userId);
+      expect(approved.requestedBy).toBe(requester.userId);
+    });
+
+    it("a department-scoped manager can approve a same-department subordinate, but not an out-of-scope member (403)", async () => {
+      const { db, tenantId, userId: managerId, email: managerEmail, password: managerPassword } = await setupTestDb();
+      const deptA = await createDepartment(db, { id: uuidv7(), tenantId, name: "部署A", parentId: null, createdAt: 0 });
+      const deptB = await createDepartment(db, { id: uuidv7(), tenantId, name: "部署B", parentId: null, createdAt: 0 });
+      await upsertMembership(db, { tenantId, userId: managerId, departmentId: deptA.id, createdAt: 0 });
+      await grantPermission(db, { tenantId, userId: managerId, permission: "attendance.correction.approve", scope: "department" });
+
+      const subordinate = await setupSecondUser(db, tenantId);
+      await upsertMembership(db, { tenantId, userId: subordinate.userId, departmentId: deptA.id, createdAt: 0 });
+
+      const app = createApp({ db });
+      const managerCookie = await loginAndGetCookie(app, managerEmail, managerPassword);
+      const subordinateCookie = await loginAndGetCookie(app, subordinate.email, subordinate.password);
+
+      const inScopeReq = await createPendingRequest(app, subordinateCookie);
+      const inScopeApprove = await app.request(`/corrections/${inScopeReq.id}/approve`, {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie: managerCookie },
+        body: JSON.stringify({}),
+      });
+      expect(inScopeApprove.status).toBe(200);
+
+      // 部署Bに異動させると、department スコープの管理者からは見えなくなる。
+      await upsertMembership(db, { tenantId, userId: subordinate.userId, departmentId: deptB.id, createdAt: 0 });
+      const outOfScopeReq = await createPendingRequest(app, subordinateCookie);
+      const outOfScopeApprove = await app.request(`/corrections/${outOfScopeReq.id}/approve`, {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie: managerCookie },
+        body: JSON.stringify({}),
+      });
+      expect(outOfScopeApprove.status).toBe(403);
+    });
+
+    it("approving another user's request creates an in-app notification for the requester (approve and reject)", async () => {
+      const { db, tenantId, userId, email, password } = await setupTestDb();
+      await grantApprovePermission(db, tenantId, userId);
+      const requester = await setupSecondUser(db, tenantId);
+      const app = createApp({ db });
+      const approverCookie = await loginAndGetCookie(app, email, password);
+      const requesterCookie = await loginAndGetCookie(app, requester.email, requester.password);
+
+      const approvedReq = await createPendingRequest(app, requesterCookie);
+      const approveRes = await app.request(`/corrections/${approvedReq.id}/approve`, {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie: approverCookie },
+        body: JSON.stringify({}),
+      });
+      expect(approveRes.status).toBe(200);
+
+      const rejectedReq = await createPendingRequest(app, requesterCookie);
+      const rejectRes = await app.request(`/corrections/${rejectedReq.id}/reject`, {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie: approverCookie },
+        body: JSON.stringify({ note: "却下理由" }),
+      });
+      expect(rejectRes.status).toBe(200);
+
+      const notifRes = await app.request("/notifications", { headers: { cookie: requesterCookie } });
+      const notifBody = (await notifRes.json()) as { notifications: Array<{ type: string; title: string }> };
+      const types = notifBody.notifications.map((n) => n.type);
+      expect(types).toContain("correction_request_approved");
+      expect(types).toContain("correction_request_rejected");
+    });
+
+    it("self-approval does not create a notification", async () => {
+      const { db, tenantId, userId, email, password } = await setupTestDb();
+      await grantApprovePermission(db, tenantId, userId);
+      const app = createApp({ db });
+      const cookie = await loginAndGetCookie(app, email, password);
+
+      const req = await createPendingRequest(app, cookie);
+      const approveRes = await app.request(`/corrections/${req.id}/approve`, {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie },
+        body: JSON.stringify({}),
+      });
+      expect(approveRes.status).toBe(200);
+
+      const notifRes = await app.request("/notifications", { headers: { cookie } });
+      const notifBody = (await notifRes.json()) as { notifications: Array<{ type: string }> };
+      expect(notifBody.notifications.map((n) => n.type)).not.toContain("correction_request_approved");
     });
   });
 });

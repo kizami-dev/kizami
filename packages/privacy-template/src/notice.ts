@@ -5,8 +5,8 @@ import type { PrivacyTemplateInput } from "./types.js";
  * 従業員向けプライバシー通知の雛形(Markdown)を組み立てる。
  *
  * 前提(docs/design/ui-direction.md「個人情報まわりの雛形」):
- * KIZAMI 自身に OAuth 目的のプライバシーポリシーは不要だが、打刻記録・IP・UA・GPS 座標は
- * 従業員の個人情報であり、個人情報保護法上の義務(利用目的の特定・公表、GPS取得時の明示)を
+ * KIZAMI 自身に OAuth 目的のプライバシーポリシーは不要だが、メールアドレス・打刻記録・IP・UA・
+ * GPS 座標は従業員の個人情報であり、個人情報保護法上の義務(利用目的の特定・公表、GPS取得時の明示)を
  * 負うのは導入企業である。この関数は導入企業がその義務を果たすための雛形を生成するだけで、
  * KIZAMI プロジェクトが義務を代わりに履行するものではない。
  *
@@ -21,6 +21,7 @@ export function buildPrivacyNotice(input: PrivacyTemplateInput): string {
   const { tenantName, gpsEnabled, gpsRetentionDays, recordRetentionDescription, workRulesUrl, contactPoint } = input;
 
   const collectedItems = [
+    "メールアドレス(アカウント管理・招待リンクの送付)",
     "打刻時刻(出勤・退勤・休憩の開始/終了時刻)",
     "打刻を行った端末のIPアドレス",
     "打刻を行った端末のユーザーエージェント(ブラウザ・OS等の識別情報)",
@@ -60,7 +61,7 @@ ${gpsSection}
 2. 労働者名簿・賃金台帳など法定帳簿の作成(労働基準法第108条)
 3. 賃金計算の基礎資料としての利用
 
-上記の目的以外に利用することはありません。利用目的を変更する場合は、あらためて従業員に通知します(個人情報保護法第17条第3項)。
+上記の目的以外に利用することはありません。利用目的を変更する場合は、あらためて従業員に通知します(個人情報保護法第21条第3項)。
 
 ## 保存期間
 

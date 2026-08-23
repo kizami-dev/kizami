@@ -47,15 +47,24 @@ export const DEFAULT_USER_NOTIFICATION_PREFS: Readonly<Record<NotificationCatego
 
 /**
  * notifications.type(例: "missing_clock_out" / "overtime_45h_reached" /
- * "leave_expiring_60d" / "leave_mandatory5_90d" / "auto_break_waiver_approved")から
- * カテゴリを解決する。未知の type は呼び出し元の実装ミスとして扱い、例外を投げる
- * (silent に握りつぶすと個人設定が効かないまま通知が飛ぶ/飛ばない事故に気づけないため)。
+ * "leave_expiring_60d" / "leave_mandatory5_90d" / "leave_request_approved" /
+ * "auto_break_waiver_approved" / "correction_request_approved")からカテゴリを解決する。
+ * 未知の type は呼び出し元の実装ミスとして扱い、例外を投げる(silent に握りつぶすと
+ * 個人設定が効かないまま通知が飛ぶ/飛ばない事故に気づけないため)。
+ *
+ * 判断点(2026-08-23): 休暇申請の承認・却下通知("leave_request_*")は既存の "leave_"
+ * プレフィックス一致にそのまま乗り、leave_alert カテゴリ(失効間近・年5日義務と同じ
+ * 「休暇のお知らせ」)に束ねる。打刻修正申請の承認・却下通知("correction_request_*")は
+ * auto_break_waiver と同じ correction_alert カテゴリに束ねる(routes/corrections.ts・
+ * routes/leave.ts のヘッダコメント参照)。
  */
 export function resolveNotificationCategory(notificationType: string): NotificationCategory {
   if (notificationType === "missing_clock_out") return "missing_clock_out";
   if (notificationType.startsWith("overtime_")) return "overtime_alert";
   if (notificationType.startsWith("leave_")) return "leave_alert";
-  if (notificationType.startsWith("auto_break_waiver_")) return "correction_alert";
+  if (notificationType.startsWith("auto_break_waiver_") || notificationType.startsWith("correction_request_")) {
+    return "correction_alert";
+  }
   throw new Error(`resolveNotificationCategory: unknown notification type "${notificationType}"`);
 }
 

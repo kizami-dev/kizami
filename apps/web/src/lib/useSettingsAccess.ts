@@ -1,15 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { api } from "./api";
+import type { Scope } from "./api";
+import { hasEffectivePermission } from "./permissions";
+import { useEffectivePermissions } from "./useEffectivePermissions";
 
 export interface SettingsAccess {
   loading: boolean;
   /**
-   * /settings/notifications/me(個人の通知設定。2026-08-22 追加)。
-   *
-   * 判断点: apiKeys と同じ「自分用なので権限不要」— 認証済みなら誰でも自分の受け取り方を
-   * 設定できるため、権限プローブは不要で常に true。テナント設定(notifications, 下記)とは
+   * /settings/notifications/me(個人の通知設定)。自分用なので権限不要 — 認証済みなら誰でも
+   * 自分の受け取り方を設定できるため、常に true。テナント設定(notifications, 下記)とは
    * 完全に独立して常に表示する(docs/requirements.md §7「通知設定の2層構造」)。
    */
   myNotifications: boolean;
@@ -17,141 +16,70 @@ export interface SettingsAccess {
   departments: boolean;
   members: boolean;
   presets: boolean;
-  /** GET /settings/tenant-profile(alert.labor_limit.configure)。v0.3 追加。 */
   tenantProfile: boolean;
-  /** GET /settings/leave(leave.grant.manage)。v0.3 追加。 */
   leave: boolean;
-  /**
-   * /settings/help(社内規定の編集)。2026-08-22 追加。
-   *
-   * 判断点: PUT /help/overrides/:key・PUT /settings/work-rules-url は
-   * notification.settings.manage を要求するが、GET /help/overrides はその権限の有無に
-   * 関わらず認証だけで 200 を返す(従業員も読めるようにするため)ため、他の画面のように
-   * 「一覧 GET を叩いて 200/403 で判定する」手が使えない。実際に要求する権限が
-   * notifications と同一(notification.settings.manage)なので、notifications の
-   * プローブ結果をそのまま転用する(追加のリクエストを増やさない)。
-   */
   help: boolean;
-  /**
-   * /settings/privacy(個人情報まわりの雛形。2026-08-22 追加)。
-   * GET /settings/privacy-templates が要求する権限は help と同一(notification.settings.manage)
-   * なので、help と同様に notifications のプローブ結果を転用する(追加のリクエストを増やさない)。
-   */
   privacy: boolean;
-  /**
-   * /settings/attendance(テナント設定の版管理: 日界・法定休日・休憩ルール・GPS・フレックス。
-   * 2026-08-22 追加)。GET /settings/attendance(tenant_settings.calendar.manage)と
-   * GET /settings/work-policy(tenant_settings.flex.manage)は別々の権限なので、
-   * どちらか一方でも通れば画面自体は表示する(画面側は各セクションを個別に出し分ける)。
-   */
   attendance: boolean;
-  /**
-   * /settings/allowances(手当対象時間の定義。docs/design/allowances.md、2026-08-23 追加)。
-   * GET /settings/allowances が要求する権限は attendance と同一(tenant_settings.calendar.manage
-   * の転用、apps/api/src/routes/settings.ts の ALLOWANCE_SETTINGS_PERMISSION コメント参照)だが、
-   * 画面自体は別物のため attendance の判定結果を使い回さず独立にプローブする。
-   */
   allowances: boolean;
-  /**
-   * /settings/api-keys(公開打刻APIキーの管理。v0.4 追加)。
-   *
-   * 判断点: 依頼どおり「自分用なので権限不要」— 自分のキーの発行・一覧・失効は全認証済み
-   * ユーザーが行える(GET /api-keys は自分のキーだけなら常に200)ため、他の項目のような
-   * 権限プローブは不要で常に true。
-   */
+  /** /settings/api-keys。自分のキーの発行・一覧・失効は全認証済みユーザーが行えるため、常に true。 */
   apiKeys: boolean;
-  /**
-   * /settings/slack(Slackスラッシュコマンド打刻の連携設定。2026-08-22 追加)。
-   * GET /settings/slack が要求する権限は notification.settings.manage の転用
-   * (apps/api/src/routes/settings.ts の SLACK_SETTINGS_PERMISSION コメント参照)。
-   */
   slack: boolean;
-  /**
-   * /settings/slack-link(Slack連携用トークンの入力。2026-08-22 追加)。
-   * 判断点: apiKeys と同じ「自分用なので権限不要」— 認証済みなら誰でも自分のSlackアカウントを
-   * 連携できるため、権限プローブは不要で常に true。
-   */
+  /** /settings/slack-link。apiKeys と同じく自分用なので権限不要、常に true。 */
   slackLink: boolean;
 }
-
-const INITIAL: SettingsAccess = {
-  loading: true,
-  myNotifications: true,
-  notifications: false,
-  departments: false,
-  members: false,
-  presets: false,
-  tenantProfile: false,
-  leave: false,
-  help: false,
-  privacy: false,
-  attendance: false,
-  allowances: false,
-  apiKeys: true,
-  slack: false,
-  slackLink: true,
-};
 
 /**
  * 設定サブナビ(AppHeader・SettingsNav・設定ハブ)がどの /settings/* を表示してよいかを判定する。
  *
- * 判断点: apps/api には「自分の実効権限一覧」を返すエンドポイントが無く(apps/api は変更禁止)、
- * 各画面の一覧 API を叩いて 200/403 で判定する既存の流儀(AppHeader の通知設定リンク判定)を
- * そのまま他の3画面にも拡張する。失敗時は安全側(非表示)に倒す。
+ * 2026-08-23 レビュー第2波: 従来は apps/api に「自分の実効権限一覧」を返すエンドポイントが無く、
+ * 各画面の一覧 API を10本並列で叩いて 200/403 で判定していた(失敗時は安全側=非表示)。
+ * GET /me/effective-permissions の新設により、その場しのぎのプローブ方式を全廃し、
+ * 「権限キー → この画面が要求する権限」の対応表を引くだけの判定に置き換える。
+ *
+ * 判断点(完了報告に明記): 対応表は apps/api/src/routes/settings.ts・departments.ts・
+ * members.ts・presets.ts・help.ts が実際に requirePermission へ渡している権限キー・スコープを
+ * 正とし、そのまま転記した(推測ではない)。
+ * - notifications: NOTIFICATION_SETTINGS_PERMISSION = "notification.settings.manage" (tenant)
+ * - departments: GET /departments は "department.manage"(department_and_descendants)または
+ *   フォールバックの "member.view"(department)のどちらかで通る(departments.ts の
+ *   MANAGE_PERMISSION/VIEW_FALLBACK_PERMISSION 参照)
+ * - members: GET /members の VIEW_PERMISSION = "member.view" (department)
+ * - presets: PRESET_MANAGE_PERMISSION = "permission.preset.manage" (tenant)
+ * - tenantProfile: TENANT_PROFILE_PERMISSION = "alert.labor_limit.configure" (tenant)
+ * - leave: LEAVE_SETTINGS_PERMISSION = "leave.grant.manage" (tenant)
+ * - help / privacy / slack: いずれも settings.ts 内で NOTIFICATION_SETTINGS_PERMISSION
+ *   (= HELP_OVERRIDES_PERMISSION と同じ "notification.settings.manage")を転用している定数
+ *   (WORK_RULES_URL_PERMISSION・PRIVACY_TEMPLATES_PERMISSION・SLACK_SETTINGS_PERMISSION)を
+ *   そのまま使うため、notifications と同じ権限キーで判定する
+ * - attendance: ATTENDANCE_CALENDAR_PERMISSION = "tenant_settings.calendar.manage" または
+ *   WORK_POLICY_PERMISSION = "tenant_settings.flex.manage" のどちらか(tenant)。どちらか一方でも
+ *   持っていれば画面自体は表示する(画面側は各セクションを個別に出し分ける、従来と同じ方針)
+ * - allowances: ALLOWANCE_SETTINGS_PERMISSION = ATTENDANCE_CALENDAR_PERMISSION と同一
+ *   ("tenant_settings.calendar.manage"、tenant)
  */
 export function useSettingsAccess(): SettingsAccess {
-  const [access, setAccess] = useState<SettingsAccess>(INITIAL);
+  const { loading, permissions } = useEffectivePermissions();
 
-  useEffect(() => {
-    let cancelled = false;
+  function has(key: string, minScope: Scope): boolean {
+    return hasEffectivePermission(permissions, key, minScope);
+  }
 
-    async function probe<T>(fn: () => Promise<T>): Promise<boolean> {
-      try {
-        await fn();
-        return true;
-      } catch {
-        return false;
-      }
-    }
-
-    Promise.all([
-      probe(() => api.getNotificationSettings()),
-      probe(() => api.listDepartments()),
-      probe(() => api.listMembers()),
-      probe(() => api.listPresets()),
-      probe(() => api.getTenantProfile()),
-      probe(() => api.getLeaveSettings()),
-      probe(() => api.getAttendanceSettings()),
-      probe(() => api.getWorkPolicySettings()),
-      probe(() => api.getSlackSettings()),
-      probe(() => api.getAllowances()),
-    ]).then(
-      ([notifications, departments, members, presets, tenantProfile, leave, attendanceSettings, workPolicySettings, slack, allowances]) => {
-        if (cancelled) return;
-        setAccess({
-          loading: false,
-          myNotifications: true,
-          notifications,
-          departments,
-          members,
-          presets,
-          tenantProfile,
-          leave,
-          help: notifications,
-          privacy: notifications,
-          attendance: attendanceSettings || workPolicySettings,
-          allowances,
-          apiKeys: true,
-          slack,
-          slackLink: true,
-        });
-      },
-    );
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  return access;
+  return {
+    loading,
+    myNotifications: true,
+    apiKeys: true,
+    slackLink: true,
+    notifications: has("notification.settings.manage", "tenant"),
+    departments: has("department.manage", "department_and_descendants") || has("member.view", "department"),
+    members: has("member.view", "department"),
+    presets: has("permission.preset.manage", "tenant"),
+    tenantProfile: has("alert.labor_limit.configure", "tenant"),
+    leave: has("leave.grant.manage", "tenant"),
+    help: has("notification.settings.manage", "tenant"),
+    privacy: has("notification.settings.manage", "tenant"),
+    attendance: has("tenant_settings.calendar.manage", "tenant") || has("tenant_settings.flex.manage", "tenant"),
+    allowances: has("tenant_settings.calendar.manage", "tenant"),
+    slack: has("notification.settings.manage", "tenant"),
+  };
 }

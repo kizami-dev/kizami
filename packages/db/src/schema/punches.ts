@@ -4,9 +4,17 @@
  * - 「取消」は kind を引き継がず supersedes_id のみ持つ専用 kind `void` で表現する
  * - 有効イベント = 他のイベントの supersedes_id に参照されていないもの。
  *   同一イベントを二重に無効化することは `supersedes_id` の UNIQUE 制約で禁止する
- * - correction_request_id は v0.2 で追加される correction_requests テーブルへの論理参照。
- *   v0.1 では対象テーブルが存在しないため FK 制約は張らない(カラムのみ用意)
+ * - correction_request_id は correction_requests テーブル(v0.2 で追加済み)への論理参照だが、
+ *   FK 制約は依然として張っていない(判断点、2026-08-23 再確認)。当初の「v0.1 時点では
+ *   参照先テーブルが存在しない」という理由は correction_requests 追加で解消済みだが、
+ *   SQLite は既存テーブルへの `ALTER TABLE ... ADD CONSTRAINT`(列への FK 後付け)を
+ *   サポートしておらず、FK を追加するには punch_events テーブル自体の再作成
+ *   (新テーブルへ全行コピー→旧テーブル削除→リネーム)が要る。punch_events は打刻の
+ *   追記専用ログで本番データ量が大きくなりやすく、この移行コストは本タスクのスコープでは
+ *   負わないと判断した — 「FK が無いのは実装漏れ」ではなく「移行コストとのトレードオフで
+ *   意図的に見送っている」という現状を明示するため、このコメントを更新した(コード変更なし)
  *
+
  * 参照: docs/design/v01-data-model.md §punch_events(追記専用)
  */
 

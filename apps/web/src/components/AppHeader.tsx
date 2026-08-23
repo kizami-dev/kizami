@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useRouter } from "waku";
 import { api } from "../lib/api";
+import { invalidateEffectivePermissionsCache } from "../lib/useEffectivePermissions";
 import { messages } from "../lib/messages";
 import { useSettingsAccess } from "../lib/useSettingsAccess";
 import { CorrectionsTabIcon, MonthlyTabIcon, MoreTabIcon, PunchTabIcon } from "./NavIcons";
@@ -93,6 +94,9 @@ export function AppHeader({ displayName, email, tenantName, active }: AppHeaderP
     try {
       await api.logout();
     } finally {
+      // アカウント切替後に前のユーザーの実効権限を見せないよう、キャッシュを破棄する
+      // (lib/useEffectivePermissions.ts の判断点コメント参照)。
+      invalidateEffectivePermissionsCache();
       setSheetOpen(false);
       router.push("/login");
     }

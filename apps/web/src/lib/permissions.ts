@@ -8,7 +8,7 @@
  * サーバー側の判定を代替するものではない — 実際の許可判定は常に apps/api が行う)。
  */
 
-import type { PermissionCatalogEntryDto, PermissionGrantDto, PermissionPresetDto, Scope } from "./api";
+import type { EffectivePermissionDto, PermissionCatalogEntryDto, PermissionGrantDto, PermissionPresetDto, Scope } from "./api";
 
 const SCOPE_ORDER: Record<Scope, number> = {
   self: 0,
@@ -25,55 +25,78 @@ export function widerScope(a: Scope, b: Scope): Scope {
   return scopeRank(b) > scopeRank(a) ? b : a;
 }
 
-/** カタログに存在しない「閲覧のみ含意される」内部キーの日本語ラベル(packages/authz/src/implied.ts 参照)。
+/**
+ * GET /me/effective-permissions の結果に対し、key を minScope 以上のスコープで持っているかを
+ * 判定する(apps/api/src/authz.ts の requirePermission と同じスコープ階層。2026-08-23 追加)。
+ *
+ * UI の出し分け(ナビ・ボタンの表示可否)専用の参考判定であり、実際の許可判定は常に apps/api
+ * (requirePermission)が行う。権限が無ければボタン自体を出さない用途で使う
+ * (lib/useSettingsAccess.ts・CorrectionsView・LeaveRequestsList・MembersView)。
+ */
+export function hasEffectivePermission(
+  permissions: readonly EffectivePermissionDto[],
+  key: string,
+  minScope: Scope,
+): boolean {
+  return permissions.some((p) => p.key === key && scopeRank(p.scope) >= scopeRank(minScope));
+}
+
+/**
+ * カタログに存在しない「閲覧のみ含意される」内部キー(packages/authz/src/implied.ts 参照)。
  * 業務タスクカタログ(30項目)には対応キーが無いため、権限プリセット編集画面の
- * 「この権限には○○の閲覧が含まれます」表示のためだけにここで補う(判断点)。 */
-export const INTERNAL_VIEW_LABELS: Record<string, string> = {
-  "department.view": "部署ツリーの閲覧",
-  "tenant_settings.view": "テナント設定の閲覧",
-  "permission_preset.view": "権限プリセット一覧の閲覧",
-  "permission_assignment.effective_view": "メンバーの実効権限(できること)の閲覧",
-  "api_key.view": "APIキー一覧の閲覧",
-};
+ * 「この権限には○○の閲覧が含まれます」表示のためだけにここで一覧を持つ(判断点)。
+ *
+ * ラベルの日本語ハードコードは messages(lib/i18n の permissions.internalViewLabel、4言語)へ
+ * 移した(2026-08-23、i18n 対応)。ここではキーの一覧(=カタログ外キーの判定にも使う)だけを持つ。
+ */
+export const INTERNAL_VIEW_KEYS: readonly string[] = [
+  "department.view",
+  "tenant_settings.view",
+  "permission_preset.view",
+  "permission_assignment.effective_view",
+  "api_key.view",
+];
 
 /**
  * カタログキーの接頭辞から業務グループへ機械的に分類する(依頼:
  * 「カタログのキーの接頭辞から機械的に分類してよい」)。
- * 表示順もこの配列順。
+ * 表示順もこの配列順。グループ名の日本語ハードコードは messages(lib/i18n の
+ * permissions.categoryLabel、4言語)へ移した(2026-08-23、i18n 対応)。
  */
-export const PERMISSION_CATEGORIES: readonly { id: string; labelJa: string; prefixes: readonly string[] }[] = [
-  { id: "attendance", labelJa: "打刻・申請と承認", prefixes: ["attendance."] },
-  { id: "leave", labelJa: "休暇", prefixes: ["leave."] },
-  { id: "closing", labelJa: "締めとエクスポート", prefixes: ["closing.", "export.", "alert."] },
-  { id: "org", labelJa: "メンバーと組織", prefixes: ["member.", "department."] },
-  {
-    id: "settings",
-    labelJa: "設定と権限",
-    prefixes: ["tenant_settings.", "notification.", "permission.", "audit_log.", "api_key."],
-  },
+export const PERMISSION_CATEGORIES: readonly { id: string; prefixes: readonly string[] }[] = [
+  { id: "attendance", prefixes: ["attendance."] },
+  { id: "leave", prefixes: ["leave."] },
+  { id: "closing", prefixes: ["closing.", "export.", "alert."] },
+  { id: "org", prefixes: ["member.", "department."] },
+  { id: "settings", prefixes: ["tenant_settings.", "notification.", "permission.", "audit_log.", "api_key."] },
 ] as const;
 
-const OTHER_CATEGORY = { id: "other", labelJa: "その他" } as const;
+/** カタログのどの接頭辞にも一致しない項目のグループ ID。messages.permissions.categoryLabel.other に対応する。 */
+export const OTHER_CATEGORY_ID = "other";
 
-export function categoryForKey(key: string): { id: string; labelJa: string } {
+export function categoryForKey(key: string): { id: string } {
   for (const cat of PERMISSION_CATEGORIES) {
-    if (cat.prefixes.some((p) => key.startsWith(p))) return cat;
+    if (cat.prefixes.some((p) => key.startsWith(p))) return { id: cat.id };
   }
-  return OTHER_CATEGORY;
+  return { id: OTHER_CATEGORY_ID };
 }
 
-/** カタログ項目をグループ化して返す(表示順: PERMISSION_CATEGORIES の順、その他は末尾)。 */
+/**
+ * カタログ項目をグループ化して返す(表示順: PERMISSION_CATEGORIES の順、その他は末尾)。
+ * グループの表示名は id をキーに呼び出し側で messages.permissions.categoryLabel[id] を引く
+ * (このファイルは apps/web の他の lib と同じく、表示文言そのものは持たない)。
+ */
 export function groupCatalogByCategory(
   catalog: readonly PermissionCatalogEntryDto[],
-): { id: string; labelJa: string; entries: PermissionCatalogEntryDto[] }[] {
-  const groups = new Map<string, { id: string; labelJa: string; entries: PermissionCatalogEntryDto[] }>();
+): { id: string; entries: PermissionCatalogEntryDto[] }[] {
+  const groups = new Map<string, { id: string; entries: PermissionCatalogEntryDto[] }>();
   for (const entry of catalog) {
     const cat = categoryForKey(entry.key);
-    const g = groups.get(cat.id) ?? { id: cat.id, labelJa: cat.labelJa, entries: [] };
+    const g = groups.get(cat.id) ?? { id: cat.id, entries: [] };
     g.entries.push(entry);
     groups.set(cat.id, g);
   }
-  const order = [...PERMISSION_CATEGORIES.map((c) => c.id), OTHER_CATEGORY.id];
+  const order = [...PERMISSION_CATEGORIES.map((c) => c.id), OTHER_CATEGORY_ID];
   return order.map((id) => groups.get(id)).filter((g): g is NonNullable<typeof g> => g !== undefined);
 }
 

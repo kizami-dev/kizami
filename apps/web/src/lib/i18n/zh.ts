@@ -186,6 +186,24 @@ export const zh = {
     tenant: "整个租户",
   } satisfies Record<"self" | "department" | "department_and_descendants" | "tenant", string>,
 
+  permissions: {
+    categoryLabel: {
+      attendance: "打卡、申请与审批",
+      leave: "休假",
+      closing: "结算与导出",
+      org: "成员与组织",
+      settings: "设置与权限",
+      other: "其他",
+    } as Record<string, string>,
+    internalViewLabel: {
+      "department.view": "查看部门树",
+      "tenant_settings.view": "查看租户设置",
+      "permission_preset.view": "查看权限预设列表",
+      "permission_assignment.effective_view": "查看成员的实际权限(可执行的操作)",
+      "api_key.view": "查看API密钥列表",
+    } as Record<string, string>,
+  },
+
   login: {
     title: "KIZAMI",
     tagline: "以分钟为单位精准记录的考勤管理",
@@ -227,6 +245,10 @@ export const zh = {
     expiredTitle: "此邀请已过期",
     expiredMessage: "此邀请已过期,请联系管理员重新发放。",
     acceptedRedirecting: "注册完成,正在跳转…",
+
+    sessionIssuanceFailedTitle: "账户已创建",
+    sessionIssuanceFailedMessage: "账户已创建。请前往登录页面登录。",
+    goToLogin: "前往登录页面",
 
     errors: {
       invalid_password: "密码至少需要12位",
@@ -461,6 +483,10 @@ export const zh = {
     confirmProceed: "执行",
 
     empty: "暂无申请记录",
+
+    queueSectionTitle: "待审批的修正申请",
+    queueSectionTagline: "在您的审批权限范围内,待审批的修正申请。",
+    queueEmpty: "暂无待审批的申请",
 
     errors: {
       already_superseded: "目标打卡记录已被其他申请修正",
@@ -907,7 +933,7 @@ export const zh = {
 
     specialProvisionLabel: "是否为特例措施适用单位",
     specialProvisionHint:
-      "商业、影剧业、保健卫生业、娱乐服务业中常时雇用9人以下的单位,其每周法定工作时间为44小时(《劳动基准法》第40条)。",
+      "商业、影剧业、保健卫生业、娱乐服务业中常时雇用不满10人的单位,其每周法定工作时间为44小时(《劳动基准法》第40条)。",
 
     specialClauseLabel: "已签订特别条款",
     specialClauseHint:
@@ -1390,6 +1416,10 @@ export const zh = {
 
     requestsTitle: "申请列表",
     requestsEmpty: "暂无申请记录",
+
+    queueSectionTitle: "待审批的休假申请",
+    queueSectionTagline: "在您的审批权限范围内,待审批的休假申请。",
+    queueEmpty: "暂无待审批的申请",
     columnDate: "目标日期",
     columnUnit: "单位",
     columnLeaveType: "额度",

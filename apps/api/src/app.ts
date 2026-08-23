@@ -90,7 +90,8 @@ export function createApp(deps: CreateAppDeps) {
   authed.route("/api-keys", createApiKeysRoutes(db));
   authed.route("/punches", createPunchesRoutes(db));
   authed.route("/attendance", createAttendanceRoutes(db));
-  authed.route("/corrections", createCorrectionsRoutes(db));
+  // 承認・却下の本人通知を外部チャネル(メール/個人Webhook)へも流すための deps(2026-08-23 承認モデル統一の配線)
+  authed.route("/corrections", createCorrectionsRoutes(db, { ...(notify ?? {}), encryptor: encryptor ?? null }));
   // 休憩自動控除の打ち消し申請(docs/design/breaks.md)。承認通知の送信に settings.ts と同じ
   // notify 依存(smtpSendFn 等)+ encryptor を必要とするため、同じ deps をそのまま渡す。
   authed.route("/auto-break-waivers", createAutoBreakWaiversRoutes(db, { ...(notify ?? {}), encryptor: encryptor ?? null }));
@@ -110,11 +111,15 @@ export function createApp(deps: CreateAppDeps) {
   authed.route("/presets", createPresetsRoutes(db));
   authed.route("/closings", createClosingsRoutes(db));
   authed.route("/exports", createExportsRoutes(db));
-  authed.route("/leave", createLeaveRoutes(db));
+  authed.route("/leave", createLeaveRoutes(db, { ...(notify ?? {}), encryptor: encryptor ?? null }));
   app.route("/", authed);
 
   app.onError((err, c) => {
     if (err instanceof ForbiddenError) {
+      // 403 の詳細(どの権限・スコープで弾かれたか)はクライアントへは返さない(情報最小化)が、
+      // 運用調査のためサーバーログには残す。スタックトレースは不要(ForbiddenError は想定内の
+      // 分岐であり、バグ調査に要るのは「誰が何を試みて弾かれたか」のメッセージのみのため)。
+      console.error(`forbidden: ${err.message}`);
       return c.json({ error: "forbidden" }, 403);
     }
     if (err instanceof MonthClosedRequiresUnlockError) {

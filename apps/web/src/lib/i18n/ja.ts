@@ -194,6 +194,31 @@ export const ja = {
     tenant: "テナント全体",
   } satisfies Record<"self" | "department" | "department_and_descendants" | "tenant", string>,
 
+  /**
+   * 権限プリセット関連の表示文言(lib/permissions.ts 参照、2026-08-23 i18n 対応で追加)。
+   * 元は lib/permissions.ts の PERMISSION_CATEGORIES.labelJa・INTERNAL_VIEW_LABELS に
+   * 日本語がハードコードされていた(EffectivePermissionsPanel・PresetFormDialog が参照)。
+   */
+  permissions: {
+    /** lib/permissions.ts の PERMISSION_CATEGORIES の id → 業務グループの表示名。 */
+    categoryLabel: {
+      attendance: "打刻・申請と承認",
+      leave: "休暇",
+      closing: "締めとエクスポート",
+      org: "メンバーと組織",
+      settings: "設定と権限",
+      other: "その他",
+    } as Record<string, string>,
+    /** lib/permissions.ts の INTERNAL_VIEW_KEYS(カタログに存在しない「閲覧のみ含意される」内部キー)の表示名。 */
+    internalViewLabel: {
+      "department.view": "部署ツリーの閲覧",
+      "tenant_settings.view": "テナント設定の閲覧",
+      "permission_preset.view": "権限プリセット一覧の閲覧",
+      "permission_assignment.effective_view": "メンバーの実効権限(できること)の閲覧",
+      "api_key.view": "APIキー一覧の閲覧",
+    } as Record<string, string>,
+  },
+
   login: {
     title: "KIZAMI",
     tagline: "1分単位で時を刻む勤怠管理",
@@ -236,6 +261,15 @@ export const ja = {
     expiredTitle: "この招待は期限切れです",
     expiredMessage: "この招待は期限切れです。管理者に再発行を依頼してください。",
     acceptedRedirecting: "登録が完了しました。移動しています…",
+
+    /**
+     * アカウント作成には成功したがセッション発行だけ失敗した場合(2026-08-23 API側新設、
+     * `{ accountActivated: true, error: "session_issuance_failed" }`)。自動ログインには
+     * 失敗したがアカウント自体は使える状態のため、ログイン画面への導線を示す。
+     */
+    sessionIssuanceFailedTitle: "アカウントを作成しました",
+    sessionIssuanceFailedMessage: "アカウントは作成されました。ログインページからサインインしてください。",
+    goToLogin: "ログインページへ",
 
     errors: {
       invalid_password: "パスワードは12文字以上で入力してください",
@@ -472,6 +506,15 @@ export const ja = {
     confirmProceed: "実行する",
 
     empty: "申請はまだありません",
+
+    /**
+     * 承認待ちキュー(2026-08-23 追加、autoBreakWaiver の own/queue 二段構成と同じ形に統一)。
+     * GET /corrections は view_all/approve 権限があればスコープ内全員分を返すため、
+     * 自分の申請一覧(上記 title/empty)とは別に「承認待ち(自分以外も含む)」を出す。
+     */
+    queueSectionTitle: "承認待ちの修正申請",
+    queueSectionTagline: "承認権限のある範囲内で、承認待ちの修正申請です。",
+    queueEmpty: "承認待ちの申請はありません",
 
     errors: {
       already_superseded: "対象の打刻は別の申請で既に修正されています",
@@ -920,7 +963,7 @@ export const ja = {
 
     specialProvisionLabel: "特例措置対象事業場かどうか",
     specialProvisionHint:
-      "商業・映画演劇業・保健衛生業・接客娯楽業で常時9人以下の事業場は、週の法定労働時間が44時間になります(労基法40条)。",
+      "商業・映画演劇業・保健衛生業・接客娯楽業で常時10人未満の事業場は、週の法定労働時間が44時間になります(労基法40条)。",
 
     specialClauseLabel: "特別条項の締結あり",
     specialClauseHint:
@@ -1407,6 +1450,12 @@ export const ja = {
 
     requestsTitle: "申請一覧",
     requestsEmpty: "申請はまだありません",
+
+    /** 承認待ちキュー(2026-08-23 追加、CorrectionsView・autoBreakWaiver と同じ own/queue 二段構成)。 */
+    queueSectionTitle: "承認待ちの休暇申請",
+    queueSectionTagline: "承認権限のある範囲内で、承認待ちの休暇申請です。",
+    queueEmpty: "承認待ちの申請はありません",
+
     columnDate: "対象日",
     columnUnit: "単位",
     columnLeaveType: "枠",

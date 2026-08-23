@@ -123,5 +123,12 @@ export const leaveRequests = sqliteTable(
   (table) => [
     index("leave_requests_tenant_user_status_idx").on(table.tenantId, table.userId, table.status),
     index("leave_requests_tenant_user_date_idx").on(table.tenantId, table.userId, table.leaveDate),
+    // listApprovedLeaveRequestsInRange(queries/leave.ts)は tenant_id・user_id・status='approved'・
+    // leave_date の範囲を同時に絞り込む。auto_break_waivers と同じ理由(このファイル冒頭ではなく
+    // schema/auto-break-waivers.ts の同種 index に理由の詳細を書いている)で、上の2つの
+    // 3カラム index だけでは4条件同時の絞り込みをカバーしきれない。GET /attendance/monthly・
+    // 締め処理・打刻忘れリマインド・36協定アラートすべてがユーザーごとに呼ぶ高頻度パスのため
+    // 複合 index を別途持つ。
+    index("leave_requests_tenant_user_status_date_idx").on(table.tenantId, table.userId, table.status, table.leaveDate),
   ],
 );

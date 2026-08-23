@@ -97,6 +97,8 @@ describe("closing amend (post-close corrections)", () => {
     const { db, tenantId, userId, email, password } = await setupTestDb();
     await grantPermission(db, { tenantId, userId, permission: "closing.execute", scope: "tenant" });
     await grantPermission(db, { tenantId, userId, permission: "closing.unlock", scope: "tenant" });
+    // 2026-08-23: 承認は attendance.correction.approve 権限ベースに統一(自己承認も対象)。
+    await grantPermission(db, { tenantId, userId, permission: "attendance.correction.approve", scope: "tenant" });
     const app = createApp({ db });
     const cookie = await loginAndGetCookie(app, email, password);
 
@@ -152,6 +154,8 @@ describe("closing amend (post-close corrections)", () => {
     const { db, tenantId, userId, email, password } = await setupTestDb();
     // closing.execute のみ(closing.unlock は付与しない)
     await grantPermission(db, { tenantId, userId, permission: "closing.execute", scope: "tenant" });
+    // 2026-08-23: 承認は attendance.correction.approve 権限ベースに統一(自己承認も対象)。
+    await grantPermission(db, { tenantId, userId, permission: "attendance.correction.approve", scope: "tenant" });
     const app = createApp({ db });
     const cookie = await loginAndGetCookie(app, email, password);
 
@@ -182,6 +186,8 @@ describe("closing amend (post-close corrections)", () => {
     const { db, tenantId, userId, email, password } = await setupTestDb();
     await grantPermission(db, { tenantId, userId, permission: "closing.execute", scope: "tenant" });
     await grantPermission(db, { tenantId, userId, permission: "closing.unlock", scope: "tenant" });
+    // 2026-08-23: 承認は attendance.correction.approve 権限ベースに統一(自己承認も対象)。
+    await grantPermission(db, { tenantId, userId, permission: "attendance.correction.approve", scope: "tenant" });
     const app = createApp({ db });
     const cookie = await loginAndGetCookie(app, email, password);
 
@@ -220,6 +226,8 @@ describe("closing amend (post-close corrections)", () => {
     await grantPermission(db, { tenantId, userId, permission: "closing.execute", scope: "tenant" });
     await grantPermission(db, { tenantId, userId, permission: "closing.unlock", scope: "tenant" });
     await grantPermission(db, { tenantId, userId, permission: "export.attendance.run", scope: "tenant" });
+    // 2026-08-23: 承認は attendance.correction.approve 権限ベースに統一(自己承認も対象)。
+    await grantPermission(db, { tenantId, userId, permission: "attendance.correction.approve", scope: "tenant" });
     const app = createApp({ db });
     const cookie = await loginAndGetCookie(app, email, password);
 
@@ -326,6 +334,8 @@ describe("closing amend (post-close corrections)", () => {
     await grantPermission(db, { tenantId, userId, permission: "closing.execute", scope: "tenant" });
     await grantPermission(db, { tenantId, userId, permission: "closing.unlock", scope: "tenant" });
     await grantPermission(db, { tenantId, userId, permission: "export.attendance.run", scope: "tenant" });
+    // 2026-08-23: 承認は attendance.correction.approve 権限ベースに統一(自己承認も対象)。
+    await grantPermission(db, { tenantId, userId, permission: "attendance.correction.approve", scope: "tenant" });
     const app = createApp({ db });
     const cookie = await loginAndGetCookie(app, email, password);
 
@@ -365,6 +375,8 @@ describe("closing amend (post-close corrections)", () => {
     const { db, tenantId, userId, email, password } = await setupTestDb();
     await grantPermission(db, { tenantId, userId, permission: "closing.execute", scope: "tenant" });
     await grantPermission(db, { tenantId, userId, permission: "closing.unlock", scope: "tenant" });
+    // 2026-08-23: 承認は leave.request.approve 権限ベースに統一(自己承認も対象)。
+    await grantPermission(db, { tenantId, userId, permission: "leave.request.approve", scope: "tenant" });
     await insertLeaveGrant(db, {
       tenantId,
       userId,
@@ -420,6 +432,8 @@ describe("closing amend (post-close corrections)", () => {
   it("closing a month includes already-approved paid leave in the snapshot (regression: close ignored paid leave)", async () => {
     const { db, tenantId, userId, email, password } = await setupTestDb();
     await grantPermission(db, { tenantId, userId, permission: "closing.execute", scope: "tenant" });
+    // 2026-08-23: 承認は leave.request.approve 権限ベースに統一(自己承認も対象)。
+    await grantPermission(db, { tenantId, userId, permission: "leave.request.approve", scope: "tenant" });
     await insertLeaveGrant(db, {
       tenantId,
       userId,
@@ -466,6 +480,8 @@ describe("closing amend (post-close corrections)", () => {
   it("approving a leave request for a closed month without closing.unlock is rejected with 409 month_closed_requires_unlock", async () => {
     const { db, tenantId, userId, email, password } = await setupTestDb();
     await grantPermission(db, { tenantId, userId, permission: "closing.execute", scope: "tenant" });
+    // 2026-08-23: 承認は leave.request.approve 権限ベースに統一(自己承認も対象)。
+    await grantPermission(db, { tenantId, userId, permission: "leave.request.approve", scope: "tenant" });
     await insertLeaveGrant(db, {
       tenantId,
       userId,

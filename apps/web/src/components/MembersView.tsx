@@ -13,8 +13,9 @@ import {
   type PermissionPresetDto,
 } from "../lib/api";
 import { mapAssignmentErrorMessage, mapMemberErrorMessage, messages } from "../lib/messages";
-import { computeEffectivePermissions, matchAssignedPresetIds } from "../lib/permissions";
+import { computeEffectivePermissions, hasEffectivePermission, matchAssignedPresetIds } from "../lib/permissions";
 import { useAuthGuard } from "../lib/useAuthGuard";
+import { useEffectivePermissions } from "../lib/useEffectivePermissions";
 import { AppHeader } from "./AppHeader";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { EffectivePermissionsPanel } from "./EffectivePermissionsPanel";
@@ -295,28 +296,18 @@ export function MembersView() {
   }, [presets, selectedPresetIds, catalog]);
 
   /**
-   * 招待の発行・再発行・取り消し(member.invite)を出すかどうかの判定(判断点、完了報告に明記):
-   * apps/api には「自分の実効権限」を返すエンドポイントが無く、GET /members も一覧全体の
-   * inviteStatus しか返さない(自分の権限有無は分からない)。そのため、一覧に含まれる
-   * 自分自身の presetNames(member.presetNames)を GET /presets と突き合わせて実効権限を
-   * 計算する — これはメンバー詳細の「できること」パネル(effectiveEntries、上記)で既に
-   * 使っている computeEffectivePermissions をそのまま自分自身に適用するだけであり、
-   * 新しいAPI呼び出しを増やさない。あくまでUI表示の出し分け用の推定であり、実際の許可判定は
-   * 常に apps/api 側(requirePermission)が行う。
+   * 招待の発行・再発行・取り消し(POST/DELETE /members/:id/invitations)が要求する
+   * member.invite(department スコープ、apps/api/src/routes/members.ts の INVITE_PERMISSION)を
+   * 出すかどうかの判定(2026-08-23 レビュー第2波)。
+   *
+   * 以前は GET /members が返す自分自身の presetNames を GET /presets と突き合わせて
+   * computeEffectivePermissions で再計算する推定に頼っており、未文書の false negative が
+   * 2経路あった(プリセット未取得時・自分がメンバー一覧に現れないタイミングでの一時的な空判定)。
+   * GET /me/effective-permissions(実効権限の最終形をサーバー側で確定済み)の追加により、
+   * この再計算は不要になった。
    */
-  const selfMember = members?.find((m) => guard.user && m.id === guard.user.id) ?? null;
-  const selfPresetIds = useMemo(
-    () => (selfMember ? matchAssignedPresetIds(selfMember.presetNames, presets) : []),
-    [selfMember, presets],
-  );
-  const selfEffectiveEntries = useMemo(() => {
-    const selected = presets.filter((p) => selfPresetIds.includes(p.id));
-    return computeEffectivePermissions(
-      selected.map((p) => ({ name: p.name, grants: p.grants })),
-      catalog,
-    );
-  }, [presets, selfPresetIds, catalog]);
-  const canInvite = selfEffectiveEntries.some((e) => e.key === "member.invite");
+  const { permissions: effectivePermissions } = useEffectivePermissions();
+  const canInvite = hasEffectivePermission(effectivePermissions, "member.invite", "department");
 
   if (guard.status === "loading" || loading) {
     return <p className="monthly-loading">{messages.loading}</p>;

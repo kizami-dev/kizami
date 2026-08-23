@@ -11,11 +11,17 @@ import { AppHeader } from "./AppHeader";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { SettingsNav } from "./SettingsNav";
 
-const ORIGIN_LABEL: Record<HelpEntry["origin"], string> = {
-  law: messages.settingsHelp.originLaw,
-  product: messages.settingsHelp.originProduct,
-  company: messages.settingsHelp.originLaw, // 組み込み HELP には company は含まれないため到達しない
-};
+// モジュールレベルで messages のプロパティを取り出して定数化すると、import 時の言語
+// (通常は既定の日本語)で凍結され、言語切替に追従しない(messages は Proxy 経由で現在ロケールを
+// 返すが、取り出した先のオブジェクトはただの値のため)。SettingsAttendanceView の weekdayLabel と
+// 同じく、描画時に毎回引く関数にする(2026-08-23、ApiKeysSettingsView 実装時に発見された同型バグの修正)。
+function originLabel(origin: HelpEntry["origin"]): string {
+  return {
+    law: messages.settingsHelp.originLaw,
+    product: messages.settingsHelp.originProduct,
+    company: messages.settingsHelp.originLaw, // 組み込み HELP には company は含まれないため到達しない
+  }[origin];
+}
 
 /**
  * ヘルプキーの一覧を audience(従業員向け/労務担当者向け)→ origin(法令/KIZAMIの仕様)の
@@ -198,7 +204,7 @@ export function HelpSettingsView() {
         {(["law", "product"] as const).map((origin) =>
           entries[origin].length === 0 ? null : (
             <div key={origin} className="help-settings__list-subgroup">
-              <span className="help-settings__list-subgroup-title">{ORIGIN_LABEL[origin]}</span>
+              <span className="help-settings__list-subgroup-title">{originLabel(origin)}</span>
               <ul className="help-settings__list">
                 {entries[origin].map((entry) => {
                   const hasOverride = Boolean(data?.overrides[entry.key]);
@@ -293,8 +299,8 @@ export function HelpSettingsView() {
                       <h2 className="settings-notif__section-title">{messages.settingsHelp.referenceTitle}</h2>
                       <span className={`help-tip__badge help-tip__badge--${selectedEntry.origin}`}>
                         {selectedEntry.origin === "law" && selectedEntry.basis
-                          ? `${ORIGIN_LABEL.law} · ${selectedEntry.basis}`
-                          : ORIGIN_LABEL[selectedEntry.origin]}
+                          ? `${originLabel("law")} · ${selectedEntry.basis}`
+                          : originLabel(selectedEntry.origin)}
                       </span>
                       <p className="help-settings__reference-summary">{selectedEntry.summary}</p>
                     </section>

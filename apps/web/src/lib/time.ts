@@ -111,6 +111,31 @@ export function formatDurationHm(minutes: number): string {
   return `${sign}${h}:${String(m).padStart(2, "0")}`;
 }
 
+/**
+ * 分(0〜1439) → "HH:MM"(24時間表記、時刻入力欄の表示用)。
+ *
+ * 判断点(完了報告に明記): SettingsAttendanceView・SettingsAllowancesView・lib/allowances.ts に
+ * それぞれ同名・同実装のヘルパーが3箇所(hmToMinutes は2箇所)独立に存在していた(各ファイルの
+ * コメントに「既存方針どおりファイルごとに小さく再実装」とあったが、実際には完全に同一の実装
+ * だったため、ここへ集約する)。formatDurationHm(上記、符号付き・分単位を跨いだ経過時間表示用)
+ * とは用途が異なる(常に非負・0埋め2桁固定の「時刻」表示専用)ため、別関数として残す。
+ */
+export function minutesToHm(minutes: number): string {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return `${h < 10 ? `0${h}` : h}:${m < 10 ? `0${m}` : m}`;
+}
+
+/** "HH:MM" → 分(0〜1439)。不正な形式は null。minutesToHm の逆変換。 */
+export function hmToMinutes(hm: string): number | null {
+  const match = /^(\d{1,2}):(\d{2})$/.exec(hm);
+  if (!match) return null;
+  const h = Number(match[1]);
+  const m = Number(match[2]);
+  if (h < 0 || h > 23 || m < 0 || m > 59) return null;
+  return h * 60 + m;
+}
+
 export interface YearMonth {
   year: number;
   month: number;

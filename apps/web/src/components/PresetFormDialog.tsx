@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { PermissionCatalogEntryDto, PermissionGrantDto, Scope } from "../lib/api";
 import { messages } from "../lib/messages";
-import { groupCatalogByCategory, INTERNAL_VIEW_LABELS } from "../lib/permissions";
+import { groupCatalogByCategory } from "../lib/permissions";
 
 export interface PresetFormValue {
   name: string;
@@ -55,7 +55,7 @@ export function PresetFormDialog({ mode, catalog, readOnly, initial, pending, er
   const groups = useMemo(() => groupCatalogByCategory(catalog), [catalog]);
 
   function impliedLabel(key: string): string {
-    return catalogMap.get(key)?.labelJa ?? INTERNAL_VIEW_LABELS[key] ?? key;
+    return catalogMap.get(key)?.labelJa ?? messages.permissions.internalViewLabel[key] ?? key;
   }
 
   function toggleEntry(entry: PermissionCatalogEntryDto) {
@@ -137,7 +137,7 @@ export function PresetFormDialog({ mode, catalog, readOnly, initial, pending, er
               <p className="preset-form__permissions-label">{messages.presets.permissionsLabel}</p>
               {groups.map((group) => (
                 <section key={group.id} className="preset-form__group">
-                  <h3 className="preset-form__group-title">{group.labelJa}</h3>
+                  <h3 className="preset-form__group-title">{messages.permissions.categoryLabel[group.id]}</h3>
                   <ul className="preset-form__entry-list">
                     {group.entries.map((entry) => {
                       const checked = entry.key in selected;

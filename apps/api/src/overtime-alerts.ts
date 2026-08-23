@@ -55,6 +55,7 @@
 import { createNotificationIfAbsent, findNotificationByTypeAndDate, getTenantById, type Database, type Notification, type Tenant } from "@kizami/db";
 import { resolveLawRules, type LawRules } from "@kizami/law";
 import { dispatch, type DispatchResult, type NotificationChannel } from "@kizami/notify";
+import { getOrBuildTenantMonthlyContext, type TenantMonthlyContextCache } from "./lib/closing-amend.js";
 import { calculateMonthlyForUser, listActiveUsers, type ActiveUserRow } from "./reminders.js";
 import { dateFromEpochDay, daysInMonth, formatDate } from "./lib/time.js";
 
@@ -204,13 +205,21 @@ type MonthlyFigures =
 /**
  * 1人・1ヶ月分の時間外関連の数値を取得する。テナント設定・制度割当が揃っていない月は
  * null を返す(reminders.ts / v0.2 の overtime-alerts.ts と同じ「静かにスキップ」方針)。
+ *
+ * `tenantContextCache` は省略可能(N+1解消、apps/api/src/lib/closing-amend.ts 冒頭の判断点参照)。
+ * 同一テナント・同一月は複数ユーザー・複数呼び出し(月45h判定・年度集計・複数月平均)で
+ * 何度も参照されるため、渡された場合は getOrBuildTenantMonthlyContext 経由でキャッシュを再利用する。
  */
 async function monthlyFigures(
   db: Database,
   params: { tenantId: string; userId: string; year: number; month: number },
+  tenantContextCache?: TenantMonthlyContextCache,
 ): Promise<MonthlyFigures | null> {
   try {
-    const { output } = await calculateMonthlyForUser(db, params);
+    const tenantContext = tenantContextCache
+      ? await getOrBuildTenantMonthlyContext(tenantContextCache, db, { tenantId: params.tenantId, year: params.year, month: params.month })
+      : undefined;
+    const { output } = await calculateMonthlyForUser(db, params, tenantContext);
     if (output.workSystem === "fixed") {
       return { workSystem: "fixed", overtimeMinutes: output.totals.overtime, holidayMinutes: output.totals.statutoryHoliday };
     }
@@ -369,6 +378,7 @@ async function scanUser(
   nowMinutesValue: number,
   resolveChannels: RunOvertimeAlertScanOptions["resolveChannels"],
   created: CreatedOvertimeAlert[],
+  tenantContextCache: TenantMonthlyContextCache,
 ): Promise<void> {
   const { year, month, day } = today;
 
@@ -376,7 +386,7 @@ async function scanUser(
   const getFigures = async (y: number, m: number): Promise<MonthlyFigures | null> => {
     const key = `${y}-${m}`;
     if (!monthCache.has(key)) {
-      monthCache.set(key, await monthlyFigures(db, { tenantId: user.tenantId, userId: user.id, year: y, month: m }));
+      monthCache.set(key, await monthlyFigures(db, { tenantId: user.tenantId, userId: user.id, year: y, month: m }, tenantContextCache));
     }
     return monthCache.get(key) ?? null;
   };
@@ -555,6 +565,10 @@ export async function runOvertimeAlertScan(
 
   const created: CreatedOvertimeAlert[] = [];
   const tenantCache = new Map<string, Tenant | null>();
+  // N+1解消: 評価対象の年月集合(今月・年度内の各月・複数月平均の窓)は today(=nowMinutes)
+  // だけで決まりユーザーには依存しないため、同じテナントの複数ユーザー間で
+  // law/allowance/テナント設定版を使い回す(apps/api/src/lib/closing-amend.ts 冒頭の判断点参照)。
+  const tenantMonthlyContextCache: TenantMonthlyContextCache = new Map();
 
   for (const user of activeUsers) {
     try {
@@ -573,7 +587,7 @@ export async function runOvertimeAlertScan(
         isSpecialProvisionWorkplace: tenant.isSpecialProvisionWorkplace,
       });
 
-      await scanUser(db, user, tenant, lawRules.agreement36, today, nowMinutesValue, resolveChannels, created);
+      await scanUser(db, user, tenant, lawRules.agreement36, today, nowMinutesValue, resolveChannels, created, tenantMonthlyContextCache);
     } catch {
       // ユーザー単位の予期しない失敗(DB エラー等)で他のユーザーの処理を止めない
       // (reminders.ts と同じ方針)

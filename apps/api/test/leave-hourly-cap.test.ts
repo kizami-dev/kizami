@@ -47,7 +47,18 @@ interface LeaveRequestJson {
   id: string;
 }
 
-async function createAndApprove(app: RequestLike, cookie: string, leaveDate: string, minutes: number): Promise<void> {
+/** 2026-08-23: 承認は leave.request.approve 権限ベースに統一(自己承認も対象)されたため、
+ * 呼び出し前に db・tenantId・userId を渡して権限を付与する。 */
+async function createAndApprove(
+  app: RequestLike,
+  cookie: string,
+  leaveDate: string,
+  minutes: number,
+  db: Database,
+  params: { tenantId: string; userId: string },
+): Promise<void> {
+  await grantPermission(db, { tenantId: params.tenantId, userId: params.userId, permission: "leave.request.approve", scope: "tenant" });
+
   const createRes = await app.request("/leave/requests", {
     method: "POST",
     headers: { "content-type": "application/json", cookie },
@@ -108,7 +119,7 @@ describe("hourly leave caps", () => {
     // 480分ずつ5日分(=2400分ちょうど)を承認済みにする。
     const dates = ["2026-04-06", "2026-04-07", "2026-04-08", "2026-04-09", "2026-04-10"];
     for (const date of dates) {
-      await createAndApprove(app, cookie, date, 480);
+      await createAndApprove(app, cookie, date, 480, db, { tenantId, userId });
     }
 
     // 6件目(別日)はどんなに小さくても年度上限を超えるため拒否される
@@ -132,7 +143,7 @@ describe("hourly leave caps", () => {
     // 上限ちょうどまで時間単位を使い切る
     const dates = ["2026-04-06", "2026-04-07", "2026-04-08", "2026-04-09", "2026-04-10"];
     for (const date of dates) {
-      await createAndApprove(app, cookie, date, 480);
+      await createAndApprove(app, cookie, date, 480, db, { tenantId, userId });
     }
 
     // 上限を使い切った後でも、半休・全休は問題なく申請できる(上限判定の対象外)
@@ -180,7 +191,7 @@ describe("mandatory five-day tracking excludes hourly usage and includes half-da
 
     const dates = ["2026-04-06", "2026-04-07", "2026-04-08", "2026-04-09", "2026-04-10"];
     for (const date of dates) {
-      await createAndApprove(app, cookie, date, 480);
+      await createAndApprove(app, cookie, date, 480, db, { tenantId, userId });
     }
 
     const res = await app.request("/leave/balance", { headers: { cookie } });
@@ -204,6 +215,8 @@ describe("mandatory five-day tracking excludes hourly usage and includes half-da
       source: "manual",
       createdAt: 0,
     });
+    // 2026-08-23: 承認は leave.request.approve 権限ベースに統一(自己承認も対象)。
+    await grantPermission(db, { tenantId, userId, permission: "leave.request.approve", scope: "tenant" });
     const app = createApp({ db });
     const cookie = await loginAndGetCookie(app, email, password);
 

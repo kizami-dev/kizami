@@ -4,12 +4,28 @@
  *
  * 打刻修正申請フロー(v0.2 第一弾)。参照: docs/design/v01-data-model.md §correction_requests。
  *
- * v0.1 と同じく本人スコープのみ(requireSelf)。POST /corrections は本文に対象者 id を
- * 取らず、常に認証済みユーザー自身を対象・申請者とする(代理申請は v0.2 の対象外)。
+ * POST /corrections は本文に対象者 id を取らず、常に認証済みユーザー自身を対象・申請者とする
+ * (代理申請は v0.2 の対象外)。withdraw も本人のみ(pending の取り下げは申請者本人の意思表示
+ * であり、権限の話ではない)。
  *
- * 認可(暫定運用, 2026-08-21 決定): 単独テナント運用で申請が滞留しないよう、
- * 自分が提出した申請の承認・却下を許可する。監査ログには selfApproved を残す。
- * 他人の申請の承認は今回スコープ外(403)。
+ * 認可(2026-08-23 改定): 「単独テナント運用で申請が滞留しないための暫定実装(2026-08-21
+ * 決定・requestedBy 自身のみが承認できる自己承認方式)」を、権限カタログに元々定義されていた
+ * `attendance.correction.approve` + apps/api/src/lib/scope.ts の resolveAccessibleUserIds に
+ * よるスコープ判定を使う本来の権限ベース方式へ統一する(routes/auto-break-waivers.ts と
+ * 完全に同じ形。以前は auto-break-waivers.ts だけがこの方式で、このファイルと食い違っていた —
+ * 今回でその食い違いを解消する)。本人が自分の申請を承認することも引き続き可能だが、
+ * それには `attendance.correction.approve` 権限そのものを持っている必要がある(v0.1の
+ * 「誰でも自分の申請は承認できる」ではなくなる — 権限を持たない一般従業員は自分の申請も
+ * 承認できず、承認権限を持つ人の判断を待つことになる)。監査ログには引き続き selfApproved を
+ * 残す。GET / のスコープも同様に統一する: `attendance.correction.view_all`
+ * (`attendance.correction.approve` が含意展開で自動的に含む)を持たなければ自分の分だけ、
+ * 持てば `?userId=` 指定 or スコープ内全員を返す(routes/auto-break-waivers.ts の GET / と
+ * 同じ形)。
+ *
+ * 承認・却下時の本人通知(2026-08-23 追加): 決裁者が申請者本人と異なる場合のみ、
+ * apps/api/src/lib/notification-channels.ts の buildPersonalChannels 経由で本人へ通知する
+ * (routes/auto-break-waivers.ts の POST /:id/approve と同じ形。waiver は approve のみ通知する
+ * が、このファイルは依頼により approve・reject の両方で通知する)。
  *
  * 締め後修正(amend, v0.4): POST / は締め済み月でも申請を作成できる(申請は意思表示の記録に
  * 過ぎない)。レスポンスの `targetMonthClosed` で対象月が締め済みかどうかを示し、UI が警告を
@@ -23,6 +39,7 @@ import { Hono } from "hono";
 import {
   appendClosingEvent,
   createCorrectionRequest,
+  createNotificationIfAbsent,
   getClosingSnapshots,
   getClosingState,
   getCorrectionRequest,
@@ -37,18 +54,28 @@ import {
   type CorrectionRequest,
   type CorrectionStatus,
   type Database,
+  type PunchEvent,
 } from "@kizami/db";
+import { dispatch } from "@kizami/notify";
 import type { PunchKind } from "@kizami/engine";
 import type { AppEnv } from "../auth/middleware.js";
-import { ForbiddenError, requireSelf } from "../authz.js";
+import { ForbiddenError, requirePermission, requireSelf } from "../authz.js";
 import { periodFromDate, resolveAttendanceDate } from "../lib/attendance-date.js";
 import { assertAmendAllowed } from "../lib/closing-guard.js";
 import { computeMonthlyOutputForUser } from "../lib/closing-amend.js";
 import { engineOutputFromSnapshots, snapshotInputsFromEngineOutput, sumFixedBreakdown } from "../lib/closing-snapshot.js";
+import { buildPersonalChannels, type BuildPersonalChannelsOptions } from "../lib/notification-channels.js";
+import { resolveAccessibleUserIds } from "../lib/scope.js";
 import { FUTURE_TOLERANCE_MINUTES, isValidPunchKind } from "./punches.js";
 import { nowMinutes, parseMonthParam } from "../lib/time.js";
 
 const MAX_REASON_LENGTH = 500;
+
+/** 承認・却下の両方が要求する権限(routes/auto-break-waivers.ts と共有する判断点コメント参照)。 */
+const APPROVE_PERMISSION = "attendance.correction.approve";
+/** 一覧で他者分を見るための権限。APPROVE_PERMISSION が含意展開で自動的に含む
+ * (packages/authz/src/implied.ts)ため、承認権限だけを持つ人も一覧は見える。 */
+const VIEW_ALL_PERMISSION = "attendance.correction.view_all";
 
 /** pending 以外からの承認/却下操作を、行が見つからなかった場合と区別するための内部シグナル。 */
 class NotPendingConflictError extends Error {}
@@ -108,12 +135,17 @@ function isValidReason(value: unknown): value is string {
   return typeof value === "string" && value.length >= 1 && value.length <= MAX_REASON_LENGTH;
 }
 
-export function createCorrectionsRoutes(db: Database) {
+export type CorrectionsRoutesDeps = BuildPersonalChannelsOptions;
+
+export function createCorrectionsRoutes(db: Database, deps: CorrectionsRoutesDeps = {}) {
   const app = new Hono<AppEnv>();
 
+  // ---- GET / ----
+  // 既定は自分の一覧。?userId= で他者を明示指定した場合、または VIEW_ALL_PERMISSION
+  // (承認権限からの含意展開を含む)を持つ場合はスコープ内の他者分も返す
+  // (routes/auto-break-waivers.ts の GET / と同じ形)。
   app.get("/", async (c) => {
     const user = c.get("user");
-    requireSelf(c, user.id);
 
     const statusParam = c.req.query("status") ?? "pending";
     let status: CorrectionStatus | undefined;
@@ -125,11 +157,46 @@ export function createCorrectionsRoutes(db: Database) {
       return c.json({ error: "invalid_status" }, 400);
     }
 
-    const requests = await listCorrectionRequests(db, {
-      tenantId: user.tenantId,
-      userId: user.id,
-      ...(status !== undefined ? { status } : {}),
-    });
+    const permissions = c.get("permissions");
+    const queryUserId = c.req.query("userId");
+
+    let requests: CorrectionRequest[];
+    if (queryUserId !== undefined && queryUserId !== user.id) {
+      const accessible = await resolveAccessibleUserIds(db, {
+        actor: { id: user.id, tenantId: user.tenantId, permissions },
+        permission: VIEW_ALL_PERMISSION,
+      });
+      if (accessible !== "all" && !accessible.has(queryUserId)) {
+        throw new ForbiddenError(`target user ${queryUserId} is outside actor's scope`);
+      }
+      requests = await listCorrectionRequests(db, {
+        tenantId: user.tenantId,
+        userId: queryUserId,
+        ...(status !== undefined ? { status } : {}),
+      });
+    } else if (permissions.get(VIEW_ALL_PERMISSION) === undefined) {
+      // userId 未指定: VIEW_ALL_PERMISSION を持たなければ自分の分だけ(権限が無いのに
+      // 「未指定=スコープ全員」を返すと事故になるため)。
+      requests = await listCorrectionRequests(db, {
+        tenantId: user.tenantId,
+        userId: user.id,
+        ...(status !== undefined ? { status } : {}),
+      });
+    } else {
+      // queries/corrections.ts の listCorrectionRequests は複数ユーザーIDの一括絞り込みを
+      // 持たないため、tenantId のみで取得しアプリ層でスコープ内に絞り込む
+      // (apps/api/src/lib/scope.ts と同じ「テナントあたり小規模」の前提)。
+      const accessible = await resolveAccessibleUserIds(db, {
+        actor: { id: user.id, tenantId: user.tenantId, permissions },
+        permission: VIEW_ALL_PERMISSION,
+      });
+      const all = await listCorrectionRequests(db, {
+        tenantId: user.tenantId,
+        ...(status !== undefined ? { status } : {}),
+      });
+      requests = accessible === "all" ? all : all.filter((r) => accessible.has(r.userId));
+    }
+
     // 対象打刻は superseded 後も参照できるよう、ここで解決して同梱する
     const targets = new Map<string, TargetPunchSnapshot>();
     for (const id of new Set(requests.map((r) => r.targetEventId).filter((id): id is string => id !== null))) {
@@ -238,7 +305,7 @@ export function createCorrectionsRoutes(db: Database) {
 
   app.post("/:id/approve", async (c) => {
     const user = c.get("user");
-    requireSelf(c, user.id);
+    requirePermission(c, APPROVE_PERMISSION, "department");
 
     const body = await parseJsonBody(c);
     if (body === null || (body.note !== undefined && typeof body.note !== "string")) {
@@ -251,10 +318,16 @@ export function createCorrectionsRoutes(db: Database) {
     if (!existing || existing.tenantId !== user.tenantId) {
       return c.json({ error: "not_found" }, 404);
     }
-    // v0.1 暫定運用: 自分が提出した申請のみ承認できる(他人の申請の承認は今回スコープ外)
-    if (existing.requestedBy !== user.id) {
-      throw new ForbiddenError("cannot approve another user's correction request");
+
+    const permissions = c.get("permissions");
+    const accessible = await resolveAccessibleUserIds(db, {
+      actor: { id: user.id, tenantId: user.tenantId, permissions },
+      permission: APPROVE_PERMISSION,
+    });
+    if (accessible !== "all" && !accessible.has(existing.userId)) {
+      throw new ForbiddenError(`target user ${existing.userId} is outside actor's scope`);
     }
+
     if (existing.status !== "pending") {
       return c.json({ error: "not_pending" }, 409);
     }
@@ -289,10 +362,9 @@ export function createCorrectionsRoutes(db: Database) {
       candidatePeriods.add(periodFromDate(date));
     }
 
-    const permissions = c.get("permissions");
-
+    let result: { correctionRequest: CorrectionRequest; newEvent: PunchEvent; amendedPeriods: string[] };
     try {
-      const result = await db.transaction(async (tx) => {
+      result = await db.transaction(async (tx) => {
         // 締め済み月への反映は closing.unlock を持つ場合のみ許可する(assertAmendAllowed)。
         // 申請作成後に締められた場合にも対応できるよう、書き込み直前(tx 内)で再評価する。
         // closed だった period は amendedPeriods に集め、反映後にスナップショットを
@@ -436,16 +508,6 @@ export function createCorrectionsRoutes(db: Database) {
 
         return { correctionRequest: updated, newEvent, amendedPeriods };
       });
-
-      return c.json(
-        {
-          request: serializeCorrectionRequest(result.correctionRequest),
-          appliedEvent: { id: result.newEvent.id, kind: result.newEvent.kind, occurredAt: result.newEvent.occurredAt },
-          amended: result.amendedPeriods.length > 0,
-          amendedPeriods: result.amendedPeriods,
-        },
-        200,
-      );
     } catch (err) {
       if (err instanceof NotPendingConflictError) {
         return c.json({ error: "not_pending" }, 409);
@@ -455,11 +517,54 @@ export function createCorrectionsRoutes(db: Database) {
       }
       throw err;
     }
+
+    // 本人へ通知(決裁者が申請者本人と異なる場合のみ。自己承認では自分に通知しない —
+    // routes/auto-break-waivers.ts の POST /:id/approve と同じ判断。ただし waiver は
+    // approve のみ通知するが、依頼によりこちらは approve・reject の両方で通知する)。
+    if (!selfApproved) {
+      const notificationType = "correction_request_approved";
+      const title = "打刻修正申請が承認されました";
+      const notificationBody = `あなたの打刻修正申請(理由: ${existing.reason})が承認され、勤怠記録に反映されました。`;
+      const notification = await createNotificationIfAbsent(db, {
+        tenantId: user.tenantId,
+        userId: existing.userId,
+        type: notificationType,
+        // 対象打刻の日は訂正・追加・取消で意味が異なり、常に単一の代表日を選べるとは限らない
+        // ため subject_date は使わない(null 同士は UNIQUE 制約で重複と判定されない —
+        // packages/db/src/schema/notifications.ts の判断点コメント参照)。承認は pending から
+        // 一度しか遷移できないため、この呼び出し自体は元々冪等でありこの選択で通知が
+        // 重複作成される心配もない。
+        subjectDate: null,
+        title,
+        body: notificationBody,
+        createdAt: now,
+      });
+      if (notification) {
+        const channels = await buildPersonalChannels(
+          db,
+          { tenantId: user.tenantId, userId: existing.userId, notificationType },
+          deps,
+        );
+        if (channels.length > 0) {
+          await dispatch(channels, { to: {}, title, body: notificationBody });
+        }
+      }
+    }
+
+    return c.json(
+      {
+        request: serializeCorrectionRequest(result.correctionRequest),
+        appliedEvent: { id: result.newEvent.id, kind: result.newEvent.kind, occurredAt: result.newEvent.occurredAt },
+        amended: result.amendedPeriods.length > 0,
+        amendedPeriods: result.amendedPeriods,
+      },
+      200,
+    );
   });
 
   app.post("/:id/reject", async (c) => {
     const user = c.get("user");
-    requireSelf(c, user.id);
+    requirePermission(c, APPROVE_PERMISSION, "department");
 
     const body = await parseJsonBody(c);
     if (body === null || (body.note !== undefined && typeof body.note !== "string")) {
@@ -472,9 +577,16 @@ export function createCorrectionsRoutes(db: Database) {
     if (!existing || existing.tenantId !== user.tenantId) {
       return c.json({ error: "not_found" }, 404);
     }
-    if (existing.requestedBy !== user.id) {
-      throw new ForbiddenError("cannot reject another user's correction request");
+
+    const permissions = c.get("permissions");
+    const accessible = await resolveAccessibleUserIds(db, {
+      actor: { id: user.id, tenantId: user.tenantId, permissions },
+      permission: APPROVE_PERMISSION,
+    });
+    if (accessible !== "all" && !accessible.has(existing.userId)) {
+      throw new ForbiddenError(`target user ${existing.userId} is outside actor's scope`);
     }
+
     if (existing.status !== "pending") {
       return c.json({ error: "not_pending" }, 409);
     }
@@ -482,8 +594,9 @@ export function createCorrectionsRoutes(db: Database) {
     const now = nowMinutes();
     const selfApproved = existing.requestedBy === user.id;
 
+    let updated: CorrectionRequest;
     try {
-      const updated = await db.transaction(async (tx) => {
+      updated = await db.transaction(async (tx) => {
         const result = await updateCorrectionStatus(tx, {
           id: existing.id,
           tenantId: user.tenantId,
@@ -507,14 +620,41 @@ export function createCorrectionsRoutes(db: Database) {
         });
         return result;
       });
-
-      return c.json({ request: serializeCorrectionRequest(updated) }, 200);
     } catch (err) {
       if (err instanceof NotPendingConflictError) {
         return c.json({ error: "not_pending" }, 409);
       }
       throw err;
     }
+
+    if (!selfApproved) {
+      const notificationType = "correction_request_rejected";
+      const title = "打刻修正申請が却下されました";
+      const notificationBody = note
+        ? `あなたの打刻修正申請(理由: ${existing.reason})が却下されました。コメント: ${note}`
+        : `あなたの打刻修正申請(理由: ${existing.reason})が却下されました。`;
+      const notification = await createNotificationIfAbsent(db, {
+        tenantId: user.tenantId,
+        userId: existing.userId,
+        type: notificationType,
+        subjectDate: null,
+        title,
+        body: notificationBody,
+        createdAt: now,
+      });
+      if (notification) {
+        const channels = await buildPersonalChannels(
+          db,
+          { tenantId: user.tenantId, userId: existing.userId, notificationType },
+          deps,
+        );
+        if (channels.length > 0) {
+          await dispatch(channels, { to: {}, title, body: notificationBody });
+        }
+      }
+    }
+
+    return c.json({ request: serializeCorrectionRequest(updated) }, 200);
   });
 
   app.post("/:id/withdraw", async (c) => {

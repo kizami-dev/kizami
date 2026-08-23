@@ -3,6 +3,7 @@ import { auditLogs, tenants, users, uuidv7, type Database } from "@kizami/db";
 import { eq } from "drizzle-orm";
 import { createApp } from "../src/app.js";
 import { grantPermission, loginAndGetCookie, setupSecondUser, setupTestDb } from "./support/setup.js";
+import { buildSettingsTimeline } from "../src/lib/settings.js";
 
 async function auditActionsFor(db: Database, tenantId: string): Promise<string[]> {
   const rows = await db.select().from(auditLogs).where(eq(auditLogs.tenantId, tenantId));
@@ -377,6 +378,54 @@ describe("POST /members (invitation-based creation, 2026-08-23)", () => {
     expect(res.status).toBe(403);
   });
 
+  // レビュー指摘F2: departmentId を省略すると、以前はスコープ絞り込みが丸ごとスキップされ、
+  // department スコープの招待者でもテナント全体に対して自由に(部署未設定の)メンバーを
+  // 作成できてしまっていた。actor のスコープが tenant でない限り、departmentId 省略は
+  // 400 department_id_required で拒否する。
+  // レビュー指摘2(トランザクション化): createUser・upsertMembership・招待作成・監査ログ追記が
+  // 1つの db.transaction にまとまったことを、部署付きの作成が実際にコミットされる(GET
+  // /members で部署が見える)ことで確認する。
+  it("commits the membership created inside the transaction (department is visible afterwards)", async () => {
+    const { db, tenantId, userId, email, password } = await setupTestDb();
+    await grantPermission(db, { tenantId, userId, permission: "member.invite", scope: "tenant" });
+    await grantPermission(db, { tenantId, userId, permission: "member.view", scope: "tenant" });
+    await grantPermission(db, { tenantId, userId, permission: "department.manage", scope: "tenant" });
+    const app = createApp({ db });
+    const cookie = await loginAndGetCookie(app, email, password);
+
+    const dept = await createDepartment(app, cookie, "営業部");
+    const invited = await inviteMember(app, cookie, { email: "new@example.com", name: "New Member", departmentId: dept.id });
+    expect(invited.status).toBe(201);
+    expect(invited.json.member.department).toEqual({ id: dept.id });
+
+    const listRes = await app.request("/members", { headers: { cookie } });
+    const listBody = (await listRes.json()) as { members: Array<{ email: string; department: { id: string; name: string } | null }> };
+    const created = listBody.members.find((m) => m.email === "new@example.com");
+    expect(created?.department).toEqual({ id: dept.id, name: "営業部" });
+  });
+
+  it("rejects an omitted departmentId with 400 when the actor's member.invite scope is not tenant", async () => {
+    const { db, tenantId, userId, email, password } = await setupTestDb();
+    await grantPermission(db, { tenantId, userId, permission: "member.invite", scope: "department" });
+    const app = createApp({ db });
+    const cookie = await loginAndGetCookie(app, email, password);
+
+    const res = await inviteMember(app, cookie, { email: "new@example.com", name: "New Member" });
+    expect(res.status).toBe(400);
+    expect(res.json).toEqual({ error: "department_id_required" });
+  });
+
+  it("allows an omitted departmentId when the actor's member.invite scope is tenant", async () => {
+    const { db, tenantId, userId, email, password } = await setupTestDb();
+    await grantPermission(db, { tenantId, userId, permission: "member.invite", scope: "tenant" });
+    const app = createApp({ db });
+    const cookie = await loginAndGetCookie(app, email, password);
+
+    const res = await inviteMember(app, cookie, { email: "new@example.com", name: "New Member" });
+    expect(res.status).toBe(201);
+    expect(res.json.member.department).toBeNull();
+  });
+
   it("assigns presetIds when the actor also holds permission.assignment.manage", async () => {
     const { db, tenantId, userId, email, password } = await setupTestDb();
     await grantPermission(db, { tenantId, userId, permission: "member.invite", scope: "tenant" });
@@ -517,5 +566,38 @@ describe("POST /members/:id/invitations, DELETE /members/:id/invitations (2026-0
 
     const revokeRes = await app.request(`/members/${targetId}/invitations`, { method: "DELETE", headers: { cookie: secondCookie } });
     expect(revokeRes.status).toBe(403);
+  });
+});
+
+describe("POST /members: 労働時間制の自動割当(2026-08-23)", () => {
+  it("招待で作られたメンバーにテナント既定の work policy が割り当てられ、月次集計が解決できる", async () => {
+    const seeded = await setupTestDb();
+    await grantPermission(seeded.db, {
+      tenantId: seeded.tenantId,
+      userId: seeded.userId,
+      permission: "member.invite",
+      scope: "tenant",
+    });
+    const app = createApp({ db: seeded.db });
+    const cookie = await loginAndGetCookie(app, seeded.email, seeded.password);
+
+    const res = await app.request("/members", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ email: "policy-check@example.com", name: "制度 割当", hireDate: "2026-04-01" }),
+    });
+    expect(res.status).toBe(201);
+    const created = (await res.json()) as { member: { id: string } };
+
+    // 制度未割当だと buildSettingsTimeline が「no work policy assigned」で例外になる。
+    // 割当済みなら入社日以降の期間でタイムラインが解決できる。
+    const timeline = await buildSettingsTimeline(seeded.db, {
+      tenantId: seeded.tenantId,
+      userId: created.member.id,
+      fromDate: "2026-05-01",
+      toDate: "2026-05-31",
+    });
+    expect(timeline.length).toBeGreaterThan(0);
+    expect(timeline[0]?.settings.workSystem.kind).toBe("flex");
   });
 });

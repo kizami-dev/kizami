@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "../src/app.js";
 import { extractCookie, grantPermission, loginAndGetCookie, setupTestDb } from "./support/setup.js";
@@ -207,6 +208,43 @@ describe("invitation acceptance (public routes)", () => {
       body: JSON.stringify({ password: "correct horse battery staple 2" }),
     });
     expect(res.status).toBe(404);
+  });
+
+  // レビュー指摘3: 招待の受諾自体(accepted_at・auth_credentials・監査ログ)はトランザクションで
+  // 確定済みなのに、その後のセッション発行(createSession、別トランザクション)だけが失敗した
+  // ケース。以前はここが素通しの例外になり 500 internal_error を返していたが、アカウントは
+  // 既に有効化されているため、その旨を伝えて 200 で返す(依頼どおりのハンドリング)。
+  it("POST /invitations/:token/accept: if session issuance fails after the account is already activated, it does not 500", async () => {
+    const { db, tenantId, userId, email, password } = await setupTestDb();
+    await grantPermission(db, { tenantId, userId, permission: "member.invite", scope: "tenant" });
+    const app = createApp({ db });
+    const cookie = await loginAndGetCookie(app, email, password);
+
+    const invited = await inviteMember(app, cookie, { email: "new@example.com", name: "New Member" });
+    const token = invited.json.invitation.token;
+
+    // sessions テーブルを落として、acceptInvitation 成功後の createSession だけを失敗させる
+    // (acceptInvitation 自体は sessions を一切触らないため、これだけで狙った箇所だけ壊せる)。
+    await db.run(sql`DROP TABLE sessions`);
+
+    const res = await app.request(`/invitations/${token}/accept`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ password: "correct horse battery staple 2" }),
+    });
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { accountActivated: boolean; error: string };
+    expect(body.accountActivated).toBe(true);
+    expect(body.error).toBe("session_issuance_failed");
+    // アカウント自体は有効化済み(auth_credentials 作成済み)なので、同じトークンでの
+    // 再受諾は「既に受諾済み」として 404 になる(二重受諾はできない)。
+    const retry = await app.request(`/invitations/${token}/accept`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ password: "correct horse battery staple 2" }),
+    });
+    expect(retry.status).toBe(404);
   });
 
   it("reissuing an invitation invalidates the previous token", async () => {

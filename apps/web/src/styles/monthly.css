@@ -221,8 +221,11 @@
   background: color-mix(in srgb, var(--k-yellow) 12%, transparent);
 }
 
-.monthly-table__warning {
-  text-align: left !important;
+/* .monthly-table td.monthly-table__warning: ".monthly-table th, .monthly-table td"(0,1,1)と
+   詳細度で確実に勝つ子セレクタにし、!important を廃止する(2026-08-23。monthly-table__warning は
+   td にしか付かない、components/MonthlyView.tsx 参照)。 */
+.monthly-table td.monthly-table__warning {
+  text-align: left;
   color: var(--k-yellow-ink);
   font-size: 0.78rem;
   white-space: normal;
@@ -243,11 +246,18 @@
   white-space: normal;
 }
 
-/* 勤務列(打刻時刻、2026-08-23 追加)。中抜けは複数行を積む。件数バッジには畳まない(依頼どおり)。 */
-.monthly-table__stretches,
-.monthly-table__col-clock-in,
-.monthly-table__col-clock-out {
-  text-align: left !important;
+/*
+ * 勤務列(打刻時刻、2026-08-23 追加)。中抜けは複数行を積む。件数バッジには畳まない(依頼どおり)。
+ * th/td 両方に付くクラスのため両方を子セレクタにし、".monthly-table th, .monthly-table td"(0,1,1)に
+ * 詳細度(0,2,1)で勝たせる(!important 廃止、2026-08-23)。
+ */
+.monthly-table th.monthly-table__stretches,
+.monthly-table td.monthly-table__stretches,
+.monthly-table th.monthly-table__col-clock-in,
+.monthly-table td.monthly-table__col-clock-in,
+.monthly-table th.monthly-table__col-clock-out,
+.monthly-table td.monthly-table__col-clock-out {
+  text-align: left;
 }
 
 .monthly-table__stretch + .monthly-table__stretch {
@@ -578,7 +588,9 @@
 
   .monthly-table td {
     display: block;
-    text-align: left !important;
+    /* ".monthly-table th, .monthly-table td"(デスクトップ、0,1,1)と詳細度は同点だが、
+       このルールはソース順で後にあるため !important なしでも勝つ(2026-08-23、!important 廃止)。 */
+    text-align: left;
     white-space: normal;
     border-bottom: none;
     padding: var(--space-1) 0;

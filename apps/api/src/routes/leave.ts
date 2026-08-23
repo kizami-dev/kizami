@@ -5,9 +5,28 @@
  *
  * 有給休暇管理(docs/requirements.md §5)。休暇申請→承認フローは routes/corrections.ts
  * (打刻修正申請)と同じ形を踏襲する: 申請→pending→承認/却下/取下げ、承認時に監査ログ
- * (自己承認は selfApproved)。v0.1/v0.2 と同じく請求フロー自体は本人スコープのみ
- * (requireSelf)。残高閲覧(GET /leave/balance?userId=)と付与管理(POST /leave/grants*)
- * のみ権限プリセット方式(requirePermission + resolveAccessibleUserIds)を使う。
+ * (自己承認は selfApproved)。申請の作成(POST /requests)・取下げ(withdraw)は本人のみ
+ * (代理申請は対象外)。
+ *
+ * 承認(approve/reject)の認可(2026-08-23 改定): 権限カタログに元々定義されていた
+ * `leave.request.approve` + apps/api/src/lib/scope.ts の resolveAccessibleUserIds による
+ * スコープ判定を使う権限ベース方式へ統一する(routes/auto-break-waivers.ts・
+ * routes/corrections.ts と同じ形)。本人が自分の申請を承認することも引き続き可能だが、
+ * それには `leave.request.approve` 権限そのものを持っている必要がある。GET /requests の
+ * スコープも同様に統一する: `leave.request.view_all`(`leave.request.approve` が含意展開で
+ * 自動的に含む)を持たなければ自分の分だけ、持てば `?userId=` 指定 or スコープ内全員を返す。
+ * 残高閲覧(GET /leave/balance?userId=)と付与管理(POST /leave/grants*)は元々権限プリセット
+ * 方式(requirePermission + resolveAccessibleUserIds)のまま変更しない。
+ *
+ * 承認・却下時の本人通知(2026-08-23 追加): 決裁者が申請者本人と異なる場合のみ、
+ * apps/api/src/lib/notification-channels.ts の buildPersonalChannels 経由で本人へ通知する
+ * (routes/auto-break-waivers.ts の POST /:id/approve と同じ形。waiver は approve のみ通知
+ * するが、このファイルは依頼により approve・reject の両方で通知する。通知種別は
+ * "leave_request_*" とし、apps/api/src/lib/notification-preferences.ts の既存の "leave_"
+ * プレフィックス一致でカテゴリ leave_alert に自動分類される — routes/corrections.ts の
+ * correction_alert とは異なるカテゴリを敢えて使う。休暇関連の通知は元々 leave_alert に
+ * 束ねられており〔失効間近・年5日義務〕、承認・却下もその同じ「休暇のお知らせ」として
+ * 個人設定で一括ON/OFFできる方が自然と判断した)。
  *
  * 残高・消化の計算は @kizami/leave(純関数・分単位)に委譲する。DB 層(leave_grants /
  * leave_requests)は日数・分をそのまま保存するだけで、FIFO・時効・年5日・時間単位年休の
@@ -25,6 +44,7 @@
 import { Hono } from "hono";
 import {
   appendClosingEvent,
+  createNotificationIfAbsent,
   getClosingSnapshots,
   getClosingState,
   getTenantLeaveSettings,
@@ -46,6 +66,7 @@ import {
   type LeaveRequest,
   type LeaveRequestStatus,
 } from "@kizami/db";
+import { dispatch } from "@kizami/notify";
 import {
   addMonths,
   addYears,
@@ -66,12 +87,18 @@ import { ForbiddenError, requirePermission } from "../authz.js";
 import { assertAmendAllowed } from "../lib/closing-guard.js";
 import { computeMonthlyOutputForUser } from "../lib/closing-amend.js";
 import { engineOutputFromSnapshots, snapshotInputsFromEngineOutput, sumFixedBreakdown } from "../lib/closing-snapshot.js";
+import { buildPersonalChannels, type BuildPersonalChannelsOptions } from "../lib/notification-channels.js";
 import { resolveAccessibleUserIds } from "../lib/scope.js";
 import { buildSettingsTimeline, standardDayMinutesForDate, TZ_OFFSET_MINUTES_JST } from "../lib/settings.js";
 import { nowMinutes, parseMonthParam, todayLocalDate } from "../lib/time.js";
 
 const BALANCE_VIEW_PERMISSION = "leave.balance.view";
 const GRANT_MANAGE_PERMISSION = "leave.grant.manage";
+/** 承認・却下の両方が要求する権限(routes/corrections.ts・routes/auto-break-waivers.ts と同じ判断点)。 */
+const APPROVE_PERMISSION = "leave.request.approve";
+/** 一覧で他者分を見るための権限。APPROVE_PERMISSION が含意展開で自動的に含む
+ * (packages/authz/src/implied.ts)ため、承認権限だけを持つ人も一覧は見える。 */
+const VIEW_ALL_PERMISSION = "leave.request.view_all";
 const MAX_REASON_LENGTH = 500;
 
 /** pending 以外からの承認操作を、行が見つからなかった場合と区別するための内部シグナル(routes/corrections.ts と同じ形)。 */
@@ -230,7 +257,9 @@ function detectRequestConflict(
   return null;
 }
 
-export function createLeaveRoutes(db: Database) {
+export type LeaveRoutesDeps = BuildPersonalChannelsOptions;
+
+export function createLeaveRoutes(db: Database, deps: LeaveRoutesDeps = {}) {
   const app = new Hono<AppEnv>();
 
   // ---- GET /leave/balance ----
@@ -291,6 +320,9 @@ export function createLeaveRoutes(db: Database) {
   });
 
   // ---- GET /leave/requests ----
+  // 既定は自分の一覧。?userId= で他者を明示指定した場合、または VIEW_ALL_PERMISSION
+  // (承認権限からの含意展開を含む)を持つ場合はスコープ内の他者分も返す
+  // (routes/auto-break-waivers.ts・routes/corrections.ts の GET / と同じ形)。
   app.get("/requests", async (c) => {
     const user = c.get("user");
 
@@ -304,11 +336,45 @@ export function createLeaveRoutes(db: Database) {
       return c.json({ error: "invalid_status" }, 400);
     }
 
-    const requests = await listLeaveRequests(db, {
-      tenantId: user.tenantId,
-      userId: user.id,
-      ...(status !== undefined ? { status } : {}),
-    });
+    const permissions = c.get("permissions");
+    const queryUserId = c.req.query("userId");
+
+    let requests: LeaveRequest[];
+    if (queryUserId !== undefined && queryUserId !== user.id) {
+      const accessible = await resolveAccessibleUserIds(db, {
+        actor: { id: user.id, tenantId: user.tenantId, permissions },
+        permission: VIEW_ALL_PERMISSION,
+      });
+      if (accessible !== "all" && !accessible.has(queryUserId)) {
+        throw new ForbiddenError(`target user ${queryUserId} is outside actor's scope`);
+      }
+      requests = await listLeaveRequests(db, {
+        tenantId: user.tenantId,
+        userId: queryUserId,
+        ...(status !== undefined ? { status } : {}),
+      });
+    } else if (permissions.get(VIEW_ALL_PERMISSION) === undefined) {
+      // userId 未指定: VIEW_ALL_PERMISSION を持たなければ自分の分だけ。
+      requests = await listLeaveRequests(db, {
+        tenantId: user.tenantId,
+        userId: user.id,
+        ...(status !== undefined ? { status } : {}),
+      });
+    } else {
+      // queries/leave.ts の listLeaveRequests は複数ユーザーIDの一括絞り込みを持たないため、
+      // tenantId のみで取得しアプリ層でスコープ内に絞り込む(apps/api/src/lib/scope.ts と
+      // 同じ「テナントあたり小規模」の前提)。
+      const accessible = await resolveAccessibleUserIds(db, {
+        actor: { id: user.id, tenantId: user.tenantId, permissions },
+        permission: VIEW_ALL_PERMISSION,
+      });
+      const all = await listLeaveRequests(db, {
+        tenantId: user.tenantId,
+        ...(status !== undefined ? { status } : {}),
+      });
+      requests = accessible === "all" ? all : all.filter((r) => accessible.has(r.userId));
+    }
+
     return c.json({ requests: requests.map(serializeLeaveRequest) });
   });
 
@@ -399,6 +465,8 @@ export function createLeaveRoutes(db: Database) {
   // ---- POST /leave/requests/:id/approve ----
   app.post("/requests/:id/approve", async (c) => {
     const user = c.get("user");
+    requirePermission(c, APPROVE_PERMISSION, "department");
+
     const body = await parseJsonBody(c);
     if (body === null || (body.note !== undefined && typeof body.note !== "string")) {
       return c.json({ error: "invalid_body" }, 400);
@@ -410,10 +478,16 @@ export function createLeaveRoutes(db: Database) {
     if (!existing || existing.tenantId !== user.tenantId) {
       return c.json({ error: "not_found" }, 404);
     }
-    // v0.2 と同じ暫定運用: 自分が提出した申請のみ承認できる(他人の申請の承認はスコープ外)
-    if (existing.requestedBy !== user.id) {
-      throw new ForbiddenError("cannot approve another user's leave request");
+
+    const permissions = c.get("permissions");
+    const accessible = await resolveAccessibleUserIds(db, {
+      actor: { id: user.id, tenantId: user.tenantId, permissions },
+      permission: APPROVE_PERMISSION,
+    });
+    if (accessible !== "all" && !accessible.has(existing.userId)) {
+      throw new ForbiddenError(`target user ${existing.userId} is outside actor's scope`);
     }
+
     if (existing.status !== "pending") {
       return c.json({ error: "not_pending" }, 409);
     }
@@ -450,8 +524,6 @@ export function createLeaveRoutes(db: Database) {
     if (!parsedMonth) {
       throw new Error(`leave_request ${existing.id} has an unparsable leaveDate: ${existing.leaveDate}`);
     }
-
-    const permissions = c.get("permissions");
 
     // 締め後修正(amend): 対象日が締め済み月なら closing.unlock を持つ場合のみ承認できる。
     // 反映(status 更新)・監査ログ・(必要なら)スナップショット再計算・amend 追記を
@@ -552,12 +624,46 @@ export function createLeaveRoutes(db: Database) {
       throw err;
     }
 
+    // 本人へ通知(決裁者が申請者本人と異なる場合のみ。自己承認では自分に通知しない —
+    // routes/auto-break-waivers.ts の POST /:id/approve と同じ判断。ただし waiver は
+    // approve のみ通知するが、依頼によりこちらは approve・reject の両方で通知する)。
+    if (!selfApproved) {
+      const notificationType = "leave_request_approved";
+      const title = "休暇申請が承認されました";
+      const notificationBody = `${existing.leaveDate} の休暇申請が承認されました。`;
+      const notification = await createNotificationIfAbsent(db, {
+        tenantId: user.tenantId,
+        userId: existing.userId,
+        type: notificationType,
+        // leaveDate は同日に複数件(午前/午後・時間単位の複数申請)が存在しうるため、
+        // subject_date に leaveDate を使うと2件目以降の承認通知が UNIQUE 制約で
+        // 無言で握りつぶされてしまう(routes/corrections.ts と同じ理由で null にする —
+        // 承認は pending から一度しか遷移できないためこの選択でも重複作成の心配はない)。
+        subjectDate: null,
+        title,
+        body: notificationBody,
+        createdAt: now,
+      });
+      if (notification) {
+        const channels = await buildPersonalChannels(
+          db,
+          { tenantId: user.tenantId, userId: existing.userId, notificationType },
+          deps,
+        );
+        if (channels.length > 0) {
+          await dispatch(channels, { to: {}, title, body: notificationBody });
+        }
+      }
+    }
+
     return c.json({ request: serializeLeaveRequest(result.updated), amended: result.amended }, 200);
   });
 
   // ---- POST /leave/requests/:id/reject ----
   app.post("/requests/:id/reject", async (c) => {
     const user = c.get("user");
+    requirePermission(c, APPROVE_PERMISSION, "department");
+
     const body = await parseJsonBody(c);
     if (body === null || (body.note !== undefined && typeof body.note !== "string")) {
       return c.json({ error: "invalid_body" }, 400);
@@ -569,9 +675,16 @@ export function createLeaveRoutes(db: Database) {
     if (!existing || existing.tenantId !== user.tenantId) {
       return c.json({ error: "not_found" }, 404);
     }
-    if (existing.requestedBy !== user.id) {
-      throw new ForbiddenError("cannot reject another user's leave request");
+
+    const permissions = c.get("permissions");
+    const accessible = await resolveAccessibleUserIds(db, {
+      actor: { id: user.id, tenantId: user.tenantId, permissions },
+      permission: APPROVE_PERMISSION,
+    });
+    if (accessible !== "all" && !accessible.has(existing.userId)) {
+      throw new ForbiddenError(`target user ${existing.userId} is outside actor's scope`);
     }
+
     if (existing.status !== "pending") {
       return c.json({ error: "not_pending" }, 409);
     }
@@ -599,6 +712,33 @@ export function createLeaveRoutes(db: Database) {
       detail: JSON.stringify({ selfApproved }),
       occurredAt: now,
     });
+
+    if (!selfApproved) {
+      const notificationType = "leave_request_rejected";
+      const title = "休暇申請が却下されました";
+      const notificationBody = note
+        ? `${existing.leaveDate} の休暇申請が却下されました。コメント: ${note}`
+        : `${existing.leaveDate} の休暇申請が却下されました。`;
+      const notification = await createNotificationIfAbsent(db, {
+        tenantId: user.tenantId,
+        userId: existing.userId,
+        type: notificationType,
+        subjectDate: null,
+        title,
+        body: notificationBody,
+        createdAt: now,
+      });
+      if (notification) {
+        const channels = await buildPersonalChannels(
+          db,
+          { tenantId: user.tenantId, userId: existing.userId, notificationType },
+          deps,
+        );
+        if (channels.length > 0) {
+          await dispatch(channels, { to: {}, title, body: notificationBody });
+        }
+      }
+    }
 
     return c.json({ request: serializeLeaveRequest(updated) }, 200);
   });

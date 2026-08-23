@@ -461,6 +461,16 @@ export interface PermissionGrantDto {
   scope: Scope;
 }
 
+/**
+ * GET /me/effective-permissions の1要素(2026-08-23 追加)。PermissionGrantDto と形は同じだが、
+ * 「プリセットの合算・含意展開・セルフサービス込みの最終形」であることを型名で区別する
+ * (lib/useEffectivePermissions.ts・lib/permissions.ts#hasEffectivePermission 参照)。
+ */
+export interface EffectivePermissionDto {
+  key: string;
+  scope: Scope;
+}
+
 /** 権限プリセット(apps/api/src/routes/presets.ts の serializePreset と一致)。 */
 export interface PermissionPresetDto {
   id: string;
@@ -930,6 +940,21 @@ export const api = {
     return request("/me");
   },
 
+  /**
+   * GET /me/effective-permissions(2026-08-23 API側新設)。認証ユーザー自身の実効権限の最終形
+   * (プリセットの合算・「操作は閲覧を含意」の展開・セルフサービス権限込み)を返す。
+   *
+   * このバッチ(レビュー第2波)以前は、apps/api にこのエンドポイントが無かったため、Web 側は
+   * 「一覧 GET を叩いて 200/403 で判定する」(useSettingsAccess)・「自分の presetNames を
+   * GET /presets と突き合わせて computeEffectivePermissions で再計算する」(MembersView の
+   * canInvite・CorrectionsView の hasApprovePermission)という3方式のクライアント側推定に
+   * 頼っていた。本エンドポイントの追加によりそれらは全廃し、ここから取得した1つの実効権限一覧を
+   * 共有フック(lib/useEffectivePermissions.ts)経由で全画面が参照する形に統一する。
+   */
+  async getEffectivePermissions(): Promise<{ permissions: EffectivePermissionDto[] }> {
+    return request("/me/effective-permissions");
+  },
+
   /** gps 省略時は座標なしで打刻する(位置情報が取得できなかった/許可されなかった場合)。 */
   async punch(kind: PunchKind, gps?: PunchGpsInput): Promise<{ punch: Punch }> {
     return request("/punches", { method: "POST", body: JSON.stringify({ kind, ...gps }) });
@@ -1097,8 +1122,19 @@ export const api = {
     return request(`/invitations/${encodeURIComponent(token)}`);
   },
 
-  /** POST /invitations/:token/accept(公開・未認証)。成功するとセッションCookieが発行され、そのままログイン状態になる。 */
-  async acceptInvitation(token: string, password: string): Promise<{ user: AuthUser }> {
+  /**
+   * POST /invitations/:token/accept(公開・未認証)。成功するとセッションCookieが発行され、
+   * そのままログイン状態になる。
+   *
+   * 判断点: アカウント自体の作成には成功したがセッション発行だけ失敗した場合(2026-08-23
+   * API側新設)、apps/api は 200 のまま `{ accountActivated: true, error: "session_issuance_failed" }`
+   * を返す(エラーとして throw されない — HTTP ステータス自体は成功のため)。呼び出し側
+   * (InviteAcceptView)はレスポンスの形で分岐し、この場合はログイン画面へ誘導する文言を出す。
+   */
+  async acceptInvitation(
+    token: string,
+    password: string,
+  ): Promise<{ user: AuthUser } | { accountActivated: true; error: "session_issuance_failed" }> {
     return request(`/invitations/${encodeURIComponent(token)}/accept`, { method: "POST", body: JSON.stringify({ password }) });
   },
 

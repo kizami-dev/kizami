@@ -14,14 +14,24 @@ import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 import { tenants } from "./tenants.js";
 
 /** 手当定義の識別子側。版は allowance_definition_versions が持つ(名前も版が持つ — work_policies と同じ) */
-export const allowanceDefinitions = sqliteTable("allowance_definitions", {
-  id: text("id").primaryKey(),
-  tenantId: text("tenant_id")
-    .notNull()
-    .references(() => tenants.id),
-  /** UTC エポック分 */
-  createdAt: integer("created_at").notNull(),
-});
+export const allowanceDefinitions = sqliteTable(
+  "allowance_definitions",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id")
+      .notNull()
+      .references(() => tenants.id),
+    /** UTC エポック分 */
+    createdAt: integer("created_at").notNull(),
+  },
+  (table) => [
+    // listAllowanceDefinitions(queries/allowances.ts)は tenant_id だけで絞り込むが、
+    // これまで tenant_id には index が無く PK(id)頼みの全表スキャンになっていた
+    // (allowance_definition_versions 側には tenant_id を含む index が既にあるのに、
+    // 識別子側のこのテーブルだけ抜けていた)。
+    index("allowance_definitions_tenant_idx").on(table.tenantId),
+  ],
+);
 
 /**
  * allowance_definitions の版(追記専用)。`conditions` は engine の

@@ -24,6 +24,7 @@ import { and, desc, eq, isNull } from "drizzle-orm";
 import type { Database, Transaction } from "../migrate.js";
 import { authCredentials, invitations } from "../schema/index.js";
 import { uuidv7 } from "../uuid.js";
+import { insertAuditLog } from "./audit.js";
 
 export type Invitation = typeof invitations.$inferSelect;
 
@@ -38,40 +39,61 @@ export interface NewInvitationInput {
   createdAt: number;
 }
 
-/** invitations へ1件発行する(既存の未決着招待を revoke してから作成、1トランザクション)。 */
-export async function createInvitation(db: Database, input: NewInvitationInput): Promise<Invitation> {
-  return db.transaction(async (tx) => {
-    await tx
-      .update(invitations)
-      .set({ revokedAt: input.createdAt })
-      .where(
-        and(
-          eq(invitations.tenantId, input.tenantId),
-          eq(invitations.userId, input.userId),
-          isNull(invitations.acceptedAt),
-          isNull(invitations.revokedAt),
-        ),
-      );
+/**
+ * 既存の未決着招待を revoke してから新規発行する本体。呼び出し元がアトミック性の単位
+ * (単独の内部トランザクションか、外側の既存トランザクションか)を選べるよう、
+ * `Database | Transaction` をそのまま素通しする(自分ではトランザクションを開始しない)。
+ */
+async function revokeAndCreateInvitation(db: Database | Transaction, input: NewInvitationInput): Promise<Invitation> {
+  await db
+    .update(invitations)
+    .set({ revokedAt: input.createdAt })
+    .where(
+      and(
+        eq(invitations.tenantId, input.tenantId),
+        eq(invitations.userId, input.userId),
+        isNull(invitations.acceptedAt),
+        isNull(invitations.revokedAt),
+      ),
+    );
 
-    const [row] = await tx
-      .insert(invitations)
-      .values({
-        id: uuidv7(),
-        tenantId: input.tenantId,
-        userId: input.userId,
-        tokenHash: input.tokenHash,
-        expiresAt: input.expiresAt,
-        acceptedAt: null,
-        revokedAt: null,
-        createdBy: input.createdBy,
-        createdAt: input.createdAt,
-      })
-      .returning();
-    if (!row) {
-      throw new Error("createInvitation: insert returned no row");
-    }
-    return row;
-  });
+  const [row] = await db
+    .insert(invitations)
+    .values({
+      id: uuidv7(),
+      tenantId: input.tenantId,
+      userId: input.userId,
+      tokenHash: input.tokenHash,
+      expiresAt: input.expiresAt,
+      acceptedAt: null,
+      revokedAt: null,
+      createdBy: input.createdBy,
+      createdAt: input.createdAt,
+    })
+    .returning();
+  if (!row) {
+    throw new Error("createInvitation: insert returned no row");
+  }
+  return row;
+}
+
+/**
+ * invitations へ1件発行する(既存の未決着招待を revoke してから作成、1トランザクション)。
+ * 単独呼び出し用(自前でトランザクションを開始する)。既に外側のトランザクション内にいる
+ * 場合(メンバー作成を1トランザクションにまとめる apps/api/src/routes/members.ts の POST /)は
+ * ネストしたトランザクション(SAVEPOINT)を避けるため、代わりに createInvitationInTx を使うこと。
+ */
+export async function createInvitation(db: Database, input: NewInvitationInput): Promise<Invitation> {
+  return db.transaction((tx) => revokeAndCreateInvitation(tx, input));
+}
+
+/**
+ * createInvitation と同じ処理を、呼び出し側が既に開始した外側のトランザクション `tx` の中で
+ * 行う(自分では db.transaction() を呼ばない)。apps/api/src/routes/members.ts の POST /
+ * (createUser・upsertMembership・招待発行・監査ログ追記を1トランザクションにまとめる)専用。
+ */
+export async function createInvitationInTx(tx: Transaction, input: NewInvitationInput): Promise<Invitation> {
+  return revokeAndCreateInvitation(tx, input);
 }
 
 /** トークンのハッシュから1件探す(受諾用)。有効性の判定は呼び出し側が行う。 */
@@ -122,9 +144,17 @@ export interface AcceptedInvitation {
 }
 
 /**
- * 招待を受諾する: 有効性の再検証・accepted_at 設定・auth_credentials 作成を1トランザクションで行う。
- * 失敗(存在しない・失効済み・受諾済み・期限切れ)は null を返す — 理由の切り分け(404 vs 410)は
- * 呼び出し側(apps/api/src/routes/invitations.ts)がトークン探索時に別途行う。
+ * 招待を受諾する: 有効性の再検証・accepted_at 設定・auth_credentials 作成・監査ログ追記を
+ * 1トランザクションで行う(監査ログの同居は2026-08-23 追加 — 以前は呼び出し側が受諾成功の
+ * 判定後に別トランザクションで書いており、auth_credentials は作られたのに監査ログだけ
+ * 書き漏れる余地があった)。失敗(存在しない・失効済み・受諾済み・期限切れ)は null を返す —
+ * 理由の切り分け(404 vs 410)は呼び出し側(apps/api/src/routes/invitations.ts)が
+ * トークン探索時に別途行う。
+ *
+ * セッション発行(createSession)はこの関数の外側・別トランザクションのまま(呼び出し側の
+ * apps/api/src/routes/invitations.ts が行う)。アカウントの有効化(このトランザクション)と
+ * ログイン状態にすることは別の関心事であり、後者が失敗してもアカウント自体は有効化済みで
+ * あるべきなので、あえて分離を保っている。
  */
 export async function acceptInvitation(db: Database, input: AcceptInvitationInput): Promise<AcceptedInvitation | null> {
   return db.transaction(async (tx) => {
@@ -158,6 +188,16 @@ export async function acceptInvitation(db: Database, input: AcceptInvitationInpu
     if (!cred) {
       throw new Error("acceptInvitation: auth_credentials insert returned no row");
     }
+
+    await insertAuditLog(tx, {
+      tenantId: invitation.tenantId,
+      actorId: invitation.userId,
+      action: "invitation.accept",
+      targetType: "user",
+      targetId: invitation.userId,
+      detail: JSON.stringify({}),
+      occurredAt: input.nowMinutes,
+    });
 
     return { invitation: updated, tenantId: invitation.tenantId, userId: invitation.userId };
   });

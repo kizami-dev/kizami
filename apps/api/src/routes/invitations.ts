@@ -14,14 +14,7 @@
  * という有用な導線が要るため、情報最小化とのトレードオフでここだけ区別する価値があると判断した。
  */
 
-import {
-  acceptInvitation,
-  findInvitationByTokenHash,
-  getTenantById,
-  getUserById,
-  insertAuditLog,
-  type Database,
-} from "@kizami/db";
+import { acceptInvitation, findInvitationByTokenHash, getTenantById, getUserById, type Database } from "@kizami/db";
 import { Hono } from "hono";
 import { sha256Hex } from "../auth/api-key.js";
 import { hashPassword } from "../auth/password.js";
@@ -97,18 +90,28 @@ export function createInvitationsRoutes(db: Database, options: { secureCookies: 
       // 先に受諾・失効させた(競合)。理由は区別せず404にする(このファイル冒頭の判断点どおり)。
       return c.json({ error: "not_found" }, 404);
     }
+    // ここまでで acceptInvitation のトランザクションはコミット済み: auth_credentials・
+    // 監査ログ(packages/db/src/queries/invitations.ts の acceptInvitation に同居させた)は
+    // どちらも確定している。アカウントは有効化済みで、以降ログイン自体は通常のログインフロー
+    // (POST /auth/login)でも復旧できる状態にある。
 
-    await insertAuditLog(db, {
-      tenantId: result.tenantId,
-      actorId: result.userId,
-      action: "invitation.accept",
-      targetType: "user",
-      targetId: result.userId,
-      detail: JSON.stringify({}),
-      occurredAt: resolved.now,
-    });
-
-    const session = await createSession(db, { tenantId: result.tenantId, userId: result.userId, nowMinutes: resolved.now });
+    // セッション発行(createSession)はアカウント有効化とは別のトランザクション・別の関心事
+    // として意図的に分離している(packages/db 側の判断点コメント参照)。ここが失敗しても
+    // 「受諾自体が失敗した」という誤ったメッセージ(500 internal_error)を返さない —
+    // アカウントは既に有効なので、ログイン画面へ誘導すれば利用者は復旧できる。
+    let session: Awaited<ReturnType<typeof createSession>>;
+    try {
+      session = await createSession(db, { tenantId: result.tenantId, userId: result.userId, nowMinutes: resolved.now });
+    } catch {
+      return c.json(
+        {
+          accountActivated: true,
+          error: "session_issuance_failed",
+          message: "アカウントは有効化済みです。お手数ですが、ログイン画面から改めてログインしてください。",
+        },
+        200,
+      );
+    }
     setSessionCookie(c, session.token, { secure: options.secureCookies });
 
     const user = await getUserById(db, { tenantId: result.tenantId, id: result.userId });

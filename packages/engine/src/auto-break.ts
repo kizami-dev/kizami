@@ -60,37 +60,53 @@ function deductionForRule(rule: AutoBreakRule, mode: "auto" | "both", punchBreak
 
 /**
  * gross(打刻休憩控除後の実労働、まだ自動控除は適用していない値)に対して、どの自動控除
- * ルールを採用するかを選ぶ。
+ * ルールを・どれだけ控除するかを選ぶ。
  *
- * 採否は「そのルールを適用した結果の実労働(= gross − そのルールの控除分)が、そのルール
- * 自身の overMinutes **以上**か」で判定する(自己無矛盾性チェック)。下回るなら
- * 「控除したせいで閾値を割ったのにフル控除される」という労働者不利な結果になるため、
- * そのルールは不採用にする(6時間5分の勤務に45分ルールを当てて5時間20分まで削るような
- * ケースを防ぐ)。複数のルールが有効な場合は overMinutes が最大のもの(最も実態に近い階層)
- * を採用する。
+ * 各ルールは「発動」すれば(gross が自身の overMinutes を超えていれば)、そのルール単体の
+ * 実効控除を次式で持つ:
  *
- * 「以上(≥)」であって「超(>)」でないのが要(2026-08-23 修正): 厳密比較にすると、
- * 拘束9時間・法定2段ルール(6h超45分・8h超60分)で 540−60=480 が「480超」を満たさず
- * 60分ルールが棄却され、45分控除 → 実労働8時間15分 → 休憩不足警告、となる。
- * 9:00〜18:00・昼休憩60分という最も標準的な勤務形態が毎日警告になってしまうため、
- * 「控除後にちょうど閾値に載る」= その階層の勤務として扱う。
+ *   実効控除 = min(モード調整後の控除分数(deductionForRule), gross − overMinutes)
+ *
+ * gross − overMinutes を上限にクランプすることで、そのルールを適用した結果の実労働が
+ * 自身の overMinutes を割り込むことは構造的に起こらない(実労働は決して閾値未満まで
+ * 削られないという労働者保護は、この上限クランプによって維持している)。発動した複数
+ * ルールのうち実効控除が最大のものを採用する。同値なら overMinutes が大きい方
+ * (最も実態に近い階層)を優先する。
+ *
+ * 旧方式(そのルールを適用した結果が自身の overMinutes 以上かで丸ごと採否を決める
+ * 「自己無矛盾性チェック」)には不感帯があった: 単一階層ルール(例: 480分超60分控除の
+ * みが設定されている場合)では gross が (480, 540) の範囲にあると、旧方式は「60分フル
+ * 控除すると 480 を割ってしまう」という理由でルールを丸ごと棄却していた。結果、控除は
+ * 常に0分のまま実労働が閾値を超え続け、insufficient_break の誤警告だけが出ていた。
+ * 新方式では同じ場面で min(60, gross−480) 分だけを控除するため、実労働はちょうど
+ * 480(自身の閾値)に着地し、この不感帯は生じない。
  *
  * この判定は各ルールが自分自身の gross・deductMinutes だけで完結し、他のルールの採否に
  * 依存しない。そのため「安定するまで再評価する」という多段の不動点ループは不要で、
  * 1回のフィルタリングで最終結果に到達する(仕様は不動点を許容しているが、この設計では
  * ラウンドをまたいで結果が振動する余地自体が無い)。
+ *
+ * 経緯: 2026-08-23 にまず「厳密比較(>)→以上(≥)」という境界の修正を行ったが、単一階層
+ * ルールの不感帯(上記)は残っていたため、同日中に実効控除ベースのクランプ方式へ
+ * 再修正した。
  */
 function selectRule(
   gross: number,
   punchBreakMinutes: number,
   rules: AutoBreakRule[],
   mode: "auto" | "both",
-): AutoBreakRule | undefined {
-  let best: AutoBreakRule | undefined;
+): { rule: AutoBreakRule; deduction: number } | undefined {
+  let best: { rule: AutoBreakRule; deduction: number } | undefined;
   for (const rule of rules) {
-    const deduction = deductionForRule(rule, mode, punchBreakMinutes);
-    if (gross - deduction >= rule.overMinutes && (!best || rule.overMinutes > best.overMinutes)) {
-      best = rule;
+    if (gross <= rule.overMinutes) continue; // 発動条件: 実労働が閾値を超えている
+    const raw = deductionForRule(rule, mode, punchBreakMinutes);
+    const effective = Math.min(raw, gross - rule.overMinutes);
+    if (
+      !best ||
+      effective > best.deduction ||
+      (effective === best.deduction && rule.overMinutes > best.rule.overMinutes)
+    ) {
+      best = { rule, deduction: effective };
     }
   }
   return best;
@@ -203,7 +219,7 @@ export function applyAutoBreakDeduction(
     const gross = stretch.workedMinutes;
     const punchBreakMinutes = stretch.breakMinutes;
     const selected = selectRule(gross, punchBreakMinutes, rule.rules, rule.mode);
-    const deduction = selected ? deductionForRule(selected, rule.mode, punchBreakMinutes) : 0;
+    const deduction = selected ? selected.deduction : 0;
 
     if (deduction <= 0) {
       resultStretches.push({ ...stretch, autoDeductedBreakMinutes: 0 });

@@ -327,9 +327,11 @@
   color: var(--k-magenta-ink);
 }
 
-.org-table__detail-cell {
+/* td.org-table__detail-cell: 上の ".org-table th, .org-table td" と詳細度(0,1,1)を揃え、
+   ソース順(このルールの方が後)で勝たせる(!important 廃止、2026-08-23)。 */
+td.org-table__detail-cell {
   background: color-mix(in srgb, var(--k-key) 2%, transparent);
-  padding: var(--space-5) !important;
+  padding: var(--space-5);
 }
 
 /* ---- 招待式登録(メンバー招待・再発行・取り消し、2026-08-23 追加) ---- */

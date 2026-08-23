@@ -42,8 +42,18 @@ async function grantAnnual(
   });
 }
 
-/** その日1日分(full_day)の有給申請を作成し、即座に本人承認まで行う(残高を消費するため)。 */
-async function requestAndApproveFullDay(app: RequestLike, cookie: string, leaveDate: string): Promise<void> {
+/** その日1日分(full_day)の有給申請を作成し、即座に本人承認まで行う(残高を消費するため)。
+ * 2026-08-23: 承認は leave.request.approve 権限ベースに統一(自己承認も対象)されたため、
+ * 呼び出し前に db・tenantId・userId を渡して権限を付与する。 */
+async function requestAndApproveFullDay(
+  app: RequestLike,
+  cookie: string,
+  leaveDate: string,
+  db: Database,
+  params: { tenantId: string; userId: string },
+): Promise<void> {
+  await grantPermission(db, { tenantId: params.tenantId, userId: params.userId, permission: "leave.request.approve", scope: "tenant" });
+
   const createRes = await app.request("/leave/requests", {
     method: "POST",
     headers: { "content-type": "application/json", cookie },
@@ -116,7 +126,7 @@ describe("runLeaveAlertScan", () => {
 
     const app = createApp({ db });
     const cookie = await loginAndGetCookie(app, email, password);
-    await requestAndApproveFullDay(app, cookie, TODAY);
+    await requestAndApproveFullDay(app, cookie, TODAY, db, { tenantId, userId });
 
     const result = await runLeaveAlertScan(db, { nowMinutes: FIXED_NOW_MINUTES });
     expect(result.created).toHaveLength(0);
@@ -210,7 +220,7 @@ describe("runLeaveAlertScan", () => {
     const cookie = await loginAndGetCookie(app, email, password);
     // 期間内(grantedOn 以降)に full_day を5日取得して義務を満たす
     for (let i = 0; i < 5; i++) {
-      await requestAndApproveFullDay(app, cookie, addDays(grantedOn, 10 + i));
+      await requestAndApproveFullDay(app, cookie, addDays(grantedOn, 10 + i), db, { tenantId, userId });
     }
 
     const result = await runLeaveAlertScan(db, { nowMinutes: FIXED_NOW_MINUTES });

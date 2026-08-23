@@ -36,6 +36,7 @@ import type { EngineOutput } from "@kizami/engine";
 import type { AppEnv } from "../auth/middleware.js";
 import { requirePermission } from "../authz.js";
 import { snapshotInputsFromEngineOutput } from "../lib/closing-snapshot.js";
+import { buildTenantMonthlyContext } from "../lib/closing-amend.js";
 import { nowMinutes, parseMonthParam } from "../lib/time.js";
 import { calculateMonthlyForUser } from "../reminders.js";
 
@@ -156,20 +157,41 @@ export function createClosingsRoutes(db: Database) {
     const tenantUsers = await listTenantUsers(db, user.tenantId);
     const activeUsers = tenantUsers.filter((u) => u.isActive);
 
+    // N+1解消: 締める対象は全員が同じテナント・同じ月なので、law/allowance/テナント設定版は
+    // ユーザー数だけ繰り返さず1回だけ構築する(apps/api/src/lib/closing-amend.ts 冒頭の
+    // 判断点参照)。構築自体が失敗した場合(テナント設定が一切無い等)は、以前この失敗が
+    // 個々のユーザーの calculateMonthlyForUser 呼び出しの中で起きて全員スキップになっていた
+    // のと同じ結果になるよう、ここでも例外にはせず null のまま扱い、以降の per-user 呼び出しで
+    // 従来どおり自前取得(= 同じ理由で同じく失敗)にフォールバックさせる(挙動不変)。
+    const tenantContext = await buildTenantMonthlyContext(db, { tenantId: user.tenantId, year: parsedMonth.year, month: parsedMonth.month }).catch(
+      () => undefined,
+    );
+
     const perUserOutputs: Array<{ userId: string; output: EngineOutput }> = [];
+    // レビュー指摘(締めのサイレントスキップ可視化): 誰が・何人スキップされたかがこれまで
+    // どこにも残らず、締め結果の userCount だけでは「意図的に対象外なのか、設定不備で
+    // 落ちたのか」を後から区別できなかった。スキップしたユーザーIDを集め、監査ログの detail に
+    // skippedUserIds として記録する(下記 insertAuditLog 呼び出し参照)。
+    const skippedUserIds: string[] = [];
     for (const activeUser of activeUsers) {
       try {
-        const { output } = await calculateMonthlyForUser(db, {
-          tenantId: user.tenantId,
-          userId: activeUser.id,
-          year: parsedMonth.year,
-          month: parsedMonth.month,
-        });
+        const { output } = await calculateMonthlyForUser(
+          db,
+          {
+            tenantId: user.tenantId,
+            userId: activeUser.id,
+            year: parsedMonth.year,
+            month: parsedMonth.month,
+          },
+          tenantContext,
+        );
         perUserOutputs.push({ userId: activeUser.id, output });
       } catch {
         // テナント設定・制度割当がまだ揃っていないユーザーはスキップする
         // (apps/api/src/reminders.ts runReminderScan と同じ方針: 個別ユーザーの不備で
-        // 締め処理全体を失敗させない)。
+        // 締め処理全体を失敗させない)。どのユーザーがスキップされたかは skippedUserIds に
+        // 記録し、監査ログから追跡できるようにする。
+        skippedUserIds.push(activeUser.id);
       }
     }
 
@@ -210,7 +232,7 @@ export function createClosingsRoutes(db: Database) {
           action: "closing.close",
           targetType: "closing",
           targetId: period,
-          detail: JSON.stringify({ period, note: noteResult.note, userCount: perUserOutputs.length }),
+          detail: JSON.stringify({ period, note: noteResult.note, userCount: perUserOutputs.length, skippedUserIds }),
           occurredAt: now,
         });
       });

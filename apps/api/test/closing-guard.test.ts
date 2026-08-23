@@ -136,6 +136,8 @@ describe("month-closed guard", () => {
   it("POST /corrections/:id/approve rejects with month_closed_requires_unlock when the actor lacks closing.unlock for the closed reflection month", async () => {
     const { db, tenantId, userId, email, password } = await setupTestDb();
     await grantPermission(db, { tenantId, userId, permission: "closing.execute", scope: "tenant" });
+    // 2026-08-23: 承認は attendance.correction.approve 権限ベースに統一(自己承認も対象)。
+    await grantPermission(db, { tenantId, userId, permission: "attendance.correction.approve", scope: "tenant" });
     const app = createApp({ db });
     const cookie = await loginAndGetCookie(app, email, password);
 

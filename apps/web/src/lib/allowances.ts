@@ -14,13 +14,7 @@
  */
 import type { AllowanceConditionsDto } from "./api";
 import { messages } from "./messages";
-
-/** 分(0〜1439) → "HH:MM"。SettingsAttendanceView の同名ヘルパーと同じ形式(既存方針どおりファイルごとに小さく再実装)。 */
-function minutesOfDayToHm(minutes: number): string {
-  const h = Math.floor(minutes / 60);
-  const m = minutes % 60;
-  return `${h < 10 ? `0${h}` : h}:${m < 10 ? `0${m}` : m}`;
-}
+import { minutesToHm as minutesOfDayToHm } from "./time";
 
 /** "--MM-DD" の "MM-DD" 部分 → 2001年(平年、うるう年の影響を避けるための固定参照年)を基準にした通し日数。連続レンジのグルーピングに使う。 */
 function yearlyDayIndex(monthDay: string): number {

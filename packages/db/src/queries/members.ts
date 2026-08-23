@@ -9,7 +9,7 @@
  */
 
 import { and, desc, eq } from "drizzle-orm";
-import type { Database } from "../migrate.js";
+import type { Database, Transaction } from "../migrate.js";
 import { departments, memberships, permissionPresets, presetAssignments, users } from "../schema/index.js";
 import { uuidv7 } from "../uuid.js";
 
@@ -44,8 +44,11 @@ export interface NewUserInput {
  * (tenant_id, email) の UNIQUE 制約違反は事前SELECTでチェックせず、呼び出し側が
  * isUniqueConstraintError() で判定すること(auto_break_waivers の承認重複と同じ流儀 —
  * SELECT→INSERT の間に別リクエストが割り込む TOCTOU の窓を作らないため)。
+ *
+ * `Database | Transaction` を受け取る(apps/api/src/routes/members.ts の POST / が
+ * createUser・upsertMembership・招待発行・監査ログ追記を1トランザクションで行うために必要)。
  */
-export async function createUser(db: Database, input: NewUserInput): Promise<MemberUser> {
+export async function createUser(db: Database | Transaction, input: NewUserInput): Promise<MemberUser> {
   const [row] = await db
     .insert(users)
     .values({
@@ -118,7 +121,7 @@ export async function listTenantAssignedPresetNames(db: Database, tenantId: stri
 
 export type Membership = typeof memberships.$inferSelect;
 
-export async function getLatestMembership(db: Database, params: { tenantId: string; userId: string }): Promise<Membership | null> {
+export async function getLatestMembership(db: Database | Transaction, params: { tenantId: string; userId: string }): Promise<Membership | null> {
   const rows = await db
     .select()
     .from(memberships)
@@ -135,8 +138,13 @@ export interface UpsertMembershipInput {
   createdAt: number;
 }
 
-/** 既存のメンバーシップ(最新1行)があれば所属部署を更新、無ければ新規作成する。 */
-export async function upsertMembership(db: Database, input: UpsertMembershipInput): Promise<Membership> {
+/**
+ * 既存のメンバーシップ(最新1行)があれば所属部署を更新、無ければ新規作成する。
+ *
+ * `Database | Transaction` を受け取る(createUser と同じ理由 — 招待式登録のメンバー作成
+ * トランザクションから使うため)。
+ */
+export async function upsertMembership(db: Database | Transaction, input: UpsertMembershipInput): Promise<Membership> {
   const existing = await getLatestMembership(db, { tenantId: input.tenantId, userId: input.userId });
   if (existing) {
     const [row] = await db

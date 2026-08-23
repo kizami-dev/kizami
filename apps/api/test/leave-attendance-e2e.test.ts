@@ -26,11 +26,17 @@ interface LeaveRequestJson {
   id: string;
 }
 
+/** 2026-08-23: 承認は leave.request.approve 権限ベースに統一(自己承認も対象)されたため、
+ * 呼び出し前に db・tenantId・userId を渡して権限を付与する。 */
 async function createAndApprove(
   app: { request: (path: string, init?: RequestInit) => Promise<Response> | Response },
   cookie: string,
   body: Record<string, unknown>,
+  db: Database,
+  params: { tenantId: string; userId: string },
 ): Promise<void> {
+  await grantPermission(db, { tenantId: params.tenantId, userId: params.userId, permission: "leave.request.approve", scope: "tenant" });
+
   const createRes = await app.request("/leave/requests", {
     method: "POST",
     headers: { "content-type": "application/json", cookie },
@@ -66,7 +72,7 @@ describe("leave -> monthly flex integration (E2E)", () => {
     const beforeBody = (await before.json()) as { flexBalance: { actualMinutes: number } };
     expect(beforeBody.flexBalance.actualMinutes).toBe(0);
 
-    await createAndApprove(app, cookie, { leaveDate: "2026-04-10", reason: "私用のため" });
+    await createAndApprove(app, cookie, { leaveDate: "2026-04-10", reason: "私用のため" }, db, { tenantId, userId });
 
     const after = await app.request("/attendance/monthly?month=2026-04", { headers: { cookie } });
     const afterBody = (await after.json()) as { flexBalance: { actualMinutes: number }; days: { date: string; isPaidLeave: boolean }[] };
@@ -81,7 +87,7 @@ describe("leave -> monthly flex integration (E2E)", () => {
     const app = createApp({ db });
     const cookie = await loginAndGetCookie(app, email, password);
 
-    await createAndApprove(app, cookie, { leaveDate: "2026-04-11", reason: "午前休", unit: "half_day_am" });
+    await createAndApprove(app, cookie, { leaveDate: "2026-04-11", reason: "午前休", unit: "half_day_am" }, db, { tenantId, userId });
 
     const res = await app.request("/attendance/monthly?month=2026-04", { headers: { cookie } });
     const body = (await res.json()) as { flexBalance: { actualMinutes: number } };
@@ -110,7 +116,7 @@ describe("leave -> monthly flex integration (E2E)", () => {
     });
     expect(settingsRes.status).toBe(200);
 
-    await createAndApprove(app, cookie, { leaveDate: "2026-04-12", reason: "通院のため", unit: "hourly", minutes: 180 });
+    await createAndApprove(app, cookie, { leaveDate: "2026-04-12", reason: "通院のため", unit: "hourly", minutes: 180 }, db, { tenantId, userId });
 
     const res = await app.request("/attendance/monthly?month=2026-04", { headers: { cookie } });
     const body = (await res.json()) as { flexBalance: { actualMinutes: number } };
@@ -137,7 +143,7 @@ describe("leave -> monthly flex integration (E2E)", () => {
       body: JSON.stringify({ kind: "clock_out", occurredAt: clockOutAt }),
     });
 
-    await createAndApprove(app, cookie, { leaveDate: "2026-04-13", reason: "午後休", unit: "half_day_pm" });
+    await createAndApprove(app, cookie, { leaveDate: "2026-04-13", reason: "午後休", unit: "half_day_pm" }, db, { tenantId, userId });
 
     const res = await app.request("/attendance/monthly?month=2026-04", { headers: { cookie } });
     const body = (await res.json()) as { flexBalance: { actualMinutes: number } };

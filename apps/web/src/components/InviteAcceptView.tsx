@@ -11,7 +11,14 @@ type ViewState =
   | { kind: "invalid" }
   | { kind: "expired" }
   | { kind: "ready"; tenantName: string | null; userName: string; email: string }
-  | { kind: "accepted" };
+  | { kind: "accepted" }
+  /**
+   * アカウント作成には成功したがセッション発行だけ失敗した場合(2026-08-23 API側新設、
+   * POST .../accept が 200 のまま `{ accountActivated: true, error: "session_issuance_failed" }`
+   * を返すケース)。ApiError として throw されない(HTTPステータス自体は成功のため)ため、
+   * レスポンスの形で分岐してこの状態にする。
+   */
+  | { kind: "sessionIssuanceFailed" };
 
 /**
  * 招待受諾画面(/invite/[token]、認証ガード無し・公開)。docs/requirements.md §7「登録は招待式のみ」。
@@ -62,7 +69,11 @@ export function InviteAcceptView({ token }: { token: string }) {
 
     setSubmitting(true);
     try {
-      await api.acceptInvitation(token, password);
+      const res = await api.acceptInvitation(token, password);
+      if ("error" in res && res.error === "session_issuance_failed") {
+        setState({ kind: "sessionIssuanceFailed" });
+        return;
+      }
       setState({ kind: "accepted" });
       router.push("/");
     } catch (err) {
@@ -107,6 +118,16 @@ export function InviteAcceptView({ token }: { token: string }) {
         ) : null}
 
         {state.kind === "accepted" ? <p className="login-card__tagline">{messages.inviteAccept.acceptedRedirecting}</p> : null}
+
+        {state.kind === "sessionIssuanceFailed" ? (
+          <>
+            <h2 className="invite-accept__title">{messages.inviteAccept.sessionIssuanceFailedTitle}</h2>
+            <p className="login-card__tagline">{messages.inviteAccept.sessionIssuanceFailedMessage}</p>
+            <button type="button" className="login-submit" onClick={() => router.push("/login")}>
+              {messages.inviteAccept.goToLogin}
+            </button>
+          </>
+        ) : null}
 
         {state.kind === "ready" ? (
           <>

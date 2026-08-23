@@ -3,7 +3,7 @@ import { insertPunchEvent, listNotifications } from "@kizami/db";
 import type { NotificationChannel, NotificationMessage } from "@kizami/notify";
 import { createApp } from "../src/app.js";
 import { runReminderScan } from "../src/reminders.js";
-import { jstMinutes, loginAndGetCookie, setupSecondUser, setupTestDb } from "./support/setup.js";
+import { grantPermission, jstMinutes, loginAndGetCookie, setupSecondUser, setupTestDb } from "./support/setup.js";
 
 // 修正申請の approve フロー(corrections.test.ts と同じ固定時刻: JST 2026-04-15 12:00)。
 const FIXED_NOW = new Date("2026-04-15T03:00:00.000Z");
@@ -92,6 +92,8 @@ describe("runReminderScan", () => {
 
   it("creates no notification once the correction request supplying the missing clock-out is approved", async () => {
     const { db, tenantId, userId, email, password } = await setupTestDb();
+    // 2026-08-23: 承認は attendance.correction.approve 権限ベースに統一(自己承認も対象)。
+    await grantPermission(db, { tenantId, userId, permission: "attendance.correction.approve", scope: "tenant" });
     const app = createApp({ db });
     const cookie = await loginAndGetCookie(app, email, password);
 

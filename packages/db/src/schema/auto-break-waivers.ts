@@ -63,6 +63,14 @@ export const autoBreakWaivers = sqliteTable(
   (table) => [
     index("auto_break_waivers_tenant_user_status_idx").on(table.tenantId, table.userId, table.status),
     index("auto_break_waivers_tenant_user_date_idx").on(table.tenantId, table.userId, table.waiveDate),
+    // listApprovedWaiverDatesInRange(queries/auto-break-waivers.ts)は tenant_id・user_id・
+    // status='approved'・waive_date の範囲を同時に絞り込む。上の2つの3カラム index はそれぞれ
+    // status か waive_date のどちらか片方までしかカバーせず、この4条件同時の絞り込みには
+    // 单独では効かない(status 側の index なら waive_date の範囲比較で追加スキャンが要り、
+    // date 側の index なら status の等値フィルタで追加スキャンが要る)。締め処理・打刻忘れ
+    // リマインド・36協定アラートのすべてがユーザーごとにこの関数を呼ぶ高頻度パスのため、
+    // 4カラムそろえた複合 index を別途持つ。
+    index("auto_break_waivers_tenant_user_status_date_idx").on(table.tenantId, table.userId, table.status, table.waiveDate),
     // 同一 user × waive_date の approved 重複を DB レベルで防ぐ部分 UNIQUE index。
     // pending/rejected/withdrawn は対象外(同日への再申請・却下後の再申請を妨げないため)。
     uniqueIndex("auto_break_waivers_approved_unique_idx")

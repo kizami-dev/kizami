@@ -71,7 +71,7 @@ const upcoming = listUpcomingChanges("2026-08-22", { isSmallOrMediumEnterprise: 
   - `isSmallOrMediumEnterprise`: 同じ改正でも企業規模で施行日が違う場合の判定に使う
     (施行日ベースの版の `appliesTo` で分岐)
   - `isSpecialProvisionWorkplace`: 特例措置対象事業場(商業・映画演劇業・保健衛生業・接客娯楽業で
-    常時9人以下)かどうか。週40時間制が完全実施された現在も週44時間が法定労働時間となる現行制度
+    常時10人未満)かどうか。週40時間制が完全実施された現在も週44時間が法定労働時間となる現行制度
     (労基法40条、労基法施行規則25条の2)。過去の経過措置ではなく、施行日を持たない恒常的な
     事業場属性のため、版(`LawVersion`)ではなく `resolveLawRules` 内の解決後の上書きとして
     実装している(`src/resolve.ts` の `applySpecialProvisionWorkplaceOverride`)。
@@ -85,8 +85,9 @@ const upcoming = listUpcomingChanges("2026-08-22", { isSmallOrMediumEnterprise: 
   - `breakRequirements`: 休憩の付与義務(労基法34条1項)。実労働(休憩控除後)が `overMinutes` を
     厳密に超えたら `minimumMinutes` 以上の休憩が必要(6時間超で45分、8時間超で60分)。
     1947年の制定以来変更がないため `dailyStatutoryMinutes` と同じく基準版のみに置いている。
-    判定は勤務区間(出勤〜退勤の1まとまり)単位で行う契約 — engine 側は `@kizami/engine` の
-    `break-check.ts` を参照
+    判定は勤怠日のチェーン(同一勤怠日に属する出勤〜退勤の1まとまりをまとめた単位)で行う契約
+    — 単独の勤務区間でも勤怠日そのものでもない。詳細は docs/design/breaks.md、engine 側は
+    `@kizami/engine` の `break-check.ts` を参照
 - `LawVersion`: `effectiveFrom` + `appliesTo`(省略可) + `basis` + `rules`(差分) の1版
 
 ## 関数

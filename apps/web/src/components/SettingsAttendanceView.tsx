@@ -15,28 +15,20 @@ import {
   type WorkPolicyVersionDto,
 } from "../lib/api";
 import { mapAttendanceSettingsErrorMessage, messages } from "../lib/messages";
-import { currentYearMonthJst, dateStrFromEpochMinutesJst, formatDurationHm, formatMonthParam, nowMinutes, shiftMonth } from "../lib/time";
+import {
+  currentYearMonthJst,
+  dateStrFromEpochMinutesJst,
+  formatDurationHm,
+  formatMonthParam,
+  hmToMinutes,
+  minutesToHm,
+  nowMinutes,
+  shiftMonth,
+} from "../lib/time";
 import { useAuthGuard } from "../lib/useAuthGuard";
 import { AppHeader } from "./AppHeader";
 import { HelpTip } from "./HelpTip";
 import { SettingsNav } from "./SettingsNav";
-
-/** 分(0〜1439) → "HH:MM"。 */
-function minutesToHm(minutes: number): string {
-  const h = Math.floor(minutes / 60);
-  const m = minutes % 60;
-  return `${h < 10 ? `0${h}` : h}:${m < 10 ? `0${m}` : m}`;
-}
-
-/** "HH:MM" → 分(0〜1439)。不正な形式は null。 */
-function hmToMinutes(hm: string): number | null {
-  const match = /^(\d{1,2}):(\d{2})$/.exec(hm);
-  if (!match) return null;
-  const h = Number(match[1]);
-  const m = Number(match[2]);
-  if (h < 0 || h > 23 || m < 0 || m > 59) return null;
-  return h * 60 + m;
-}
 
 // モジュールレベルで messages のプロパティを取り出して定数化すると、import 時の言語
 // (通常は既定の日本語)で凍結され、言語切替に追従しない(messages は Proxy 経由で

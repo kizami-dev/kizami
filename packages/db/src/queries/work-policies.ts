@@ -10,7 +10,7 @@
 
 import { and, asc, eq } from "drizzle-orm";
 import type { Database, Transaction } from "../migrate.js";
-import { workPolicies, workPolicyVersions } from "../schema/index.js";
+import { userPolicyAssignments, workPolicies, workPolicyVersions } from "../schema/index.js";
 import { uuidv7 } from "../uuid.js";
 
 export type WorkPolicy = typeof workPolicies.$inferSelect;
@@ -93,4 +93,35 @@ export async function insertWorkPolicyVersion(db: Database | Transaction, params
     throw new Error("insertWorkPolicyVersion: insert returned no row");
   }
   return row;
+}
+
+export interface AssignUserWorkPolicyParams {
+  tenantId: string;
+  userId: string;
+  workPolicyId: string;
+  /** ローカル日付 "YYYY-MM-DD"。この日から適用 */
+  effectiveFrom: string;
+  createdAt: number;
+}
+
+/**
+ * user × work_policy の適用開始日を追記する(effective-dated、追記専用)。
+ *
+ * 2026-08-23 追加: 招待式メンバー作成(apps/api/src/routes/members.ts POST /)が
+ * テナント既定の work policy を自動割当するために使う。これが無いと、招待で作られた
+ * メンバーは制度未割当のまま(buildSettingsTimeline が解決できず有給・月次が 500)になる —
+ * 従来はシードスクリプトが直接 insert しており、製品経路に割当手段が存在しなかった。
+ */
+export async function assignUserWorkPolicy(
+  db: Database | Transaction,
+  params: AssignUserWorkPolicyParams,
+): Promise<void> {
+  await db.insert(userPolicyAssignments).values({
+    id: uuidv7(),
+    tenantId: params.tenantId,
+    userId: params.userId,
+    workPolicyId: params.workPolicyId,
+    effectiveFrom: params.effectiveFrom,
+    createdAt: params.createdAt,
+  });
 }

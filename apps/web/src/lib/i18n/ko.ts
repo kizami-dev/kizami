@@ -192,6 +192,24 @@ export const ko = {
     tenant: "테넌트 전체",
   } satisfies Record<"self" | "department" | "department_and_descendants" | "tenant", string>,
 
+  permissions: {
+    categoryLabel: {
+      attendance: "출퇴근·신청과 승인",
+      leave: "휴가",
+      closing: "마감과 내보내기",
+      org: "멤버와 조직",
+      settings: "설정과 권한",
+      other: "기타",
+    } as Record<string, string>,
+    internalViewLabel: {
+      "department.view": "부서 트리 열람",
+      "tenant_settings.view": "테넌트 설정 열람",
+      "permission_preset.view": "권한 프리셋 목록 열람",
+      "permission_assignment.effective_view": "멤버의 실효 권한(할 수 있는 일) 열람",
+      "api_key.view": "API 키 목록 열람",
+    } as Record<string, string>,
+  },
+
   login: {
     title: "KIZAMI",
     tagline: "1분 단위로 시간을 새기는 근태관리",
@@ -234,6 +252,10 @@ export const ko = {
     expiredTitle: "이 초대는 기한이 만료되었습니다",
     expiredMessage: "이 초대는 기한이 만료되었습니다. 관리자에게 재발급을 요청해 주세요.",
     acceptedRedirecting: "등록이 완료되었습니다. 이동하는 중…",
+
+    sessionIssuanceFailedTitle: "계정이 생성되었습니다",
+    sessionIssuanceFailedMessage: "계정은 생성되었습니다. 로그인 페이지에서 로그인해 주세요.",
+    goToLogin: "로그인 페이지로 이동",
 
     errors: {
       invalid_password: "비밀번호는 12자 이상 입력해 주세요",
@@ -470,6 +492,10 @@ export const ko = {
     confirmProceed: "실행",
 
     empty: "신청이 아직 없습니다",
+
+    queueSectionTitle: "승인 대기 중인 정정 신청",
+    queueSectionTagline: "승인 권한이 있는 범위 내에서 승인 대기 중인 정정 신청입니다.",
+    queueEmpty: "승인 대기 중인 신청이 없습니다",
 
     errors: {
       already_superseded: "대상 기록은 이미 다른 신청으로 수정되었습니다",
@@ -918,7 +944,7 @@ export const ko = {
 
     specialProvisionLabel: "특례조치 대상 사업장 여부",
     specialProvisionHint:
-      "상업·영화연극업·보건위생업·접객오락업으로서 상시 9인 이하 사업장은 주당 법정근로시간이 44시간이 됩니다(일본 노동기준법 제40조).",
+      "상업·영화연극업·보건위생업·접객오락업으로서 상시 10인 미만 사업장은 주당 법정근로시간이 44시간이 됩니다(일본 노동기준법 제40조).",
 
     specialClauseLabel: "특별조항 체결 여부",
     specialClauseHint:
@@ -1406,6 +1432,10 @@ export const ko = {
 
     requestsTitle: "신청 목록",
     requestsEmpty: "신청이 아직 없습니다",
+
+    queueSectionTitle: "승인 대기 중인 휴가 신청",
+    queueSectionTagline: "승인 권한이 있는 범위 내에서 승인 대기 중인 휴가 신청입니다.",
+    queueEmpty: "승인 대기 중인 신청이 없습니다",
     columnDate: "대상일",
     columnUnit: "단위",
     columnLeaveType: "항목",

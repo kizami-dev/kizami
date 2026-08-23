@@ -12,11 +12,22 @@ import {
   type PunchKind,
 } from "../lib/api";
 import { mapAutoBreakWaiverErrorMessage, mapCorrectionErrorMessage, messages } from "../lib/messages";
+import { hasEffectivePermission } from "../lib/permissions";
 import { formatDateTimeJst } from "../lib/time";
 import { useAuthGuard } from "../lib/useAuthGuard";
+import { useEffectivePermissions } from "../lib/useEffectivePermissions";
 import { AppHeader } from "./AppHeader";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { HelpTip } from "./HelpTip";
+
+/**
+ * 打刻修正申請の承認(POST /corrections/:id/approve・reject)が要求する権限
+ * (apps/api/src/routes/corrections.ts の APPROVE_PERMISSION)。休憩自動控除の打ち消し申請
+ * (POST /auto-break-waivers/:id/approve・reject)も同じキー・同じスコープを要求する
+ * (apps/api/src/routes/auto-break-waivers.ts の APPROVE_PERMISSION 参照)ため、
+ * 両方のキュー表示判定にこの1つの実効権限チェックを使い回す。
+ */
+const APPROVE_PERMISSION = "attendance.correction.approve";
 
 /** 対象打刻の解決に使う参照範囲。過去分は widely だが、SQLite ローカル運用の規模を前提に許容する。 */
 
@@ -43,6 +54,7 @@ function describeContent(req: CorrectionRequestDto): string {
 export function CorrectionsView() {
   const router = useRouter();
   const guard = useAuthGuard();
+  const { permissions: effectivePermissions } = useEffectivePermissions();
 
   const [requests, setRequests] = useState<CorrectionRequestDto[] | null>(null);
   const [loading, setLoading] = useState(true);
@@ -271,26 +283,124 @@ export function CorrectionsView() {
   }
 
   /**
-   * 承認キューを出すかどうかの判定(判断点、完了報告に明記): apps/api には「自分の実効権限」を
-   * 返すエンドポイントが無く、GET /auto-break-waivers はユーザー指定なしだと「権限が無ければ
-   * 自分の分だけ・あればスコープ内全員分」を返す(routes/auto-break-waivers.ts 参照)。
-   * そのため fetched 一覧に自分以外の userId が1件でも含まれていれば、それは
-   * VIEW_ALL_PERMISSION(attendance.correction.approve から含意)を持っている確実な証拠になる。
-   * 逆に「他人の分が1件も無い」ケース(他の従業員がまだ申請していない等)は権限の有無を
-   * 判別できないため、安全側に倒して承認キューを出さない(自分の申請1件だけを承認したい
-   * 単独テナントの管理者は、取り下げてから improvement を待つか、他の従業員の申請が
-   * 出た後に承認できるようになる — 既知の制限)。
+   * 承認キュー(打刻修正申請・休憩自動控除の打ち消し申請の両方)を出すかどうかの判定
+   * (2026-08-23 レビュー第2波)。
+   *
+   * 以前は apps/api に「自分の実効権限」を返すエンドポイントが無く、fetched 一覧に自分以外の
+   * userId が1件でも含まれるかどうかで推定していた(既知の false negative: 他の従業員が
+   * まだ申請していないテナントでは、承認権限を持っていてもキューが出なかった)。
+   * GET /me/effective-permissions の追加により、この推定は不要になった。
    */
+  const hasApprovePermission = hasEffectivePermission(effectivePermissions, APPROVE_PERMISSION, "department");
+
   const selfUserId = guard.user.id;
   const ownWaivers = waivers?.filter((w) => w.userId === selfUserId) ?? [];
-  const hasApprovePermission = (waivers ?? []).some((w) => w.userId !== selfUserId);
   const queueWaivers = hasApprovePermission ? (waivers ?? []).filter((w) => w.status === "pending") : [];
+
+  /**
+   * 打刻修正申請の own/queue 分割(2026-08-23、waiver と同じ二段構成に統一)。GET /corrections は
+   * view_all/approve 権限があればスコープ内全員分を返すため(apps/api 側の挙動、
+   * routes/corrections.ts のコメント参照)、自分の申請一覧とは別に「承認待ち(自分以外も含む)」の
+   * キューを設ける。queueCorrections は own の pending も含む(自己承認は queue 側の
+   * ConfirmDialog の selfApproved 表示で示す — 既存 UI を維持)。
+   */
+  const ownCorrections = requests?.filter((r) => r.requestedBy === selfUserId) ?? [];
+  const queueCorrections = hasApprovePermission ? (requests ?? []).filter((r) => r.status === "pending") : [];
 
   function waiverDecisionText(w: AutoBreakWaiverDto): string {
     const decidedByLabel = w.decidedBy ? (w.decidedBy === guard.user?.id ? messages.autoBreakWaiver.decidedBySelf : w.decidedBy) : "-";
     const at = w.decidedAt !== null ? ` / ${formatDateTimeJst(w.decidedAt)}` : "";
     const note = w.decisionNote ? `(${w.decisionNote})` : "";
     return `${decidedByLabel}${at}${note}`;
+  }
+
+  /**
+   * 1件分の修正申請カード。own/queue の両セクションで共通の見た目を使い、ボタンの出し分けだけを
+   * 引数で切り替える(own: 承認権限があれば自己承認として承認/却下ボタンも出し、常に取下げボタンも
+   * 出す。queue: 承認/却下ボタンのみ・取下げは出さない — 自分の申請ではない可能性があるため)。
+   */
+  function renderCorrectionCard(req: CorrectionRequestDto, options: { showApproveReject: boolean; showWithdraw: boolean }) {
+    const isPending = req.status === "pending";
+    const selfDecided = req.decidedBy !== null && guard.user && req.decidedBy === guard.user.id;
+    return (
+      <li key={req.id} className="correction-card">
+        <div className="correction-card__header">
+          <span className={`correction-badge correction-badge--${req.status as CorrectionStatus}`}>
+            {messages.corrections.statusLabel[req.status]}
+          </span>
+          <span className="correction-card__type">{describeType(req)}</span>
+        </div>
+
+        <dl className="correction-card__body">
+          <div className="correction-card__row">
+            <dt>{messages.corrections.columnTarget}</dt>
+            <dd className="tabular-nums">{describeTarget(req)}</dd>
+          </div>
+          {req.targetEventId !== null && req.proposedKind !== null ? (
+            <div className="correction-card__row">
+              <dt>{messages.corrections.columnContent}</dt>
+              <dd className="tabular-nums">
+                {messages.corrections.typeCorrect} → {describeContent(req)}
+              </dd>
+            </div>
+          ) : null}
+          {req.targetEventId === null ? (
+            <div className="correction-card__row">
+              <dt>{messages.corrections.columnContent}</dt>
+              <dd className="tabular-nums">
+                {messages.corrections.typeAdd}: {describeContent(req)}
+              </dd>
+            </div>
+          ) : null}
+          <div className="correction-card__row">
+            <dt>{messages.corrections.columnReason}</dt>
+            <dd>{req.reason}</dd>
+          </div>
+          {!isPending ? (
+            <div className="correction-card__row">
+              <dt>{messages.corrections.columnDecision}</dt>
+              <dd>
+                {req.decidedBy ? (selfDecided ? messages.corrections.decidedBySelf : req.decidedBy) : "-"}
+                {req.decidedAt !== null ? ` / ${formatDateTimeJst(req.decidedAt)}` : ""}
+                {req.decisionNote ? `(${req.decisionNote})` : ""}
+              </dd>
+            </div>
+          ) : null}
+        </dl>
+
+        {isPending && (options.showApproveReject || options.showWithdraw) ? (
+          <div className="correction-card__actions">
+            {options.showApproveReject ? (
+              <>
+                <button
+                  type="button"
+                  className="correction-card__btn correction-card__btn--approve"
+                  onClick={() => openConfirm(req.id, "approve")}
+                >
+                  {messages.corrections.approve}
+                </button>
+                <button
+                  type="button"
+                  className="correction-card__btn correction-card__btn--reject"
+                  onClick={() => openConfirm(req.id, "reject")}
+                >
+                  {messages.corrections.reject}
+                </button>
+              </>
+            ) : null}
+            {options.showWithdraw ? (
+              <button
+                type="button"
+                className="correction-card__btn correction-card__btn--withdraw"
+                onClick={() => openConfirm(req.id, "withdraw")}
+              >
+                {messages.corrections.withdraw}
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+      </li>
+    );
   }
 
   return (
@@ -306,90 +416,29 @@ export function CorrectionsView() {
           {loading ? <p className="monthly-loading">{messages.loading}</p> : null}
           {loadError ? <p className="monthly-error">{loadError}</p> : null}
 
-          {requests && requests.length === 0 ? <p className="corrections__empty">{messages.corrections.empty}</p> : null}
+          {requests && ownCorrections.length === 0 ? <p className="corrections__empty">{messages.corrections.empty}</p> : null}
 
-          {requests && requests.length > 0 ? (
-          <ul className="corrections__list">
-            {requests.map((req) => {
-              const isPending = req.status === "pending";
-              const selfDecided = req.decidedBy !== null && guard.user && req.decidedBy === guard.user.id;
-              return (
-                <li key={req.id} className="correction-card">
-                  <div className="correction-card__header">
-                    <span className={`correction-badge correction-badge--${req.status as CorrectionStatus}`}>
-                      {messages.corrections.statusLabel[req.status]}
-                    </span>
-                    <span className="correction-card__type">{describeType(req)}</span>
-                  </div>
-
-                  <dl className="correction-card__body">
-                    <div className="correction-card__row">
-                      <dt>{messages.corrections.columnTarget}</dt>
-                      <dd className="tabular-nums">{describeTarget(req)}</dd>
-                    </div>
-                    {req.targetEventId !== null && req.proposedKind !== null ? (
-                      <div className="correction-card__row">
-                        <dt>{messages.corrections.columnContent}</dt>
-                        <dd className="tabular-nums">
-                          {messages.corrections.typeCorrect} → {describeContent(req)}
-                        </dd>
-                      </div>
-                    ) : null}
-                    {req.targetEventId === null ? (
-                      <div className="correction-card__row">
-                        <dt>{messages.corrections.columnContent}</dt>
-                        <dd className="tabular-nums">
-                          {messages.corrections.typeAdd}: {describeContent(req)}
-                        </dd>
-                      </div>
-                    ) : null}
-                    <div className="correction-card__row">
-                      <dt>{messages.corrections.columnReason}</dt>
-                      <dd>{req.reason}</dd>
-                    </div>
-                    {!isPending ? (
-                      <div className="correction-card__row">
-                        <dt>{messages.corrections.columnDecision}</dt>
-                        <dd>
-                          {req.decidedBy ? (selfDecided ? messages.corrections.decidedBySelf : req.decidedBy) : "-"}
-                          {req.decidedAt !== null ? ` / ${formatDateTimeJst(req.decidedAt)}` : ""}
-                          {req.decisionNote ? `(${req.decisionNote})` : ""}
-                        </dd>
-                      </div>
-                    ) : null}
-                  </dl>
-
-                  {isPending ? (
-                    <div className="correction-card__actions">
-                      <button
-                        type="button"
-                        className="correction-card__btn correction-card__btn--approve"
-                        onClick={() => openConfirm(req.id, "approve")}
-                      >
-                        {messages.corrections.approve}
-                      </button>
-                      <button
-                        type="button"
-                        className="correction-card__btn correction-card__btn--reject"
-                        onClick={() => openConfirm(req.id, "reject")}
-                      >
-                        {messages.corrections.reject}
-                      </button>
-                      <button
-                        type="button"
-                        className="correction-card__btn correction-card__btn--withdraw"
-                        onClick={() => openConfirm(req.id, "withdraw")}
-                      >
-                        {messages.corrections.withdraw}
-                      </button>
-                    </div>
-                  ) : null}
-                </li>
-              );
-            })}
-          </ul>
+          {ownCorrections.length > 0 ? (
+            <ul className="corrections__list">
+              {ownCorrections.map((req) => renderCorrectionCard(req, { showApproveReject: hasApprovePermission, showWithdraw: true }))}
+            </ul>
           ) : null}
         </section>
+
+        {hasApprovePermission ? (
+          <section className="corrections__section">
+            <h2 className="corrections__section-title">{messages.corrections.queueSectionTitle}</h2>
+            <p className="corrections__tagline">{messages.corrections.queueSectionTagline}</p>
+
+            {queueCorrections.length === 0 ? <p className="corrections__empty">{messages.corrections.queueEmpty}</p> : null}
+
+            {queueCorrections.length > 0 ? (
+              <ul className="corrections__list">
+                {queueCorrections.map((req) => renderCorrectionCard(req, { showApproveReject: true, showWithdraw: false }))}
+              </ul>
+            ) : null}
+          </section>
+        ) : null}
 
         <section className="corrections__section">
           <h2 className="corrections__section-title">

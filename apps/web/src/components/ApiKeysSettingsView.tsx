@@ -10,10 +10,16 @@ import { AppHeader } from "./AppHeader";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { SettingsNav } from "./SettingsNav";
 
-const SCOPE_OPTIONS: { value: ApiKeyScope; label: string }[] = [
-  { value: "punch", label: messages.settingsApiKeys.scopePunch },
-  { value: "read", label: messages.settingsApiKeys.scopeRead },
-];
+// SCOPE_OPTIONS/STATUS_LABEL をモジュールレベルの配列/オブジェクトとして持つと、import 時の言語
+// (通常は既定の日本語)で messages のプロパティが凍結され、言語切替に追従しない(messages は
+// Proxy 経由で現在ロケールを返すが、取り出した先の値はただの文字列のため)。SettingsAttendanceView の
+// weekdayLabel と同じく、描画時に毎回引く関数にする(2026-08-23、凍結バグの修正)。
+function scopeOptions(): { value: ApiKeyScope; label: string }[] {
+  return [
+    { value: "punch", label: messages.settingsApiKeys.scopePunch },
+    { value: "read", label: messages.settingsApiKeys.scopeRead },
+  ];
+}
 
 function statusOf(key: ApiKeyDto, nowMinutes: number): "active" | "revoked" | "expired" {
   if (key.revokedAt !== null) return "revoked";
@@ -21,11 +27,13 @@ function statusOf(key: ApiKeyDto, nowMinutes: number): "active" | "revoked" | "e
   return "active";
 }
 
-const STATUS_LABEL: Record<"active" | "revoked" | "expired", string> = {
-  active: messages.settingsApiKeys.statusActive,
-  revoked: messages.settingsApiKeys.statusRevoked,
-  expired: messages.settingsApiKeys.statusExpired,
-};
+function statusLabel(status: "active" | "revoked" | "expired"): string {
+  return {
+    active: messages.settingsApiKeys.statusActive,
+    revoked: messages.settingsApiKeys.statusRevoked,
+    expired: messages.settingsApiKeys.statusExpired,
+  }[status];
+}
 
 /**
  * 公開打刻APIキーの管理画面(/settings/api-keys、v0.4 追加)。
@@ -224,7 +232,7 @@ export function ApiKeysSettingsView() {
             <div className="correction-field">
               <span>{messages.settingsApiKeys.scopesLabel}</span>
               <ul className="preset-checkbox-list">
-                {SCOPE_OPTIONS.map((opt) => (
+                {scopeOptions().map((opt) => (
                   <li key={opt.value} className="preset-checkbox-list__item">
                     <label>
                       <input type="checkbox" checked={scopeDraft.has(opt.value)} onChange={() => toggleScope(opt.value)} />
@@ -296,7 +304,7 @@ export function ApiKeysSettingsView() {
                           {key.expiresAt === null ? messages.settingsApiKeys.noExpiry : formatDateTimeJst(key.expiresAt)}
                         </td>
                         <td>
-                          <span className={`api-keys__status api-keys__status--${status}`}>{STATUS_LABEL[status]}</span>
+                          <span className={`api-keys__status api-keys__status--${status}`}>{statusLabel(status)}</span>
                         </td>
                         <td>
                           {status === "active" ? (

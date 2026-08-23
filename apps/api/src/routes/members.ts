@@ -28,6 +28,7 @@
 import { Hono } from "hono";
 import {
   createInvitation,
+  createInvitationInTx,
   createUser,
   getDepartmentById,
   getLatestInvitationForUser,
@@ -45,12 +46,15 @@ import {
   userHasCredential,
   type Database,
   type Invitation,
+  getOrCreateTenantWorkPolicy,
+  assignUserWorkPolicy,
 } from "@kizami/db";
 import type { AppEnv } from "../auth/middleware.js";
 import { generateInvitationToken, INVITATION_TTL_MINUTES } from "../auth/invitation-token.js";
 import { ForbiddenError, requirePermission } from "../authz.js";
 import { resolveAccessibleDepartmentIds, resolveAccessibleUserIds } from "../lib/scope.js";
-import { nowMinutes } from "../lib/time.js";
+import { nowMinutes, todayLocalDate } from "../lib/time.js";
+import { TZ_OFFSET_MINUTES_JST } from "../lib/settings.js";
 import { ASSIGNMENT_MANAGE_PERMISSION, assignPresetsToMember } from "./presets.js";
 
 const VIEW_PERMISSION = "member.view";
@@ -196,6 +200,17 @@ export function createMembersRoutes(db: Database) {
       return c.json({ error: "invalid_name" }, 400);
     }
 
+    // セキュリティ(レビュー指摘 F2): departmentId 省略時、以前は下のスコープ絞り込みが
+    // 丸ごとスキップされ、department/department_and_descendants スコープの招待者が
+    // 「部署未設定」のメンバーをテナント全体に対して自由に作成できてしまっていた
+    // (絞り込みは「departmentId が指定された場合」にしか効かないザル穴 — スコープの素通り)。
+    // actor のスコープが tenant でない限り、departmentId の省略そのものを拒否する
+    // (department 未設定の新規メンバーを作れるのは tenant スコープの招待者だけにする)。
+    const actorInviteScope = c.get("permissions").get(INVITE_PERMISSION);
+    if (departmentId === undefined && actorInviteScope !== "tenant") {
+      return c.json({ error: "department_id_required" }, 400);
+    }
+
     let resolvedDepartmentId: string | undefined;
     if (departmentId !== undefined) {
       if (typeof departmentId !== "string") return c.json({ error: "invalid_department_id" }, 400);
@@ -236,15 +251,75 @@ export function createMembersRoutes(db: Database) {
     }
 
     const now = nowMinutes();
+    // トークンの生成自体は DB を伴わない純粋な計算(crypto乱数 + ハッシュ化)のため、
+    // トランザクションの外で先に済ませておく(トランザクションの保持時間を必要最小限にする)。
+    const { token, hash } = await generateInvitationToken();
+
+    // トランザクション化(レビュー指摘): createUser・upsertMembership・招待作成・監査ログ追記を
+    // 1つの db.transaction にまとめる。以前はこの4つが個別のクエリとして実行されており、
+    // 例えば招待作成が失敗すると「ユーザー行だけ作られ、招待が一切飛ばない」ユーザーが
+    // 残ってしまっていた(手動での後始末が必要になる不整合)。
+    //
+    // presetIds の割当(assignPresetsToMember)は既存の設計判断どおりトランザクションの外に
+    // 残す: 固定原則(自己昇格・自己降格・最後の権限管理保持者保護)の検証を含む独立した
+    // ドメインロジックであり、万一 presetIds が不正でも「作成・招待自体は確実に成立させる」
+    // という元々のコメントの意図(下記参照)をそのまま維持するため。
     let target: Awaited<ReturnType<typeof createUser>>;
+    let invitation: Awaited<ReturnType<typeof createInvitationInTx>>;
     try {
-      target = await createUser(db, {
-        tenantId: actor.tenantId,
-        email,
-        name: name.trim(),
-        hireDate: resolvedHireDate,
-        createdAt: now,
+      const created = await db.transaction(async (tx) => {
+        const createdUser = await createUser(tx, {
+          tenantId: actor.tenantId,
+          email,
+          name: name.trim(),
+          hireDate: resolvedHireDate,
+          createdAt: now,
+        });
+
+        if (resolvedDepartmentId !== undefined) {
+          await upsertMembership(tx, { tenantId: actor.tenantId, userId: createdUser.id, departmentId: resolvedDepartmentId, createdAt: now });
+        }
+
+        // テナント既定の労働時間制を自動割当する(2026-08-23)。これが無いと招待で作られた
+        // メンバーは制度未割当のまま(buildSettingsTimeline が解決できず有給・月次が 500)。
+        // 適用開始日は入社日(未指定なら今日)— 入社日より前の期間は集計対象にならないため。
+        // 別の制度にしたい場合は後から work policy の割当を追加すれば上書きされる(effective-dated)。
+        const defaultPolicy = await getOrCreateTenantWorkPolicy(tx, {
+          tenantId: actor.tenantId,
+          name: "標準",
+          createdAt: now,
+        });
+        await assignUserWorkPolicy(tx, {
+          tenantId: actor.tenantId,
+          userId: createdUser.id,
+          workPolicyId: defaultPolicy.id,
+          effectiveFrom: resolvedHireDate ?? todayLocalDate(TZ_OFFSET_MINUTES_JST),
+          createdAt: now,
+        });
+
+        const createdInvitation = await createInvitationInTx(tx, {
+          tenantId: actor.tenantId,
+          userId: createdUser.id,
+          tokenHash: hash,
+          expiresAt: now + INVITATION_TTL_MINUTES,
+          createdBy: actor.id,
+          createdAt: now,
+        });
+
+        await insertAuditLog(tx, {
+          tenantId: actor.tenantId,
+          actorId: actor.id,
+          action: "member.invite",
+          targetType: "user",
+          targetId: createdUser.id,
+          detail: JSON.stringify({ email: createdUser.email, departmentId: resolvedDepartmentId ?? null }),
+          occurredAt: now,
+        });
+
+        return { user: createdUser, invitation: createdInvitation };
       });
+      target = created.user;
+      invitation = created.invitation;
     } catch (err) {
       if (isUniqueConstraintError(err)) {
         return c.json({ error: "email_already_exists" }, 409);
@@ -252,24 +327,10 @@ export function createMembersRoutes(db: Database) {
       throw err;
     }
 
-    if (resolvedDepartmentId !== undefined) {
-      await upsertMembership(db, { tenantId: actor.tenantId, userId: target.id, departmentId: resolvedDepartmentId, createdAt: now });
-    }
-
-    const { token, hash } = await generateInvitationToken();
-    const invitation = await createInvitation(db, {
-      tenantId: actor.tenantId,
-      userId: target.id,
-      tokenHash: hash,
-      expiresAt: now + INVITATION_TTL_MINUTES,
-      createdBy: actor.id,
-      createdAt: now,
-    });
-
-    // presetIds の反映は招待発行の後に行う: 万一 presetIds が不正(未知のID等)でも、
-    // 「作成はしたが招待は一切飛ばせなかった」状態を避け、招待自体は確実に成立させる
-    // (presetsは後からでも PUT /members/:id/presets で直せるが、招待し直しは再発行の
-    // 手間がかかるため、失敗時の実害が小さい方を後段に置いた判断)。
+    // presetIds の反映は招待発行の後(トランザクション確定後)に行う: 万一 presetIds が
+    // 不正(未知のID等)でも、「作成はしたが招待は一切飛ばせなかった」状態を避け、招待自体は
+    // 確実に成立させる(presetsは後からでも PUT /members/:id/presets で直せるが、招待し直しは
+    // 再発行の手間がかかるため、失敗時の実害が小さい方を後段に置いた判断)。
     if (presetIdList !== undefined) {
       const result = await assignPresetsToMember({
         db,
@@ -281,16 +342,6 @@ export function createMembersRoutes(db: Database) {
         return c.json({ error: result.error }, result.status);
       }
     }
-
-    await insertAuditLog(db, {
-      tenantId: actor.tenantId,
-      actorId: actor.id,
-      action: "member.invite",
-      targetType: "user",
-      targetId: target.id,
-      detail: JSON.stringify({ email: target.email, departmentId: resolvedDepartmentId ?? null }),
-      occurredAt: now,
-    });
 
     // 平文トークンはこのレスポンスにのみ含まれる(以後は二度と取得できない、routes/api-keys.ts
     // と同じ作法)。inviteUrl のような完成URLはここでは組み立てない — API は Web の

@@ -11,7 +11,7 @@ import { auditLogs, tenantSettingVersions, uuidv7, type Database } from "@kizami
 import { calculate, type EngineInput, type LawTimelineSpan } from "@kizami/engine";
 import { buildLawTimeline } from "@kizami/law";
 import { createApp } from "../src/app.js";
-import { grantPermission, jstMinutes, loginAndGetCookie, setupTestDb, switchToFixedWorkPolicy } from "./support/setup.js";
+import { grantPermission, jstMinutes, loginAndGetCookie, setupSecondUser, setupTestDb, switchToFixedWorkPolicy } from "./support/setup.js";
 
 const FIXED_NOW = new Date("2026-05-15T03:00:00.000Z"); // JST 2026-05-15 12:00
 
@@ -79,6 +79,15 @@ async function getMonthly(app: RequestLike, cookie: string, month: string) {
 async function auditActionsFor(db: Database, tenantId: string): Promise<string[]> {
   const rows = await db.select().from(auditLogs).where(eq(auditLogs.tenantId, tenantId));
   return rows.map((r) => r.action);
+}
+
+/** action の監査ログの detail(JSON文字列で保存されている afterDigest)を最新1件だけ返す。 */
+async function latestAuditDetail(db: Database, tenantId: string, action: string): Promise<unknown> {
+  const rows = await db.select().from(auditLogs).where(eq(auditLogs.tenantId, tenantId));
+  const matches = rows.filter((r) => r.action === action);
+  const latest = matches[matches.length - 1];
+  if (!latest) throw new Error(`no audit log found for action ${action}`);
+  return JSON.parse(latest.afterDigest ?? "null");
 }
 
 describe("closings API", () => {
@@ -159,6 +168,36 @@ describe("closings API", () => {
     expect(afterClose.body.closed).toBe(true);
     expect(afterClose.body.totals).toEqual(beforeClose.body.totals);
     expect(afterClose.body.flexBalance).toEqual(beforeClose.body.flexBalance);
+  });
+
+  // レビュー指摘(締めのサイレントスキップ可視化): テナント設定・制度割当が揃っていない
+  // ユーザーは締め計算の対象から静かにスキップされるが、そのユーザーIDが監査ログの detail に
+  // skippedUserIds として残ることを確認する。
+  it("records skipped user IDs (users without a work policy assignment) in the closing.close audit log detail", async () => {
+    const { db, tenantId, userId, email, password } = await setupTestDb();
+    const app = createApp({ db });
+    const cookie = await loginAndGetCookie(app, email, password);
+
+    // setupSecondUser は work_policy の割当を行わないため、この2人目は
+    // calculateMonthlyForUser が例外を投げてスキップされる。
+    const second = await setupSecondUser(db, tenantId);
+
+    expect((await postPunch(app, cookie, "clock_in", jstMinutes(2026, 4, 1, 9, 0))).status).toBe(201);
+    expect((await postPunch(app, cookie, "clock_out", jstMinutes(2026, 4, 1, 18, 0))).status).toBe(201);
+
+    await grantPermission(db, { tenantId, userId, permission: "closing.execute", scope: "tenant" });
+
+    const { status, body } = await closePeriod(app, cookie, "2026-04");
+    expect(status).toBe(200);
+    expect(body.closing?.status).toBe("closed");
+
+    const detail = (await latestAuditDetail(db, tenantId, "closing.close")) as {
+      period: string;
+      userCount: number;
+      skippedUserIds: string[];
+    };
+    expect(detail.userCount).toBe(1);
+    expect(detail.skippedUserIds).toEqual([second.userId]);
   });
 
   it("POST close twice returns 409 already_closed", async () => {

@@ -4,17 +4,16 @@
  *
  * 休憩自動控除の打ち消し申請フロー(docs/design/breaks.md「採る設計」)。
  * routes/corrections.ts(打刻修正申請)を手本にする — 認可・締め済みガード・監査ログの
- * 流儀はすべて踏襲する。ただし承認の認可方式は corrections.ts とは異なる:
+ * 流儀はすべて踏襲する。
  *
- * corrections.ts / leave.ts は「単独テナント運用で申請が滞留しないための暫定運用
- * (2026-08-21 決定)」として requestedBy 自身のみが承認できる自己承認方式を採っている。
- * このファイルは依頼どおり、権限プリセット方式の `attendance.correction.approve`
+ * 承認の認可方式: 権限プリセット方式の `attendance.correction.approve`
  * (packages/authz/src/catalog.ts の判断点コメント: 「休憩の自動控除打ち消し申請の承認も
  * この権限で行う」)+ apps/api/src/lib/scope.ts の resolveAccessibleUserIds によるスコープ
- * 判定を使う、本来あるべき権限ベースの承認フローを実装する(corrections.ts 自体は変更禁止の
- * スコープ外なので、暫定運用のまま据え置く)。完了報告に明記: この2ファイルの承認方式が
- * 食い違う状態になるが、依頼の指示(既存の attendance.correction.approve を使う)を
- * 優先した。
+ * 判定を使う。当初(2026-08-21)は corrections.ts / leave.ts が requestedBy 自身のみ承認できる
+ * 暫定の自己承認方式のままで、このファイルだけが権限ベースという食い違いがあったが、
+ * 2026-08-23 に corrections.ts / leave.ts 側もこのファイルと同じ権限ベース方式へ統一した
+ * (routes/corrections.ts・routes/leave.ts のヘッダコメント参照)。3ファイルとも現在は
+ * 同じ認可の形。
  */
 
 import { Hono } from "hono";
