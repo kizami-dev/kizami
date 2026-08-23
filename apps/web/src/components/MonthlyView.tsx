@@ -11,6 +11,7 @@ import {
   type ClosingEventDto,
   type ClosingStateDto,
   type DailyBreakdown,
+  type LeaveRequestDto,
   type MonthlyAttendance,
   type TimeCategory,
   type WorkStretch,
@@ -74,6 +75,25 @@ function buildDiffRows(data: MonthlyAttendance): DiffRow[] {
       { key: "flexActual", label: messages.closing.diffFlexActual, original: data.originalFlexBalance.actualMinutes, current: data.flexBalance.actualMinutes },
       { key: "flexDiff", label: messages.closing.diffFlexDiff, original: data.originalFlexBalance.diffMinutes, current: data.flexBalance.diffMinutes },
     );
+  }
+  // 手当の月合計も締め後修正の差分に含める(docs/design/allowances.md「締めとの関係」— 賃金に直結するため)。
+  // 定義IDの和集合を取る(通常は current/original 双方に同じ定義が並ぶが、念のため片方にしか
+  // 無いケースにも対応する)。
+  if (data.originalAllowanceTotals) {
+    const currentMap = new Map(data.allowanceTotals.map((t) => [t.definitionId, t.minutes]));
+    const originalMap = new Map(data.originalAllowanceTotals.map((t) => [t.definitionId, t.minutes]));
+    const ids = new Set([...currentMap.keys(), ...originalMap.keys()]);
+    for (const id of ids) {
+      const original = originalMap.get(id) ?? 0;
+      const current = currentMap.get(id) ?? 0;
+      if (original === 0 && current === 0) continue;
+      rows.push({
+        key: `allowance:${id}`,
+        label: `${messages.monthly.allowanceDiffPrefix}${data.allowanceDefinitions[id] ?? id}`,
+        original,
+        current,
+      });
+    }
   }
   return rows;
 }
@@ -186,6 +206,13 @@ export function MonthlyView() {
   const autoOpenDate = queryParams.get("date");
 
   const [data, setData] = useState<MonthlyAttendance | null>(null);
+  /**
+   * 承認済み休暇の日付→申請のマップ(2026-08-23 追加)。
+   * DailyBreakdown.paidLeaveMinutes は分数しか持たず、全休/半休(午前・午後)/時間単位の
+   * 区別が表示に出せない(480分が全休なのか8時間分の時間単位なのか判別できない)ため、
+   * 申請一覧から unit を引く。事前申請した将来の休暇日もこのマップで月次に見える。
+   */
+  const [leaveByDate, setLeaveByDate] = useState<Map<string, LeaveRequestDto[]>>(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
@@ -241,6 +268,33 @@ export function MonthlyView() {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [guard.status, monthParam, reloadKey]);
+
+  // 承認済み休暇の取得は月次本体と独立に行い、失敗しても月次表示を妨げない
+  // (マーカーが出ないだけに留める)。
+  useEffect(() => {
+    if (guard.status !== "authed") return;
+    let cancelled = false;
+    api
+      .listLeaveRequests("all")
+      .then((res) => {
+        if (cancelled) return;
+        const map = new Map<string, LeaveRequestDto[]>();
+        for (const req of res.requests) {
+          if (req.status !== "approved") continue;
+          if (!req.leaveDate.startsWith(monthParam)) continue;
+          const list = map.get(req.leaveDate) ?? [];
+          list.push(req);
+          map.set(req.leaveDate, list);
+        }
+        setLeaveByDate(map);
+      })
+      .catch(() => {
+        if (!cancelled) setLeaveByDate(new Map());
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [guard.status, monthParam, reloadKey]);
 
   useEffect(() => {
@@ -489,6 +543,27 @@ export function MonthlyView() {
               </div>
             </div>
 
+            {/*
+              手当対象時間の月合計(docs/design/allowances.md「UI」節)。区分別合計チップの下に、
+              手当ごとの行として出す。0分の定義は出さない(EngineOutput.allowanceTotals は
+              期間内に有効だった定義を0分でも1件として含めるため、ここでフィルタする)。
+            */}
+            {data.allowanceTotals.some((t) => t.minutes > 0) ? (
+              <div>
+                <p className="flex-balance__label">{messages.monthly.allowanceTotalsLabel}</p>
+                <div className="totals-row">
+                  {data.allowanceTotals
+                    .filter((t) => t.minutes > 0)
+                    .map((t) => (
+                      <span key={t.definitionId} className="totals-chip">
+                        <span className="totals-chip__label">{data.allowanceDefinitions[t.definitionId] ?? t.definitionId}</span>
+                        <span className="totals-chip__value tabular-nums">{formatDurationHm(t.minutes)}</span>
+                      </span>
+                    ))}
+                </div>
+              </div>
+            ) : null}
+
             {diffRows.length > 0 ? (
               <div className="closing-diff">
                 <h2 className="closing-diff__title">
@@ -693,7 +768,17 @@ export function MonthlyView() {
                           .join(" ") || undefined;
                       return (
                         <tr key={day.date} className={rowClassName}>
-                          <td className="monthly-table__date">{formatDateLabel(day.date)}</td>
+                          <td className="monthly-table__date">
+                            {formatDateLabel(day.date)}
+                            {/* 承認済み休暇のマーカー(2026-08-23)。事前申請した将来の休暇日も
+                                「この日は休みの予定」と月次から読めるようにする。時間単位は分数を添える。 */}
+                            {(leaveByDate.get(day.date) ?? []).map((req) => (
+                              <span key={req.id} className="monthly-table__leave-badge">
+                                {messages.leave.unitLabelShort[req.unit]}
+                                {req.unit === "hourly" && req.minutes ? ` ${formatDurationHm(req.minutes)}` : ""}
+                              </span>
+                            ))}
+                          </td>
                           <td className="monthly-table__stretches" data-label={messages.monthly.columnStretches}>
                             {incomingStretches.map((incoming, i) => (
                               <div
@@ -747,8 +832,24 @@ export function MonthlyView() {
                               </>
                             ) : null}
                           </td>
-                          <td className="monthly-table__num tabular-nums" data-label={messages.monthly.columnLateNight}>
-                            {hasActivity ? formatDurationHm(day.lateNightMinutes) : null}
+                          <td className="monthly-table__num" data-label={messages.monthly.columnLateNight}>
+                            {hasActivity ? (
+                              <>
+                                <div className="tabular-nums">{formatDurationHm(day.lateNightMinutes)}</div>
+                                {/*
+                                  手当対象時間(日別、docs/design/allowances.md「UI」節)。列は増やさず、
+                                  深夜列の下に「法定内残業」併記(monthly-table__overtime-extra)と同じ型で
+                                  小さく出す。法定区分とは独立の会社制度のためこのセルに紐付く意味はないが、
+                                  勤務列に一番近い数値セルであり、既存の「主表示の下に併記する」パターンを
+                                  そのまま踏襲できる場所として選んだ(詳細は完了報告に明記)。
+                                */}
+                                {day.allowances.map((a) => (
+                                  <div key={a.definitionId} className="monthly-table__allowance tabular-nums">
+                                    {data.allowanceDefinitions[a.definitionId] ?? a.definitionId} {formatDurationHm(a.minutes)}
+                                  </div>
+                                ))}
+                              </>
+                            ) : null}
                           </td>
                           {data.workSystem === "fixed" ? (
                             <td className="monthly-table__num" data-label={messages.monthly.columnOvertime}>

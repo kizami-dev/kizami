@@ -31,6 +31,7 @@ import {
 } from "@kizami/db";
 import { calculate, type EngineInput, type EngineOutput, type PaidLeaveEntry, type PunchKind, type ValidPunch } from "@kizami/engine";
 import { resolveUsageMinutes, type LeaveUnit } from "@kizami/leave";
+import { buildAllowanceTimeline } from "./allowances.js";
 import { buildLawTimelineForTenant, buildSettingsTimeline, standardDayMinutesForDate, TZ_OFFSET_MINUTES_JST } from "./settings.js";
 import type { SettingsSpan } from "@kizami/engine";
 import { dateFromEpochDay, daysInMonth, epochDayFromDate, formatDate, localMidnightUtcMinutes } from "./time.js";
@@ -100,6 +101,9 @@ export async function computeMonthlyForUser(
     fromDate: monthStartDate,
     toDate: monthEndDate,
   });
+  // 手当(docs/design/allowances.md)。テナント単位の定義であり user には依存しないが、
+  // 取得のインターフェースは他の effective-dated タイムラインと揃えて [fromDate, toDate] で渡す。
+  const allowances = await buildAllowanceTimeline(db, { tenantId, fromDate: monthStartDate, toDate: monthEndDate });
 
   const punches: ValidPunch[] = punchRows.map((p) => ({ kind: p.kind as PunchKind, occurredAt: p.occurredAt }));
   const paidLeave: PaidLeaveEntry[] = approvedLeaveRequests.map((r) => ({
@@ -114,6 +118,7 @@ export async function computeMonthlyForUser(
     period: { year, month },
     paidLeave,
     autoBreakWaivedDates,
+    allowances,
   };
 
   return { output: calculate(input), settingsTimeline };

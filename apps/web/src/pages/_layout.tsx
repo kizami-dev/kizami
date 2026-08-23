@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { LocaleGate } from "../components/LocaleGate";
 import { PwaRegister } from "../components/PwaRegister";
 import { THEME_INIT_SCRIPT } from "../lib/theme";
 import "../styles/tokens.css";
@@ -20,6 +21,7 @@ import "../styles/help.css";
 import "../styles/help-settings.css";
 import "../styles/privacy-settings.css";
 import "../styles/attendance-settings.css";
+import "../styles/allowance-settings.css";
 import "../styles/api-keys-settings.css";
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
@@ -75,7 +77,10 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
         rel="stylesheet"
         href="https://fonts.googleapis.com/css2?family=Shippori+Antique+B1&family=Jost:wght@500&family=Zen+Kaku+Gothic+New:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
       />
-      {children}
+      {/* 言語切り替え(2026-08-23 追加)の再レンダリング境界。ロケールが変わると
+          children 以下を丸ごと再マウントし、既存コンポーネントの `messages.xxx` 参照
+          (フック不要)にも新しい言語を反映させる。詳細は components/LocaleGate.tsx 参照。 */}
+      <LocaleGate>{children}</LocaleGate>
       <PwaRegister />
     </>
   );

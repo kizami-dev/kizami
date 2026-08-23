@@ -223,7 +223,7 @@ export function SettingsNotificationsView() {
                     {settings.webhookUrl.configured
                       ? `${messages.settingsNotifications.webhookUrlConfigured}(${settings.webhookUrl.preview})`
                       : messages.settingsNotifications.webhookUrlNotConfigured}
-                    {" ・ "}
+                    {messages.common.hintSeparator}
                     {messages.settingsNotifications.keepIfBlankHint}
                   </p>
                 </div>
@@ -299,7 +299,7 @@ export function SettingsNotificationsView() {
                     {settings.smtpPasswordSet
                       ? messages.settingsNotifications.smtpPasswordConfigured
                       : messages.settingsNotifications.smtpPasswordNotConfigured}
-                    {" ・ "}
+                    {messages.common.hintSeparator}
                     {messages.settingsNotifications.keepIfBlankHint}
                   </p>
                 </div>

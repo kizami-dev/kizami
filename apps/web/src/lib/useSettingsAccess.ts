@@ -46,6 +46,13 @@ export interface SettingsAccess {
    */
   attendance: boolean;
   /**
+   * /settings/allowances(手当対象時間の定義。docs/design/allowances.md、2026-08-23 追加)。
+   * GET /settings/allowances が要求する権限は attendance と同一(tenant_settings.calendar.manage
+   * の転用、apps/api/src/routes/settings.ts の ALLOWANCE_SETTINGS_PERMISSION コメント参照)だが、
+   * 画面自体は別物のため attendance の判定結果を使い回さず独立にプローブする。
+   */
+  allowances: boolean;
+  /**
    * /settings/api-keys(公開打刻APIキーの管理。v0.4 追加)。
    *
    * 判断点: 依頼どおり「自分用なので権限不要」— 自分のキーの発行・一覧・失効は全認証済み
@@ -79,6 +86,7 @@ const INITIAL: SettingsAccess = {
   help: false,
   privacy: false,
   attendance: false,
+  allowances: false,
   apiKeys: true,
   slack: false,
   slackLink: true,
@@ -116,25 +124,29 @@ export function useSettingsAccess(): SettingsAccess {
       probe(() => api.getAttendanceSettings()),
       probe(() => api.getWorkPolicySettings()),
       probe(() => api.getSlackSettings()),
-    ]).then(([notifications, departments, members, presets, tenantProfile, leave, attendanceSettings, workPolicySettings, slack]) => {
-      if (cancelled) return;
-      setAccess({
-        loading: false,
-        myNotifications: true,
-        notifications,
-        departments,
-        members,
-        presets,
-        tenantProfile,
-        leave,
-        help: notifications,
-        privacy: notifications,
-        attendance: attendanceSettings || workPolicySettings,
-        apiKeys: true,
-        slack,
-        slackLink: true,
-      });
-    });
+      probe(() => api.getAllowances()),
+    ]).then(
+      ([notifications, departments, members, presets, tenantProfile, leave, attendanceSettings, workPolicySettings, slack, allowances]) => {
+        if (cancelled) return;
+        setAccess({
+          loading: false,
+          myNotifications: true,
+          notifications,
+          departments,
+          members,
+          presets,
+          tenantProfile,
+          leave,
+          help: notifications,
+          privacy: notifications,
+          attendance: attendanceSettings || workPolicySettings,
+          allowances,
+          apiKeys: true,
+          slack,
+          slackLink: true,
+        });
+      },
+    );
 
     return () => {
       cancelled = true;

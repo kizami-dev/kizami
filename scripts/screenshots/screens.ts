@@ -21,6 +21,8 @@ export interface Screen {
   mobile: boolean;
   /** 撮影前に待つ追加のセレクタ(データ読み込み完了の目印)。省略時は body のみ待つ。 */
   waitForSelector?: string;
+  /** 画面単位の言語上書き(既定は日本語)。多言語UIのデモ用。 */
+  locale?: "en" | "ko" | "zh";
   /**
    * requiresAuth 画面を、テナント管理者以外のユーザーとして撮る場合のキー。
    * capture.ts の CaptureParams.extraSessionCookies に対応するキーを指定する。
@@ -61,6 +63,15 @@ export const SCREENS: Screen[] = [
     caption: "先月分。区分別の集計とフレックス収支バー、締め済みバッジ。",
     requiresAuth: true,
     mobile: true,
+  },
+  {
+    slug: "monthly-en",
+    path: "/monthly?month={prevMonth}",
+    title: "月次(英語表示)",
+    caption: "UIは日・英・韓・中(簡体)の4言語。言語切替はテーマ切替の隣にあり、選択は保持される。",
+    requiresAuth: true,
+    mobile: false,
+    locale: "en",
   },
   {
     slug: "monthly-fixed",
@@ -151,6 +162,14 @@ export const SCREENS: Screen[] = [
     requiresAuth: false,
     mobile: true,
     waitForSelector: ".invite-accept, .login-card, main",
+  },
+  {
+    slug: "settings-allowances",
+    path: "/settings/allowances",
+    title: "設定: 手当",
+    caption: "特定日・曜日・時間帯の組み合わせで手当対象時間を定義する。金額は計算せず、対象分数の算出まで(給与システムが金額化)。",
+    requiresAuth: true,
+    mobile: false,
   },
   {
     slug: "settings-members",

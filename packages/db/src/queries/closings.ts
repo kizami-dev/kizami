@@ -8,7 +8,12 @@
 
 import { and, asc, eq, gte, inArray, lte } from "drizzle-orm";
 import type { Database, Transaction } from "../migrate.js";
-import { closingEvents, closingSnapshots, type ClosingSnapshotCategory } from "../schema/index.js";
+import {
+  ALLOWANCE_CLOSING_SNAPSHOT_CATEGORY_PREFIX,
+  closingEvents,
+  closingSnapshots,
+  type ClosingSnapshotCategory,
+} from "../schema/index.js";
 import { uuidv7 } from "../uuid.js";
 
 export type ClosingEvent = typeof closingEvents.$inferSelect;
@@ -164,7 +169,13 @@ export interface NewClosingSnapshotInput {
   tenantId: string;
   closingEventId: string;
   userId: string;
-  category: ClosingSnapshotCategory;
+  /**
+   * ClosingSnapshotCategory(固定5+3+2種)、または手当の動的区分
+   * `` `${typeof ALLOWANCE_CLOSING_SNAPSHOT_CATEGORY_PREFIX}${definitionId}` ``
+   * (schema/closings.ts のコメント参照。テンプレートリテラル型で「allowance: で始まる文字列」に
+   * 絞ることで、無関係な任意文字列が category に紛れ込むのを型で防ぐ)。
+   */
+  category: ClosingSnapshotCategory | `${typeof ALLOWANCE_CLOSING_SNAPSHOT_CATEGORY_PREFIX}${string}`;
   minutes: number;
 }
 

@@ -97,7 +97,7 @@ export function LeaveRequestsList({ requests, currentUserId, closedMonthRequestI
   function describeUnit(req: LeaveRequestDto): string {
     const label = messages.leave.unitLabelShort[req.unit];
     if (req.unit === "hourly" && req.minutes !== null) {
-      return `${label}(${req.minutes}分)`;
+      return `${label}${messages.leave.hourlyMinutesSuffix(req.minutes)}`;
     }
     return label;
   }

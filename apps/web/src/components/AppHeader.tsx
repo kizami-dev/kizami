@@ -7,6 +7,7 @@ import { messages } from "../lib/messages";
 import { useSettingsAccess } from "../lib/useSettingsAccess";
 import { CorrectionsTabIcon, MonthlyTabIcon, MoreTabIcon, PunchTabIcon } from "./NavIcons";
 import { KizamiMark } from "./KizamiMark";
+import { LanguageToggle } from "./LanguageToggle";
 import { NotificationBell } from "./NotificationBell";
 import { ThemeToggle } from "./ThemeToggle";
 
@@ -162,6 +163,7 @@ export function AppHeader({ displayName, email, tenantName, active }: AppHeaderP
             <div className="k-header__menu">
               <span className="k-header__menu-email">{email}</span>
               <ThemeToggle />
+              <LanguageToggle />
               <button type="button" className="k-header__logout" onClick={handleLogout} disabled={loggingOut}>
                 {messages.nav.logout}
               </button>
@@ -260,6 +262,9 @@ export function AppHeader({ displayName, email, tenantName, active }: AppHeaderP
 
               <div className="more-sheet__theme">
                 <ThemeToggle />
+              </div>
+              <div className="more-sheet__language">
+                <LanguageToggle />
               </div>
 
               <button

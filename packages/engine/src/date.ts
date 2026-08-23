@@ -167,15 +167,55 @@ function rangeOverlap(aStart: number, aEnd: number, bStart: number, bEnd: number
 }
 
 /**
- * [start, end) UTC エポック分の区間と、暦時刻の深夜帯(ローカル、日ごと、`lateNight` で指定)
- * との重なり分数。
+ * [start, end) UTC エポック分の区間と、暦時刻の帯(ローカル、日ごと、`band` で指定)との
+ * 重なり分数。深夜帯(lateNightOverlapMinutes)・手当の時間帯条件(allowances.ts)の両方が
+ * この関数を使う共通実装。
  *
- * `lateNight`(法令由来、`@kizami/law` の `LawRules["lateNight"]`)は日をまたぐ表現
- * (startMinutes=1320〜endMinutes=300 = 22:00〜翌5:00 のように startMinutes > endMinutes)を
- * 前提にしている(2000年基準版から現在まで実際にそうなっているため)。各暦日 d について
- * 「d の [startMinutes,1440) 部分」と「d の [0,endMinutes) 部分」の両方を独立に積算する
- * (= d 自身の夜と d 自身の未明であり、d の夜〜d+1 の未明を1つの連続区間として扱うわけではない。
- * この積算方式で日跨ぎシフトの深夜時間が正しく求まることは late-night-day-boundary.yaml で固定)。
+ * `lateNight`(法令由来)は常に日をまたぐ(startMinutes > endMinutes)前提だったが、手当の
+ * timeBand は日をまたがない帯(6:00〜8:00 のように startMinutes < endMinutes)も許容する
+ * (docs/design/allowances.md)ため、両方を正しく扱えるよう分岐する:
+ * - startMinutes < endMinutes(日をまたがない): 各暦日 d について単純に [startMinutes,endMinutes)
+ *   との重なりを積算する
+ * - startMinutes > endMinutes(日をまたぐ、22:00〜翌5:00 等): 各暦日 d について
+ *   「d の [startMinutes,1440) 部分」と「d の [0,endMinutes) 部分」の両方を独立に積算する
+ *   (= d 自身の夜と d 自身の未明であり、d の夜〜d+1 の未明を1つの連続区間として扱うわけではない。
+ *   この積算方式で日跨ぎシフトの深夜時間が正しく求まることは late-night-day-boundary.yaml で固定)
+ * - startMinutes === endMinutes: 長さ0の帯として扱い、常に0を返す
+ *
+ * (この2分岐を1つの式にまとめようとして [startMinutes,1440) ∪ [0,endMinutes) を単純に
+ * 両方積算すると、日をまたがない帯では実質「終日」と等価になってしまう誤りがあったため、
+ * 明示的に分岐している)
+ */
+export function timeBandOverlapMinutes(
+  start: number,
+  end: number,
+  tzOffsetMinutes: number,
+  band: { startMinutes: number; endMinutes: number },
+): number {
+  if (end <= start || band.startMinutes === band.endMinutes) return 0;
+  const localStart = start + tzOffsetMinutes;
+  const localEnd = end + tzOffsetMinutes;
+  const firstDay = Math.floor(localStart / MINUTES_PER_DAY);
+  const lastDay = Math.floor((localEnd - 1) / MINUTES_PER_DAY);
+  let total = 0;
+  const crossesMidnight = band.startMinutes > band.endMinutes;
+  for (let d = firstDay; d <= lastDay; d++) {
+    const base = d * MINUTES_PER_DAY;
+    if (crossesMidnight) {
+      total += rangeOverlap(localStart, localEnd, base + band.startMinutes, base + MINUTES_PER_DAY);
+      total += rangeOverlap(localStart, localEnd, base + 0, base + band.endMinutes);
+    } else {
+      total += rangeOverlap(localStart, localEnd, base + band.startMinutes, base + band.endMinutes);
+    }
+  }
+  return total;
+}
+
+/**
+ * [start, end) UTC エポック分の区間と、暦時刻の深夜帯(ローカル、日ごと、`lateNight` で指定)
+ * との重なり分数。`lateNight`(法令由来、`@kizami/law` の `LawRules["lateNight"]`)は日をまたぐ
+ * 表現(startMinutes > endMinutes)を前提にしている(2000年基準版から現在まで実際にそうなって
+ * いるため)。実装は timeBandOverlapMinutes に委譲(手当の時間帯条件と同じ計算)。
  */
 export function lateNightOverlapMinutes(
   start: number,
@@ -183,18 +223,7 @@ export function lateNightOverlapMinutes(
   tzOffsetMinutes: number,
   lateNight: { startMinutes: number; endMinutes: number },
 ): number {
-  if (end <= start) return 0;
-  const localStart = start + tzOffsetMinutes;
-  const localEnd = end + tzOffsetMinutes;
-  const firstDay = Math.floor(localStart / MINUTES_PER_DAY);
-  const lastDay = Math.floor((localEnd - 1) / MINUTES_PER_DAY);
-  let total = 0;
-  for (let d = firstDay; d <= lastDay; d++) {
-    const base = d * MINUTES_PER_DAY;
-    total += rangeOverlap(localStart, localEnd, base + lateNight.startMinutes, base + MINUTES_PER_DAY);
-    total += rangeOverlap(localStart, localEnd, base + 0, base + lateNight.endMinutes);
-  }
-  return total;
+  return timeBandOverlapMinutes(start, end, tzOffsetMinutes, lateNight);
 }
 
 export function isInPeriod(date: PlainDateString, period: { year: number; month: number }): boolean {

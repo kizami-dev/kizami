@@ -29,8 +29,12 @@ interface DayPiece {
   end: number;
 }
 
-/** セグメントを勤怠日の窓([D 00:00+db, 翌日00:00+db))で分割する */
-function splitByAttendanceDay(segment: Segment, timeline: SettingsSpan[]): DayPiece[] {
+/**
+ * セグメントを勤怠日の窓([D 00:00+db, 翌日00:00+db))で分割する。
+ * export しているのは allowances.ts が「実労働セグメントを勤怠日別に分割してから条件と
+ * 重ねる」という同じ流儀(lateNightMinutes と同じ)を再利用するため。
+ */
+export function splitByAttendanceDay(segment: Segment, timeline: SettingsSpan[]): DayPiece[] {
   const pieces: DayPiece[] = [];
   let cursor = segment.start;
   while (cursor < segment.end) {
@@ -136,6 +140,11 @@ export function buildDailyBreakdown(
       withinScheduledMinutes: 0,
       extraWithinStatutoryMinutes: 0,
       statutoryOvertimeMinutes: 0,
+      // 手当は index.ts が allowances.ts の算出結果で上書きする(buildDailyBreakdown は
+      // 手当定義タイムラインを受け取らない — lateNight と違い法令パッケージ経由ではなく
+      // EngineInput.allowances という別入力のため、他の日次項目と同じこの関数の中で
+      // 計算する理由がない)。ここでは空配列で初期化しておく。
+      allowances: [],
     });
   }
 

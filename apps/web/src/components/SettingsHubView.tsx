@@ -21,6 +21,7 @@ type SettingsRoute =
   | "/settings/help"
   | "/settings/privacy"
   | "/settings/attendance"
+  | "/settings/allowances"
   | "/settings/api-keys"
   | "/settings/slack"
   | "/settings/slack-link";
@@ -90,6 +91,13 @@ export function SettingsHubView() {
       to: "/settings/attendance" as const,
       title: messages.settingsHub.attendanceTitle,
       desc: messages.settingsHub.attendanceDesc,
+    },
+    {
+      key: "allowances",
+      enabled: access.allowances,
+      to: "/settings/allowances" as const,
+      title: messages.settingsHub.allowancesTitle,
+      desc: messages.settingsHub.allowancesDesc,
     },
     {
       key: "tenantProfile",

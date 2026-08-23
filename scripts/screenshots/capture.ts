@@ -32,6 +32,9 @@ async function newAuthedContext(browser: Browser, sessionCookie: string, viewpor
   const context = await browser.newContext({
     viewport: VIEWPORTS[viewport],
     colorScheme: theme,
+    // 一覧の既定言語を日本語に固定する。アプリの言語初期値は navigator.language を見るため、
+    // 指定しないと Playwright 既定の en でUI全体が英語になってしまう(2026-08-23)。
+    locale: "ja-JP",
   });
   const [name, value] = sessionCookie.split("=");
   if (name && value !== undefined) {
@@ -74,7 +77,7 @@ export async function captureAll(params: CaptureParams): Promise<CapturedShot[]>
         // ログイン画面用に Cookie 無しのコンテキストも1つ用意する(同じ browser インスタンス内、
         // 新しい newContext は既定で Cookie を持たないため別プロセスを立てる必要は無い)。
         const anonContext = screensForViewport.some((s) => !s.requiresAuth)
-          ? await browser.newContext({ viewport: VIEWPORTS[viewport], colorScheme: theme })
+          ? await browser.newContext({ viewport: VIEWPORTS[viewport], colorScheme: theme, locale: "ja-JP" })
           : null;
 
         // authAs ごとに authed context を作る(既定は "admin" = params.sessionCookie)。
@@ -117,6 +120,11 @@ async function captureOne(
   vars: Record<string, string>,
 ): Promise<CapturedShot> {
   const page = await context.newPage();
+  // 画面単位の言語上書き(多言語UIのデモ用)。localStorage を初期スクリプトで仕込む —
+  // アプリは kizami-locale を navigator.language より優先するため確実に効く。
+  if (screen.locale) {
+    await page.addInitScript((loc) => localStorage.setItem("kizami-locale", loc), screen.locale);
+  }
   const url = `${WEB_BASE_URL}${resolvePath(screen.path, vars)}`;
   await page.goto(url, { waitUntil: "networkidle", timeout: 30_000 });
   // ハイドレーション後の useEffect フェッチ・カードのフェードイン等が落ち着くのを軽く待つ。
@@ -132,6 +140,12 @@ async function captureOne(
 
   const file = `${screen.slug}--${viewport}--${theme}.png`;
   await page.screenshot({ path: path.join(OUTPUT_DIR, file), fullPage: true });
+  // 言語上書きは localStorage 経由のため、消さずに page を閉じると同一コンテキストの
+  // 後続画面すべてがその言語で撮れてしまう(localStorage はコンテキスト単位で永続。
+  // 実際に settings 系が英語で撮れた — 2026-08-23)。撮影後に必ず既定へ戻す。
+  if (screen.locale) {
+    await page.evaluate(() => localStorage.removeItem("kizami-locale"));
+  }
   await page.close();
 
   return { slug: screen.slug, title: screen.title, caption: screen.caption, viewport, theme, file };

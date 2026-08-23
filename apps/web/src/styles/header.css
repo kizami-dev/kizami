@@ -216,6 +216,54 @@
   color: var(--k-cyan-ink);
 }
 
+/* ---- 言語切り替え(LanguageToggle、2026-08-23 追加。ThemeToggle と同じ見た目) ---- */
+
+.k-header__language {
+  border-top: var(--border-hair);
+  margin-top: var(--space-1);
+  padding-top: var(--space-2);
+}
+
+.k-header__language-label {
+  display: block;
+  padding: var(--space-1) var(--space-3);
+  font-size: 0.72rem;
+  color: var(--k-ink-soft);
+}
+
+.k-header__language-options {
+  display: flex;
+  flex-direction: column;
+}
+
+.k-header__language-option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-s);
+  font-size: 0.85rem;
+  color: var(--k-key);
+}
+
+.k-header__language-option:hover {
+  background: color-mix(in srgb, var(--k-key) 4%, transparent);
+}
+
+.k-header__language-option[aria-checked="true"] {
+  font-weight: 700;
+}
+
+.k-header__language-option-mark {
+  flex-shrink: 0;
+  width: 1em;
+  color: var(--k-cyan-ink);
+}
+
 /* ============================================================
    モバイル下部固定タブバー + 「その他」シート(2026-08-22 ナビ作り直し)
    ============================================================
@@ -438,6 +486,24 @@
 }
 
 .more-sheet__theme .k-header__theme-option {
+  padding-left: var(--space-1);
+}
+
+.more-sheet__language {
+  padding: var(--space-1) 0;
+}
+
+.more-sheet__language .k-header__language {
+  border-top: none;
+  margin-top: 0;
+  padding-top: 0;
+}
+
+.more-sheet__language .k-header__language-label {
+  padding-left: var(--space-1);
+}
+
+.more-sheet__language .k-header__language-option {
   padding-left: var(--space-1);
 }
 

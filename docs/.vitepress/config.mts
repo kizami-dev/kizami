@@ -187,6 +187,7 @@ export default defineConfig({
           { text: "v0.1 データモデル", link: "/design/v01-data-model" },
           { text: "労働時間制と時間外の判定", link: "/design/work-systems" },
           { text: "休憩の扱い", link: "/design/breaks" },
+          { text: "手当対象時間の算出", link: "/design/allowances" },
           { text: "権限カタログ", link: "/design/permission-catalog" },
         ],
       },

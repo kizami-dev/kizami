@@ -14,6 +14,7 @@ export type SettingsSection =
   | "help"
   | "privacy"
   | "attendance"
+  | "allowances"
   | "apiKeys"
   | "slack";
 
@@ -27,6 +28,7 @@ type SettingsRoute =
   | "/settings/help"
   | "/settings/privacy"
   | "/settings/attendance"
+  | "/settings/allowances"
   | "/settings/api-keys"
   | "/settings/slack";
 
@@ -48,6 +50,12 @@ export function SettingsNav({ active }: { active: SettingsSection }) {
       to: "/settings/attendance",
       label: messages.settingsNav.attendance,
       enabled: access.attendance,
+    },
+    {
+      key: "allowances",
+      to: "/settings/allowances",
+      label: messages.settingsNav.allowances,
+      enabled: access.allowances,
     },
     {
       key: "tenantProfile",

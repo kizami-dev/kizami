@@ -13,6 +13,7 @@
  * 期間開始日の版のまま最後まで計算する — 「月の途中でフレックス⇔固定が切り替わる」こと自体が
  * 制度上まれで、切替の日割り計算(フレックスの清算期間の扱いなど)は本パッケージのスコープ外。
  */
+import { computeAllowanceMinutesByDate, resolveAllowanceDefinitionsForDate } from "./allowances.js";
 import { applyAutoBreakDeduction } from "./auto-break.js";
 import { checkBreakSufficiency } from "./break-check.js";
 import { findSettingsForDate, formatDateString } from "./date.js";
@@ -20,7 +21,7 @@ import { buildDailyBreakdown } from "./daily.js";
 import { deriveSegments } from "./derive.js";
 import { calculateFixedTotals } from "./fixed.js";
 import { calculateFlexBalance } from "./flex.js";
-import type { CalcWarning, EngineInput, EngineOutput } from "./types.js";
+import type { CalcWarning, DailyBreakdown, EngineInput, EngineOutput } from "./types.js";
 
 export type * from "./types.js";
 
@@ -39,7 +40,7 @@ export function calculate(input: EngineInput): EngineOutput {
     input.autoBreakWaivedDates,
   );
 
-  const days = buildDailyBreakdown(
+  const rawDays = buildDailyBreakdown(
     workedSegments,
     breakSegments,
     input.settingsTimeline,
@@ -49,6 +50,43 @@ export function calculate(input: EngineInput): EngineOutput {
     stretches,
     autoDeductedSegments,
   );
+
+  // 手当対象時間(docs/design/allowances.md)。workedSegments(休憩・自動控除の控除後、
+  // 法定休日の実労働も含む生のセグメント)を使うのは lateNightMinutes と同じ理由 — allowances.ts
+  // のコメント参照。fixed.ts/flex.ts はどちらも各日を `{...day, ...他のフィールド}` で
+  // 組み立て直すだけなので、ここで DailyBreakdown.allowances を確定させておけばそのまま素通りする。
+  const allowanceTimeline = input.allowances ?? [];
+  const allowanceMinutesByDate = computeAllowanceMinutesByDate(
+    workedSegments,
+    input.settingsTimeline,
+    allowanceTimeline,
+    input.period,
+  );
+  const days: DailyBreakdown[] = rawDays.map((day) => {
+    const dateMap = allowanceMinutesByDate.get(day.date);
+    if (!dateMap) return day;
+    return {
+      ...day,
+      allowances: [...dateMap.entries()].map(([definitionId, minutes]) => ({ definitionId, minutes })),
+    };
+  });
+
+  // 月合計。期間内のいずれかの日に有効だった定義は、合計が0分でも1件として含める
+  // (types.ts の EngineOutput.allowanceTotals コメント参照 — 締め・CSV 側が「定義はあるが
+  // 今月は対象時間なし」を表現できるようにするため、DailyBreakdown.allowances の sparse な
+  // 扱いとはあえて非対称にしている)。
+  const allowanceTotalsMap = new Map<string, number>();
+  for (const day of days) {
+    for (const definition of resolveAllowanceDefinitionsForDate(day.date, allowanceTimeline)) {
+      if (!allowanceTotalsMap.has(definition.id)) allowanceTotalsMap.set(definition.id, 0);
+    }
+  }
+  for (const dateMap of allowanceMinutesByDate.values()) {
+    for (const [definitionId, minutes] of dateMap) {
+      allowanceTotalsMap.set(definitionId, (allowanceTotalsMap.get(definitionId) ?? 0) + minutes);
+    }
+  }
+  const allowanceTotals = [...allowanceTotalsMap.entries()].map(([definitionId, minutes]) => ({ definitionId, minutes }));
 
   // 休憩不足(labor law §34-1)は打刻列の解釈(deriveSegments)とは独立な判定であり、
   // 確定した stretches(workedMinutes/breakMinutes 込み)に対して行う。
@@ -101,6 +139,7 @@ export function calculate(input: EngineInput): EngineOutput {
       flexBalance: null,
       workSystem: "fixed",
       warnings: [...warnings, ...breakWarnings, ...mixedWarning],
+      allowanceTotals,
     };
   }
 
@@ -117,5 +156,6 @@ export function calculate(input: EngineInput): EngineOutput {
     flexBalance,
     workSystem: "flex",
     warnings: [...warnings, ...breakWarnings, ...mixedWarning],
+    allowanceTotals,
   };
 }

@@ -159,6 +159,7 @@ export async function seedHttp(params: SeedHttpParams): Promise<SeedHttpResult> 
   // insufficient_break 警告(必要0:45・実際0:00)がそのまま残る。締めても警告は消えない
   // (集計値はスナップショット保護だが warnings は都度再計算)ことのデモを兼ねる。
   const insufficientBreakDemoDate = prevMonthWeekdays[prevMonthWeekdays.length - 2];
+  const prevMonthLateNightDate = prevMonthWeekdays[prevMonthWeekdays.length - 3];
   for (const date of prevMonthWeekdays) {
     if (autoBreakDemoDate && fmtDate(date) === fmtDate(autoBreakDemoDate)) {
       await client.punch("clock_in", jstMinutes(date, 9, 0));
@@ -166,10 +167,26 @@ export async function seedHttp(params: SeedHttpParams): Promise<SeedHttpResult> 
     } else if (insufficientBreakDemoDate && fmtDate(date) === fmtDate(insufficientBreakDemoDate)) {
       await client.punch("clock_in", jstMinutes(date, 9, 0));
       await client.punch("clock_out", jstMinutes(date, 15, 20));
+    } else if (prevMonthLateNightDate && fmtDate(date) === fmtDate(prevMonthLateNightDate)) {
+      // 深夜勤務の日(13:00-23:00): 深夜区分 1:00 と夜間手当(22:00〜翌5:00)1:00 が
+      // 締め済み月の月次・スナップショットに写る(手当のデモ、2026-08-23)
+      await punchNormalDay(client, date, { start: 13, end: 23, breakStart: 17, breakEnd: 18 });
     } else {
       await punchNormalDay(client, date);
     }
   }
+  // 前月の頭に承認済みの全休を1件(締めの前に)。月次(締め済みの前月を写す)の日付セルに
+  // 有給バッジ「全休」が写るようにする(2026-08-23。有給の枠算入がスナップショットにも入る)。
+  const prevMonthLeaveDate = prevMonthAllWeekdays[0];
+  if (prevMonthLeaveDate) {
+    const prevLeaveReq = await client.createLeaveRequest({
+      leaveDate: fmtDate(prevMonthLeaveDate),
+      leaveType: "annual",
+      reason: "私用のため",
+    });
+    await client.approveLeaveRequest(prevLeaveReq.request.id);
+  }
+
   const prevMonthPeriod = fmtMonth(prevMonth);
   await client.closeMonth(prevMonthPeriod, "先月分を確認のうえ締めます");
 

@@ -319,6 +319,20 @@
   margin-top: 2px;
 }
 
+/*
+ * 手当対象時間の日別併記(docs/design/allowances.md「UI」節、2026-08-23 追加)。深夜列の主表示
+ * (法定深夜の分数)の下に小さく添える — .monthly-table__overtime-extra / __break-extra と同じ型。
+ * 名前が長い定義でも折り返せるよう white-space は上書きしない(親の nowrap のままだと
+ * 「手当名 分数」が1行にせり出すため、行そのものは短い前提だが念のため normal にしておく)。
+ */
+.monthly-table__allowance {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--k-ink-soft);
+  margin-top: 2px;
+  white-space: normal;
+}
+
 .monthly-empty {
   color: var(--k-ink-soft);
   font-size: 0.85rem;
@@ -598,5 +612,28 @@
     font-size: 1rem;
     letter-spacing: 0.02em;
     margin-bottom: var(--space-2);
+  }
+}
+
+/*
+ * 承認済み休暇のバッジ(2026-08-23 追加)。日付の下に控えめに出す。
+ * 事前申請した将来の休暇は集計(フレックス枠算入)には効いていたのに月次の行では
+ * 見えなかった — 「打刻が無いのに問題ない日」の理由を行自体が語れるようにする。
+ * 色は C(シアン)系: 休暇は警告(Y)でも危険(M)でもない、確定した予定。
+ */
+.monthly-table__leave-badge {
+  display: inline-block;
+  margin-left: var(--space-2);
+  padding: 0 var(--space-1);
+  border: 1px solid var(--k-cyan-ink);
+  border-radius: var(--radius-s);
+  color: var(--k-cyan-ink);
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .monthly-table__leave-badge {
+    margin-left: var(--space-1);
   }
 }

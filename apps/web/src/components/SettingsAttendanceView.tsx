@@ -38,11 +38,15 @@ function hmToMinutes(hm: string): number | null {
   return h * 60 + m;
 }
 
-const WEEKDAY_LABELS = messages.settingsAttendance.weekdayLabel;
+// モジュールレベルで messages のプロパティを取り出して定数化すると、import 時の言語
+// (通常は既定の日本語)で凍結され、言語切替に追従しない(messages は Proxy 経由で
+// 現在ロケールを返すが、取り出した先のオブジェクトはただの値のため)。
+// 描画時に毎回引く関数にする(2026-08-23、SettingsAllowancesView 実装時に発見された同型バグの修正)。
+const weekdayLabel = (w: 0 | 1 | 2 | 3 | 4 | 5 | 6): string => messages.settingsAttendance.weekdayLabel[w];
 
 function summarizeLegalHoliday(rule: LegalHolidayRuleDto): string {
   if (rule.kind === "weekday") {
-    return `${messages.settingsAttendance.legalHolidayWeekday}: ${WEEKDAY_LABELS[rule.weekday]}`;
+    return `${messages.settingsAttendance.legalHolidayWeekday}: ${weekdayLabel(rule.weekday)}`;
   }
   return `${messages.settingsAttendance.legalHolidayDates}: ${rule.dates.join("、")}`;
 }
@@ -64,7 +68,7 @@ function summarizeAttendanceVersion(v: AttendanceSettingVersionDto): string {
   const gps = v.gpsEnabled
     ? `GPS: ${messages.settingsAttendance.gpsEnabledYes}${v.gpsRetentionDays ? `(${v.gpsRetentionDays}${messages.settingsAttendance.gpsRetentionDaysUnit})` : ""}`
     : `GPS: ${messages.settingsAttendance.gpsEnabledNo}`;
-  return `${messages.settingsAttendance.dayBoundaryLabel} ${minutesToHm(v.dayBoundaryMinutes)} / ${messages.settingsAttendance.weekStartWeekdayLabel}: ${WEEKDAY_LABELS[v.weekStartWeekday as 0 | 1 | 2 | 3 | 4 | 5 | 6]} / ${summarizeLegalHoliday(v.legalHolidayRule)} / ${messages.settingsAttendance.breakRuleLabel}: ${summarizeBreakRule(v.breakRule)} / ${gps}`;
+  return `${messages.settingsAttendance.dayBoundaryLabel} ${minutesToHm(v.dayBoundaryMinutes)} / ${messages.settingsAttendance.weekStartWeekdayLabel}: ${weekdayLabel(v.weekStartWeekday as 0 | 1 | 2 | 3 | 4 | 5 | 6)} / ${summarizeLegalHoliday(v.legalHolidayRule)} / ${messages.settingsAttendance.breakRuleLabel}: ${summarizeBreakRule(v.breakRule)} / ${gps}`;
 }
 
 /**
@@ -381,7 +385,7 @@ export function SettingsAttendanceView() {
                 <div className="attendance-settings__current-row">
                   <span className="attendance-settings__current-label">{messages.settingsAttendance.weekStartWeekdayLabel}</span>
                   <span className="attendance-settings__current-value">
-                    {WEEKDAY_LABELS[attendance.effective.weekStartWeekday as 0 | 1 | 2 | 3 | 4 | 5 | 6]}
+                    {weekdayLabel(attendance.effective.weekStartWeekday as 0 | 1 | 2 | 3 | 4 | 5 | 6)}
                   </span>
                 </div>
                 <div className="attendance-settings__current-row">
@@ -466,7 +470,7 @@ export function SettingsAttendanceView() {
                 >
                   {([0, 1, 2, 3, 4, 5, 6] as const).map((w) => (
                     <option key={w} value={w}>
-                      {WEEKDAY_LABELS[w]}
+                      {weekdayLabel(w)}
                     </option>
                   ))}
                 </select>
@@ -499,7 +503,7 @@ export function SettingsAttendanceView() {
                   >
                     {([0, 1, 2, 3, 4, 5, 6] as const).map((w) => (
                       <option key={w} value={w}>
-                        {WEEKDAY_LABELS[w]}
+                        {weekdayLabel(w)}
                       </option>
                     ))}
                   </select>

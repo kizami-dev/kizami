@@ -20,6 +20,8 @@ import type { getConfig as File_Notifications_getConfig } from './pages/notifica
 // prettier-ignore
 import type { getConfig as File_Punch_getConfig } from './pages/punch';
 // prettier-ignore
+import type { getConfig as File_SettingsAllowances_getConfig } from './pages/settings/allowances';
+// prettier-ignore
 import type { getConfig as File_SettingsApiKeys_getConfig } from './pages/settings/api-keys';
 // prettier-ignore
 import type { getConfig as File_SettingsAttendance_getConfig } from './pages/settings/attendance';
@@ -59,6 +61,7 @@ type Page =
 | ({ path: '/monthly' } & GetConfigResponse<typeof File_Monthly_getConfig>)
 | ({ path: '/notifications' } & GetConfigResponse<typeof File_Notifications_getConfig>)
 | ({ path: '/punch' } & GetConfigResponse<typeof File_Punch_getConfig>)
+| ({ path: '/settings/allowances' } & GetConfigResponse<typeof File_SettingsAllowances_getConfig>)
 | ({ path: '/settings/api-keys' } & GetConfigResponse<typeof File_SettingsApiKeys_getConfig>)
 | ({ path: '/settings/attendance' } & GetConfigResponse<typeof File_SettingsAttendance_getConfig>)
 | ({ path: '/settings/departments' } & GetConfigResponse<typeof File_SettingsDepartments_getConfig>)

@@ -26,6 +26,7 @@ function fakeDay(overrides: Partial<DailyBreakdown> & { date: string }): DailyBr
     withinScheduledMinutes: 0,
     extraWithinStatutoryMinutes: 0,
     statutoryOvertimeMinutes: 0,
+    allowances: [],
     ...overrides,
   };
 }
@@ -64,6 +65,7 @@ describe("snapshotInputsFromEngineOutput", () => {
       flexBalance: null,
       workSystem: "fixed",
       warnings: [],
+      allowanceTotals: [],
     };
 
     const rows = snapshotInputsFromEngineOutput({
@@ -90,6 +92,7 @@ describe("snapshotInputsFromEngineOutput", () => {
       flexBalance: { frameMinutes: 9600, actualMinutes: 9500, diffMinutes: -100 },
       workSystem: "flex",
       warnings: [],
+      allowanceTotals: [],
     };
 
     const rows = snapshotInputsFromEngineOutput({
@@ -106,6 +109,32 @@ describe("snapshotInputsFromEngineOutput", () => {
     expect(byCategory.fixedWithinScheduled).toBeUndefined();
     expect(byCategory.fixedExtraWithinStatutory).toBeUndefined();
     expect(rows).toHaveLength(8); // 5区分 + flex3種
+  });
+
+  it("手当: allowanceTotals の各件を allowance:<definitionId> の行として書く(0分も含む)", () => {
+    const output: EngineOutput = {
+      days: [fakeDay({ date: "2026-04-01" })],
+      totals,
+      flexBalance: { frameMinutes: 9600, actualMinutes: 9500, diffMinutes: -100 },
+      workSystem: "flex",
+      warnings: [],
+      allowanceTotals: [
+        { definitionId: "def-early", minutes: 90 },
+        { definitionId: "def-unused", minutes: 0 },
+      ],
+    };
+
+    const rows = snapshotInputsFromEngineOutput({
+      tenantId: "t1",
+      closingEventId: "e1",
+      userId: "u1",
+      output,
+    });
+
+    const byCategory = Object.fromEntries(rows.map((r) => [r.category, r.minutes]));
+    expect(byCategory["allowance:def-early"]).toBe(90);
+    expect(byCategory["allowance:def-unused"]).toBe(0);
+    expect(rows).toHaveLength(10); // 5区分 + flex3種 + 手当2種
   });
 });
 
@@ -150,5 +179,26 @@ describe("engineOutputFromSnapshots", () => {
     expect(result.flexBalance).toBeNull();
     expect(result.fixedBreakdown).toBeNull();
     expect(result.totals).toEqual({ statutory: 0, overtime: 0, overtime60h: 0, lateNight: 0, statutoryHoliday: 0 });
+    expect(result.allowanceTotals).toEqual([]);
+  });
+
+  it("手当: allowance:<definitionId> 行を definitionId ごとに復元し、他の区分の解釈に影響しない", () => {
+    const rows = [
+      fakeRow({ category: "statutory", minutes: 480 }),
+      fakeRow({ category: "flexFrame", minutes: 9600 }),
+      fakeRow({ category: "allowance:def-early", minutes: 90 }),
+      fakeRow({ category: "allowance:def-unused", minutes: 0 }),
+    ];
+
+    const result = engineOutputFromSnapshots(rows);
+    expect(result.totals.statutory).toBe(480);
+    expect(result.flexBalance?.frameMinutes).toBe(9600);
+    expect(result.allowanceTotals).toEqual(
+      expect.arrayContaining([
+        { definitionId: "def-early", minutes: 90 },
+        { definitionId: "def-unused", minutes: 0 },
+      ]),
+    );
+    expect(result.allowanceTotals).toHaveLength(2);
   });
 });

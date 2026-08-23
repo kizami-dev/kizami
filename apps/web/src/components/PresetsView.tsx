@@ -105,7 +105,7 @@ export function PresetsView() {
     setFormState({
       mode: "create",
       readOnly: false,
-      initial: { name: `${preset.name}のコピー`, description: preset.description ?? "", grants: preset.grants },
+      initial: { name: messages.presets.duplicateNameSuffix(preset.name), description: preset.description ?? "", grants: preset.grants },
     });
   }
 

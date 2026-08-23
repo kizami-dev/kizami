@@ -21,9 +21,9 @@ function changedRuleLabels(version: LawVersion): string[] {
   return RULE_KEY_ORDER.filter((key) => changedKeys.has(key)).map((key) => messages.settingsTenantProfile.upcomingRuleLabel[key]);
 }
 
-/** 分 → "N時間"(週法定労働時間・36協定の各閾値は端数の出ない値のみを扱う契約なので単純な除算でよい)。 */
+/** 分 → "N時間"相当(週法定労働時間・36協定の各閾値は端数の出ない値のみを扱う契約なので単純な除算でよい)。 */
 function formatHours(minutes: number): string {
-  return `${minutes / 60}時間`;
+  return `${minutes / 60}${messages.time.unitHour}`;
 }
 
 /**

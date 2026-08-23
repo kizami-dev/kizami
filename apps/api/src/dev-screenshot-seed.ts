@@ -23,6 +23,8 @@ import {
   departments as departmentsTable,
   memberships,
   notifications,
+  allowanceDefinitions,
+  allowanceDefinitionVersions,
   tenantSettingVersions,
   tenants,
   userPolicyAssignments,
@@ -162,6 +164,31 @@ async function createFixedWorkPolicy(db: Database, tenantId: string): Promise<st
  * apps/api/src/lib/settings.ts)が配列の走査順に依存し不安定になるため、確実に
  * 上書きされる別日にする。
  */
+/**
+ * 手当定義を過去日から有効な形で直接投入する(v0.5 デモ用)。
+ * HTTP の POST /settings/allowances は effectiveFrom の過去日を 409 で拒むため、
+ * 締め済みの前月の集計・スナップショットに手当を反映させるには直接投入するしかない
+ * (insertBothModeBreakRuleVersion と同じ理由)。夜間手当(22:00〜翌5:00)は
+ * 前月・今月の深夜勤務日(13:00-23:00)に 1:00 の手当対象時間を生む。
+ */
+async function insertNightAllowanceDefinition(db: Database, tenantId: string): Promise<void> {
+  const existing = await db.select().from(allowanceDefinitions).where(eq(allowanceDefinitions.tenantId, tenantId));
+  if (existing.length > 0) return; // 冪等
+
+  const now = Math.floor(Date.now() / 60_000);
+  const definitionId = uuidv7();
+  await db.insert(allowanceDefinitions).values({ id: definitionId, tenantId, createdAt: now });
+  await db.insert(allowanceDefinitionVersions).values({
+    id: uuidv7(),
+    tenantId,
+    definitionId,
+    effectiveFrom: "1970-01-02",
+    name: "夜間手当",
+    conditions: JSON.stringify({ timeBand: { startMinutes: 22 * 60, endMinutes: 5 * 60 } }),
+    createdAt: now,
+  });
+}
+
 async function insertBothModeBreakRuleVersion(db: Database, tenantId: string): Promise<void> {
   // 冪等: この日付の版が既にあれば何もしない(重複挿入すると latestAtOrBefore の
   // tie-break が不安定になる、この関数自体のコメント参照)。
@@ -338,6 +365,7 @@ async function main(): Promise<void> {
   // v0.5: 休憩ルールを "both" にする版を先月・今月の既存デモ打刻日より前から効かせておく
   // (HTTP 経由だと過去日に遡れないため、ここで直接 INSERT する)。
   await insertBothModeBreakRuleVersion(db, tenantId);
+  await insertNightAllowanceDefinition(db, tenantId);
   // v0.5: 固定時間制メンバー用の別 work_policies を用意する(テナント既定は変えない)。
   const fixedWorkPolicyId = await createFixedWorkPolicy(db, tenantId);
 

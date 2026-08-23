@@ -3,7 +3,14 @@
  *
  * apps/api の集計は Asia/Tokyo 固定オフセット(docs/design/v01-data-model.md)を
  * 前提にしているため、表示側もここでは JST 固定で扱う(ユーザーの端末 TZ に依存しない)。
+ *
+ * 曜日・月日の「見せ方」(2026-08-23 4言語対応で追加)は `lib/i18n#getMessages().time` に
+ * 委譲する。`getMessages()` はモジュールスコープの現在ロケールを都度読むだけの同期関数
+ * (フックではない)なので、ここでは locale の受け渡しを一切気にせず呼べる。呼び出し元
+ * コンポーネントが言語切り替え時に再レンダリング(lib/messages.ts のコメント参照)されれば、
+ * この関数群も次の描画で新しい言語の値を返す。
  */
+import { getMessages } from "./i18n";
 
 const JST_OFFSET_MINUTES = 540;
 const MINUTES_PER_DAY = 1440;
@@ -139,28 +146,32 @@ export function shiftMonth({ year, month }: YearMonth, delta: number): YearMonth
 }
 
 export function formatMonthLabel({ year, month }: YearMonth): string {
-  return `${year}年${month}月`;
+  return getMessages().time.monthLabel(year, month);
 }
 
-/** "YYYY-MM-DD" → "M/D(曜)"。 */
+/** "YYYY-MM-DD" → "M/D(曜)"(ロケールごとの曜日表記・並びは lib/i18n の各辞書 time.* が持つ)。 */
 export function formatDateLabel(dateStr: string): string {
   const parts = dateStr.split("-").map(Number);
   const year = parts[0] ?? 1970;
   const month = parts[1] ?? 1;
   const day = parts[2] ?? 1;
-  const weekdayNames = ["日", "月", "火", "水", "木", "金", "土"];
-  const weekday = weekdayNames[new Date(Date.UTC(year, month - 1, day)).getUTCDay()];
-  return `${month}/${day}(${weekday})`;
+  const time = getMessages().time;
+  // getUTCDay() は必ず 0〜6 を返すため weekdayShort の範囲外にはならないが、
+  // noUncheckedIndexedAccess 対策として空文字へフォールバックする(実際には到達しない)。
+  const weekday = time.weekdayShort[new Date(Date.UTC(year, month - 1, day)).getUTCDay()] ?? "";
+  return time.dateLabel(month, day, weekday);
 }
 
 /**
- * 分数 → "○日○時間(○分)"(有給残高の表示用、v0.3)。
+ * 分数 → "○日○時間(○分)"相当(有給残高の表示用、v0.3)。
  * standardDayMinutes(所定労働時間)で日に換算し、余りを時間・分に分解する。
  * standardDayMinutes が 0 以下の場合は換算できないため分のみを返す(防御的フォールバック)。
+ * 単位・区切りはロケールごとに異なる(例: 英語は "3d 2h 15m" のようにスペース区切り)。
  */
 export function formatDaysHoursMinutes(minutes: number, standardDayMinutes: number): string {
+  const time = getMessages().time;
   const total = Math.max(0, Math.round(minutes));
-  if (standardDayMinutes <= 0) return `${total}分`;
+  if (standardDayMinutes <= 0) return `${total}${time.unitMinute}`;
 
   const days = Math.floor(total / standardDayMinutes);
   const remainder = total % standardDayMinutes;
@@ -168,8 +179,8 @@ export function formatDaysHoursMinutes(minutes: number, standardDayMinutes: numb
   const mins = remainder % 60;
 
   const parts: string[] = [];
-  if (days > 0) parts.push(`${days}日`);
-  if (hours > 0 || days === 0) parts.push(`${hours}時間`);
-  if (mins > 0) parts.push(`${mins}分`);
-  return parts.join("");
+  if (days > 0) parts.push(`${days}${time.unitDay}`);
+  if (hours > 0 || days === 0) parts.push(`${hours}${time.unitHour}`);
+  if (mins > 0) parts.push(`${mins}${time.unitMinute}`);
+  return parts.join(time.durationJoin);
 }

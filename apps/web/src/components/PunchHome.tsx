@@ -14,27 +14,38 @@ import {
   type PunchKind,
 } from "../lib/api";
 import { getCurrentPositionSafe } from "../lib/geolocation";
+import { INTL_LOCALE, getLocale } from "../lib/i18n";
 import { messages } from "../lib/messages";
 import { formatTimeJst, jstTodayWindow } from "../lib/time";
 import { useAuthGuard } from "../lib/useAuthGuard";
 import { useOnlineStatus } from "../lib/useOnlineStatus";
 import { AppHeader } from "./AppHeader";
 
-const clockFormatter = new Intl.DateTimeFormat("ja-JP", {
-  timeZone: "Asia/Tokyo",
-  hourCycle: "h23",
-  hour: "2-digit",
-  minute: "2-digit",
-  second: "2-digit",
-});
-const dateFormatter = new Intl.DateTimeFormat("ja-JP", {
-  timeZone: "Asia/Tokyo",
-  month: "long",
-  day: "numeric",
-  weekday: "short",
-});
+/**
+ * 大時計・日付表示のフォーマッタ(2026-08-23 4言語対応: ロケールごとに作り直す)。
+ * `PunchHome` は言語切り替え時に丸ごと再マウントされる(components/LocaleGate.tsx)ため、
+ * コンポーネント本体でその都度 `getLocale()` を読んで生成すれば新しい言語に追従する
+ * (モジュールスコープの定数のままだと初回の言語で固定されてしまう)。
+ */
+function createClockFormatter(bcp47: string): Intl.DateTimeFormat {
+  return new Intl.DateTimeFormat(bcp47, {
+    timeZone: "Asia/Tokyo",
+    hourCycle: "h23",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}
+function createDateFormatter(bcp47: string): Intl.DateTimeFormat {
+  return new Intl.DateTimeFormat(bcp47, {
+    timeZone: "Asia/Tokyo",
+    month: "long",
+    day: "numeric",
+    weekday: "short",
+  });
+}
 
-function clockParts(now: Date): { hm: string; ss: string } {
+function clockParts(now: Date, clockFormatter: Intl.DateTimeFormat): { hm: string; ss: string } {
   const parts = clockFormatter.formatToParts(now);
   const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "00";
   return { hm: `${get("hour")}:${get("minute")}`, ss: get("second") };
@@ -170,19 +181,20 @@ export function PunchHome() {
   const breakKind: PunchKind = state === "onBreak" ? "break_end" : "break_start";
   const breakLabel = state === "onBreak" ? messages.punchButtons.breakEnd : messages.punchButtons.breakStart;
 
-  const { hm, ss } = clockParts(now);
+  const bcp47 = INTL_LOCALE[getLocale()];
+  const { hm, ss } = clockParts(now, createClockFormatter(bcp47));
 
   return (
     <div className="punch-home">
       <AppHeader displayName={guard.user.displayName} email={guard.user.email} tenantName={guard.tenant?.name ?? null} active="punch" />
       <main className="punch-home__main">
         <div className="punch-clock" aria-hidden="false">
-          <span className="punch-clock__main tabular-nums" aria-label={`現在時刻 ${hm}分${ss}秒`}>
+          <span className="punch-clock__main tabular-nums" aria-label={messages.punchClock.currentTimeAriaLabel(hm, ss)}>
             {hm}
           </span>
           <span className="punch-clock__seconds tabular-nums">:{ss}</span>
         </div>
-        <p className="punch-clock__date">{dateFormatter.format(now)}</p>
+        <p className="punch-clock__date">{createDateFormatter(bcp47).format(now)}</p>
 
         <div className={`stamp stamp--${state}${stamping ? " stamp--stamping" : ""}`}>
           <span className="stamp__label">{messages.attendanceState[state]}</span>

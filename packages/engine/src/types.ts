@@ -101,6 +101,44 @@ export interface SettingsSpan {
 }
 
 /**
+ * 手当定義(docs/design/allowances.md)。金額は持たない — エンジンが算出するのは
+ * 「対象になる勤務が何分あったか」まで(要件§1、割増率・支給額は給与側の責任)。
+ *
+ * `conditions` は次の AND 条件(すべて省略可、省略した条件は「制約なし」):
+ * - `dates`: 特定日のリスト。"2027-01-01"(固定日付)と "--12-31"(毎年、月日のみ一致)の
+ *   両形式を混在させられる
+ * - `weekdays`: 曜日のリスト(0=日曜〜6=土曜)
+ * - `timeBand`: 時間帯(ローカル分、0〜1439)。startMinutes > endMinutes で日跨ぎを表す
+ *   (22:00〜翌6:00 = startMinutes:1320, endMinutes:360)。startMinutes < endMinutes は
+ *   日をまたがない帯(6:00〜8:00)。省略時は終日
+ *
+ * 全条件を省略した定義(=常に全時間が対象)は意味を持たない設定ミスであり、apps/api の
+ * バリデーションで作成時に弾く(engine 自体は「全時間帯が対象」として素直に扱う — 純関数と
+ * して「入力の意味的な妥当性」までは関知しないという既存の役割分担に合わせた)。
+ */
+export interface AllowanceDefinition {
+  id: string;
+  name: string;
+  conditions: {
+    dates?: PlainDateString[];
+    weekdays?: Array<0 | 1 | 2 | 3 | 4 | 5 | 6>;
+    timeBand?: { startMinutes: number; endMinutes: number };
+  };
+}
+
+/**
+ * effective-dated な手当定義(`settingsTimeline` と同じ「from 昇順、from はこの日から有効」の
+ * 契約)。ただし settingsTimeline(テナントにつき1系列)と違い、複数の手当定義が並行して
+ * 存在しうる(定義ごとに独立した版の系列を持つ) — `definition.id` が系列の識別子であり、
+ * 同じ `id` を持つ span の中で `from <= 対象日` の最大のものがその日に有効な版になる
+ * (allowances.ts の resolveAllowanceDefinitionsForDate 参照)。
+ */
+export interface AllowanceTimelineSpan {
+  from: PlainDateString;
+  definition: AllowanceDefinition;
+}
+
+/**
  * effective-dated な法令ルール(`settingsTimeline` と同じ流儀)。`@kizami/law` の
  * `buildLawTimeline` が返す形とそのまま一致する。from はローカル日付、その日から有効。
  */
@@ -128,6 +166,12 @@ export interface EngineInput {
    * 打刻を修正するのではなく独立した申請として扱うため、打刻列とは別にこの配列で渡す。
    */
   autoBreakWaivedDates?: PlainDateString[];
+  /**
+   * 手当定義(effective-dated)。省略・空配列なら手当算出は行わず、全日の
+   * `DailyBreakdown.allowances` は空配列、`EngineOutput.allowanceTotals` も空配列になる
+   * (省略可能にしているのは、手当を1件も定義していないテナントで無駄な計算をしないため)。
+   */
+  allowances?: AllowanceTimelineSpan[];
 }
 
 /** 有給の取得。日単位・時間単位のどちらも「その日に何分ぶん有給を使ったか」で表す */
@@ -239,6 +283,13 @@ export interface DailyBreakdown {
   extraWithinStatutoryMinutes: number;
   /** 法定時間外(日8時間超 + 週法定超)。固定時間制のみ。フレックスでは 0 */
   statutoryOvertimeMinutes: number;
+  /**
+   * この日の手当対象時間(定義ごと)。0分になった定義は含めない(sparse — UI は
+   * 「手当対象時間がある日だけ小さく表示する」ため、空配列がほとんどの日の既定値になる想定)。
+   * 法定区分(lateNightMinutes 等)とは独立で、同じ1分が両方に計上されることもある
+   * (docs/design/allowances.md「エンジンでの算出」)。
+   */
+  allowances: Array<{ definitionId: string; minutes: number }>;
 }
 
 export interface FlexBalance {
@@ -258,4 +309,10 @@ export interface EngineOutput {
   /** 期間開始日に有効だった労働時間制 */
   workSystem: "flex" | "fixed";
   warnings: CalcWarning[];
+  /**
+   * 手当定義ごとの月合計(分)。期間内のいずれかの日に有効だった定義は、その月の合計が
+   * 0分でも1件として含める(締め・CSV で「定義はあるが今月は対象時間なし」を表現するため —
+   * DailyBreakdown.allowances が sparse なのとは扱いを変えている)。
+   */
+  allowanceTotals: Array<{ definitionId: string; minutes: number }>;
 }

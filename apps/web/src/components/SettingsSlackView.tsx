@@ -163,7 +163,7 @@ export function SettingsSlackView() {
                   {settings.signingSecretSet
                     ? messages.settingsSlack.signingSecretConfigured
                     : messages.settingsSlack.signingSecretNotConfigured}
-                  {" ・ "}
+                  {messages.common.hintSeparator}
                   {messages.settingsSlack.keepIfBlankHint}
                 </p>
               </div>

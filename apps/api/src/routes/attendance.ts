@@ -17,6 +17,7 @@ import { calculate, type EngineInput, type PaidLeaveEntry, type PunchKind, type 
 import { resolveUsageMinutes, type LeaveUnit } from "@kizami/leave";
 import type { AppEnv } from "../auth/middleware.js";
 import { requireSelf } from "../authz.js";
+import { buildAllowanceNameMap, buildAllowanceTimeline } from "../lib/allowances.js";
 import { engineOutputFromSnapshots } from "../lib/closing-snapshot.js";
 import {
   dateFromEpochDay,
@@ -156,7 +157,7 @@ export function createAttendanceRoutes(db: Database) {
     const fromMinutes = localMidnightUtcMinutes(monthStartEpochDay - 1, tz);
     const toMinutes = localMidnightUtcMinutes(monthEndEpochDay + 2, tz) - 1;
 
-    const [punchRows, settingsTimeline, lawTimeline, approvedLeaveRequests, autoBreakWaivedDates] = await Promise.all([
+    const [punchRows, settingsTimeline, lawTimeline, approvedLeaveRequests, autoBreakWaivedDates, allowanceTimeline] = await Promise.all([
       listValidPunches(db, { tenantId: user.tenantId, userId: user.id, fromMinutes, toMinutes }),
       buildSettingsTimeline(db, {
         tenantId: user.tenantId,
@@ -181,6 +182,8 @@ export function createAttendanceRoutes(db: Database) {
         fromDate: monthStartDate,
         toDate: monthEndDate,
       }),
+      // 手当(docs/design/allowances.md)。テナント単位の定義なので userId には依存しない。
+      buildAllowanceTimeline(db, { tenantId: user.tenantId, fromDate: monthStartDate, toDate: monthEndDate }),
     ]);
 
     const punches: ValidPunch[] = punchRows.map((p) => ({ kind: p.kind as PunchKind, occurredAt: p.occurredAt }));
@@ -201,9 +204,14 @@ export function createAttendanceRoutes(db: Database) {
       period: { year, month },
       paidLeave,
       autoBreakWaivedDates,
+      allowances: allowanceTimeline,
     };
 
     const output = calculate(input);
+    // UI が手当の分数(output.days[].allowances・output.allowanceTotals)を definitionId から
+    // 人間が読める名前に変換できるよう、id→name マップを常に添える(締め済み・未締めを問わない
+    // — 名前は表示専用の付加情報であり、締め保護(下記 totals/flexBalance の上書き)の対象外)。
+    const allowanceDefinitions = buildAllowanceNameMap(allowanceTimeline);
 
     // 締め済み月は totals・flexBalance を常にスナップショットから返す(設定変更・制度変更の
     // 遡及から二重に保護する。docs/design/v01-data-model.md 原則6・依頼の禁止事項)。
@@ -218,20 +226,34 @@ export function createAttendanceRoutes(db: Database) {
     if (closingState.status === "closed") {
       const snapshots = await getClosingSnapshots(db, { tenantId: user.tenantId, period });
       const userSnapshots = snapshots.filter((s) => s.userId === user.id);
-      const { totals, flexBalance } = engineOutputFromSnapshots(userSnapshots);
+      // 手当の月合計(allowanceTotals)も totals/flexBalance と同じ理由で締め保護の対象にする
+      // (docs/design/allowances.md「締めとの関係」— 賃金に直結するため)。
+      const { totals, flexBalance, allowanceTotals } = engineOutputFromSnapshots(userSnapshots);
 
       const amended = closingState.history.some((e) => e.event === "amend");
       if (amended) {
         const originalSnapshots = await getOriginalClosingSnapshots(db, { tenantId: user.tenantId, period });
         const userOriginalSnapshots = originalSnapshots.filter((s) => s.userId === user.id);
-        const { totals: originalTotals, flexBalance: originalFlexBalance } = engineOutputFromSnapshots(userOriginalSnapshots);
-        return c.json({ ...output, totals, flexBalance, closed: true, amended: true, originalTotals, originalFlexBalance });
+        const { totals: originalTotals, flexBalance: originalFlexBalance, allowanceTotals: originalAllowanceTotals } =
+          engineOutputFromSnapshots(userOriginalSnapshots);
+        return c.json({
+          ...output,
+          totals,
+          flexBalance,
+          allowanceTotals,
+          allowanceDefinitions,
+          closed: true,
+          amended: true,
+          originalTotals,
+          originalFlexBalance,
+          originalAllowanceTotals,
+        });
       }
 
-      return c.json({ ...output, totals, flexBalance, closed: true, amended: false });
+      return c.json({ ...output, totals, flexBalance, allowanceTotals, allowanceDefinitions, closed: true, amended: false });
     }
 
-    return c.json({ ...output, closed: false, amended: false });
+    return c.json({ ...output, allowanceDefinitions, closed: false, amended: false });
   });
 
   return app;

@@ -262,7 +262,7 @@ export function PersonalNotificationSettingsView() {
                   {settings.webhookUrl.configured
                     ? `${messages.settingsPersonalNotifications.webhookUrlConfigured}(${settings.webhookUrl.preview})`
                     : messages.settingsPersonalNotifications.webhookUrlNotConfigured}
-                  {" ・ "}
+                  {messages.common.hintSeparator}
                   {messages.settingsPersonalNotifications.keepIfBlankHint}
                 </p>
               </div>

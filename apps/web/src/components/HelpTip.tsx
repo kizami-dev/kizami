@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { HelpKey } from "../lib/help";
 import { helpDocHref, helpEntry } from "../lib/help";
+import { messages } from "../lib/messages";
 import { useHelpOverrides } from "../lib/useHelpOverrides";
 
 export interface HelpTipProps {
@@ -11,11 +12,18 @@ export interface HelpTipProps {
   className?: string;
 }
 
-const ORIGIN_LABEL: Record<string, string> = {
-  law: "法令",
-  product: "KIZAMIの仕様",
-  company: "自社の規定",
-};
+/**
+ * 出所バッジのラベル(2026-08-23 4言語対応: messages.helpTip から読む関数化。
+ * モジュールスコープの定数だと言語切り替え時に更新されないため、呼び出しの都度評価する)。
+ * ヘルプ本文自体(@kizami/help-content)は日本語のみで今回のスコープ外。
+ */
+function originLabels(): Record<string, string> {
+  return {
+    law: messages.helpTip.originLaw,
+    product: messages.helpTip.originProduct,
+    company: messages.helpTip.originCompany,
+  };
+}
 
 /** パネルの想定幅(px)。実測前のクランプ計算に使う概算値(CSS の max-width: 22rem と合わせる)。 */
 const PANEL_WIDTH_ESTIMATE = 352;
@@ -45,6 +53,7 @@ const VIEWPORT_MARGIN = 12;
  */
 export function HelpTip({ helpKey, className }: HelpTipProps) {
   const entry = helpEntry(helpKey);
+  const ORIGIN_LABEL = originLabels();
   const badgeLabel = entry.origin === "law" && entry.basis ? `${ORIGIN_LABEL.law} · ${entry.basis}` : (ORIGIN_LABEL[entry.origin] ?? entry.origin);
   const { overrides, workRulesUrl } = useHelpOverrides();
   const companyOverride = overrides[helpKey];
@@ -93,7 +102,7 @@ export function HelpTip({ helpKey, className }: HelpTipProps) {
         if (open) requestAnimationFrame(updatePosition);
       }}
     >
-      <summary ref={triggerRef} className="help-tip__trigger" aria-label={`ヘルプ: ${entry.summary}`}>
+      <summary ref={triggerRef} className="help-tip__trigger" aria-label={`${messages.helpTip.ariaLabelPrefix}: ${entry.summary}`}>
         <span className="help-tip__trigger-icon" aria-hidden="true">
           ?
         </span>
@@ -106,7 +115,7 @@ export function HelpTip({ helpKey, className }: HelpTipProps) {
         <span className={`help-tip__badge help-tip__badge--${entry.origin}`}>{badgeLabel}</span>
         <p className="help-tip__summary">{entry.summary}</p>
         <a className="help-tip__link" href={helpDocHref(helpKey)} target="_blank" rel="noreferrer">
-          詳しく見る →
+          {messages.helpTip.detailLink}
         </a>
         {companyOverride ? (
           <div className="help-tip__company">
@@ -114,7 +123,7 @@ export function HelpTip({ helpKey, className }: HelpTipProps) {
             <p className="help-tip__company-body">{companyOverride.bodyMd}</p>
             {workRulesUrl ? (
               <a className="help-tip__link" href={workRulesUrl} target="_blank" rel="noreferrer">
-                就業規則を見る →
+                {messages.helpTip.workRulesLink}
               </a>
             ) : null}
           </div>

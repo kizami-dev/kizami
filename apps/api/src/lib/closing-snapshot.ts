@@ -9,7 +9,7 @@
  */
 
 import type { CategorizedMinutes, DailyBreakdown, EngineOutput, FlexBalance, TimeCategory } from "@kizami/engine";
-import type { ClosingSnapshot, ClosingSnapshotCategory, NewClosingSnapshotInput } from "@kizami/db";
+import { ALLOWANCE_CLOSING_SNAPSHOT_CATEGORY_PREFIX, type ClosingSnapshot, type ClosingSnapshotCategory, type NewClosingSnapshotInput } from "@kizami/db";
 
 const TIME_CATEGORIES: readonly TimeCategory[] = ["statutory", "overtime", "overtime60h", "lateNight", "statutoryHoliday"];
 
@@ -85,7 +85,18 @@ export function snapshotInputsFromEngineOutput(params: {
           { ...base, category: "fixedExtraWithinStatutory", minutes: fixedBreakdown.extraWithinStatutoryMinutes },
         ];
 
-  return [...timeRows, ...flexRows, ...fixedRows];
+  // 手当(docs/design/allowances.md「締めとの関係」)。定義IDごとに `allowance:<definitionId>`
+  // という動的な category で保存する(schema/closings.ts の ALLOWANCE_CLOSING_SNAPSHOT_CATEGORY_PREFIX
+  // コメント参照)。output.allowanceTotals は「期間内のいずれかの日に有効だった定義は0分でも
+  // 1件含む」契約(engine/src/index.ts 参照)なので、fixedBreakdown 等と違い null 分岐は無く
+  // 常にその件数ぶんの行を書く(手当を1つも定義していないテナントでは空配列 = 行0件)。
+  const allowanceRows: NewClosingSnapshotInput[] = output.allowanceTotals.map((t) => ({
+    ...base,
+    category: `${ALLOWANCE_CLOSING_SNAPSHOT_CATEGORY_PREFIX}${t.definitionId}`,
+    minutes: t.minutes,
+  }));
+
+  return [...timeRows, ...flexRows, ...fixedRows, ...allowanceRows];
 }
 
 export interface SnapshotTotals {
@@ -94,6 +105,13 @@ export interface SnapshotTotals {
   flexBalance: FlexBalance | null;
   /** 固定系の行が1つも無ければ null(フレックスだった月、または対象ユーザーの行が皆無)。 */
   fixedBreakdown: FixedBreakdownTotals | null;
+  /**
+   * 手当定義ごとの月合計(分)。行が無ければ空配列(手当を1つも定義していなかった、または
+   * 対象ユーザーの行が締め時点で皆無だった月)。fixedBreakdown と違い null にしない — 「定義が
+   * 無かった」と「定義はあるが0分だった」は snapshotInputsFromEngineOutput の契約上どちらも
+   * ここでは区別できない情報ではなく、単に「行があれば0分でも含める」で表現できるため。
+   */
+  allowanceTotals: Array<{ definitionId: string; minutes: number }>;
 }
 
 /** 「未初期化(0埋め)」の区分別時間数。スナップショットに一部カテゴリが欠けていた場合の既定値。 */
@@ -130,8 +148,21 @@ export function engineOutputFromSnapshots(snapshots: ClosingSnapshot[]): Snapsho
   let fixedWithinScheduledMinutes = 0;
   let fixedExtraWithinStatutoryMinutes = 0;
   let hasFixedRow = false;
+  const allowanceTotals: Array<{ definitionId: string; minutes: number }> = [];
 
   for (const row of snapshots) {
+    // 手当は category が `allowance:<definitionId>` という動的な文字列であり、
+    // CLOSING_SNAPSHOT_CATEGORIES の固定列挙(下の switch)には含まれない
+    // (schema/closings.ts の ALLOWANCE_CLOSING_SNAPSHOT_CATEGORY_PREFIX コメント参照)。
+    // switch に通す前にここで分岐する。
+    if (row.category.startsWith(ALLOWANCE_CLOSING_SNAPSHOT_CATEGORY_PREFIX)) {
+      allowanceTotals.push({
+        definitionId: row.category.slice(ALLOWANCE_CLOSING_SNAPSHOT_CATEGORY_PREFIX.length),
+        minutes: row.minutes,
+      });
+      continue;
+    }
+
     const category = row.category as ClosingSnapshotCategory;
     switch (category) {
       case "statutory":
@@ -172,5 +203,6 @@ export function engineOutputFromSnapshots(snapshots: ClosingSnapshot[]): Snapsho
     fixedBreakdown: hasFixedRow
       ? { withinScheduledMinutes: fixedWithinScheduledMinutes, extraWithinStatutoryMinutes: fixedExtraWithinStatutoryMinutes }
       : null,
+    allowanceTotals,
   };
 }

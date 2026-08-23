@@ -68,6 +68,22 @@ export const CLOSING_SNAPSHOT_CATEGORIES = [
 ] as const;
 export type ClosingSnapshotCategory = (typeof CLOSING_SNAPSHOT_CATEGORIES)[number];
 
+/**
+ * 手当(docs/design/allowances.md)の月合計は `allowance:<definitionId>` という**プレフィックス
+ * 付きの動的な category** で保存する(`allowance:3f9c...` のように定義IDごとに異なる文字列になる
+ * ため `CLOSING_SNAPSHOT_CATEGORIES` の固定列挙には**含めない**)。
+ *
+ * 整合性の説明: `category` 列は素の text であり、CLOSING_SNAPSHOT_CATEGORIES はアプリ層が
+ * 使う「既知の固定区分」を型として明示するための一覧に過ぎず、DB は列挙以外の値を拒否しない
+ * (CHECK 制約は付けていない — 0004_yellow_trauma.sql に列挙の制約は存在しない)。
+ * 手当は「テナントが自由に定義を追加・削除できる」動的な集合であり、追加のたびに固定列挙へ
+ * 値を足す運用は成立しない(定義を消しても既存スナップショットの区分は残り続ける必要がある)。
+ * そのため手当だけは「プレフィックス規約」で区別する形を採り、マイグレーション不要のまま
+ * 何個でも定義を追加できるようにしている。読み書きは apps/api/src/lib/closing-snapshot.ts が
+ * `allowance:` プレフィックスの有無で CLOSING_SNAPSHOT_CATEGORIES 由来の固定区分と分岐する。
+ */
+export const ALLOWANCE_CLOSING_SNAPSHOT_CATEGORY_PREFIX = "allowance:";
+
 export const closingEvents = sqliteTable(
   "closing_events",
   {

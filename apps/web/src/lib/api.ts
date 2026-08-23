@@ -177,6 +177,12 @@ export interface DailyBreakdown {
   extraWithinStatutoryMinutes: number;
   /** 法定時間外(日8時間超 + 週法定超)。固定時間制のみ。フレックスでは 0 */
   statutoryOvertimeMinutes: number;
+  /**
+   * この日の手当対象時間(定義ごと、docs/design/allowances.md、2026-08-23 追加)。
+   * 0分になった定義は含めない(sparse — packages/engine の DailyBreakdown.allowances と一致)。
+   * 法定区分(lateNightMinutes 等)とは独立で、同じ1分が両方に計上されることもある。
+   */
+  allowances: Array<{ definitionId: string; minutes: number }>;
 }
 
 export interface FlexBalance {
@@ -200,6 +206,16 @@ export interface MonthlyAttendance {
   /** 当初(最初の締め)の確定値。amended のときのみ存在する。 */
   originalTotals?: CategorizedMinutes;
   originalFlexBalance?: FlexBalance | null;
+  /**
+   * 手当定義ごとの月合計(分、docs/design/allowances.md、2026-08-23 追加)。期間内のいずれかの
+   * 日に有効だった定義は、その月の合計が0分でも1件として含める(packages/engine の
+   * EngineOutput.allowanceTotals と同じ契約 — DailyBreakdown.allowances が sparse なのとは扱いが違う)。
+   */
+  allowanceTotals: Array<{ definitionId: string; minutes: number }>;
+  /** 定義ID → 名前(表示用、締め済み・未締めを問わず常に付く)。 */
+  allowanceDefinitions: Record<string, string>;
+  /** 当初(最初の締め)の手当月合計。amended のときのみ存在する。 */
+  originalAllowanceTotals?: Array<{ definitionId: string; minutes: number }>;
 }
 
 export type CorrectionStatus = "pending" | "approved" | "rejected" | "withdrawn";
@@ -597,6 +613,51 @@ export interface CreateWorkPolicyVersionInput {
   effectiveFrom: string;
   settlementPeriod: string;
   standardDayMinutes: number;
+}
+
+/**
+ * 手当定義の適用条件(AllowanceDefinition["conditions"]、packages/engine の型を apps/web の
+ * 既存方針どおりここに再定義する。docs/design/allowances.md「手当定義」)。
+ * すべて省略可・AND 条件。`dates` は "2027-01-01"(固定日付)と "--12-31"(毎年、月日のみ一致)の
+ * 両形式を混在させられる。`timeBand` は startMinutes > endMinutes で日跨ぎを表す。
+ * 全条件を省略した組み合わせは POST /settings/allowances* が 400 conditions_required で拒否する。
+ */
+export interface AllowanceConditionsDto {
+  dates?: string[];
+  weekdays?: Array<0 | 1 | 2 | 3 | 4 | 5 | 6>;
+  timeBand?: { startMinutes: number; endMinutes: number };
+}
+
+/** 手当定義の版(apps/api/src/routes/settings.ts の GET/POST /settings/allowances* と一致)。 */
+export interface AllowanceDefinitionVersionDto {
+  effectiveFrom: string;
+  name: string;
+  conditions: AllowanceConditionsDto;
+  createdAt: number;
+}
+
+/**
+ * 手当定義1件(GET /settings/allowances のレスポンス要素)。work_policy と違い
+ * テナントにつき何件でも並行して存在しうるため、定義ごとに { id, effective, history } を持つ。
+ */
+export interface AllowanceDefinitionDto {
+  id: string;
+  effective: AllowanceDefinitionVersionDto | null;
+  history: AllowanceDefinitionVersionDto[];
+}
+
+/** POST /settings/allowances の入力。新しい手当定義(識別子+初版)を1件作成する。 */
+export interface CreateAllowanceDefinitionInput {
+  effectiveFrom: string;
+  name: string;
+  conditions: AllowanceConditionsDto;
+}
+
+/** POST /settings/allowances/:definitionId/versions の入力。新しい版を1件追加する(UPDATE ではない)。 */
+export interface CreateAllowanceDefinitionVersionInput {
+  effectiveFrom: string;
+  name: string;
+  conditions: AllowanceConditionsDto;
 }
 
 /** GET/PUT /settings/privacy-contact(保存期間の説明文・開示請求窓口)。 */
@@ -1218,6 +1279,30 @@ export const api = {
   /** POST /settings/work-policy。新しい版を1件追加する(UPDATE ではない)。 */
   async createWorkPolicyVersion(input: CreateWorkPolicyVersionInput): Promise<{ version: WorkPolicyVersionDto }> {
     return request("/settings/work-policy", { method: "POST", body: JSON.stringify(input) });
+  },
+
+  /** GET /settings/allowances(tenant_settings.calendar.manage、勤怠設定と同じ権限)。定義ごとの現在有効な版+版の履歴。 */
+  async getAllowances(): Promise<{ definitions: AllowanceDefinitionDto[] }> {
+    return request("/settings/allowances");
+  },
+
+  /**
+   * POST /settings/allowances。新しい手当定義(識別子+初版)を1件作成する。
+   * conditions が全省略なら 400 conditions_required、effectiveFrom が過去日なら 409 effective_from_in_past。
+   */
+  async createAllowanceDefinition(input: CreateAllowanceDefinitionInput): Promise<{ id: string; version: AllowanceDefinitionVersionDto }> {
+    return request("/settings/allowances", { method: "POST", body: JSON.stringify(input) });
+  },
+
+  /**
+   * POST /settings/allowances/:definitionId/versions。既存の手当定義に新しい版を1件追加する
+   * (UPDATE ではない)。既存版と同じ effectiveFrom なら 409 version_already_exists。
+   */
+  async createAllowanceDefinitionVersion(
+    definitionId: string,
+    input: CreateAllowanceDefinitionVersionInput,
+  ): Promise<{ version: AllowanceDefinitionVersionDto }> {
+    return request(`/settings/allowances/${encodeURIComponent(definitionId)}/versions`, { method: "POST", body: JSON.stringify(input) });
   },
 
   /** GET /settings/privacy-contact(notification.settings.manage、社内規定編集と同じ権限)。 */

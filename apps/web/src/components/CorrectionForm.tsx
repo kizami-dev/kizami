@@ -233,7 +233,7 @@ export function CorrectionForm({ date, autoDeductedBreakMinutes = 0, onClose, on
               <div
                 className={`correction-mode${hasAutoDeductedBreak ? " correction-mode--4" : ""}`}
                 role="radiogroup"
-                aria-label="操作の種類"
+                aria-label={messages.corrections.modeGroupAriaLabel}
               >
                 <button
                   type="button"

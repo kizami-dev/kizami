@@ -49,14 +49,21 @@ import {
 import type { CategorizedMinutes, EngineOutput, FlexBalance } from "@kizami/engine";
 import type { AppEnv } from "../auth/middleware.js";
 import { requirePermission } from "../authz.js";
+import { buildAllowanceTimeline, resolveAllowanceColumnsForPeriod, type AllowanceColumn } from "../lib/allowances.js";
 import { engineOutputFromSnapshots, sumFixedBreakdown, type SnapshotTotals } from "../lib/closing-snapshot.js";
 import { resolveAccessibleUserIds } from "../lib/scope.js";
-import { formatDate, nowMinutes, parseMonthParam } from "../lib/time.js";
+import { dateFromEpochDay, daysInMonth, epochDayFromDate, formatDate, nowMinutes, parseMonthParam } from "../lib/time.js";
 import { calculateMonthlyForUser } from "../reminders.js";
 
 const EXPORT_PERMISSION = "export.attendance.run";
 
-const BASE_CSV_HEADER = [
+/**
+ * `closed` 列より前の固定列。手当の列(allowance_<name>、テナント・期間ごとに動的)は
+ * この後・`closed` の前に挿入する(docs/design/allowances.md「CSVエクスポート」)。
+ * 分割しているのは、動的な列を `closed` より前に差し込む必要があり、1本の定数配列のままでは
+ * 挿入位置を毎回スライスで探すことになり分かりにくいため。
+ */
+const BASE_CSV_HEADER_BEFORE_ALLOWANCES = [
   "user_id",
   "user_name",
   "email",
@@ -72,8 +79,8 @@ const BASE_CSV_HEADER = [
   "flex_diff_minutes",
   "fixed_within_scheduled_minutes",
   "fixed_extra_within_statutory_minutes",
-  "closed",
 ];
+const CLOSED_COLUMN = "closed";
 
 /**
  * ?compare=original のときだけ末尾に追加する列。区分別5種+flex3種+固定内訳2種それぞれに
@@ -127,6 +134,8 @@ interface MonthlyFigures {
   workSystem: "flex" | "fixed";
   fixedWithinScheduledMinutes: number | null;
   fixedExtraWithinStatutoryMinutes: number | null;
+  /** 手当定義ごとの月合計(分)。docs/design/allowances.md「CSVエクスポート」 */
+  allowanceTotals: Array<{ definitionId: string; minutes: number }>;
 }
 
 interface RowInput {
@@ -145,7 +154,16 @@ function orEmpty(value: number | null): CsvField {
   return value === null ? "" : value;
 }
 
-function buildRow({ user, period, current, closed, original }: RowInput): string {
+/** 手当の月合計を、CSV の列順(columns、definitionId 昇順で固定済み)に沿って並べる。 */
+function allowanceFieldsForColumns(allowanceTotals: MonthlyFigures["allowanceTotals"], columns: readonly AllowanceColumn[]): number[] {
+  const byDefinitionId = new Map(allowanceTotals.map((t) => [t.definitionId, t.minutes]));
+  // その月の集計に無い定義(締め済みスナップショットが古く、後から追加された定義の列に
+  // 対応する行が無い等)は 0 分として埋める — 列自体は同一 CSV 内で常に存在させるため
+  // (compare=original の fixed/flex 列と同じ「列数を状況で変えない」方針)。
+  return columns.map((col) => byDefinitionId.get(col.definitionId) ?? 0);
+}
+
+function buildRow({ user, period, current, closed, original, columns }: RowInput & { columns: readonly AllowanceColumn[] }): string {
   const fields: CsvField[] = [
     user.id,
     user.name,
@@ -162,6 +180,7 @@ function buildRow({ user, period, current, closed, original }: RowInput): string
     orEmpty(current.flexBalance?.diffMinutes ?? null),
     orEmpty(current.fixedWithinScheduledMinutes),
     orEmpty(current.fixedExtraWithinStatutoryMinutes),
+    ...allowanceFieldsForColumns(current.allowanceTotals, columns),
     closed,
   ];
 
@@ -218,6 +237,7 @@ function monthlyFiguresFromSnapshot(snapshot: SnapshotTotals): MonthlyFigures {
     workSystem: snapshot.flexBalance === null ? "fixed" : "flex",
     fixedWithinScheduledMinutes: snapshot.fixedBreakdown?.withinScheduledMinutes ?? null,
     fixedExtraWithinStatutoryMinutes: snapshot.fixedBreakdown?.extraWithinStatutoryMinutes ?? null,
+    allowanceTotals: snapshot.allowanceTotals,
   };
 }
 
@@ -235,6 +255,7 @@ function monthlyFiguresFromEngineOutput(output: EngineOutput): MonthlyFigures {
     workSystem: output.workSystem,
     fixedWithinScheduledMinutes: fixedBreakdown?.withinScheduledMinutes ?? null,
     fixedExtraWithinStatutoryMinutes: fixedBreakdown?.extraWithinStatutoryMinutes ?? null,
+    allowanceTotals: output.allowanceTotals,
   };
 }
 
@@ -242,6 +263,18 @@ function monthlyFiguresFromEngineOutput(output: EngineOutput): MonthlyFigures {
 function buildCsv(rows: string[], header: readonly string[]): string {
   const BOM = "﻿";
   return BOM + [buildCsvRow([...header]), ...rows].join("\r\n") + "\r\n";
+}
+
+/**
+ * 手当の列(allowance_<name>、テナント・期間ごとに動的)を `closed` の直前に挿入したヘッダを
+ * 組み立てる。列名の先頭に付ける固定プレフィックス `allowance_` はヘッダ上の名前空間の目印
+ * (docs/design/allowances.md「CSVエクスポート」— 名前自体はテナントが自由に付けられるため、
+ * 取り込み側は必ずこのヘッダ名で列を参照すること。列の並び順や本数は定義の追加・削除で変わりうる)。
+ */
+function buildHeader(columns: readonly AllowanceColumn[], compareOriginal: boolean): string[] {
+  const allowanceHeader = columns.map((col) => `allowance_${col.name}`);
+  const base = [...BASE_CSV_HEADER_BEFORE_ALLOWANCES, ...allowanceHeader, CLOSED_COLUMN];
+  return compareOriginal ? [...base, ...COMPARE_CSV_HEADER] : base;
 }
 
 export function createExportsRoutes(db: Database) {
@@ -256,8 +289,15 @@ export function createExportsRoutes(db: Database) {
       return c.json({ error: "invalid_month" }, 400);
     }
     const { year, month } = parsedMonth;
-    const period = formatDate(year, month, 1).slice(0, 7);
+    const monthStartDate = formatDate(year, month, 1);
+    const monthEndDate = dateFromEpochDay(epochDayFromDate(monthStartDate) + daysInMonth(year, month) - 1);
+    const period = monthStartDate.slice(0, 7);
     const compareOriginal = c.req.query("compare") === "original";
+
+    // 手当の列(テナント単位・期間に依存、ユーザーには依存しない)を一度だけ解決する
+    // (docs/design/allowances.md「CSVエクスポート」— 列名は期間開始日時点の版を使う)。
+    const allowanceTimeline = await buildAllowanceTimeline(db, { tenantId: user.tenantId, fromDate: monthStartDate, toDate: monthEndDate });
+    const allowanceColumns = resolveAllowanceColumnsForPeriod(allowanceTimeline, monthStartDate);
 
     const accessibleUserIds = await resolveAccessibleUserIds(db, {
       actor: { id: user.id, tenantId: user.tenantId, permissions: c.get("permissions") },
@@ -288,7 +328,7 @@ export function createExportsRoutes(db: Database) {
         const original = originalSnapshotsByUser
           ? monthlyFiguresFromSnapshot(engineOutputFromSnapshots(originalSnapshotsByUser.get(u.id) ?? []))
           : undefined;
-        rows.push(buildRow({ user: u, period, current, closed, original }));
+        rows.push(buildRow({ user: u, period, current, closed, original, columns: allowanceColumns }));
       }
     } else {
       for (const u of targetUsers) {
@@ -297,7 +337,7 @@ export function createExportsRoutes(db: Database) {
           const current = monthlyFiguresFromEngineOutput(output);
           // 未締めの月には amend という概念が無い(そもそも確定値が存在しない)ため、
           // compare=original が指定されていても current をそのまま original として扱う(diff=0)。
-          rows.push(buildRow({ user: u, period, current, closed, original: compareOriginal ? current : undefined }));
+          rows.push(buildRow({ user: u, period, current, closed, original: compareOriginal ? current : undefined, columns: allowanceColumns }));
         } catch {
           // テナント設定・制度割当がまだ揃っていないユーザーはスキップする
           // (apps/api/src/reminders.ts runReminderScan と同じ方針)。
@@ -305,7 +345,7 @@ export function createExportsRoutes(db: Database) {
       }
     }
 
-    const header = compareOriginal ? [...BASE_CSV_HEADER, ...COMPARE_CSV_HEADER] : BASE_CSV_HEADER;
+    const header = buildHeader(allowanceColumns, compareOriginal);
     const csv = buildCsv(rows, header);
 
     await insertAuditLog(db, {
