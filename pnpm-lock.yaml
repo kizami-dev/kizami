@@ -14,6 +14,9 @@ importers:
       playwright:
         specifier: ^1.56.1
         version: 1.62.1
+      temporal-polyfill:
+        specifier: ^1.0.4
+        version: 1.0.4
       tsx:
         specifier: ^4.23.12
         version: 4.23.12
@@ -71,6 +74,9 @@ importers:
       nodemailer:
         specifier: ^9.0.5
         version: 9.0.5
+      temporal-polyfill:
+        specifier: ^1.0.4
+        version: 1.0.4
       tsx:
         specifier: ^4.23.12
         version: 4.23.12
@@ -112,6 +118,9 @@ importers:
       react-dom:
         specifier: ^19.2.8
         version: 19.2.8(react@19.2.8)
+      temporal-polyfill:
+        specifier: ^1.0.4
+        version: 1.0.4
       waku:
         specifier: 1.0.0-beta.9
         version: 1.0.0-beta.9(@types/node@26.2.0)(esbuild@0.25.12)(react-dom@19.2.8(react@19.2.8))(react-server-dom-webpack@19.2.8(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(webpack@5.109.2(esbuild@0.25.12)(lightningcss@1.33.0)))(react@19.2.8)(terser@5.50.0)(tsx@4.23.12)(yaml@2.9.0)
@@ -3352,6 +3361,15 @@ packages:
     resolution: {integrity: sha512-uxc/zpqFg6x7C8vOE7lh6Lbda8eEL9zmVm/PLeTPBRhh1xCgdWaQ+J1CUieGpIfm2HdtsUpRv+HshiasBMcc6A==}
     engines: {node: '>=6'}
 
+  temporal-polyfill@1.0.4:
+    resolution: {integrity: sha512-MLEU0qOD2uXlz24oINNtdLZQl8RgmMxSnRtKEGZGGetTJjlRwQJjk+VsJ4EREaUoiaTb8NJOcUiKtoAiWn9EBg==}
+
+  temporal-spec@1.0.1:
+    resolution: {integrity: sha512-wxVoanmDeavXie1vu2JaQ3WIc3JZnWAOYFBsJyATaVsXsycKYUflGsyBmrRSnoCpZJpwPyr38VpgSUlQ8CbFxg==}
+
+  temporal-utils@1.0.2:
+    resolution: {integrity: sha512-1B8Dl4KzrOvsNUlpoWGno2VLQlxroLjDgc5NBjVC9ax9ymdo+ezfyvhyjEMx+IVfhINr6CIG2gcnlP95iRrybQ==}
+
   terser@5.50.0:
     resolution: {integrity: sha512-CN9BVxWhgS/hRxtUMjtC2uRWSTcSfQFHMDWma6sKKfIivCD91sM+FOPfvwoaRMqCSrUpe1nv3jDamd9eEQ4y+w==}
     engines: {node: '>=10'}
@@ -6550,6 +6568,15 @@ snapshots:
   tabbable@6.5.0: {}
 
   tapable@2.3.3: {}
+
+  temporal-polyfill@1.0.4:
+    dependencies:
+      temporal-spec: 1.0.1
+      temporal-utils: 1.0.2
+
+  temporal-spec@1.0.1: {}
+
+  temporal-utils@1.0.2: {}
 
   terser@5.50.0:
     dependencies:

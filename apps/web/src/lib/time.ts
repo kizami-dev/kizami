@@ -9,70 +9,86 @@
  * (フックではない)なので、ここでは locale の受け渡しを一切気にせず呼べる。呼び出し元
  * コンポーネントが言語切り替え時に再レンダリング(lib/messages.ts のコメント参照)されれば、
  * この関数群も次の描画で新しい言語の値を返す。
+ *
+ * 内部実装(2026-08 Temporal 導入): 暦計算そのものは `Temporal.PlainDate` /
+ * `PlainDateTime` / `Instant`(lib/temporal.ts 経由)に寄せている。公開シグネチャ(エポック分
+ * = number, 暦日 = "YYYY-MM-DD" 文字列)は変えていない。JST はここでは "+09:00" の固定オフセット
+ * time zone として Temporal に渡す(Temporal.TimeZone に "Asia/Tokyo" 等の IANA 名を使う切替は
+ * タイムゾーン設定対応時の将来対応)。
  */
 import { getMessages } from "./i18n";
+import { Temporal, type TemporalInstant, type TemporalPlainDate, type TemporalZonedDateTime } from "./temporal";
 
-const JST_OFFSET_MINUTES = 540;
+const JST_TIME_ZONE = "+09:00";
 const MINUTES_PER_DAY = 1440;
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const TIME_RE = /^(\d{2}):(\d{2})$/;
+
+function epochMinutesFromInstant(instant: TemporalInstant): number {
+  return Math.floor(instant.epochMilliseconds / 60_000);
+}
+
+function instantFromEpochMinutes(minutes: number): TemporalInstant {
+  return Temporal.Instant.fromEpochMilliseconds(minutes * 60_000);
+}
+
+/** UTC エポック分 → JST の ZonedDateTime。 */
+function jstZonedDateTimeFromEpochMinutes(minutes: number): TemporalZonedDateTime {
+  return instantFromEpochMinutes(minutes).toZonedDateTimeISO(JST_TIME_ZONE);
+}
+
+/**
+ * "YYYY-MM-DD" を厳密にパースする(旧実装の `/^(\d{4})-(\d{2})-(\d{2})$/` と同じ形式のみ許容)。
+ * `Temporal.PlainDate.from` はこの正規表現より緩い ISO 表記(タイムゾーン注記付き等)も
+ * 受け付けてしまうため、まず旧実装と同じ形式チェックをかけてから渡す。
+ */
+function parsePlainDateStrict(dateStr: string): TemporalPlainDate | null {
+  if (!DATE_RE.test(dateStr)) return null;
+  return Temporal.PlainDate.from(dateStr);
+}
 
 /** UTC エポック分(整数)。 */
 export function nowMinutes(epochMs: number = Date.now()): number {
-  return Math.floor(epochMs / 60_000);
+  return epochMinutesFromInstant(Temporal.Instant.fromEpochMilliseconds(epochMs));
 }
 
 /** JST の「今日」の [dayStart, dayEnd] を UTC エポック分(inclusive)で返す。 */
 export function jstTodayWindow(epochMs: number = Date.now()): { from: number; to: number } {
-  const nowMin = nowMinutes(epochMs);
-  const localMin = nowMin + JST_OFFSET_MINUTES;
-  const dayIndex = Math.floor(localMin / MINUTES_PER_DAY);
-  const from = dayIndex * MINUTES_PER_DAY - JST_OFFSET_MINUTES;
-  const to = (dayIndex + 1) * MINUTES_PER_DAY - JST_OFFSET_MINUTES - 1;
-  return { from, to };
+  const zdt = Temporal.Instant.fromEpochMilliseconds(epochMs).toZonedDateTimeISO(JST_TIME_ZONE);
+  const dayStart = zdt.toPlainDate().toZonedDateTime(JST_TIME_ZONE);
+  const from = epochMinutesFromInstant(dayStart.toInstant());
+  return { from, to: from + MINUTES_PER_DAY - 1 };
 }
 
 /** UTC エポック分 → JST "HH:mm"。 */
 export function formatTimeJst(occurredAtMinutes: number): string {
-  const localMin = occurredAtMinutes + JST_OFFSET_MINUTES;
-  const minuteOfDay = ((localMin % MINUTES_PER_DAY) + MINUTES_PER_DAY) % MINUTES_PER_DAY;
-  const hour = Math.floor(minuteOfDay / 60);
-  const minute = minuteOfDay % 60;
-  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+  const zdt = jstZonedDateTimeFromEpochMinutes(occurredAtMinutes);
+  return `${String(zdt.hour).padStart(2, "0")}:${String(zdt.minute).padStart(2, "0")}`;
 }
 
 /** "YYYY-MM-DD" の JST 日窓を UTC エポック分(inclusive)で返す(jstTodayWindow の任意日付版)。 */
 export function dateWindowJst(dateStr: string): { from: number; to: number } {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr);
-  if (!match) {
+  const plainDate = parsePlainDateStrict(dateStr);
+  if (!plainDate) {
     throw new Error(`dateWindowJst: invalid date "${dateStr}"`);
   }
-  const [, y, m, d] = match;
-  const utcMidnightMinutes = Date.UTC(Number(y), Number(m) - 1, Number(d)) / 60_000;
-  const from = utcMidnightMinutes - JST_OFFSET_MINUTES;
-  const to = from + MINUTES_PER_DAY - 1;
-  return { from, to };
+  const from = epochMinutesFromInstant(plainDate.toZonedDateTime(JST_TIME_ZONE).toInstant());
+  return { from, to: from + MINUTES_PER_DAY - 1 };
 }
 
 /** "YYYY-MM-DD" + "HH:mm"(input type="time" の値)→ UTC エポック分。不正な形式は null。 */
 export function toEpochMinutesJst(dateStr: string, hhmm: string): number | null {
-  const dateMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr);
-  const timeMatch = /^(\d{2}):(\d{2})$/.exec(hhmm);
-  if (!dateMatch || !timeMatch) return null;
-  const [, y, m, d] = dateMatch;
+  const plainDate = parsePlainDateStrict(dateStr);
+  const timeMatch = TIME_RE.exec(hhmm);
+  if (!plainDate || !timeMatch) return null;
   const [, hh, mm] = timeMatch;
-  const utcMidnightMinutes = Date.UTC(Number(y), Number(m) - 1, Number(d)) / 60_000;
-  const localMinuteOfDay = Number(hh) * 60 + Number(mm);
-  return utcMidnightMinutes - JST_OFFSET_MINUTES + localMinuteOfDay;
+  const plainDateTime = plainDate.toPlainDateTime({ hour: Number(hh), minute: Number(mm) });
+  return epochMinutesFromInstant(plainDateTime.toZonedDateTime(JST_TIME_ZONE).toInstant());
 }
 
 /** UTC エポック分 → JST "YYYY-MM-DD"。 */
 export function dateStrFromEpochMinutesJst(minutes: number): string {
-  const localMin = minutes + JST_OFFSET_MINUTES;
-  const dayIndex = Math.floor(localMin / MINUTES_PER_DAY);
-  const date = new Date(dayIndex * 86_400_000);
-  const y = date.getUTCFullYear();
-  const m = date.getUTCMonth() + 1;
-  const d = date.getUTCDate();
-  return `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+  return jstZonedDateTimeFromEpochMinutes(minutes).toPlainDate().toString();
 }
 
 /** UTC エポック分 → JST "M/D(曜) HH:mm"(申請一覧の対象日時表示用)。 */
@@ -80,26 +96,17 @@ export function formatDateTimeJst(minutes: number): string {
   return `${formatDateLabel(dateStrFromEpochMinutesJst(minutes))} ${formatTimeJst(minutes)}`;
 }
 
-/** "YYYY-MM-DD" → 暦日インデックス(UTC 0時基準の日数)。日付同士の前後比較・差分計算用。 */
-function epochDayFromDateStr(dateStr: string): number {
-  const parts = dateStr.split("-").map(Number);
-  const year = parts[0] ?? 1970;
-  const month = parts[1] ?? 1;
-  const day = parts[2] ?? 1;
-  return Math.floor(Date.UTC(year, month - 1, day) / 86_400_000);
-}
-
 /** JST の暦日 "YYYY-MM-DD" 同士の日数差(b - a)。月次一覧の「翌」判定に使う。 */
 export function diffCalendarDaysJst(aDateStr: string, bDateStr: string): number {
-  return epochDayFromDateStr(bDateStr) - epochDayFromDateStr(aDateStr);
+  const a = Temporal.PlainDate.from(aDateStr);
+  const b = Temporal.PlainDate.from(bDateStr);
+  return a.until(b, { largestUnit: "day" }).days;
 }
 
 /** "YYYY-MM-DD" → "M/D"(曜日なし)。日をまたいだ退勤時刻の表示など、短く日付だけ示したい場面用。 */
 export function formatMonthDayShort(dateStr: string): string {
-  const parts = dateStr.split("-").map(Number);
-  const month = parts[1] ?? 1;
-  const day = parts[2] ?? 1;
-  return `${month}/${day}`;
+  const date = Temporal.PlainDate.from(dateStr);
+  return `${date.month}/${date.day}`;
 }
 
 /** 分数 → "H:MM" (tabular-nums 表示用)。 */
@@ -143,11 +150,8 @@ export interface YearMonth {
 
 /** 現在時刻から JST の当月を返す。 */
 export function currentYearMonthJst(epochMs: number = Date.now()): YearMonth {
-  const nowMin = nowMinutes(epochMs);
-  const localMin = nowMin + JST_OFFSET_MINUTES;
-  const dayIndex = Math.floor(localMin / MINUTES_PER_DAY);
-  const date = new Date(dayIndex * 86_400_000);
-  return { year: date.getUTCFullYear(), month: date.getUTCMonth() + 1 };
+  const zdt = Temporal.Instant.fromEpochMilliseconds(epochMs).toZonedDateTimeISO(JST_TIME_ZONE);
+  return { year: zdt.year, month: zdt.month };
 }
 
 export function formatMonthParam({ year, month }: YearMonth): string {
@@ -166,8 +170,8 @@ export function parseMonthParam(value: string | null | undefined): YearMonth | n
 }
 
 export function shiftMonth({ year, month }: YearMonth, delta: number): YearMonth {
-  const total = year * 12 + (month - 1) + delta;
-  return { year: Math.floor(total / 12), month: (total % 12) + 1 };
+  const shifted = Temporal.PlainYearMonth.from({ year, month }).add({ months: delta });
+  return { year: shifted.year, month: shifted.month };
 }
 
 export function formatMonthLabel({ year, month }: YearMonth): string {
@@ -176,15 +180,13 @@ export function formatMonthLabel({ year, month }: YearMonth): string {
 
 /** "YYYY-MM-DD" → "M/D(曜)"(ロケールごとの曜日表記・並びは lib/i18n の各辞書 time.* が持つ)。 */
 export function formatDateLabel(dateStr: string): string {
-  const parts = dateStr.split("-").map(Number);
-  const year = parts[0] ?? 1970;
-  const month = parts[1] ?? 1;
-  const day = parts[2] ?? 1;
+  const date = Temporal.PlainDate.from(dateStr);
   const time = getMessages().time;
-  // getUTCDay() は必ず 0〜6 を返すため weekdayShort の範囲外にはならないが、
-  // noUncheckedIndexedAccess 対策として空文字へフォールバックする(実際には到達しない)。
-  const weekday = time.weekdayShort[new Date(Date.UTC(year, month - 1, day)).getUTCDay()] ?? "";
-  return time.dateLabel(month, day, weekday);
+  // Temporal.PlainDate#dayOfWeek は ISO 準拠で 1(月)〜7(日)を返す。旧実装の
+  // Date#getUTCDay()(0=日〜6=土、weekdayShort の添字と同じ並び)に合わせるため %7 で変換する
+  // (7%7=0 で日曜が 0 になる)。noUncheckedIndexedAccess 対策の `?? ""` は実際には到達しない。
+  const weekday = time.weekdayShort[date.dayOfWeek % 7] ?? "";
+  return time.dateLabel(date.month, date.day, weekday);
 }
 
 /**

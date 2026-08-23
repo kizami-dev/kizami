@@ -4,42 +4,47 @@
  * packages/engine の同種のロジック(packages/engine/src/date.ts)は
  * パッケージの公開 API(exports の "." のみ)から参照できないため、
  * 月境界の暦計算に限って本ファイルに最小限を複製する。
- * 純カレンダー演算のみで Date.UTC を使う分には Node / workerd 双方で同一の結果になる。
+ * 純カレンダー演算のみで Temporal.PlainDate を使う分には Node / workerd 双方で同一の結果になる
+ * (2026-08 Temporal 導入以前は Date.UTC を使っていたが、性質は同じ)。
+ *
+ * 内部実装は `Temporal.PlainDate` / `Instant`(lib/temporal.ts 経由)に寄せている。
+ * 公開シグネチャ(エポック分 = number, 暦日 = "YYYY-MM-DD" 文字列)は変えていない。
  */
+import { Temporal } from "./temporal.js";
 
 const MINUTES_PER_DAY = 1440;
+const EPOCH_PLAIN_DATE = Temporal.PlainDate.from("1970-01-01");
 
-/** 現在時刻を UTC エポック分(整数)で返す。 */
+/**
+ * 現在時刻を UTC エポック分(整数)で返す。
+ *
+ * 判断点: `Temporal.Now.instant()` ではなく `Date.now()` を時刻源にしている。テスト側は
+ * `vi.useFakeTimers()` + `vi.setSystemTime()` で `Date` だけを差し替えており
+ * `Temporal.Now` はモックされない(実際に `Temporal.Now.instant()` に変えたところ、
+ * 締め・有効期限まわりの「今日」比較テストが軒並み壊れた)。`Date.now()` から得た値を
+ * `Temporal.Instant` に変換する分には計算結果は変わらないため、時刻源はそのまま残す。
+ */
 export function nowMinutes(): number {
-  return Math.floor(Date.now() / 60_000);
-}
-
-function pad2(n: number): string {
-  return n < 10 ? `0${n}` : `${n}`;
+  return Math.floor(Temporal.Instant.fromEpochMilliseconds(Date.now()).epochMilliseconds / 60_000);
 }
 
 export function formatDate(year: number, month: number, day: number): string {
-  return `${year}-${pad2(month)}-${pad2(day)}`;
+  return Temporal.PlainDate.from({ year, month, day }).toString();
 }
 
 /** 指定 civil month の暦日数。 */
 export function daysInMonth(year: number, month: number): number {
-  return new Date(Date.UTC(year, month, 0)).getUTCDate();
+  return Temporal.PlainYearMonth.from({ year, month }).daysInMonth;
 }
 
 /** "YYYY-MM-DD" → epoch 日数(1970-01-01 = 0)。 */
 export function epochDayFromDate(date: string): number {
-  const parts = date.split("-").map(Number);
-  const year = parts[0] ?? 0;
-  const month = parts[1] ?? 1;
-  const day = parts[2] ?? 1;
-  return Math.floor(Date.UTC(year, month - 1, day) / 86_400_000);
+  return EPOCH_PLAIN_DATE.until(Temporal.PlainDate.from(date), { largestUnit: "day" }).days;
 }
 
 /** epoch 日数 → "YYYY-MM-DD"。 */
 export function dateFromEpochDay(epochDay: number): string {
-  const d = new Date(epochDay * 86_400_000);
-  return formatDate(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate());
+  return EPOCH_PLAIN_DATE.add({ days: epochDay }).toString();
 }
 
 /** ローカル日 epochDay の 00:00 に対応する UTC エポック分。 */
