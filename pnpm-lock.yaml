@@ -190,6 +190,9 @@ importers:
       '@kizami/law':
         specifier: workspace:*
         version: link:../law
+      temporal-polyfill:
+        specifier: ^1.0.4
+        version: 1.0.4
     devDependencies:
       yaml:
         specifier: ^2.9.0

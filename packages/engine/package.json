@@ -12,7 +12,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@kizami/law": "workspace:*"
+    "@kizami/law": "workspace:*",
+    "temporal-polyfill": "^1.0.4"
   },
   "devDependencies": {
     "yaml": "^2.9.0"

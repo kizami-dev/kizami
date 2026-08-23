@@ -1,14 +1,22 @@
 /**
- * 日付演算(自前実装)。
+ * 日付演算(Temporal ベース、第5波)。
  *
- * - epoch日 ⇔ (year, month, day) は Howard Hinnant の civil calendar アルゴリズム
- *   (http://howardhinnant.github.io/date_algorithms.html) の days_from_civil / civil_from_days に準拠
- * - 曜日は epoch日から算出。1970-01-01 (epoch日 0) = 木曜 = 4
+ * - civil date (year/month/day) ⇔ epoch日の変換は Temporal.PlainDate に委譲する。
+ *   Temporal は既定で ISO 8601(= proleptic Gregorian)暦を使うため、旧実装
+ *   (Howard Hinnant の civil calendar アルゴリズム, http://howardhinnant.github.io/date_algorithms.html)
+ *   と暦モデルは完全に一致する。
+ * - 曜日は epoch日から算出。1970-01-01 (epoch日 0) = 木曜 = 4 (この対応は変えていない)
  * - ローカル分 = UTCエポック分 + tzOffsetMinutes(原則5, types.ts コメント)
- *
- * Date オブジェクト・Date.now() は一切使わない。
+ * - 「[start,end) UTC エポック分の区間と暦時刻の帯との重なり分数」を求める部分
+ *   (timeBandOverlapMinutes 等)は、暦の年月日そのものではなく「エポック分」の単純な
+ *   整数演算(Math.floor・剰余)で完結しており、Temporal を挟む意味がない
+ *   (暦の閏年・月末日数のような "civil calendar 特有の癖" が一切絡まない)うえ、
+ *   セグメント×日のループで呼ばれるホットパスでもあるため、あえて Temporal 化していない。
+ * - Date オブジェクト・Date.now()・Temporal.Now は一切使わない(要件 §8/§9:
+ *   純関数・現在時刻非依存。エンジンへの入力に現在時刻はそもそも存在しない)。
  */
 
+import { Temporal } from "./lib/temporal.js";
 import type { CalcSettings, LawTimelineSpan, LegalHolidayRule, PlainDateString, SettingsSpan } from "./types.js";
 
 export interface CivilDate {
@@ -19,45 +27,62 @@ export interface CivilDate {
 
 const MINUTES_PER_DAY = 1440;
 
+/** epoch日の基準点(1970-01-01 = epoch日 0)。全ての epoch日⇔暦日変換はここからの相対日数。 */
+const EPOCH = Temporal.PlainDate.from("1970-01-01");
+
+type PlainDate = InstanceType<typeof Temporal.PlainDate>;
+
+/**
+ * epoch日 → Temporal.PlainDate のメモ化キャッシュ。
+ *
+ * resolveAttendanceDate は打刻1件ごとに(最大2パス)呼ばれ、内部で
+ * civilFromDays(≒このキャッシュ)を経由する。月次集計はユーザー×日×セグメントの
+ * ループで打刻数ぶん呼ばれうるが、同一 epoch日への変換を使い回すことで
+ * Temporal.PlainDate の生成コストを「処理した打刻数」ではなく「処理した日数」の
+ * オーダーに抑える(1テナント1ヶ月あたり高々数十件)。プロセス生存期間中に扱った
+ * 日数ぶんだけ単調に増えるが、実用上問題にならない規模のため明示的な破棄はしていない。
+ */
+const plainDateByEpochDay = new Map<number, PlainDate>();
+
+function plainDateFromEpochDay(epochDay: number): PlainDate {
+  const cached = plainDateByEpochDay.get(epochDay);
+  if (cached) return cached;
+  const pd = EPOCH.add({ days: epochDay });
+  plainDateByEpochDay.set(epochDay, pd);
+  return pd;
+}
+
 /** civil date (proleptic Gregorian) → epoch日数(1970-01-01 = 0) */
 export function daysFromCivil(year: number, month: number, day: number): number {
-  const y = year - (month <= 2 ? 1 : 0);
-  const era = Math.floor((y >= 0 ? y : y - 399) / 400);
-  const yoe = y - era * 400; // [0, 399]
-  const doy = Math.trunc((153 * (month + (month > 2 ? -3 : 9)) + 2) / 5) + day - 1; // [0, 365]
-  const doe = yoe * 365 + Math.trunc(yoe / 4) - Math.trunc(yoe / 100) + doy; // [0, 146096]
-  return era * 146097 + doe - 719468;
+  // overflow: "reject" — 存在しない日付(例: 2月30日)は例外にする。呼び出し元はすべて
+  // 「有効な暦日である」ことが確定した year/month/day のみを渡す(第5波の棚卸しで確認済み。
+  // 特に daysInMonth は day=1 固定で呼ぶため常に安全)。
+  const pd = Temporal.PlainDate.from({ year, month, day }, { overflow: "reject" });
+  return EPOCH.until(pd, { largestUnit: "day" }).days;
 }
 
 /** epoch日数 → civil date */
 export function civilFromDays(z: number): CivilDate {
-  const zz = z + 719468;
-  const era = Math.floor((zz >= 0 ? zz : zz - 146096) / 146097);
-  const doe = zz - era * 146097; // [0, 146096]
-  const yoe = Math.trunc(
-    (doe - Math.trunc(doe / 1460) + Math.trunc(doe / 36524) - Math.trunc(doe / 146096)) / 365,
-  ); // [0, 399]
-  const y = yoe + era * 400;
-  const doy = doe - (365 * yoe + Math.trunc(yoe / 4) - Math.trunc(yoe / 100)); // [0, 365]
-  const mp = Math.trunc((5 * doy + 2) / 153); // [0, 11]
-  const day = doy - Math.trunc((153 * mp + 2) / 5) + 1; // [1, 31]
-  const month = mp + (mp < 10 ? 3 : -9); // [1, 12]
-  const year = y + (month <= 2 ? 1 : 0);
-  return { year, month, day };
+  const pd = plainDateFromEpochDay(z);
+  return { year: pd.year, month: pd.month, day: pd.day };
 }
 
 /** 曜日: 0=日曜 ... 6=土曜。epoch日 0 (1970-01-01) は木曜(4)。 */
 export function weekdayFromEpochDay(epochDay: number): 0 | 1 | 2 | 3 | 4 | 5 | 6 {
-  const wd = (((epochDay + 4) % 7) + 7) % 7;
-  return wd as 0 | 1 | 2 | 3 | 4 | 5 | 6;
+  const pd = plainDateFromEpochDay(epochDay);
+  // Temporal.PlainDate#dayOfWeek は 1=月曜...7=日曜。%7 で 0=日曜...6=土曜(JS Date#getDay と
+  // 同じ並び)に変換する。この対応を変えると fixed.ts の週起算の剰余演算
+  // ((weekday - weekStartWeekday + 7) % 7) が壊れるため固定。
+  return (pd.dayOfWeek % 7) as 0 | 1 | 2 | 3 | 4 | 5 | 6;
 }
 
 export function parseDateString(date: PlainDateString): CivilDate {
-  const parts = date.split("-");
-  const year = Number(parts[0]);
-  const month = Number(parts[1]);
-  const day = Number(parts[2]);
-  return { year, month, day };
+  // Temporal.PlainDate.from の文字列パースは overflow オプションに関わらず常に厳格
+  // (存在しない日付・不正な形式は RangeError で throw する)。旧実装は Number() で
+  // 分解するだけで妥当性を検証しない寛容な実装だったが、fixtures・テストのいずれも
+  // 不正な日付文字列のロールオーバーに依存していないことを第5波の棚卸しで確認済み。
+  const pd = Temporal.PlainDate.from(date);
+  return { year: pd.year, month: pd.month, day: pd.day };
 }
 
 function pad2(n: number): string {
@@ -72,16 +97,21 @@ export function dateStringFromEpochDay(epochDay: number): PlainDateString {
   return formatDateString(civilFromDays(epochDay));
 }
 
+/** "YYYY-MM-DD" → epoch日。同一文字列に対する変換はメモ化する(理由は plainDateByEpochDay 参照)。 */
+const epochDayByDateString = new Map<PlainDateString, number>();
+
 export function epochDayFromDateString(date: PlainDateString): number {
+  const cached = epochDayByDateString.get(date);
+  if (cached !== undefined) return cached;
   const civil = parseDateString(date);
-  return daysFromCivil(civil.year, civil.month, civil.day);
+  const epochDay = daysFromCivil(civil.year, civil.month, civil.day);
+  epochDayByDateString.set(date, epochDay);
+  return epochDay;
 }
 
 /** 指定 civil month の暦日数 */
 export function daysInMonth(year: number, month: number): number {
-  const nextMonth = month === 12 ? 1 : month + 1;
-  const nextYear = month === 12 ? year + 1 : year;
-  return daysFromCivil(nextYear, nextMonth, 1) - daysFromCivil(year, month, 1);
+  return Temporal.PlainDate.from({ year, month, day: 1 }).daysInMonth;
 }
 
 /** ローカル "YYYY-MM-DD" の hh:mm を UTC エポック分に変換(tzOffsetMinutes 分だけローカルが進んでいる) */
