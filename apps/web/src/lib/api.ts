@@ -27,6 +27,33 @@ export class UnauthorizedError extends ApiError {
   }
 }
 
+/** ログイン時、同一メール+パスワードが複数テナントに一致した場合の選択肢(2026-08-23 追加)。 */
+export interface LoginTenantOption {
+  id: string;
+  name: string | null;
+}
+
+function isMultipleTenantsBody(body: unknown): body is { error: "multiple_tenants"; tenants: LoginTenantOption[] } {
+  return (
+    typeof body === "object" &&
+    body !== null &&
+    (body as { error?: unknown }).error === "multiple_tenants" &&
+    Array.isArray((body as { tenants?: unknown }).tenants)
+  );
+}
+
+/** POST /auth/login が 409 multiple_tenants を返したときに投げる(apps/api/src/routes/auth.ts と対応)。
+ * 呼び出し側(LoginForm)は err.tenants を選択肢として表示し、選ばれた tenantId で再送する。 */
+export class MultipleTenantsError extends ApiError {
+  readonly tenants: LoginTenantOption[];
+
+  constructor(body: { error: "multiple_tenants"; tenants: LoginTenantOption[] }) {
+    super(409, body);
+    this.name = "MultipleTenantsError";
+    this.tenants = body.tenants;
+  }
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response;
   try {
@@ -63,6 +90,11 @@ export interface AuthUser {
   email: string;
   displayName: string;
   tenantId?: string;
+}
+
+/** GET /me が併せて返すテナント情報(2026-08-23 追加)。表示専用の最小限(社名のみ)。 */
+export interface AuthTenant {
+  name: string | null;
 }
 
 export type PunchKind = "clock_in" | "clock_out" | "break_start" | "break_end";
@@ -345,6 +377,12 @@ export interface UpdateDepartmentInput {
   parentId?: string | null;
 }
 
+/**
+ * 招待式登録(2026-08-23 追加)の状態。apps/api/src/routes/members.ts の InviteStatus と一致。
+ * active=受諾済み、invited=招待中(有効な招待あり)、invite_expired=それ以外(未招待・取消・期限切れをまとめる)。
+ */
+export type InviteStatus = "active" | "invited" | "invite_expired";
+
 /** メンバー(apps/api/src/routes/members.ts の GET / のレスポンス要素と一致)。 */
 export interface MemberDto {
   id: string;
@@ -355,6 +393,51 @@ export interface MemberDto {
   hireDate: string | null;
   department: { id: string; name: string } | null;
   presetNames: string[];
+  inviteStatus: InviteStatus;
+}
+
+/**
+ * 招待式登録(2026-08-23 追加、docs/requirements.md §7)。
+ * POST /members・POST /members/:id/invitations のレスポンスのみ、平文トークンを含む
+ * (この後は二度と取得できない、routes/api-keys.ts の IssuedApiKeyDto と同じ作法)。
+ * 完成URL(`${location.origin}/invite/${token}`)はAPIが組み立てないため、フロント側で組み立てる
+ * (apps/api/src/routes/members.ts のコメント: APIはWebのオリジンを知らないため)。
+ */
+export interface IssuedInvitationDto {
+  id: string;
+  token: string;
+  /** UTC エポック分。7日後。 */
+  expiresAt: number;
+}
+
+/** POST /members の入力。email/name は必須、それ以外は任意。 */
+export interface CreateMemberInput {
+  email: string;
+  name: string;
+  departmentId?: string;
+  /** "YYYY-MM-DD" */
+  hireDate?: string;
+  presetIds?: string[];
+}
+
+/** POST /members のレスポンス(招待発行を兼ねる)。 */
+export interface CreateMemberResultDto {
+  member: {
+    id: string;
+    name: string;
+    email: string;
+    isActive: boolean;
+    hireDate: string | null;
+    department: { id: string } | null;
+  };
+  invitation: IssuedInvitationDto;
+}
+
+/** GET /invitations/:token(公開・未認証)のレスポンス。受諾画面の表示用。 */
+export interface InvitationPreviewDto {
+  tenantName: string | null;
+  userName: string;
+  email: string;
 }
 
 export interface PermissionGrantDto {
@@ -759,15 +842,30 @@ export interface CreateAutoBreakWaiverInput {
 }
 
 export const api = {
-  async login(email: string, password: string): Promise<{ user: AuthUser }> {
-    return request("/auth/login", { method: "POST", body: JSON.stringify({ email, password }) });
+  /**
+   * tenantId 省略時、同一メール+パスワードが複数テナントに一致すると 409 multiple_tenants
+   * (`MultipleTenantsError`)を投げる。呼び出し側はそれを選択肢として表示し、選ばれた
+   * tenantId を付けて同じ email/password で再送する(パスワードは検証済みのため再入力不要)。
+   */
+  async login(email: string, password: string, tenantId?: string): Promise<{ user: AuthUser }> {
+    try {
+      return await request("/auth/login", {
+        method: "POST",
+        body: JSON.stringify(tenantId ? { email, password, tenantId } : { email, password }),
+      });
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 409 && isMultipleTenantsBody(err.body)) {
+        throw new MultipleTenantsError(err.body);
+      }
+      throw err;
+    }
   },
 
   async logout(): Promise<void> {
     await request<void>("/auth/logout", { method: "POST" });
   },
 
-  async me(): Promise<{ user: AuthUser }> {
+  async me(): Promise<{ user: AuthUser; tenant: AuthTenant }> {
     return request("/me");
   },
 
@@ -916,6 +1014,31 @@ export const api = {
 
   async listMembers(): Promise<{ members: MemberDto[] }> {
     return request("/members");
+  },
+
+  /** POST /members(member.invite)。メンバー作成 + 招待発行を1回で行う。 */
+  async createMember(input: CreateMemberInput): Promise<CreateMemberResultDto> {
+    return request("/members", { method: "POST", body: JSON.stringify(input) });
+  },
+
+  /** POST /members/:id/invitations(member.invite)。招待の再発行(旧招待は自動的に無効化される)。 */
+  async reissueInvitation(memberId: string): Promise<{ invitation: IssuedInvitationDto }> {
+    return request(`/members/${encodeURIComponent(memberId)}/invitations`, { method: "POST" });
+  },
+
+  /** DELETE /members/:id/invitations(member.invite)。招待の取り消し。 */
+  async revokeInvitation(memberId: string): Promise<{ invitation: { id: string; revokedAt: number } }> {
+    return request(`/members/${encodeURIComponent(memberId)}/invitations`, { method: "DELETE" });
+  },
+
+  /** GET /invitations/:token(公開・未認証)。受諾画面の表示情報のみ返す。 */
+  async getInvitationPreview(token: string): Promise<InvitationPreviewDto> {
+    return request(`/invitations/${encodeURIComponent(token)}`);
+  },
+
+  /** POST /invitations/:token/accept(公開・未認証)。成功するとセッションCookieが発行され、そのままログイン状態になる。 */
+  async acceptInvitation(token: string, password: string): Promise<{ user: AuthUser }> {
+    return request(`/invitations/${encodeURIComponent(token)}/accept`, { method: "POST", body: JSON.stringify({ password }) });
   },
 
   async updateMemberDepartment(id: string, departmentId: string): Promise<{ member: { id: string; departmentId: string } }> {

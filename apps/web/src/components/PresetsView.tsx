@@ -161,7 +161,7 @@ export function PresetsView() {
 
   return (
     <div className="org-settings">
-      <AppHeader displayName={guard.user.displayName} email={guard.user.email} active="settings" />
+      <AppHeader displayName={guard.user.displayName} email={guard.user.email} tenantName={guard.tenant?.name ?? null} active="settings" />
       <main className="org-settings__main org-settings__main--wide">
         <SettingsNav active="presets" />
         <h1 className="org-settings__title">

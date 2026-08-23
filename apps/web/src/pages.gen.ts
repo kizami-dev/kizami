@@ -8,6 +8,8 @@ import type { getConfig as File_Corrections_getConfig } from './pages/correction
 // prettier-ignore
 import type { getConfig as File_Index_getConfig } from './pages/index';
 // prettier-ignore
+import type { getConfig as File_InviteToken_getConfig } from './pages/invite/[token]';
+// prettier-ignore
 import type { getConfig as File_Leave_getConfig } from './pages/leave';
 // prettier-ignore
 import type { getConfig as File_Login_getConfig } from './pages/login';
@@ -51,6 +53,7 @@ type Page =
 | { path: '/_root'; render: 'static' }
 | ({ path: '/corrections' } & GetConfigResponse<typeof File_Corrections_getConfig>)
 | ({ path: '/' } & GetConfigResponse<typeof File_Index_getConfig>)
+| ({ path: '/invite/[token]' } & GetConfigResponse<typeof File_InviteToken_getConfig>)
 | ({ path: '/leave' } & GetConfigResponse<typeof File_Leave_getConfig>)
 | ({ path: '/login' } & GetConfigResponse<typeof File_Login_getConfig>)
 | ({ path: '/monthly' } & GetConfigResponse<typeof File_Monthly_getConfig>)

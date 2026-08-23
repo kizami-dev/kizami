@@ -184,7 +184,7 @@ export function DepartmentsView() {
 
   return (
     <div className="org-settings">
-      <AppHeader displayName={guard.user.displayName} email={guard.user.email} active="settings" />
+      <AppHeader displayName={guard.user.displayName} email={guard.user.email} tenantName={guard.tenant?.name ?? null} active="settings" />
       <main className="org-settings__main">
         <SettingsNav active="departments" />
         <h1 className="org-settings__title">{messages.departments.title}</h1>

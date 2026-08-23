@@ -17,6 +17,14 @@
   flex-direction: column;
   gap: var(--space-5);
   padding: var(--space-5) var(--space-4) var(--space-7);
+  /*
+   * 2026-08-23: PC表示の余白調整の対象から意図的に外す。ここは打刻パッド・今日/今月の
+   * 要点・要対応カードを縦一列に積む単一カラムのレイアウト(auto-fill/auto-fit の
+   * カードグリッドではない)で、settings-hub__main のようにカラム数が増えて自然に埋まる
+   * 構造を持たない。そのため tokens.css の --width-content-* は使わず、幅を広げると
+   * 単に1カラムが間延びするだけになる現状の値を維持する(依頼の「無理に1カラムを
+   * 引き伸ばさない」という方針どおり)。
+   */
   max-width: 38rem;
   margin: 0 auto;
   width: 100%;
@@ -80,6 +88,11 @@
 .dashboard-punch__stamp-link {
   font-size: 0.82rem;
   color: var(--k-cyan-ink);
+  /* 2026-08-23 SP監査: タップ領域が文字の実寸(高さ約21px)しかなかったため、
+     padding + 相殺の負マージンで見た目を変えずにタップ領域だけ広げる。 */
+  display: inline-block;
+  padding: 6px 4px;
+  margin: -6px -4px;
 }
 
 /* ---- 2〜4. カードセクション共通 ---- */
@@ -105,6 +118,10 @@
   align-self: flex-start;
   font-size: 0.82rem;
   color: var(--k-cyan-ink);
+  /* 2026-08-23 SP監査: タップ領域が文字の実寸(高さ約21px)しかなかったため、
+     padding + 相殺の負マージンで見た目を変えずにタップ領域だけ広げる。 */
+  padding: 6px 4px;
+  margin: -6px -4px;
 }
 
 /* ---- 2. 今日/今月の要点 ---- */
@@ -192,6 +209,11 @@
   font-size: 0.8rem;
   color: var(--k-cyan-ink);
   white-space: nowrap;
+  /* 2026-08-23 SP監査: タップ領域が文字の実寸(高さ約20px)しかなかったため、
+     padding + 相殺の負マージンで見た目を変えずにタップ領域だけ広げる。
+     行(.dashboard-todo__row)は space-between のため右側の余白は十分にある。 */
+  padding: 6px 4px;
+  margin: -6px -4px;
 }
 
 .dashboard-todo__notif-list {
@@ -225,6 +247,10 @@
   font-size: 0.78rem;
   color: var(--k-cyan-ink);
   flex-basis: 100%;
+  /* 2026-08-23 SP監査: タップ領域が文字の実寸(高さ約20px)しかなかったため、
+     padding + 相殺の負マージンで見た目を変えずにタップ領域だけ広げる。 */
+  padding: 6px 0;
+  margin: -6px 0;
 }
 
 .dashboard-todo__more {

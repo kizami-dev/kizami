@@ -23,7 +23,9 @@
 .settings-nav__hub-link {
   color: var(--k-ink-soft);
   text-decoration: none;
-  padding: var(--space-1) 0;
+  /* 2026-08-23 SP監査: 縦 padding が var(--space-1)=4px だと高さ約28pxで、設定系画面
+     共通の「戻る」導線としてはタップしづらい。var(--space-2)=8px に広げ約36pxを確保する。 */
+  padding: var(--space-2) 0;
   font-size: 0.8rem;
   white-space: nowrap;
 }
@@ -74,7 +76,10 @@
 .settings-hub__main {
   flex: 1;
   padding: var(--space-5) var(--space-4) var(--space-7);
-  max-width: 48rem;
+  /* 2026-08-23: PC表示の余白を狭める依頼。.settings-hub__grid は auto-fill のカードグリッドの
+     ため、幅を広げるとカラム数が自然に増えて埋まる(無理に1カラムを引き伸ばす形にはならない
+     — ダッシュボードとの違いはここ)。テーブル系と同じ幅トークンを使う。 */
+  max-width: var(--width-content-wide);
   margin: 0 auto;
   width: 100%;
   display: flex;
@@ -160,7 +165,11 @@
 .org-settings__main {
   flex: 1;
   padding: var(--space-5) var(--space-4) var(--space-7);
-  max-width: 48rem;
+  /* 2026-08-23: PC表示の余白を狭める依頼。部署・メンバー・プリセット管理はいずれも
+     一覧が主役のためテーブル系の幅トークンを使う(tokens.css 参照)。以前は部署ツリー
+     (このクラスをそのまま使う DepartmentsView)だけ 48rem に据え置いていたが、他の2画面
+     (--wide 修飾子で 72rem)と地続きの管理画面群のため、ここで幅の規律を揃えた。 */
+  max-width: var(--width-content-wide);
   margin: 0 auto;
   width: 100%;
   display: flex;
@@ -168,8 +177,11 @@
   gap: var(--space-4);
 }
 
+/* .org-settings__main が var(--width-content-wide) に揃ったことで値としては重複するが、
+   「テーブルが主役の画面は明示的に --wide を付ける」という呼び出し側(MembersView/
+   PresetsView)の意図を残すため、クラス自体とルールは維持する(no-op 化した安全策)。 */
 .org-settings__main--wide {
-  max-width: 72rem;
+  max-width: var(--width-content-wide);
 }
 
 .org-settings__title {
@@ -294,11 +306,17 @@
 .org-table__link-btn {
   background: none;
   border: none;
-  padding: 0;
   font-size: 0.85rem;
   color: var(--k-cyan-ink);
   text-decoration: underline;
   text-underline-offset: 2px;
+  /*
+   * 2026-08-23 SP監査: padding:0 のためタップ領域が文字の実寸(高さ約20px)しかなく、
+   * 390px幅の実機で押しにくかった(メンバー管理の「保存」「詳細を開く」等)。
+   * padding + 相殺の負マージンで見た目は変えずタップ領域だけ広げる(約32px)。
+   */
+  padding: 6px 4px;
+  margin: -6px -4px;
 }
 
 .org-table__link-btn:hover {
@@ -312,6 +330,82 @@
 .org-table__detail-cell {
   background: color-mix(in srgb, var(--k-key) 2%, transparent);
   padding: var(--space-5) !important;
+}
+
+/* ---- 招待式登録(メンバー招待・再発行・取り消し、2026-08-23 追加) ---- */
+
+.member-invite-form__hint {
+  font-size: 0.82rem;
+  color: var(--k-ink-soft);
+}
+
+.invite-status-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 2px var(--space-2);
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.invite-status-badge--invited {
+  border: 1px solid var(--k-cyan-ink);
+  color: var(--k-cyan-ink);
+}
+
+.invite-status-badge--invite_expired {
+  border: 1px solid var(--k-magenta-ink);
+  color: var(--k-magenta-ink);
+}
+
+/* 招待リンクの提示画面(発行・再発行の直後)。api-keys-settings.css の
+   .api-keys__reveal と同じ「二度と表示されない」強調枠を踏襲する。 */
+.invite-link__target {
+  font-size: 0.9rem;
+  color: var(--k-ink-soft);
+}
+
+.invite-link__reveal {
+  border: 2px solid var(--k-magenta-ink);
+  border-radius: var(--radius-m);
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  background: color-mix(in srgb, var(--k-magenta) 4%, transparent);
+  margin-top: var(--space-3);
+}
+
+.invite-link__warning {
+  color: var(--k-magenta-ink);
+  font-weight: 700;
+  margin: 0;
+}
+
+.invite-link__row {
+  display: flex;
+  align-items: stretch;
+  gap: var(--space-2);
+}
+
+.invite-link__url {
+  flex: 1;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  padding: var(--space-2) var(--space-3);
+  border: var(--border-hair);
+  border-radius: var(--radius-s);
+  background: var(--k-paper);
+  overflow-x: auto;
+  white-space: nowrap;
+  user-select: all;
+}
+
+.invite-link__expires {
+  font-size: 0.82rem;
+  color: var(--k-ink-soft);
+  margin: 0;
 }
 
 /* ---- 部署ツリー ---- */
@@ -359,7 +453,9 @@
   border-radius: var(--radius-s);
   background: transparent;
   color: var(--k-ink-soft);
-  padding: var(--space-1) var(--space-3);
+  /* 2026-08-23 SP監査: 縦 padding が var(--space-1)=4px だと高さ約28pxでタップしづらい。
+     var(--space-2)=8px に広げ約36pxを確保する(操作列は元々 flex-wrap 済み)。 */
+  padding: var(--space-2) var(--space-3);
   font-size: 0.78rem;
 }
 

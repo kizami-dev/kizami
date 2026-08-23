@@ -16,6 +16,9 @@
   padding-bottom: max(var(--space-7), env(safe-area-inset-bottom));
   padding-left: max(var(--space-4), env(safe-area-inset-left));
   padding-right: max(var(--space-4), env(safe-area-inset-right));
+  /* 2026-08-23: PC表示の余白調整の対象から意図的に外す。中央固定の打刻ボタン1つが主役の
+     単一アクション画面のため、tokens.css の --width-content-* は対象外とし、
+     現状のコンパクトな幅を維持する(依頼の「広げすぎない」判断)。 */
   max-width: 32rem;
   margin: 0 auto;
   width: 100%;

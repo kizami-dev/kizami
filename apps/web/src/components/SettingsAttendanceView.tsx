@@ -353,7 +353,7 @@ export function SettingsAttendanceView() {
 
   return (
     <div className="attendance-settings">
-      <AppHeader displayName={guard.user.displayName} email={guard.user.email} active="settings" />
+      <AppHeader displayName={guard.user.displayName} email={guard.user.email} tenantName={guard.tenant?.name ?? null} active="settings" />
       <main className="attendance-settings__main">
         <SettingsNav active="attendance" />
         <h1 className="attendance-settings__title">{messages.settingsAttendance.title}</h1>

@@ -161,7 +161,7 @@ export function NotificationsListView() {
 
   return (
     <div className="notif-list-page">
-      <AppHeader displayName={guard.user.displayName} email={guard.user.email} active="notifications" />
+      <AppHeader displayName={guard.user.displayName} email={guard.user.email} tenantName={guard.tenant?.name ?? null} active="notifications" />
       <main className="notif-list-page__main">
         <h1 className="notif-list-page__title">{messages.notificationsPage.title}</h1>
         <p className="notif-list-page__tagline">{messages.notificationsPage.tagline}</p>

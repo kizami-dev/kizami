@@ -19,6 +19,7 @@ describe("migrate", () => {
         "correction_requests",
         "departments",
         "help_overrides",
+        "invitations",
         "leave_grants",
         "leave_requests",
         "memberships",

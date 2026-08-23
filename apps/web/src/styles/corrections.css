@@ -290,7 +290,9 @@
 .corrections__main {
   flex: 1;
   padding: var(--space-5) var(--space-4) var(--space-7);
-  max-width: 48rem;
+  /* 2026-08-23: PC表示の余白を狭める依頼。申請一覧が主役のページのためテーブル系の
+     幅トークンを使う(tokens.css 参照)。 */
+  max-width: var(--width-content-wide);
   margin: 0 auto;
   width: 100%;
   display: flex;
@@ -471,7 +473,9 @@
   border-radius: var(--radius-s);
   background: transparent;
   color: var(--k-ink-soft);
-  padding: var(--space-1) var(--space-3);
+  /* 2026-08-23 SP監査: 縦 padding が var(--space-1)=4px だと高さ約28pxで、月次表の各行に
+     並ぶ「修正」ボタンとしてはタップしづらい。var(--space-2)=8px に広げ約36pxを確保する。 */
+  padding: var(--space-2) var(--space-3);
   font-size: 0.78rem;
 }
 

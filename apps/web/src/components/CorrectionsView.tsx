@@ -295,7 +295,7 @@ export function CorrectionsView() {
 
   return (
     <div className="corrections">
-      <AppHeader displayName={guard.user.displayName} email={guard.user.email} active="corrections" />
+      <AppHeader displayName={guard.user.displayName} email={guard.user.email} tenantName={guard.tenant?.name ?? null} active="corrections" />
       <main className="corrections__main">
         <h1 className="corrections__title">{messages.nav.corrections}</h1>
         <p className="corrections__tagline">{messages.corrections.tagline}</p>

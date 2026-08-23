@@ -87,10 +87,37 @@ describe("checkBreakSufficiency — 境界(6時間・8時間ちょうどは義�
   });
 });
 
-describe("checkBreakSufficiency — 判定単位は勤務区間(勤怠日ではない)", () => {
+describe("checkBreakSufficiency — 単独区間(チェーンの要素が1つだけの日)", () => {
+  it("9:00〜15:20(6時間20分)単独・休憩なし → 警告あり", () => {
+    const punches = [localPunch("clock_in", "2026-04-10", 9, 0), localPunch("clock_out", "2026-04-10", 15, 20)];
+    const warnings = warn(punches);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toMatchObject({
+      kind: "insufficient_break",
+      date: "2026-04-10",
+      break: { requiredMinutes: 45, actualMinutes: 0 },
+    });
+  });
+
+  it("退勤後(チェーン末尾の後)の空白は休憩として数えない → 同じ勤務でも警告が出る", () => {
+    // 上のケースと同じ構成。退勤の 15:20 から日付が変わるまでまだ長い時間が残っているが、
+    // その後にもう一つ区間が続くわけではないので、この「退勤後」の時間は休憩に算入されない
+    // (休憩は労働時間の"途中"に与えるものであり、末尾の後は帰宅であって休憩ではない)。
+    // もし退勤後の残り時間まで休憩として数えてしまうと、退勤するだけでどんな勤務も
+    // 休憩要件を満たしたことになってしまい、34条の意味が失われる。
+    const punches = [localPunch("clock_in", "2026-04-10", 9, 0), localPunch("clock_out", "2026-04-10", 15, 20)];
+    const warnings = warn(punches);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]?.break).toEqual({ requiredMinutes: 45, actualMinutes: 0 });
+  });
+});
+
+describe("checkBreakSufficiency — 夜勤(日界をまたぐ1区間)はチェーン化後も保護される", () => {
   it("日界をまたぐ夜勤(22:00出勤〜翌7:00退勤、休憩なし)は区間全体で判定され警告が出る", () => {
     // 実労働 = 9時間。勤怠日で分割すると 04-10 は2時間・04-11 は7時間になり、
-    // どちらの日だけを見ても8時間超の要件(60分)に届かない=見落とす。区間単位ならちゃんと引っかかる。
+    // どちらの日だけを見ても8時間超の要件(60分)に届かない=見落とす。
+    // 夜勤の1区間はそもそも複数区間に分割されず、開始日のチェーンに丸ごと属するため、
+    // チェーン化後もこの保護は変わらない。
     const punches = [localPunch("clock_in", "2026-04-10", 22, 0), localPunch("clock_out", "2026-04-11", 7, 0)];
     const warnings = warn(punches);
     expect(warnings).toHaveLength(1);
@@ -101,25 +128,72 @@ describe("checkBreakSufficiency — 判定単位は勤務区間(勤怠日では�
       break: { requiredMinutes: 60, actualMinutes: 0 },
     });
   });
+
+  it("夜勤の開始日と同じ日の午後にも別区間があれば同一チェーンとして合算される", () => {
+    // 午後区間(14:00-16:00、実労働2時間)と夜勤(22:00出勤〜翌7:00退勤、実労働9時間)は
+    // どちらも開始日が 2026-04-10 なので同一チェーンに属する。
+    // 仮にチェーン化されず区間ごとに独立判定していれば、夜勤単独(9時間・休憩0分)は
+    // 60分必要・0分実際で警告になるはずだが、間の6時間(16:00〜22:00)の空白が休憩として
+    // 合算されるため、チェーンでは要件を満たし警告は出ない。
+    const punches = [
+      localPunch("clock_in", "2026-04-10", 14, 0),
+      localPunch("clock_out", "2026-04-10", 16, 0),
+      localPunch("clock_in", "2026-04-10", 22, 0),
+      localPunch("clock_out", "2026-04-11", 7, 0),
+    ];
+    expect(warn(punches)).toEqual([]);
+  });
 });
 
-describe("checkBreakSufficiency — 中抜け(1日に複数区間)", () => {
-  it("区間ごとに独立して判定される(片方だけ不足)", () => {
+describe("checkBreakSufficiency — 同一勤怠日の中抜け(チェーン化, 2026-08-23 改定)", () => {
+  it("6.5時間勤務 → 1.5時間の中抜け → 1時間勤務 → 警告なし(中抜けの空白が休憩相当)", () => {
+    // 実労働 = 6:30 + 1:00 = 7:30。旧実装(区間単位)では最初の区間(6:30・休憩0分)が
+    // 単独で「6時間超・45分不足」として警告になっていたが、これは過剰検知だった。
+    // 中抜けの1.5時間(90分)は労働から完全に解放された時間であり、実態としては休憩そのもの。
+    // チェーン化後は 90分 >= 必要45分(実労働7:30は8時間以下なので45分要件)となり警告なし。
     const punches = [
-      // 午前区間: 実労働3時間、休憩なし → 6時間以内なので義務なし
-      localPunch("clock_in", "2026-04-10", 6, 0),
-      localPunch("clock_out", "2026-04-10", 9, 0),
-      // 午後区間: 実労働7時間、休憩なし → 6時間超で45分必要、丸ごと不足
-      localPunch("clock_in", "2026-04-10", 10, 0),
-      localPunch("clock_out", "2026-04-10", 17, 0),
+      localPunch("clock_in", "2026-04-10", 9, 0),
+      localPunch("clock_out", "2026-04-10", 15, 30), // 6:30 勤務
+      localPunch("clock_in", "2026-04-10", 17, 0), // 1.5h の中抜け
+      localPunch("clock_out", "2026-04-10", 18, 0), // 1:00 勤務
+    ];
+    expect(warn(punches)).toEqual([]);
+  });
+
+  it("6.5時間勤務 → 中抜け10分 → 1時間勤務(打刻休憩なし) → 警告あり(必要45・実際10)", () => {
+    // 実労働は同じく7:30(45分要件)だが、中抜けが10分しかなく休憩相当が足りない。
+    // 空白を合算しても要件を満たせない場合はきちんと警告になることを確認する
+    // (「空白があれば常に警告が消える」わけではない)。
+    const punches = [
+      localPunch("clock_in", "2026-04-10", 9, 0),
+      localPunch("clock_out", "2026-04-10", 15, 30), // 6:30 勤務
+      localPunch("clock_in", "2026-04-10", 15, 40), // 10分の中抜け
+      localPunch("clock_out", "2026-04-10", 16, 40), // 1:00 勤務
     ];
     const warnings = warn(punches);
     expect(warnings).toHaveLength(1);
     expect(warnings[0]).toMatchObject({
       kind: "insufficient_break",
-      punchAt: punches[2]?.occurredAt,
-      break: { requiredMinutes: 45, actualMinutes: 0 },
+      date: "2026-04-10",
+      break: { requiredMinutes: 45, actualMinutes: 10 },
     });
+  });
+
+  it("旧実装では区間ごとに独立警告だったケースも、チェーン化により合算され警告が消える", () => {
+    // 午前区間(3時間・休憩0分、単独では6時間以内なので無警告)と
+    // 午後区間(7時間・休憩0分、単独では6時間超45分不足で警告)を、
+    // 間の空白(9:00〜10:00 = 60分)を挟んで同日に行う。
+    // 実労働合計 = 3:00 + 7:00 = 10:00(8時間超のため必要60分)。
+    // 空白60分がそのまま休憩として合算されるため 60 >= 60 で警告は出ない。
+    // (この期待値は仕様変更前は「午後区間単独で45分不足」の警告ありだったが、
+    // 中抜けの空白を休憩として算入する新設計では正しく警告なしに変わる)
+    const punches = [
+      localPunch("clock_in", "2026-04-10", 6, 0),
+      localPunch("clock_out", "2026-04-10", 9, 0),
+      localPunch("clock_in", "2026-04-10", 10, 0),
+      localPunch("clock_out", "2026-04-10", 17, 0),
+    ];
+    expect(warn(punches)).toEqual([]);
   });
 });
 

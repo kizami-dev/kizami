@@ -174,7 +174,7 @@ export function PunchHome() {
 
   return (
     <div className="punch-home">
-      <AppHeader displayName={guard.user.displayName} email={guard.user.email} active="punch" />
+      <AppHeader displayName={guard.user.displayName} email={guard.user.email} tenantName={guard.tenant?.name ?? null} active="punch" />
       <main className="punch-home__main">
         <div className="punch-clock" aria-hidden="false">
           <span className="punch-clock__main tabular-nums" aria-label={`現在時刻 ${hm}分${ss}秒`}>

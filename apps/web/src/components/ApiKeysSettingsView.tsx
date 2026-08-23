@@ -170,8 +170,8 @@ export function ApiKeysSettingsView() {
 
   return (
     <div className="settings-notif">
-      <AppHeader displayName={guard.user.displayName} email={guard.user.email} active="settings" />
-      <main className="settings-notif__main">
+      <AppHeader displayName={guard.user.displayName} email={guard.user.email} tenantName={guard.tenant?.name ?? null} active="settings" />
+      <main className="settings-notif__main api-keys-settings__main">
         <SettingsNav active="apiKeys" />
         <h1 className="settings-notif__title">{messages.settingsApiKeys.title}</h1>
         <p className="settings-notif__tagline">{messages.settingsApiKeys.tagline}</p>

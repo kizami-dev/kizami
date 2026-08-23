@@ -31,6 +31,12 @@ export const messages = {
     stampScreenLink: "スタンプ演出のある打刻画面を開く →",
   },
 
+  /** 全画面共通ヘッダーのテナント名表示(2026-08-23 追加)。ロゴだけでは
+   * 「どの会社のインスタンスか」が分からないという要望への対応。 */
+  header: {
+    tenantAriaLabel: "所属組織",
+  },
+
   /** ホーム(ダッシュボード、2026-08-22 新設)。docs/design/ui-direction.md「今後のUI作業 > 4」。 */
   dashboard: {
     title: "ホーム",
@@ -134,6 +140,44 @@ export const messages = {
     submitting: "ログイン中…",
     invalidCredentials: "メールアドレスまたはパスワードが違います",
     genericError: "ログインに失敗しました。時間をおいて再度お試しください",
+
+    /** 同一メール+パスワードが複数テナントに一致した場合のテナント選択(2026-08-23 追加)。
+     * Slack のワークスペース選択に近い体験を意図し、パスワードの再入力は求めない
+     * (直前の検証結果をそのまま使い、選んだテナント宛に再送するだけ)。 */
+    tenantSelectTitle: "ログインする会社を選んでください",
+    tenantSelectDescription: "同じメールアドレスで複数の会社にアカウントがあります。",
+    tenantUnnamed: "(名称未設定)",
+    backToEmail: "別のアカウントでログイン",
+  },
+
+  /**
+   * 招待受諾画面(/invite/[token]、認証ガード無し・公開、2026-08-23 追加)。
+   * docs/requirements.md §7「登録は招待式のみ」。ログイン画面と同じ「紙白+中央カード」の構成。
+   * 従業員が最初に触るKIZAMIの画面のため、文言は特に丁寧に(怖がらせない・迷わせない)。
+   */
+  inviteAccept: {
+    invitedBySuffix: " があなたを招待しています",
+    invitedByUnnamed: "会社",
+    nameLabel: "氏名",
+    emailLabel: "メールアドレス",
+    passwordLabel: "パスワード(12文字以上)",
+    passwordConfirmLabel: "パスワード(確認)",
+    passwordMismatch: "パスワードが一致しません",
+    passwordTooShort: "パスワードは12文字以上で入力してください",
+    submit: "登録してはじめる",
+    submitting: "登録しています…",
+    loading: "招待の内容を確認しています…",
+
+    invalidTitle: "この招待リンクは無効です",
+    invalidMessage: "この招待リンクは無効です。管理者に確認してください。",
+    expiredTitle: "この招待は期限切れです",
+    expiredMessage: "この招待は期限切れです。管理者に再発行を依頼してください。",
+    acceptedRedirecting: "登録が完了しました。移動しています…",
+
+    errors: {
+      invalid_password: "パスワードは12文字以上で入力してください",
+      default: "処理に失敗しました。もう一度お試しください",
+    },
   },
 
   attendanceState: {
@@ -208,6 +252,12 @@ export const messages = {
     columnDate: "日付",
     /** 打刻時刻(出勤→退勤)の列(2026-08-23 追加)。 */
     columnStretches: "勤務",
+    /**
+     * 広いビューポートでは「勤務」1列を出勤・退勤の2列に分ける(2026-08-23 追加)。
+     * 意味は columnStretches の1セル表記(formatStretchRange 等)と同じで、表示形の違いのみ。
+     */
+    columnClockIn: "出勤",
+    columnClockOut: "退勤",
     columnWorked: "実労働",
     /** insufficient_break の警告文言に添える不足量(必要・実際)。 */
     breakShortfallSuffix: (required: string, actual: string) => `(必要 ${required}・実際 ${actual})`,
@@ -1001,12 +1051,54 @@ export const messages = {
     columnDepartment: "所属部署",
     columnPresets: "割当プリセット",
     columnHireDate: "入社日",
+    columnInviteStatus: "招待状況",
     columnActions: "操作",
     noDepartment: "未所属",
     noPresets: "割当なし",
 
     detailToggleOpen: "詳細を開く",
     detailToggleClose: "詳細を閉じる",
+
+    /**
+     * 招待式登録(2026-08-23 追加、docs/requirements.md §7「登録は招待式のみ」)。
+     * メンバー作成は同時に招待発行を兼ねる(POST /members)。
+     */
+    inviteButton: "メンバーを招待",
+    inviteFormTitle: "メンバーを招待",
+    inviteFormHint: "氏名とメールアドレスを入力すると、招待リンクが発行されます。所属部署・入社日・権限プリセットは後からでも設定できます。",
+    inviteEmailLabel: "メールアドレス",
+    inviteEmailPlaceholder: "例: yamada@example.com",
+    inviteNameLabel: "氏名",
+    inviteNamePlaceholder: "例: 山田 太郎",
+    inviteDepartmentLabel: "所属部署(任意)",
+    inviteHireDateLabel: "入社日(任意)",
+    invitePresetsLabel: "権限プリセット(任意)",
+    inviteCancel: "キャンセル",
+    inviteSubmit: "招待リンクを発行",
+    inviteSubmitting: "発行中…",
+
+    inviteLinkTitle: "招待リンクを発行しました",
+    inviteLinkTargetPrefix: "招待先: ",
+    inviteLinkWarning: "このリンクは今だけ表示されます。閉じると再表示できません(再発行は可能です)。",
+    inviteLinkLabel: "招待リンク",
+    inviteLinkCopy: "リンクをコピー",
+    inviteLinkCopied: "コピーしました",
+    inviteLinkCopyFailed: "コピーに失敗しました。手動で選択してコピーしてください",
+    inviteLinkExpiresLabel: "有効期限",
+    inviteLinkDone: "閉じる",
+
+    inviteStatusBadge: {
+      invited: "招待中",
+      invite_expired: "期限切れ",
+    } as Record<string, string>,
+
+    reissueButton: "再発行",
+    reissueConfirmTitle: "招待を再発行しますか",
+    reissueConfirmMessage: "新しい招待リンクを発行します。以前のリンクは使えなくなります。",
+
+    revokeInviteButton: "取り消し",
+    revokeInviteConfirmTitle: "招待を取り消しますか",
+    revokeInviteConfirmMessage: "この招待リンクは使えなくなります。必要であれば後から再発行できます。",
 
     departmentChangeLabel: "所属部署を変更",
     departmentChangeSaved: "所属部署を変更しました",
@@ -1037,13 +1129,20 @@ export const messages = {
 
     errors: {
       invalid_body: "入力内容を確認してください",
+      invalid_email: "メールアドレスの形式を確認してください",
+      invalid_name: "氏名を1〜200文字で入力してください",
       invalid_department_id: "指定した部署が見つかりません",
       invalid_hire_date: "入社日はYYYY-MM-DD形式で入力してください",
+      email_already_exists: "このメールアドレスは既に登録されています",
       not_found: "対象のメンバーが見つかりません",
       invalid_preset_id: "指定した権限プリセットが見つかりません",
       self_escalation: "自分自身に新しい権限を付けることはできません",
       self_demotion: "自分から権限管理の権限を外すことはできません",
       last_admin: "権限管理ができる最後のメンバーからこの権限を外すことはできません",
+      /** 招待の再発行・取り消し(2026-08-23 追加)。 */
+      already_active: "このメンバーは既に本登録済みです(招待の再発行は不要です)",
+      already_accepted: "この招待は既に受諾されています",
+      already_revoked: "この招待は既に取り消し済みです",
       default: "処理に失敗しました。もう一度お試しください",
     },
   },

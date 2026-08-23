@@ -137,7 +137,7 @@ export function SettingsHubView() {
 
   return (
     <div className="settings-hub">
-      <AppHeader displayName={guard.user.displayName} email={guard.user.email} active="settings" />
+      <AppHeader displayName={guard.user.displayName} email={guard.user.email} tenantName={guard.tenant?.name ?? null} active="settings" />
       <main className="settings-hub__main">
         <h1 className="settings-hub__title">{messages.settingsHub.title}</h1>
         <p className="settings-hub__tagline">{messages.settingsHub.tagline}</p>

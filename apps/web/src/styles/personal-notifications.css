@@ -15,7 +15,9 @@
 .settings-personal-notif__main {
   flex: 1;
   padding: var(--space-5) var(--space-4) var(--space-7);
-  max-width: 40rem;
+  /* 2026-08-23: フォームが主役のページのため、テーブル系ほどは広げない(小幅増、
+     40rem→44rem)。幅トークンの規律は tokens.css 参照。 */
+  max-width: var(--width-content-narrow);
   margin: 0 auto;
   width: 100%;
   display: flex;
@@ -47,6 +49,11 @@
 
 .settings-personal-notif__banner a {
   color: var(--k-key);
+  /* 2026-08-23 SP監査: 文中リンクのタップ領域が文字の実寸(高さ約19px)しかなかった。
+     インライン要素への padding-block は行送りに影響しない(通常フロー)ため、
+     見た目・行間を変えずにタップ領域だけ広げられる。 */
+  padding: 6px 2px;
+  margin: -6px -2px;
 }
 
 .settings-personal-notif__form {

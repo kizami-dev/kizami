@@ -15,6 +15,7 @@ import { createCorrectionsRoutes } from "./routes/corrections.js";
 import { createDepartmentsRoutes } from "./routes/departments.js";
 import { createExportsRoutes } from "./routes/exports.js";
 import { createHelpRoutes } from "./routes/help.js";
+import { createInvitationsRoutes } from "./routes/invitations.js";
 import { createMeRoutes } from "./routes/me.js";
 import { createMembersRoutes } from "./routes/members.js";
 import { createNotificationsRoutes } from "./routes/notifications.js";
@@ -70,6 +71,11 @@ export function createApp(deps: CreateAppDeps) {
 
   app.route("/auth", createAuthRoutes(db, { secureCookies }));
 
+  // GET /invitations/:token, POST /invitations/:token/accept(招待受諾)も認証ミドルウェアの
+  // 外側に置く。受諾前のユーザーはまだ auth_credentials を持たずセッションも張れないため
+  // (docs/requirements.md §認証)。
+  app.route("/invitations", createInvitationsRoutes(db, { secureCookies }));
+
   // POST /slack/commands(Slackスラッシュコマンド打刻)は認証ミドルウェアの外側に置く。
   // Slackはセッションを持たないため、署名検証(routes/slack.ts)が認証の代わりになる
   // (docs/external-api/slack.md)。
@@ -80,7 +86,7 @@ export function createApp(deps: CreateAppDeps) {
   // エンドポイント許可表(apiKeyScopeGuardMiddleware)でさらに絞り込む。
   authed.use("*", authOrApiKeyMiddleware(db, { secureCookies }));
   authed.use("*", apiKeyScopeGuardMiddleware());
-  authed.route("/me", createMeRoutes());
+  authed.route("/me", createMeRoutes(db));
   authed.route("/api-keys", createApiKeysRoutes(db));
   authed.route("/punches", createPunchesRoutes(db));
   authed.route("/attendance", createAttendanceRoutes(db));

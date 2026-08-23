@@ -23,7 +23,9 @@
 .tenant-profile__main {
   flex: 1;
   padding: var(--space-5) var(--space-4) var(--space-7);
-  max-width: 40rem;
+  /* 2026-08-23: テナントプロファイル(フォーム)+法改正予定(読み物)の複合ページのため、
+     テーブル系ほどは広げない(小幅増、40rem→44rem)。幅トークンの規律は tokens.css 参照。 */
+  max-width: var(--width-content-narrow);
   margin: 0 auto;
   width: 100%;
   display: flex;

@@ -2,6 +2,14 @@
    一覧・発行フォームの本体は settings.css(.settings-notif__*)と org-settings.css(.org-table 等)
    を流用し、ここでは発行直後のトークン表示・使い方の例・状態バッジなど固有の見た目だけを持つ。 */
 
+/* 2026-08-23: PC表示の余白を狭める依頼。発行フォームの下に org-table 形式のキー一覧が
+   並ぶ一覧主体のページのため、.settings-notif__main(フォーム系の幅)ではなくテーブル系の
+   幅トークンで上書きする。help-settings.css / privacy-settings.css と同じ「基底クラス+
+   固有クラスで上書き」パターン(ApiKeysSettingsView.tsx 側で2クラスを併記)。 */
+.api-keys-settings__main {
+  max-width: var(--width-content-wide);
+}
+
 .api-keys__status {
   display: inline-flex;
   align-items: center;

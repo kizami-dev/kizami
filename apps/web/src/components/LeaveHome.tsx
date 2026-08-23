@@ -99,7 +99,7 @@ export function LeaveHome() {
 
   return (
     <div className="leave">
-      <AppHeader displayName={guard.user.displayName} email={guard.user.email} active="leave" />
+      <AppHeader displayName={guard.user.displayName} email={guard.user.email} tenantName={guard.tenant?.name ?? null} active="leave" />
       <main className="leave__main">
         <h1 className="leave__title">{messages.leave.title}</h1>
         <p className="leave__tagline">{messages.leave.tagline}</p>

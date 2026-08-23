@@ -58,7 +58,7 @@ export function SlackLinkView() {
 
   return (
     <div className="settings-personal-notif">
-      <AppHeader displayName={guard.user.displayName} email={guard.user.email} active="settings" />
+      <AppHeader displayName={guard.user.displayName} email={guard.user.email} tenantName={guard.tenant?.name ?? null} active="settings" />
       <main className="settings-personal-notif__main">
         <Link to="/settings" className="settings-nav__hub-link">
           <span aria-hidden="true">←</span> {messages.settingsNav.hubLink}

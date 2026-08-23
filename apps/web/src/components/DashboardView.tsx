@@ -225,7 +225,7 @@ export function DashboardView() {
 
   return (
     <div className="dashboard">
-      <AppHeader displayName={guard.user.displayName} email={guard.user.email} active="dashboard" />
+      <AppHeader displayName={guard.user.displayName} email={guard.user.email} tenantName={guard.tenant?.name ?? null} active="dashboard" />
       <main className="dashboard__main">
         {/* ---- 0. はじめに(未完了の項目だけ、2026-08-22 追加) ---- */}
         <OnboardingSection authed={guard.status === "authed"} refreshKey={reloadKey} />

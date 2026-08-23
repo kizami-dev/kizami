@@ -117,6 +117,13 @@
   color: var(--k-cyan-ink);
   text-decoration: underline;
   text-underline-offset: 2px;
+  /*
+   * 2026-08-23 SP監査: タップ領域が文字の実寸(高さ約18px)しかなく、390px幅の実機で
+   * 押しにくかった。padding + 相殺の負マージンで見た目(位置・行間)は変えずに
+   * タップ領域だけ広げる(約32px)。
+   */
+  padding: 7px 4px;
+  margin: -7px -4px;
 }
 
 .help-tip__link:hover,

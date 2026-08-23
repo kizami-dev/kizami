@@ -18,7 +18,10 @@
 .leave__main {
   flex: 1;
   padding: var(--space-5) var(--space-4) var(--space-7);
-  max-width: 48rem;
+  /* 2026-08-23: PC表示の余白を狭める依頼。残高カードグリッド(auto-fit)+申請一覧が
+     主役のページのためテーブル系の幅トークンを使う(tokens.css 参照)。/settings/leave
+     (制度設定、フォーム中心)は別クラス .settings-notif__main を使うため対象外。 */
+  max-width: var(--width-content-wide);
   margin: 0 auto;
   width: 100%;
   display: flex;

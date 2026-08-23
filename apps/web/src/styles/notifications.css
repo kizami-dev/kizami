@@ -166,7 +166,9 @@
   border: var(--border-hair);
   border-radius: var(--radius-s);
   background: transparent;
-  padding: var(--space-1) var(--space-3);
+  /* 2026-08-23 SP監査: 縦 padding が var(--space-1)=4px だと高さ約28pxでタップしづらい。
+     var(--space-2)=8px に広げ約36pxを確保する(通知カードは元々 flex-wrap 済み)。 */
+  padding: var(--space-2) var(--space-3);
   font-size: 0.78rem;
 }
 
@@ -217,7 +219,9 @@
   flex-direction: column;
   gap: var(--space-4);
   padding: var(--space-5) var(--space-4) var(--space-7);
-  max-width: 38rem;
+  /* 2026-08-23: PC表示の余白を狭める依頼。通知の一覧が主役のページのためテーブル系の
+     幅トークンを使う(tokens.css 参照)。 */
+  max-width: var(--width-content-wide);
   margin: 0 auto;
   width: 100%;
 }
@@ -252,7 +256,9 @@
   border: var(--border-hair);
   border-radius: 999px;
   background: transparent;
-  padding: var(--space-1) var(--space-3);
+  /* 2026-08-23 SP監査: 縦 padding が var(--space-1)=4px だと高さ約29pxでタップしづらい。
+     var(--space-2)=8px に広げ約36pxを確保する(グループは flex-wrap 済みで折り返しは崩れない)。 */
+  padding: var(--space-2) var(--space-3);
   font-size: 0.8rem;
   color: var(--k-ink-soft);
 }

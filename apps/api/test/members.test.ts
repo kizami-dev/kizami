@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { auditLogs, type Database } from "@kizami/db";
+import { auditLogs, tenants, users, uuidv7, type Database } from "@kizami/db";
 import { eq } from "drizzle-orm";
 import { createApp } from "../src/app.js";
 import { grantPermission, loginAndGetCookie, setupSecondUser, setupTestDb } from "./support/setup.js";
@@ -261,6 +261,261 @@ describe("members API", () => {
       hireDate: null,
       department: null,
       presetNames: [],
+      // setupSecondUser は auth_credentials も作るため受諾済み(active)扱いになる
+      inviteStatus: "active",
     });
+  });
+});
+
+interface InviteMemberResponse {
+  member: { id: string; name: string; email: string; hireDate: string | null; department: unknown };
+  invitation: { id: string; token: string; expiresAt: number };
+}
+
+async function inviteMember(
+  app: RequestLike,
+  cookie: string,
+  body: { email: string; name: string; departmentId?: string; hireDate?: string; presetIds?: string[] },
+): Promise<{ status: number; json: InviteMemberResponse }> {
+  const res = await app.request("/members", {
+    method: "POST",
+    headers: { "content-type": "application/json", cookie },
+    body: JSON.stringify(body),
+  });
+  return { status: res.status, json: (await res.json()) as InviteMemberResponse };
+}
+
+describe("POST /members (invitation-based creation, 2026-08-23)", () => {
+  it("returns 403 without member.invite", async () => {
+    const { db, email, password } = await setupTestDb();
+    const app = createApp({ db });
+    const cookie = await loginAndGetCookie(app, email, password);
+
+    const res = await app.request("/members", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ email: "new@example.com", name: "New Member" }),
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it("creates a users row (no auth_credentials yet), issues a one-time invitation token, and records an audit log", async () => {
+    const { db, tenantId, userId, email, password } = await setupTestDb();
+    await grantPermission(db, { tenantId, userId, permission: "member.invite", scope: "tenant" });
+    const app = createApp({ db });
+    const cookie = await loginAndGetCookie(app, email, password);
+
+    const invited = await inviteMember(app, cookie, { email: "new@example.com", name: "New Member" });
+    expect(invited.status).toBe(201);
+    expect(invited.json.member.email).toBe("new@example.com");
+    expect(invited.json.member.name).toBe("New Member");
+    expect(typeof invited.json.invitation.token).toBe("string");
+    expect(invited.json.invitation.token.length).toBeGreaterThan(0);
+
+    expect(await auditActionsFor(db, tenantId)).toContain("member.invite");
+
+    // 受諾前はログイン不可(credential が無い)。
+    const loginRes = await app.request("/auth/login", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email: "new@example.com", password: "irrelevant but long enough" }),
+    });
+    expect(loginRes.status).toBe(401);
+  });
+
+  it("rejects a duplicate email within the same tenant with 409", async () => {
+    const { db, tenantId, userId, email, password } = await setupTestDb();
+    await grantPermission(db, { tenantId, userId, permission: "member.invite", scope: "tenant" });
+    const app = createApp({ db });
+    const cookie = await loginAndGetCookie(app, email, password);
+
+    const first = await inviteMember(app, cookie, { email: "dup@example.com", name: "First" });
+    expect(first.status).toBe(201);
+
+    const second = await inviteMember(app, cookie, { email: "dup@example.com", name: "Second" });
+    expect(second.status).toBe(409);
+    expect(second.json).toEqual({ error: "email_already_exists" });
+  });
+
+  it("allows the same email to be invited when it already exists in a different tenant", async () => {
+    const { db, tenantId, userId, email, password } = await setupTestDb();
+    await grantPermission(db, { tenantId, userId, permission: "member.invite", scope: "tenant" });
+
+    const otherTenantId = uuidv7();
+    await db.insert(tenants).values({ id: otherTenantId, name: "Other Tenant", createdAt: 0 });
+    await db.insert(users).values({
+      id: uuidv7(),
+      tenantId: otherTenantId,
+      email: "shared@example.com",
+      name: "Elsewhere",
+      isActive: true,
+      createdAt: 0,
+    });
+
+    const app = createApp({ db });
+    const cookie = await loginAndGetCookie(app, email, password);
+
+    const invited = await inviteMember(app, cookie, { email: "shared@example.com", name: "New Member" });
+    expect(invited.status).toBe(201);
+  });
+
+  it("rejects a departmentId outside the actor's scope with 403", async () => {
+    const { db, tenantId, userId, email, password } = await setupTestDb();
+    await grantPermission(db, { tenantId, userId, permission: "member.invite", scope: "department" });
+    await grantPermission(db, { tenantId, userId, permission: "department.manage", scope: "tenant" });
+    const app = createApp({ db });
+    const cookie = await loginAndGetCookie(app, email, password);
+
+    // actor は無所属のまま、部署だけ作る(actor 自身の所属部署ではないため department スコープ外)。
+    const dept = await createDepartment(app, cookie, "営業部");
+
+    const res = await app.request("/members", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ email: "new@example.com", name: "New Member", departmentId: dept.id }),
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it("assigns presetIds when the actor also holds permission.assignment.manage", async () => {
+    const { db, tenantId, userId, email, password } = await setupTestDb();
+    await grantPermission(db, { tenantId, userId, permission: "member.invite", scope: "tenant" });
+    await grantPermission(db, { tenantId, userId, permission: "member.view", scope: "tenant" });
+    await grantPermission(db, { tenantId, userId, permission: "permission.assignment.manage", scope: "tenant" });
+    await grantPermission(db, { tenantId, userId, permission: "permission.preset.manage", scope: "tenant" });
+    const app = createApp({ db });
+    const cookie = await loginAndGetCookie(app, email, password);
+
+    const presetRes = await app.request("/presets", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ name: "閲覧のみ", grants: [{ key: "member.view", scope: "department" }] }),
+    });
+    const preset = (await presetRes.json()) as { preset: { id: string } };
+
+    const invited = await inviteMember(app, cookie, {
+      email: "new@example.com",
+      name: "New Member",
+      presetIds: [preset.preset.id],
+    });
+    expect(invited.status).toBe(201);
+
+    const membersRes = await app.request("/members", { headers: { cookie } });
+    const membersBody = (await membersRes.json()) as { members: { id: string; presetNames: string[] }[] };
+    expect(membersBody.members.find((m) => m.id === invited.json.member.id)?.presetNames).toEqual(["閲覧のみ"]);
+  });
+
+  it("rejects presetIds when the actor lacks permission.assignment.manage with 403", async () => {
+    const { db, tenantId, userId, email, password } = await setupTestDb();
+    await grantPermission(db, { tenantId, userId, permission: "member.invite", scope: "tenant" });
+    const app = createApp({ db });
+    const cookie = await loginAndGetCookie(app, email, password);
+
+    const res = await app.request("/members", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ email: "new@example.com", name: "New Member", presetIds: ["nonexistent"] }),
+    });
+    expect(res.status).toBe(403);
+  });
+});
+
+describe("POST /members/:id/invitations, DELETE /members/:id/invitations (2026-08-23)", () => {
+  it("reissuing an invitation revokes the previous one", async () => {
+    const { db, tenantId, userId, email, password } = await setupTestDb();
+    await grantPermission(db, { tenantId, userId, permission: "member.invite", scope: "tenant" });
+    const app = createApp({ db });
+    const cookie = await loginAndGetCookie(app, email, password);
+
+    const invited = await inviteMember(app, cookie, { email: "new@example.com", name: "New Member" });
+    const targetId = invited.json.member.id;
+
+    const reissueRes = await app.request(`/members/${targetId}/invitations`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+    });
+    expect(reissueRes.status).toBe(201);
+    const reissueBody = (await reissueRes.json()) as { invitation: { token: string } };
+    expect(reissueBody.invitation.token).not.toBe(invited.json.invitation.token);
+
+    expect(await auditActionsFor(db, tenantId)).toContain("member.invite.reissue");
+  });
+
+  it("reissuing for an already-accepted (active) member returns 409", async () => {
+    const { db, tenantId, userId, email, password } = await setupTestDb();
+    await grantPermission(db, { tenantId, userId, permission: "member.invite", scope: "tenant" });
+    const app = createApp({ db });
+    const cookie = await loginAndGetCookie(app, email, password);
+
+    const invited = await inviteMember(app, cookie, { email: "new@example.com", name: "New Member" });
+    const token = invited.json.invitation.token;
+    const targetId = invited.json.member.id;
+
+    const acceptRes = await app.request(`/invitations/${token}/accept`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ password: "correct horse battery staple 2" }),
+    });
+    expect(acceptRes.status).toBe(200);
+
+    const reissueRes = await app.request(`/members/${targetId}/invitations`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+    });
+    expect(reissueRes.status).toBe(409);
+    expect(await reissueRes.json()).toEqual({ error: "already_active" });
+  });
+
+  it("reissuing for a nonexistent member returns 404", async () => {
+    const { db, tenantId, userId, email, password } = await setupTestDb();
+    await grantPermission(db, { tenantId, userId, permission: "member.invite", scope: "tenant" });
+    const app = createApp({ db });
+    const cookie = await loginAndGetCookie(app, email, password);
+
+    const res = await app.request("/members/nonexistent/invitations", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it("revoking twice returns 409 already_revoked the second time", async () => {
+    const { db, tenantId, userId, email, password } = await setupTestDb();
+    await grantPermission(db, { tenantId, userId, permission: "member.invite", scope: "tenant" });
+    const app = createApp({ db });
+    const cookie = await loginAndGetCookie(app, email, password);
+
+    const invited = await inviteMember(app, cookie, { email: "new@example.com", name: "New Member" });
+    const targetId = invited.json.member.id;
+
+    const firstRevoke = await app.request(`/members/${targetId}/invitations`, { method: "DELETE", headers: { cookie } });
+    expect(firstRevoke.status).toBe(200);
+    expect(await auditActionsFor(db, tenantId)).toContain("member.invite.revoke");
+
+    const secondRevoke = await app.request(`/members/${targetId}/invitations`, { method: "DELETE", headers: { cookie } });
+    expect(secondRevoke.status).toBe(409);
+    expect(await secondRevoke.json()).toEqual({ error: "already_revoked" });
+  });
+
+  it("without member.invite, both reissue and revoke return 403", async () => {
+    const { db, tenantId, userId, email, password } = await setupTestDb();
+    await grantPermission(db, { tenantId, userId, permission: "member.invite", scope: "tenant" });
+    const app = createApp({ db });
+    const cookie = await loginAndGetCookie(app, email, password);
+    const invited = await inviteMember(app, cookie, { email: "new@example.com", name: "New Member" });
+    const targetId = invited.json.member.id;
+
+    // 別ユーザー(member.invite を持たない、二人目の自テナントユーザー)で試す。
+    const second = await setupSecondUser(db, tenantId);
+    const secondCookie = await loginAndGetCookie(app, second.email, second.password);
+
+    const reissueRes = await app.request(`/members/${targetId}/invitations`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: secondCookie },
+    });
+    expect(reissueRes.status).toBe(403);
+
+    const revokeRes = await app.request(`/members/${targetId}/invitations`, { method: "DELETE", headers: { cookie: secondCookie } });
+    expect(revokeRes.status).toBe(403);
   });
 });

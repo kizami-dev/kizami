@@ -13,7 +13,10 @@
 .attendance-settings__main {
   flex: 1;
   padding: var(--space-5) var(--space-4) var(--space-7);
-  max-width: 44rem;
+  /* 2026-08-23: フォームが主役のページのため、テーブル系ほどは広げない
+     (幅トークンの規律は tokens.css 参照。既存値と同じでも token 化して他の
+     フォーム系ページと足並みを揃える)。 */
+  max-width: var(--width-content-narrow);
   margin: 0 auto;
   width: 100%;
   display: flex;
@@ -216,7 +219,9 @@
   border-radius: var(--radius-s);
   background: transparent;
   color: var(--k-ink-soft);
-  padding: var(--space-1) var(--space-3);
+  /* 2026-08-23 SP監査: 縦 padding が var(--space-1)=4px だと高さ約28pxでタップしづらい。
+     var(--space-2)=8px に広げ約36pxを確保する(行は元々 flex-wrap 済み)。 */
+  padding: var(--space-2) var(--space-3);
   font-size: 0.78rem;
 }
 
@@ -243,6 +248,11 @@
   color: inherit;
   font-weight: 700;
   text-decoration: underline;
+  /* 2026-08-23 SP監査: 文中リンクのタップ領域が文字の実寸(高さ約20px)しかなかった。
+     インライン要素への padding-block は行送りに影響しない(通常フロー)ため、
+     見た目・行間を変えずにタップ領域だけ広げられる。 */
+  padding: 6px 2px;
+  margin: -6px -2px;
 }
 
 .attendance-settings__success {

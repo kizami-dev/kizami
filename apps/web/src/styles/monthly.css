@@ -7,7 +7,9 @@
 .monthly__main {
   flex: 1;
   padding: var(--space-5) var(--space-4) var(--space-7);
-  max-width: 56rem;
+  /* 2026-08-23: PC表示の余白を狭める依頼。列(勤務・時間外)が増えて表が横に広がった
+     ページのため、テーブル系の幅トークンを使う(tokens.css 参照)。 */
+  max-width: var(--width-content-wide);
   margin: 0 auto;
   width: 100%;
   display: flex;
@@ -242,12 +244,41 @@
 }
 
 /* 勤務列(打刻時刻、2026-08-23 追加)。中抜けは複数行を積む。件数バッジには畳まない(依頼どおり)。 */
-.monthly-table__stretches {
+.monthly-table__stretches,
+.monthly-table__col-clock-in,
+.monthly-table__col-clock-out {
   text-align: left !important;
 }
 
 .monthly-table__stretch + .monthly-table__stretch {
   margin-top: 2px;
+}
+
+/*
+ * 勤務列の1セル/2列切り替え(2026-08-23 追加)。「勤務」1セルと「出勤」「退勤」の2列を
+ * どちらも常に DOM へ描画し、CSS の table-cell display:none だけで排他表示する
+ * (どちらの状態でも列数がずれない。JS の matchMedia は SSR/ハイドレーション不整合の
+ * 懸念があるため避けた、実装方針は依頼どおり)。既定(このルール)は1セル表記側を出す。
+ */
+.monthly-table__col-clock-in,
+.monthly-table__col-clock-out {
+  display: none;
+}
+
+/*
+ * 広いビューポートでのみ2列に分ける。しきい値 75rem(1200px)は、テーブルの入れ物
+ * (monthly__main)自体が --width-content-wide(72rem)で頭打ちになったうえで、なお
+ * 左右に余裕がある(72rem ぴったりで詰まって見えない)幅を基準に選んだ。
+ */
+@media (min-width: 75rem) {
+  .monthly-table__stretches {
+    display: none;
+  }
+
+  .monthly-table__col-clock-in,
+  .monthly-table__col-clock-out {
+    display: table-cell;
+  }
 }
 
 /*
@@ -537,6 +568,17 @@
     white-space: normal;
     border-bottom: none;
     padding: var(--space-1) 0;
+  }
+
+  /*
+   * 出勤・退勤の2列(2026-08-23 追加)はこのビューポートでは常に隠す(モバイルは1セル表記のまま
+   * 現状維持、依頼どおり)。直上の `.monthly-table td { display: block; }`(td+class の詳細度)が
+   * 素の `.monthly-table__col-clock-in`(class 1つ)より詳細度で勝ってしまい display:none を
+   * 上書きしていたため、同じ td+class の形で詳細度を揃えて明示的に隠す。
+   */
+  .monthly-table td.monthly-table__col-clock-in,
+  .monthly-table td.monthly-table__col-clock-out {
+    display: none;
   }
 
   /* 打刻・警告・時間外が無い日はラベルごと隠す(空欄の「見出しだけのカード」を出さない)。 */

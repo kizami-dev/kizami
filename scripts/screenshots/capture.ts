@@ -122,6 +122,14 @@ async function captureOne(
   // ハイドレーション後の useEffect フェッチ・カードのフェードイン等が落ち着くのを軽く待つ。
   await page.waitForTimeout(400);
 
+  // モバイルの下部タブバー(.k-tabbar)は position: fixed のため、fullPage 撮影では
+  // 「ビューポート基準の位置」がページ全体の途中に写り込んでしまう(Playwright の既知の挙動)。
+  // 撮影時だけ absolute + ページ末尾に付け替え、実ブラウザでの見た目(常に画面下部)に
+  // 最も近い「ページの一番下に1回だけ写る」形にする。実アプリの CSS は変更しない。
+  if (viewport === "mobile") {
+    await page.addStyleTag({ content: ".k-tabbar { position: absolute !important; bottom: 0 !important; }" });
+  }
+
   const file = `${screen.slug}--${viewport}--${theme}.png`;
   await page.screenshot({ path: path.join(OUTPUT_DIR, file), fullPage: true });
   await page.close();

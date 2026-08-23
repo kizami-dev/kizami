@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createApp } from "../src/app.js";
+import { authCredentials, tenants, users, uuidv7 } from "@kizami/db";
+import { hashPassword } from "../src/auth/password.js";
 import { loginAndGetCookie, setupTestDb } from "./support/setup.js";
 
 describe("POST /auth/login", () => {
@@ -69,7 +71,11 @@ describe("GET /me", () => {
 
     const res = await app.request("/me", { headers: { cookie } });
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ user: { id: userId, email, displayName, tenantId } });
+    expect(await res.json()).toEqual({
+      user: { id: userId, email, displayName, tenantId },
+      // テナント名(社名)はヘッダー表示用(2026-08-23 追加)。setupTestDb() のテナント名
+      tenant: { name: "Test Tenant" },
+    });
   });
 
   it("returns 401 without a session cookie", async () => {
@@ -114,5 +120,95 @@ describe("POST /auth/logout", () => {
 
     const res = await app.request("/auth/logout", { method: "POST" });
     expect(res.status).toBe(204);
+  });
+});
+
+describe("POST /auth/login: 同一メールが複数テナントに存在する場合(2026-08-23)", () => {
+  /** setupTestDb() のテナントとは別に、同じメール・任意パスワードのユーザーを持つ第2テナントを作る。 */
+  async function addSecondTenantUser(
+    db: Awaited<ReturnType<typeof setupTestDb>>["db"],
+    email: string,
+    password: string,
+  ): Promise<{ tenantId: string; userId: string }> {
+    const now = 0;
+    const tenantId = uuidv7();
+    const userId = uuidv7();
+    await db.insert(tenants).values({ id: tenantId, name: "Second Tenant", createdAt: now });
+    await db.insert(users).values({ id: userId, tenantId, email, name: "Same Email User", isActive: true, createdAt: now });
+    await db.insert(authCredentials).values({
+      id: uuidv7(),
+      tenantId,
+      userId,
+      passwordHash: await hashPassword(password),
+      createdAt: now,
+      updatedAt: now,
+    });
+    return { tenantId, userId };
+  }
+
+  it("両テナントで同じパスワード → 409 multiple_tenants でテナント一覧(id+社名)が返る", async () => {
+    const seeded = await setupTestDb();
+    const second = await addSecondTenantUser(seeded.db, seeded.email, seeded.password);
+    const app = createApp({ db: seeded.db });
+
+    const res = await app.request("/auth/login", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email: seeded.email, password: seeded.password }),
+    });
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { error: string; tenants: Array<{ id: string; name: string | null }> };
+    expect(body.error).toBe("multiple_tenants");
+    expect(body.tenants.map((t) => t.id).sort()).toEqual([seeded.tenantId, second.tenantId].sort());
+    expect(body.tenants.map((t) => t.name).sort()).toEqual(["Second Tenant", "Test Tenant"]);
+  });
+
+  it("tenantId を指定して再ログインすると、そのテナントのセッションになる", async () => {
+    const seeded = await setupTestDb();
+    const second = await addSecondTenantUser(seeded.db, seeded.email, seeded.password);
+    const app = createApp({ db: seeded.db });
+
+    const res = await app.request("/auth/login", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email: seeded.email, password: seeded.password, tenantId: second.tenantId }),
+    });
+    expect(res.status).toBe(200);
+    const cookie = res.headers.get("set-cookie") ?? "";
+    const me = await app.request("/me", { headers: { cookie } });
+    const meBody = (await me.json()) as { user: { tenantId: string }; tenant: { name: string | null } };
+    expect(meBody.user.tenantId).toBe(second.tenantId);
+    expect(meBody.tenant.name).toBe("Second Tenant");
+  });
+
+  it("パスワードが一致するテナントが1つだけなら、指定なしでそのテナントに入る", async () => {
+    const seeded = await setupTestDb();
+    await addSecondTenantUser(seeded.db, seeded.email, "different password entirely");
+    const app = createApp({ db: seeded.db });
+
+    const res = await app.request("/auth/login", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email: seeded.email, password: seeded.password }),
+    });
+    expect(res.status).toBe(200);
+    const cookie = res.headers.get("set-cookie") ?? "";
+    const me = await app.request("/me", { headers: { cookie } });
+    const meBody = (await me.json()) as { user: { tenantId: string } };
+    expect(meBody.user.tenantId).toBe(seeded.tenantId);
+  });
+
+  it("どのテナントともパスワードが合わなければ 401(テナント情報は一切漏れない)", async () => {
+    const seeded = await setupTestDb();
+    await addSecondTenantUser(seeded.db, seeded.email, "another password");
+    const app = createApp({ db: seeded.db });
+
+    const res = await app.request("/auth/login", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email: seeded.email, password: "wrong password" }),
+    });
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: "invalid_credentials" });
   });
 });

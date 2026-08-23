@@ -12,12 +12,57 @@
   border-bottom: var(--border-hair);
 }
 
+/* ロゴ+テナント名(社名)をまとめる外枠(2026-08-23 追加)。.k-header 側の
+   justify-content: space-between は直接の子要素の数で間隔が決まるため、テナント名を
+   .k-header の直接の子にはせず、ロゴと同じグループに入れて「ブランド」1枠のまま保つ。 */
+.k-header__brand-group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
 .k-header__brand {
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  flex-shrink: 0;
   text-decoration: none;
   color: var(--k-key);
+}
+
+/* テナント名(社名)。プロダクト名(ロゴ)より小さく・ソフト色にして脇役に留める
+   — 主役はあくまで業務画面で、これは「どの会社のインスタンスか」の確認情報。
+   長い社名は省略記号で切る(折り返し・はみ出し防止)。デスクトップのみ表示し、
+   モバイルは幅が足りないため .more-sheet__tenant 側に出す(下記)。 */
+.k-header__tenant {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.k-header__tenant-divider {
+  width: 1px;
+  height: 1.1rem;
+  flex-shrink: 0;
+  background: color-mix(in srgb, var(--k-key) 20%, transparent);
+}
+
+.k-header__tenant-name {
+  min-width: 0;
+  max-width: min(14rem, 22vw);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.78rem;
+  color: var(--k-ink-soft);
+}
+
+@media (max-width: 640px) {
+  .k-header__tenant {
+    display: none;
+  }
 }
 
 .k-header__mark {
@@ -303,6 +348,18 @@
   padding: 0 2.5rem var(--space-3) 0;
   border-bottom: var(--border-hair);
   margin-bottom: var(--space-2);
+}
+
+/* テナント名(社名、2026-08-23 追加)。デスクトップの .k-header__tenant-name と役割は同じ
+   (プロダクト名より控えめ)だが、ここは氏名の「上」に置くため一覧の先頭を担う。 */
+.more-sheet__tenant {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+  font-size: 0.76rem;
+  color: var(--k-ink-soft);
 }
 
 .more-sheet__name {

@@ -2,9 +2,9 @@
  * POST /auth/login, POST /auth/logout
  */
 
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { Hono } from "hono";
-import { authCredentials, sessions, users, type Database } from "@kizami/db";
+import { authCredentials, getTenantById, sessions, users, type Database } from "@kizami/db";
 import { verifyPassword } from "../auth/password.js";
 import {
   clearSessionCookie,
@@ -18,6 +18,8 @@ import { nowMinutes } from "../lib/time.js";
 interface LoginBody {
   email?: unknown;
   password?: unknown;
+  /** 複数テナントに同一メールが存在する場合のテナント指定(409 multiple_tenants への応答で使う) */
+  tenantId?: unknown;
 }
 
 /**
@@ -40,27 +42,55 @@ export function createAuthRoutes(db: Database, options: { secureCookies: boolean
     if (typeof body !== "object" || body === null) {
       return c.json({ error: "invalid_body" }, 400);
     }
-    const { email, password } = body as LoginBody;
+    const { email, password, tenantId } = body as LoginBody;
     if (typeof email !== "string" || typeof password !== "string" || email === "" || password === "") {
       return c.json({ error: "invalid_body" }, 400);
     }
-
-    const userRows = await db.select().from(users).where(eq(users.email, email)).limit(1);
-    const user = userRows[0];
-
-    let cred: { passwordHash: string } | undefined;
-    if (user) {
-      const credRows = await db.select().from(authCredentials).where(eq(authCredentials.userId, user.id)).limit(1);
-      cred = credRows[0];
+    if (tenantId !== undefined && (typeof tenantId !== "string" || tenantId === "")) {
+      return c.json({ error: "invalid_body" }, 400);
     }
 
-    // ユーザー不存在・無効・資格情報なしでも必ず1回ハッシュ検証を行い、応答時間を揃える
-    const usable = user !== undefined && user.isActive && cred !== undefined;
-    const ok = await verifyPassword(password, usable ? (cred as { passwordHash: string }).passwordHash : DUMMY_HASH);
-    if (!usable || !ok) {
+    // email のユニーク制約は (tenant_id, email) であり、同じメールアドレスが複数テナントに
+    // 存在しうる(顧問社労士が複数社に登録される等、意図的に許容している)。以前は
+    // LIMIT 1 で最初の1行を拾っており、複数テナント同居時にどこへログインするかが
+    // 行の並び順まかせ(未定義)だった(2026-08-23 修正)。email に一致する全アカウントを
+    // 照合し、パスワード一致が複数あればテナント選択を求める(409 multiple_tenants)。
+    const userRows = tenantId
+      ? await db.select().from(users).where(and(eq(users.email, email), eq(users.tenantId, tenantId)))
+      : await db.select().from(users).where(eq(users.email, email));
+    const candidates = userRows.filter((u) => u.isActive);
+
+    // 候補それぞれのパスワードを検証する(早期打ち切りせず全件)。候補0件でも必ず1回
+    // ダミー検証を行い、メール不存在との応答時間差を抑える。候補が複数ある場合の
+    // 検証回数の差(k回 vs 1回)による存在推測は残るが、複数テナント登録は本人が知っている
+    // 情報であり、列挙対策としては1件時の等時性が保てていれば十分と判断する。
+    const matches: typeof candidates = [];
+    if (candidates.length === 0) {
+      await verifyPassword(password, DUMMY_HASH);
+    } else {
+      for (const candidate of candidates) {
+        const credRows = await db.select().from(authCredentials).where(eq(authCredentials.userId, candidate.id)).limit(1);
+        const cred = credRows[0];
+        const ok = await verifyPassword(password, cred ? cred.passwordHash : DUMMY_HASH);
+        if (ok && cred) matches.push(candidate);
+      }
+    }
+
+    if (matches.length === 0) {
       return c.json({ error: "invalid_credentials" }, 401);
     }
-    const activeUser = user as NonNullable<typeof user>;
+    if (matches.length > 1) {
+      // パスワード検証を通過した相手にだけテナントの一覧(id と社名)を開示する。
+      // 未認証の相手にテナント名が漏れることはない。
+      const tenants = await Promise.all(
+        matches.map(async (m) => {
+          const tenant = await getTenantById(db, m.tenantId);
+          return { id: m.tenantId, name: tenant?.name ?? null };
+        }),
+      );
+      return c.json({ error: "multiple_tenants", tenants }, 409);
+    }
+    const activeUser = matches[0] as (typeof matches)[number];
 
     const session = await createSession(db, {
       tenantId: activeUser.tenantId,

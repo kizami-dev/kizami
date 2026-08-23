@@ -144,6 +144,15 @@ export const SCREENS: Screen[] = [
     mobile: false,
   },
   {
+    slug: "invite-accept",
+    path: "/invite/{inviteToken}",
+    title: "招待の受諾",
+    caption: "招待リンクを開いた従業員が最初に見る画面。社名と自分の名前を確認し、パスワードを設定するだけで始められる。",
+    requiresAuth: false,
+    mobile: true,
+    waitForSelector: ".invite-accept, .login-card, main",
+  },
+  {
     slug: "settings-members",
     path: "/settings/members",
     title: "設定: メンバー",

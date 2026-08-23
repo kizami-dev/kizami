@@ -7,6 +7,7 @@ import {
   ApiError,
   UnauthorizedError,
   type DepartmentDto,
+  type IssuedInvitationDto,
   type MemberDto,
   type PermissionCatalogEntryDto,
   type PermissionPresetDto,
@@ -15,7 +16,10 @@ import { mapAssignmentErrorMessage, mapMemberErrorMessage, messages } from "../l
 import { computeEffectivePermissions, matchAssignedPresetIds } from "../lib/permissions";
 import { useAuthGuard } from "../lib/useAuthGuard";
 import { AppHeader } from "./AppHeader";
+import { ConfirmDialog } from "./ConfirmDialog";
 import { EffectivePermissionsPanel } from "./EffectivePermissionsPanel";
+import { InviteLinkDialog } from "./InviteLinkDialog";
+import { InviteMemberDialog, type InviteMemberFormValue } from "./InviteMemberDialog";
 import { SettingsNav } from "./SettingsNav";
 
 /**
@@ -50,6 +54,24 @@ export function MembersView() {
   const [hireDatePendingId, setHireDatePendingId] = useState<string | null>(null);
   const [hireDateError, setHireDateError] = useState<{ memberId: string; message: string } | null>(null);
   const [hireDateSavedId, setHireDateSavedId] = useState<string | null>(null);
+
+  // 招待式登録(2026-08-23 追加、docs/requirements.md §7)。
+  const [inviteFormOpen, setInviteFormOpen] = useState(false);
+  const [invitePending, setInvitePending] = useState(false);
+  const [inviteError, setInviteError] = useState<string | null>(null);
+
+  // 招待リンクの提示画面(発行・再発行いずれの直後にも使う共通の reveal 状態)。
+  const [revealInvite, setRevealInvite] = useState<{ memberName: string; memberEmail: string; invitation: IssuedInvitationDto } | null>(
+    null,
+  );
+
+  const [reissueTarget, setReissueTarget] = useState<MemberDto | null>(null);
+  const [reissuePending, setReissuePending] = useState(false);
+  const [reissueError, setReissueError] = useState<string | null>(null);
+
+  const [revokeInviteTarget, setRevokeInviteTarget] = useState<MemberDto | null>(null);
+  const [revokeInvitePending, setRevokeInvitePending] = useState(false);
+  const [revokeInviteError, setRevokeInviteError] = useState<string | null>(null);
 
   useEffect(() => {
     if (guard.status !== "authed") return;
@@ -179,6 +201,80 @@ export function MembersView() {
     }
   }
 
+  async function handleInviteSubmit(value: InviteMemberFormValue) {
+    setInvitePending(true);
+    setInviteError(null);
+    try {
+      const res = await api.createMember({
+        email: value.email,
+        name: value.name,
+        ...(value.departmentId !== null ? { departmentId: value.departmentId } : {}),
+        ...(value.hireDate !== "" ? { hireDate: value.hireDate } : {}),
+        ...(value.presetIds.length > 0 ? { presetIds: value.presetIds } : {}),
+      });
+      setInviteFormOpen(false);
+      setRevealInvite({ memberName: res.member.name, memberEmail: res.member.email, invitation: res.invitation });
+      setReloadKey((k) => k + 1);
+    } catch (err) {
+      if (err instanceof UnauthorizedError) {
+        router.push("/login");
+        return;
+      }
+      setInviteError(err instanceof ApiError ? mapMemberErrorMessage(err.body) : messages.errors.network);
+    } finally {
+      setInvitePending(false);
+    }
+  }
+
+  function openReissueConfirm(member: MemberDto) {
+    setReissueTarget(member);
+    setReissueError(null);
+  }
+
+  async function handleReissueConfirm() {
+    if (!reissueTarget) return;
+    setReissuePending(true);
+    setReissueError(null);
+    try {
+      const res = await api.reissueInvitation(reissueTarget.id);
+      setRevealInvite({ memberName: reissueTarget.name, memberEmail: reissueTarget.email, invitation: res.invitation });
+      setReissueTarget(null);
+      setReloadKey((k) => k + 1);
+    } catch (err) {
+      if (err instanceof UnauthorizedError) {
+        router.push("/login");
+        return;
+      }
+      setReissueError(err instanceof ApiError ? mapMemberErrorMessage(err.body) : messages.errors.network);
+    } finally {
+      setReissuePending(false);
+    }
+  }
+
+  function openRevokeInviteConfirm(member: MemberDto) {
+    setRevokeInviteTarget(member);
+    setRevokeInviteError(null);
+  }
+
+  async function handleRevokeInviteConfirm() {
+    if (!revokeInviteTarget) return;
+    setRevokeInvitePending(true);
+    setRevokeInviteError(null);
+    try {
+      await api.revokeInvitation(revokeInviteTarget.id);
+      setRevokeInviteTarget(null);
+      setReloadKey((k) => k + 1);
+    } catch (err) {
+      if (err instanceof UnauthorizedError) {
+        router.push("/login");
+        return;
+      }
+      setRevokeInviteError(err instanceof ApiError ? mapMemberErrorMessage(err.body) : messages.errors.network);
+    } finally {
+      setRevokeInvitePending(false);
+    }
+  }
+
   const expandedMember = members?.find((m) => m.id === expandedId) ?? null;
 
   const savedPresetIdsForExpanded = useMemo(
@@ -198,6 +294,30 @@ export function MembersView() {
     );
   }, [presets, selectedPresetIds, catalog]);
 
+  /**
+   * 招待の発行・再発行・取り消し(member.invite)を出すかどうかの判定(判断点、完了報告に明記):
+   * apps/api には「自分の実効権限」を返すエンドポイントが無く、GET /members も一覧全体の
+   * inviteStatus しか返さない(自分の権限有無は分からない)。そのため、一覧に含まれる
+   * 自分自身の presetNames(member.presetNames)を GET /presets と突き合わせて実効権限を
+   * 計算する — これはメンバー詳細の「できること」パネル(effectiveEntries、上記)で既に
+   * 使っている computeEffectivePermissions をそのまま自分自身に適用するだけであり、
+   * 新しいAPI呼び出しを増やさない。あくまでUI表示の出し分け用の推定であり、実際の許可判定は
+   * 常に apps/api 側(requirePermission)が行う。
+   */
+  const selfMember = members?.find((m) => guard.user && m.id === guard.user.id) ?? null;
+  const selfPresetIds = useMemo(
+    () => (selfMember ? matchAssignedPresetIds(selfMember.presetNames, presets) : []),
+    [selfMember, presets],
+  );
+  const selfEffectiveEntries = useMemo(() => {
+    const selected = presets.filter((p) => selfPresetIds.includes(p.id));
+    return computeEffectivePermissions(
+      selected.map((p) => ({ name: p.name, grants: p.grants })),
+      catalog,
+    );
+  }, [presets, selfPresetIds, catalog]);
+  const canInvite = selfEffectiveEntries.some((e) => e.key === "member.invite");
+
   if (guard.status === "loading" || loading) {
     return <p className="monthly-loading">{messages.loading}</p>;
   }
@@ -207,7 +327,7 @@ export function MembersView() {
 
   return (
     <div className="org-settings">
-      <AppHeader displayName={guard.user.displayName} email={guard.user.email} active="settings" />
+      <AppHeader displayName={guard.user.displayName} email={guard.user.email} tenantName={guard.tenant?.name ?? null} active="settings" />
       <main className="org-settings__main org-settings__main--wide">
         <SettingsNav active="members" />
         <h1 className="org-settings__title">{messages.members.title}</h1>
@@ -219,6 +339,21 @@ export function MembersView() {
           </p>
         ) : null}
         {loadError ? <p className="monthly-error">{loadError}</p> : null}
+
+        {!forbidden && members && canInvite ? (
+          <div className="org-settings__toolbar">
+            <button
+              type="button"
+              className="org-settings__primary-btn"
+              onClick={() => {
+                setInviteError(null);
+                setInviteFormOpen(true);
+              }}
+            >
+              {messages.members.inviteButton}
+            </button>
+          </div>
+        ) : null}
 
         {!forbidden && members ? (
           members.length === 0 ? (
@@ -233,6 +368,7 @@ export function MembersView() {
                     <th>{messages.members.columnDepartment}</th>
                     <th>{messages.members.columnHireDate}</th>
                     <th>{messages.members.columnPresets}</th>
+                    <th>{messages.members.columnInviteStatus}</th>
                     <th>{messages.members.columnActions}</th>
                   </tr>
                 </thead>
@@ -314,14 +450,38 @@ export function MembersView() {
                             )}
                           </td>
                           <td>
-                            <button type="button" className="org-table__link-btn" onClick={() => toggleExpand(member)}>
-                              {isExpanded ? messages.members.detailToggleClose : messages.members.detailToggleOpen}
-                            </button>
+                            {/* active(通常状態)は無印。招待中・期限切れのみバッジを出す(依頼どおり)。 */}
+                            {member.inviteStatus !== "active" ? (
+                              <span className={`invite-status-badge invite-status-badge--${member.inviteStatus}`}>
+                                {messages.members.inviteStatusBadge[member.inviteStatus]}
+                              </span>
+                            ) : null}
+                          </td>
+                          <td>
+                            <div className="org-table__actions">
+                              <button type="button" className="org-table__link-btn" onClick={() => toggleExpand(member)}>
+                                {isExpanded ? messages.members.detailToggleClose : messages.members.detailToggleOpen}
+                              </button>
+                              {canInvite && member.inviteStatus !== "active" ? (
+                                <>
+                                  <button type="button" className="org-table__link-btn" onClick={() => openReissueConfirm(member)}>
+                                    {messages.members.reissueButton}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="org-table__link-btn org-table__link-btn--danger"
+                                    onClick={() => openRevokeInviteConfirm(member)}
+                                  >
+                                    {messages.members.revokeInviteButton}
+                                  </button>
+                                </>
+                              ) : null}
+                            </div>
                           </td>
                         </tr>
                         {isExpanded ? (
                           <tr key={`${member.id}-detail`}>
-                            <td colSpan={6} className="org-table__detail-cell">
+                            <td colSpan={7} className="org-table__detail-cell">
                               <div className="member-detail">
                                 <section className="member-detail__section">
                                   <h2 className="member-detail__section-title">{messages.members.presetAssignTitle}</h2>
@@ -388,6 +548,60 @@ export function MembersView() {
           )
         ) : null}
       </main>
+
+      {inviteFormOpen ? (
+        <InviteMemberDialog
+          departments={departments}
+          presets={presets}
+          pending={invitePending}
+          error={inviteError}
+          onSubmit={handleInviteSubmit}
+          onCancel={() => setInviteFormOpen(false)}
+        />
+      ) : null}
+
+      {revealInvite ? (
+        <InviteLinkDialog
+          memberName={revealInvite.memberName}
+          memberEmail={revealInvite.memberEmail}
+          invitation={revealInvite.invitation}
+          onClose={() => setRevealInvite(null)}
+        />
+      ) : null}
+
+      {reissueTarget ? (
+        <ConfirmDialog
+          title={messages.members.reissueConfirmTitle}
+          message={`「${reissueTarget.name}」— ${messages.members.reissueConfirmMessage}`}
+          confirmLabel={messages.members.reissueButton}
+          tone="neutral"
+          note=""
+          pending={reissuePending}
+          error={reissueError}
+          onConfirm={handleReissueConfirm}
+          onCancel={() => {
+            setReissueTarget(null);
+            setReissueError(null);
+          }}
+        />
+      ) : null}
+
+      {revokeInviteTarget ? (
+        <ConfirmDialog
+          title={messages.members.revokeInviteConfirmTitle}
+          message={`「${revokeInviteTarget.name}」— ${messages.members.revokeInviteConfirmMessage}`}
+          confirmLabel={messages.members.revokeInviteButton}
+          tone="caution"
+          note=""
+          pending={revokeInvitePending}
+          error={revokeInviteError}
+          onConfirm={handleRevokeInviteConfirm}
+          onCancel={() => {
+            setRevokeInviteTarget(null);
+            setRevokeInviteError(null);
+          }}
+        />
+      ) : null}
     </div>
   );
 }

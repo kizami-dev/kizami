@@ -35,6 +35,8 @@ export interface SeedHttpResult {
   adminId: string;
   /** v0.5: 固定時間制メンバー(member2)としてログインしたセッション(monthly-fixed 画面用)。 */
   fixedMemberSessionCookie: string;
+  /** v0.5: 招待受諾ページ(/invite/{token})の撮影用トークン(未受諾のまま残す)。 */
+  inviteToken: string;
 }
 
 /** 1日ぶんの勤務(既定 9:00-18:00, 休憩12:00-13:00)を打刻として積む。休憩は勤務時間内に収める。 */
@@ -370,5 +372,13 @@ export async function seedHttp(params: SeedHttpParams): Promise<SeedHttpResult> 
     expiresAt: jstMinutes(addDays(today, 180), 0, 0),
   });
 
-  return { sessionCookie: client.getSessionCookie(), adminId, fixedMemberSessionCookie };
+  // 招待中メンバー(v0.5): メンバー一覧の「招待中」バッジと受諾ページの撮影用。
+  // 受諾はしない(バッジが残り、トークンが有効なままである必要がある)。
+  const invited = await client.createMemberWithInvitation({
+    email: "mirai.hoshino@example.com",
+    name: "星野 未来",
+    departmentId: params.departments.dev,
+  });
+
+  return { sessionCookie: client.getSessionCookie(), adminId, fixedMemberSessionCookie, inviteToken: invited.invitation.token };
 }

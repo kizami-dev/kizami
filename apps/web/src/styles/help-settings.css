@@ -5,8 +5,11 @@
  * 「一覧 + エディタ」2カラムレイアウトだけをここに足す。
  */
 
+/* 2026-08-23: PC表示の余白を狭める依頼。一覧+エディタの2カラムレイアウトが主役の
+   ページのためテーブル系の幅トークンを使う(tokens.css 参照)。広げた分は右側の
+   エディタ(テキストエリア)の実質幅が増える形になり、有効に効く。 */
 .help-settings__main {
-  max-width: 64rem;
+  max-width: var(--width-content-wide);
 }
 
 .help-settings__guidelines {

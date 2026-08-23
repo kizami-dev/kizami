@@ -28,6 +28,42 @@ export async function getUserById(db: Database, params: { tenantId: string; id: 
   return rows[0] ?? null;
 }
 
+export interface NewUserInput {
+  id?: string;
+  tenantId: string;
+  email: string;
+  name: string;
+  hireDate?: string | null;
+  createdAt: number;
+}
+
+/**
+ * users へ1件作成する(招待式登録の起点、docs/requirements.md §認証)。この時点では
+ * auth_credentials は作らない(「招待中」状態、受諾するまでログイン不可)。
+ *
+ * (tenant_id, email) の UNIQUE 制約違反は事前SELECTでチェックせず、呼び出し側が
+ * isUniqueConstraintError() で判定すること(auto_break_waivers の承認重複と同じ流儀 —
+ * SELECT→INSERT の間に別リクエストが割り込む TOCTOU の窓を作らないため)。
+ */
+export async function createUser(db: Database, input: NewUserInput): Promise<MemberUser> {
+  const [row] = await db
+    .insert(users)
+    .values({
+      id: input.id ?? uuidv7(),
+      tenantId: input.tenantId,
+      email: input.email,
+      name: input.name,
+      isActive: true,
+      hireDate: input.hireDate ?? null,
+      createdAt: input.createdAt,
+    })
+    .returning();
+  if (!row) {
+    throw new Error("createUser: insert returned no row");
+  }
+  return row;
+}
+
 /**
  * 入社日(hire_date)を更新する(UPDATE、現在値のみ — users テーブルは effective-dated ではない)。
  * null で未設定に戻せる。呼び出し側(apps/api/src/routes/members.ts)が監査ログへの記録を担う。

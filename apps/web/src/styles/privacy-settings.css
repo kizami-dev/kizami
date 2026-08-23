@@ -5,8 +5,13 @@
  * 「雛形カード + 免責の注記」だけをここに足す(help-settings.css と同じ方針)。
  */
 
+/* 2026-08-23: 個人情報の雛形プレビューは読み物寄りのページのため、テーブル系ではなく
+   フォーム/読み物系の幅トークンに合わせる(tokens.css 参照)。旧値は 52rem という
+   このページだけの一回きりの値だったため、法令ガイド等と同じ narrow に揃えて
+   幅のばらつきを減らした(.settings-notif__main の既定と同値になるため、このルール自体は
+   削除しても実害はないが、「この画面は意図してテーブル系ではない」ことを明示するために残す)。 */
 .privacy-template__main {
-  max-width: 52rem;
+  max-width: var(--width-content-narrow);
 }
 
 .privacy-template__disclaimer {

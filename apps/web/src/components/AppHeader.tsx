@@ -19,6 +19,8 @@ export type AppHeaderActive = "dashboard" | "punch" | "monthly" | "corrections" 
 export interface AppHeaderProps {
   displayName: string;
   email: string;
+  /** テナント名(社名、2026-08-23 追加)。GET /me が返す値をそのまま渡す。未設定(null)なら何も表示しない。 */
+  tenantName: string | null;
   active: AppHeaderActive;
 }
 
@@ -43,7 +45,7 @@ function tabForActive(active: AppHeaderActive): TabKey | null {
  * 表示の出し分けは CSS のメディアクエリのみで行い、両方を常に DOM に置く
  * (JS 分岐で二重にコンポーネントを持たない=通知ベルのポーリングが二重化しない)。
  */
-export function AppHeader({ displayName, email, active }: AppHeaderProps) {
+export function AppHeader({ displayName, email, tenantName, active }: AppHeaderProps) {
   const router = useRouter();
   const [loggingOut, setLoggingOut] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -103,12 +105,26 @@ export function AppHeader({ displayName, email, active }: AppHeaderProps) {
   return (
     <>
       <header className="k-header">
-        <Link to="/" className="k-header__brand">
-          <span className="k-header__mark" aria-hidden="true">
-            <KizamiMark size={24} />
-          </span>
-          <span className="k-header__logo">{messages.appName}</span>
-        </Link>
+        {/* テナント名(社名、2026-08-23 追加): ロゴの隣に区切り線+控えめな色で出す。
+            長い社名は省略(CSS 側で max-width + ellipsis)。null(未設定)なら区切りごと出さない。
+            モバイルではヘッダー幅が足りないため CSS で隠し、代わりに「その他」シートの先頭に出す
+            (下記 more-sheet__header 参照)。 */}
+        <div className="k-header__brand-group">
+          <Link to="/" className="k-header__brand">
+            <span className="k-header__mark" aria-hidden="true">
+              <KizamiMark size={24} />
+            </span>
+            <span className="k-header__logo">{messages.appName}</span>
+          </Link>
+          {tenantName ? (
+            <span className="k-header__tenant" title={tenantName}>
+              <span className="k-header__tenant-divider" aria-hidden="true" />
+              <span className="k-header__tenant-name" aria-label={`${messages.header.tenantAriaLabel}: ${tenantName}`}>
+                {tenantName}
+              </span>
+            </span>
+          ) : null}
+        </div>
 
         {/* デスクトップのみ表示(CSS でモバイル時 display:none)。 */}
         <nav className="k-header__nav" aria-label={messages.appName}>
@@ -207,6 +223,13 @@ export function AppHeader({ displayName, email, active }: AppHeaderProps) {
           >
             <div className="more-sheet__handle" aria-hidden="true" />
             <div className="more-sheet__header">
+              {/* テナント名(社名、2026-08-23 追加): モバイルはヘッダー本体に入らないため、
+                  デスクトップの「ユーザーメニュー」に相当するこのシートの先頭に出す。 */}
+              {tenantName ? (
+                <span className="more-sheet__tenant" title={tenantName}>
+                  {tenantName}
+                </span>
+              ) : null}
               <span className="more-sheet__name">{displayName}</span>
               <span className="more-sheet__email">{email}</span>
               <button

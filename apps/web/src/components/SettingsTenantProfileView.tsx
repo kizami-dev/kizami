@@ -135,7 +135,7 @@ export function SettingsTenantProfileView() {
 
   return (
     <div className="tenant-profile">
-      <AppHeader displayName={guard.user.displayName} email={guard.user.email} active="settings" />
+      <AppHeader displayName={guard.user.displayName} email={guard.user.email} tenantName={guard.tenant?.name ?? null} active="settings" />
       <main className="tenant-profile__main">
         <SettingsNav active="tenantProfile" />
         <h1 className="tenant-profile__title">{messages.settingsTenantProfile.title}</h1>

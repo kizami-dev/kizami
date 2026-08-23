@@ -2,13 +2,15 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "waku";
-import { api, UnauthorizedError, type AuthUser } from "./api";
+import { api, UnauthorizedError, type AuthTenant, type AuthUser } from "./api";
 
 export type AuthGuardStatus = "loading" | "authed" | "error";
 
 export interface AuthGuardResult {
   status: AuthGuardStatus;
   user: AuthUser | null;
+  /** テナント名等の表示専用情報(2026-08-23 追加)。user 未確定の間は同じく null。 */
+  tenant: AuthTenant | null;
   error: unknown;
 }
 
@@ -18,15 +20,15 @@ export interface AuthGuardResult {
  */
 export function useAuthGuard(): AuthGuardResult {
   const router = useRouter();
-  const [state, setState] = useState<AuthGuardResult>({ status: "loading", user: null, error: null });
+  const [state, setState] = useState<AuthGuardResult>({ status: "loading", user: null, tenant: null, error: null });
 
   useEffect(() => {
     let cancelled = false;
 
     api
       .me()
-      .then(({ user }) => {
-        if (!cancelled) setState({ status: "authed", user, error: null });
+      .then(({ user, tenant }) => {
+        if (!cancelled) setState({ status: "authed", user, tenant, error: null });
       })
       .catch((err: unknown) => {
         if (cancelled) return;
@@ -34,7 +36,7 @@ export function useAuthGuard(): AuthGuardResult {
           router.push("/login");
           return;
         }
-        setState({ status: "error", user: null, error: err });
+        setState({ status: "error", user: null, tenant: null, error: err });
       });
 
     return () => {

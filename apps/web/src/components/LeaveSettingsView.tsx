@@ -288,7 +288,7 @@ export function LeaveSettingsView() {
 
   return (
     <div className="settings-notif">
-      <AppHeader displayName={guard.user.displayName} email={guard.user.email} active="settings" />
+      <AppHeader displayName={guard.user.displayName} email={guard.user.email} tenantName={guard.tenant?.name ?? null} active="settings" />
       <main className="settings-notif__main">
         <SettingsNav active="leave" />
         <h1 className="settings-notif__title">{messages.settingsLeave.title}</h1>

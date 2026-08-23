@@ -78,26 +78,35 @@ function buildDiffRows(data: MonthlyAttendance): DiffRow[] {
   return rows;
 }
 
+/** 勤務区間1件の出勤側表示(「9:00」)。2列表示・1セル表示の両方から使う。 */
+function formatStretchClockIn(stretch: WorkStretch): string {
+  return formatTimeJst(stretch.clockInAt);
+}
+
 /**
- * 勤務区間1件を「9:00 → 18:30」のような表示文字列にする。
- * 退勤の勤怠日(暦日、JST 0時基準)が行の日付より後なら「翌」を付け、2日以上先なら
- * 「翌々」ではなく日付そのもの(M/D)を出す(依頼どおり)。未退勤は stretchOpenEnded。
+ * 勤務区間1件の退勤側表示。退勤の勤怠日(暦日、JST 0時基準)が行の日付より後なら「翌」を付け、
+ * 2日以上先なら「翌々」ではなく日付そのもの(M/D)を出す(依頼どおり)。未退勤は stretchOpenEnded。
+ * 2列表示・1セル表示の両方から使う。
  */
-function formatStretchRange(rowDate: string, stretch: WorkStretch): string {
-  const inLabel = formatTimeJst(stretch.clockInAt);
+function formatStretchClockOut(rowDate: string, stretch: WorkStretch): string {
   if (stretch.clockOutAt === null) {
-    return `${inLabel} → ${messages.monthly.stretchOpenEnded}`;
+    return messages.monthly.stretchOpenEnded;
   }
   const outDateStr = dateStrFromEpochMinutesJst(stretch.clockOutAt);
   const dayDiff = diffCalendarDaysJst(rowDate, outDateStr);
   const outLabel = formatTimeJst(stretch.clockOutAt);
   if (dayDiff === 1) {
-    return `${inLabel} → ${messages.monthly.stretchNextDayPrefix} ${outLabel}`;
+    return `${messages.monthly.stretchNextDayPrefix} ${outLabel}`;
   }
   if (dayDiff > 1) {
-    return `${inLabel} → ${formatMonthDayShort(outDateStr)} ${outLabel}`;
+    return `${formatMonthDayShort(outDateStr)} ${outLabel}`;
   }
-  return `${inLabel} → ${outLabel}`;
+  return outLabel;
+}
+
+/** 勤務区間1件を「9:00 → 18:30」のような表示文字列にする(1セル表記、狭いビューポート用)。 */
+function formatStretchRange(rowDate: string, stretch: WorkStretch): string {
+  return `${formatStretchClockIn(stretch)} → ${formatStretchClockOut(rowDate, stretch)}`;
 }
 
 /**
@@ -140,14 +149,20 @@ function findIncomingStretches(days: DailyBreakdown[], rowIndex: number): Incomi
   return incoming;
 }
 
-/** 受け側の日に出す「(前日から) → 07:00」のような表示文字列。stretchNextDayPrefix と対称の規則。 */
-function formatIncomingStretch(rowDate: string, incoming: IncomingStretch): string {
+/**
+ * 受け側の日の出勤列に出す接頭辞(「(前日から)」/「(M/D から)」)。stretchNextDayPrefix と
+ * 対称の規則。2列表示・1セル表示の両方から使う。
+ */
+function formatIncomingClockIn(rowDate: string, incoming: IncomingStretch): string {
   const dayDiff = diffCalendarDaysJst(incoming.originDate, rowDate);
-  const prefix =
-    dayDiff === 1
-      ? messages.monthly.stretchPrevDayLabel
-      : messages.monthly.stretchFromDateLabel(formatMonthDayShort(incoming.originDate));
-  return `${prefix} → ${formatTimeJst(incoming.clockOutAt)}`;
+  return dayDiff === 1
+    ? messages.monthly.stretchPrevDayLabel
+    : messages.monthly.stretchFromDateLabel(formatMonthDayShort(incoming.originDate));
+}
+
+/** 受け側の日に出す「(前日から) → 07:00」のような表示文字列(1セル表記、狭いビューポート用)。 */
+function formatIncomingStretch(rowDate: string, incoming: IncomingStretch): string {
+  return `${formatIncomingClockIn(rowDate, incoming)} → ${formatTimeJst(incoming.clockOutAt)}`;
 }
 
 /**
@@ -375,7 +390,7 @@ export function MonthlyView() {
 
   return (
     <div className="monthly">
-      <AppHeader displayName={guard.user.displayName} email={guard.user.email} active="monthly" />
+      <AppHeader displayName={guard.user.displayName} email={guard.user.email} tenantName={guard.tenant?.name ?? null} active="monthly" />
       <main className="monthly__main">
         <div className="monthly__nav">
           <Link to={`/monthly?month=${prevMonthParam}`} className="monthly__nav-link">
@@ -611,7 +626,15 @@ export function MonthlyView() {
                   <thead>
                     <tr>
                       <th>{messages.monthly.columnDate}</th>
-                      <th>{messages.monthly.columnStretches}</th>
+                      {/*
+                        勤務列の見出し: 狭いビューポートでは「勤務」1列、広いビューポートでは
+                        「出勤」「退勤」2列に分ける(2026-08-23 追加)。3つとも常に DOM に置き
+                        CSS の table-cell display:none で排他表示する(列数の整合を保つため。
+                        JS の matchMedia は SSR/ハイドレーション不整合の懸念があり避けた)。
+                      */}
+                      <th className="monthly-table__stretches">{messages.monthly.columnStretches}</th>
+                      <th className="monthly-table__col-clock-in">{messages.monthly.columnClockIn}</th>
+                      <th className="monthly-table__col-clock-out">{messages.monthly.columnClockOut}</th>
                       <th>{messages.monthly.columnWorked}</th>
                       <th>
                         {messages.monthly.columnBreak}
@@ -642,6 +665,23 @@ export function MonthlyView() {
                       const hasExtra = day.extraWithinStatutoryMinutes > 0;
                       const hasActivity = dayHasActivity(day);
                       const incomingStretches = findIncomingStretches(data.days, dayIndex);
+                      // 出勤・退勤の2列表示(2026-08-23 追加)は、1セル表記(直下)と同じ順番
+                      // (継続行→当日の各区間)で1行ずつ積む。同じ配列から出勤列・退勤列の両方を
+                      // 描くことで、行の並び・件数が必ず一致し、左右の行が視覚的に揃う。
+                      const stretchRows: Array<{ key: string; incoming: boolean; clockIn: string; clockOut: string }> = [
+                        ...incomingStretches.map((incoming, i) => ({
+                          key: `incoming-${i}`,
+                          incoming: true,
+                          clockIn: formatIncomingClockIn(day.date, incoming),
+                          clockOut: formatTimeJst(incoming.clockOutAt),
+                        })),
+                        ...day.stretches.map((stretch, i) => ({
+                          key: `stretch-${i}`,
+                          incoming: false,
+                          clockIn: formatStretchClockIn(stretch),
+                          clockOut: formatStretchClockOut(day.date, stretch),
+                        })),
+                      ];
                       // 警告のある行は「Y」マーク(2026-08-23 廃止)の代わりに行全体の背景で示す
                       // (warningLabel の文言そのものが隣にあり、非色覚的な手掛かりは既に足りている)。
                       const rowClassName =
@@ -666,6 +706,26 @@ export function MonthlyView() {
                             {day.stretches.map((stretch, i) => (
                               <div key={i} className="monthly-table__stretch tabular-nums">
                                 {formatStretchRange(day.date, stretch)}
+                              </div>
+                            ))}
+                          </td>
+                          <td className="monthly-table__col-clock-in" data-label={messages.monthly.columnClockIn}>
+                            {stretchRows.map((row) => (
+                              <div
+                                key={row.key}
+                                className={`monthly-table__stretch tabular-nums${row.incoming ? " monthly-table__stretch--incoming" : ""}`}
+                              >
+                                {row.clockIn}
+                              </div>
+                            ))}
+                          </td>
+                          <td className="monthly-table__col-clock-out" data-label={messages.monthly.columnClockOut}>
+                            {stretchRows.map((row) => (
+                              <div
+                                key={row.key}
+                                className={`monthly-table__stretch tabular-nums${row.incoming ? " monthly-table__stretch--incoming" : ""}`}
+                              >
+                                {row.clockOut}
                               </div>
                             ))}
                           </td>
