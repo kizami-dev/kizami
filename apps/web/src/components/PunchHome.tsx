@@ -188,6 +188,7 @@ export function PunchHome() {
     <div className="punch-home">
       <AppHeader displayName={guard.user.displayName} email={guard.user.email} tenantName={guard.tenant?.name ?? null} active="punch" />
       <main className="punch-home__main">
+        <div className="punch-home__card">
         <div className="punch-clock" aria-hidden="false">
           <span className="punch-clock__main tabular-nums" aria-label={messages.punchClock.currentTimeAriaLabel(hm, ss)}>
             {hm}
@@ -284,6 +285,7 @@ export function PunchHome() {
             </ul>
           )}
         </section>
+        </div>
       </main>
     </div>
   );

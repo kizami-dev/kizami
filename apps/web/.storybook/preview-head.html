@@ -1,0 +1,11 @@
+<!--
+  _layout.tsx と同じ Google Fonts 読み込み(Shippori Antique B1 / Jost / Zen Kaku Gothic New /
+  IBM Plex Mono)。Storybook のプレビュー iframe は _layout.tsx を経由しないため、ここで
+  同じ <link> を複製する(tokens.css の --font-* が指す書体を実際に読み込むのはこの1箇所)。
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link
+  rel="stylesheet"
+  href="https://fonts.googleapis.com/css2?family=Shippori+Antique+B1&family=Jost:wght@500&family=Zen+Kaku+Gothic+New:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
+/>

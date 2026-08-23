@@ -18,16 +18,33 @@
   gap: var(--space-5);
   padding: var(--space-5) var(--space-4) var(--space-7);
   /*
-   * 2026-08-23: PC表示の余白調整の対象から意図的に外す。ここは打刻パッド・今日/今月の
-   * 要点・要対応カードを縦一列に積む単一カラムのレイアウト(auto-fill/auto-fit の
-   * カードグリッドではない)で、settings-hub__main のようにカラム数が増えて自然に埋まる
-   * 構造を持たない。そのため tokens.css の --width-content-* は使わず、幅を広げると
-   * 単に1カラムが間延びするだけになる現状の値を維持する(依頼の「無理に1カラムを
-   * 引き伸ばさない」という方針どおり)。
+   * 2026-08-23: 外枠は認証後の全ページ共通で --width-content-wide に統一する(ヘッダー
+   * 直下からページが始まる構造は他ページと同じなので、外枠だけは揃えておく)。ただし
+   * 中身は単一カラムの縦積み(auto-fill/auto-fit のカードグリッドではない)のため、
+   * 無理に1カラムを引き伸ばさない: 打刻(.dashboard-punch)は中央の狭い幅を維持し、
+   * 「今日/今月の要点」「要対応」の2枚は .dashboard-grid で横に並べ、
+   * 「クイックリンク」は元から settings-hub__grid(auto-fill)を再利用しているため
+   * 幅が増えた分は自然にカラム数が増える形になる(詳細は各クラスのコメント参照)。
    */
-  max-width: 38rem;
+  max-width: var(--width-content-wide);
   margin: 0 auto;
   width: 100%;
+}
+
+/* 2026-08-23: 「今日/今月の要点」「要対応」を横並びにするラッパー(DashboardView.tsx 側)。
+   単純な1カラム引き伸ばしを避けるための2カラム化(依頼どおり判断・実施)。狭い画面
+   (モバイル・main が2カラムを気持ちよく収められない幅)では1カラムに戻す。 */
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-5);
+}
+
+@media (min-width: 60rem) {
+  .dashboard-grid {
+    grid-template-columns: repeat(2, 1fr);
+    align-items: start;
+  }
 }
 
 /* ---- 1. 打刻(最上部、カード枠なしでヘッダーから自然に続く「主役」の扱い) ---- */
@@ -38,6 +55,13 @@
   align-items: center;
   gap: var(--space-3);
   text-align: center;
+  /* 2026-08-23: main が wide(72rem)になったため、打刻パッドが間延びしないよう
+     punch-home.css の打刻カードと同じ幅(32rem)に狭め、中央寄せのまま維持する
+     (打刻は「今日の一枚」の集中画面という性質が /punch と同じため、他の設定系ページの
+     「左寄せ」ルールではなくこちらに合わせる判断)。 */
+  max-width: 32rem;
+  margin: 0 auto;
+  width: 100%;
 }
 
 .dashboard-punch__state {

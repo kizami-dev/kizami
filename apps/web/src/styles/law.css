@@ -23,9 +23,11 @@
 .tenant-profile__main {
   flex: 1;
   padding: var(--space-5) var(--space-4) var(--space-7);
-  /* 2026-08-23: テナントプロファイル(フォーム)+法改正予定(読み物)の複合ページのため、
-     テーブル系ほどは広げない(小幅増、40rem→44rem)。幅トークンの規律は tokens.css 参照。 */
-  max-width: var(--width-content-narrow);
+  /* 2026-08-23: 外枠は認証後の全ページ共通で --width-content-wide に統一する(見出し・
+     SettingsNav の左端が他ページと揃う)。テナントプロファイル(フォーム)+法改正予定
+     (読み物)はいずれも __form / .law-rules / .upcoming-laws 側(下記)で --width-form に
+     個別制約し左寄せする。 */
+  max-width: var(--width-content-wide);
   margin: 0 auto;
   width: 100%;
   display: flex;
@@ -48,6 +50,9 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
+  /* 2026-08-23: 入力欄・説明文・送信ボタンのまとまりを --width-form に制約し左寄せする。 */
+  max-width: var(--width-form);
+  margin: 0;
 }
 
 .tenant-profile__field {
@@ -102,6 +107,10 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
+  /* 2026-08-23: 読み物(現在適用中の値の一覧)を --width-form に制約し、直上の
+     .tenant-profile__form と左端を揃える。 */
+  max-width: var(--width-form);
+  margin: 0;
 }
 
 .law-rules__title {
@@ -158,6 +167,10 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
+  /* 2026-08-23: 読み物(法改正の予定一覧)を --width-form に制約し、上の2ブロックと
+     左端を揃える。 */
+  max-width: var(--width-form);
+  margin: 0;
 }
 
 .upcoming-laws__title {

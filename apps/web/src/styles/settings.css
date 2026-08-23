@@ -14,11 +14,11 @@
 .settings-notif__main {
   flex: 1;
   padding: var(--space-5) var(--space-4) var(--space-7);
-  /* 2026-08-23: フォームが主役のページのため、テーブル系ほどは広げない(小幅増、
-     40rem→44rem)。幅トークンの規律は tokens.css 参照。help-settings.css /
-     privacy-settings.css / api-keys-settings.css は追加クラスでこれを上書きし、
-     一覧が主役の3画面だけテーブル系の幅にしている。 */
-  max-width: var(--width-content-narrow);
+  /* 2026-08-23: 外枠は認証後の全ページ共通で --width-content-wide に統一する(見出し・
+     SettingsNav の左端が他ページと揃う)。help-settings.css / api-keys-settings.css は
+     元々このクラスに追加クラスで同じ wide を明示していたため実質的に無変更。
+     フォーム部分の内側制約は .settings-notif__form 側(下記)で --width-form に行う。 */
+  max-width: var(--width-content-wide);
   margin: 0 auto;
   width: 100%;
   display: flex;
@@ -70,6 +70,12 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-5);
+  /* 2026-08-23: フォーム要素群(入力欄・説明文・送信ボタンのまとまり)を --width-form に
+     制約し左寄せする(main は wide のまま、中身だけ狭める。センタリングはしない)。
+     help-settings.css のエディタ用フォーム(テキストエリアが主役)だけは
+     .help-settings__editor-panel 側でこの上限を明示的に解除している。 */
+  max-width: var(--width-form);
+  margin: 0;
 }
 
 .settings-notif__section {
@@ -132,6 +138,10 @@
   border: var(--border-hair);
   border-radius: var(--radius-m);
   padding: var(--space-4);
+  /* 2026-08-23: 直上の .settings-notif__form と同じ左端に揃える(フォームに付随する
+     テスト送信結果のため、読み物寄りの --width-form に制約する)。 */
+  max-width: var(--width-form);
+  margin: 0;
 }
 
 .test-result-list {

@@ -286,6 +286,9 @@ export function DashboardView() {
           </Link>
         </section>
 
+        {/* ---- 2〜3. 今日/今月の要点・要対応(2026-08-23: 外枠が wide になった分、
+             1カラムを間延びさせず横並びにする。dashboard.css の .dashboard-grid 参照) ---- */}
+        <div className="dashboard-grid">
         {/* ---- 2. 今日/今月の要点 ---- */}
         <section className="dashboard-card" aria-label={messages.dashboard.todayTitle}>
           <h2 className="dashboard-card__title">{messages.dashboard.todayTitle}</h2>
@@ -449,6 +452,7 @@ export function DashboardView() {
 
           {todoLoadFailed ? <p className="dashboard-todo__load-failed">{messages.dashboard.todoLoadFailed}</p> : null}
         </section>
+        </div>
 
         {/* ---- 4. クイックリンク ---- */}
         <section className="dashboard-card" aria-label={messages.dashboard.quickLinksTitle}>

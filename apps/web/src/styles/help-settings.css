@@ -125,6 +125,15 @@
   gap: var(--space-5);
 }
 
+/* 2026-08-23: settings.css の .settings-notif__form は既定で --width-form(44rem)に
+   制約されるが、この画面の右カラムは本文(社内規定)を編集するテキストエリアが主役で、
+   幅を広げた分がそのまま実質的な編集領域の広さになる(help-settings.css 冒頭のコメント
+   参照)。そのため、このエディタ用フォームだけは上限を解除し、2カラムグリッドの
+   右カラム幅(.help-settings__grid の 1fr)いっぱいに使わせる。 */
+.help-settings__editor-panel .settings-notif__form {
+  max-width: none;
+}
+
 .help-settings__reference {
   display: flex;
   flex-direction: column;

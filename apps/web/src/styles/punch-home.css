@@ -9,19 +9,30 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--space-6);
   padding: var(--space-6) var(--space-4) var(--space-7);
   /* PWA(standalone起動)でのセーフエリア対応: iPhoneのノッチ・ホームバーに被らないよう
      ビューポート下端の余白を確保する(viewport-fit=cover は _layout.tsx で設定)。 */
   padding-bottom: max(var(--space-7), env(safe-area-inset-bottom));
   padding-left: max(var(--space-4), env(safe-area-inset-left));
   padding-right: max(var(--space-4), env(safe-area-inset-right));
-  /* 2026-08-23: PC表示の余白調整の対象から意図的に外す。中央固定の打刻ボタン1つが主役の
-     単一アクション画面のため、tokens.css の --width-content-* は対象外とし、
-     現状のコンパクトな幅を維持する(依頼の「広げすぎない」判断)。 */
-  max-width: 32rem;
+  /* 2026-08-23: 外枠(main)自体は認証後の全ページ共通の --width-content-wide に揃える
+     (この画面には SettingsNav 等の左端整合が必要な要素はないため見た目への影響は
+     ほぼ無いが、外枠の規律を他ページと合わせておく)。「今日の一枚」の集中画面という
+     意図から、実際に見える打刻カードは下の .punch-home__card で中央の狭い幅を維持する。 */
+  max-width: var(--width-content-wide);
   margin: 0 auto;
   width: 100%;
+}
+
+/* 2026-08-23 追加: 実際に見える打刻カード本体(時計・スタンプ・打刻パッド・トンボ列)。
+   main が wide になった分、ここで従来どおりのコンパクトな幅(32rem)に戻し中央寄せを保つ。 */
+.punch-home__card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-6);
+  width: 100%;
+  max-width: 32rem;
 }
 
 /* 現在時刻: IBM Plex Mono、分を大きく、秒は小さく添える */

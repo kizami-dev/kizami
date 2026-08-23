@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "waku dev",
     "build": "waku build",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "storybook": "storybook dev -p 6006",
+    "storybook:build": "storybook build"
   },
   "dependencies": {
     "@kizami/help-content": "workspace:*",
@@ -16,7 +18,13 @@
     "waku": "1.0.0-beta.9"
   },
   "devDependencies": {
+    "@storybook/addon-essentials": "^8.6.18",
+    "@storybook/blocks": "^8.6.18",
+    "@storybook/react": "^8.6.18",
+    "@storybook/react-vite": "^8.6.18",
     "@types/react": "^19.2.18",
-    "@types/react-dom": "^19.2.4"
+    "@types/react-dom": "^19.2.4",
+    "storybook": "^8.6.18",
+    "vite": "^5.4.21"
   }
 }

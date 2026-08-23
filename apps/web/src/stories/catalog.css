@@ -1,0 +1,131 @@
+/**
+ * Storybook カタログ専用のレイアウト補助スタイル(2026-08-23 追加)。
+ *
+ * アプリ本体のページ CSS(styles/*.css)には一切手を入れず、ここはカタログの「額縁」
+ * (見出し・グリッド配置)だけを担う。色・書体・間隔はすべて tokens.css の変数を再利用し、
+ * 独自のデザイン判断を持ち込まない。
+ */
+
+.story-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  padding: var(--space-5);
+  max-width: 68rem;
+  background: var(--k-paper);
+  color: var(--k-key);
+  font-family: var(--font-body);
+  min-height: 100dvh;
+}
+
+.story-section__title {
+  font-family: var(--font-display);
+  font-size: 1.3rem;
+  letter-spacing: 0.02em;
+}
+
+.story-section__lead {
+  color: var(--k-ink-soft);
+  font-size: 0.88rem;
+  max-width: 42rem;
+  line-height: 1.7;
+}
+
+.story-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.story-group__title {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--k-ink-soft);
+  letter-spacing: 0.02em;
+}
+
+.story-group__note {
+  font-size: 0.8rem;
+  color: var(--k-ink-soft);
+  margin: 0;
+}
+
+.story-swatch-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr));
+  gap: var(--space-3);
+}
+
+.story-swatch {
+  display: flex;
+  flex-direction: column;
+  border: var(--border-hair);
+  border-radius: var(--radius-m);
+  overflow: hidden;
+}
+
+.story-swatch__color {
+  height: 4rem;
+}
+
+.story-swatch__meta {
+  padding: var(--space-2) var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.story-swatch__token {
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+}
+
+.story-swatch__hex {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--k-ink-soft);
+}
+
+.story-swatch__role {
+  font-size: 0.74rem;
+  color: var(--k-ink-soft);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.story-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: flex-start;
+}
+
+.story-row--center {
+  align-items: center;
+}
+
+.story-type-sample {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.story-type-sample__label {
+  font-size: 0.72rem;
+  color: var(--k-ink-soft);
+  font-family: var(--font-mono);
+}
+
+.story-frame {
+  border: var(--border-hair);
+  border-radius: var(--radius-m);
+  padding: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  align-items: flex-start;
+}
+
+.story-frame--center {
+  align-items: center;
+}

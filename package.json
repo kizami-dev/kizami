@@ -15,7 +15,9 @@
     "docs:guide": "pnpm --filter @kizami/help-content build && node scripts/sync-help-docs.mjs",
     "docs:company": "node scripts/sync-company-docs.mjs",
     "docs:build": "pnpm docs:api && pnpm docs:guide && pnpm docs:company && pnpm --filter @kizami/docs build",
-    "screenshots": "mise exec node@26 -- pnpm exec tsx scripts/screenshots/index.ts"
+    "screenshots": "mise exec node@26 -- pnpm exec tsx scripts/screenshots/index.ts",
+    "storybook": "pnpm --filter @kizami/web storybook",
+    "storybook:build": "pnpm --filter @kizami/web storybook:build"
   },
   "devDependencies": {
     "@types/node": "^26.2.0",
