@@ -1,0 +1,156 @@
+# demo.kizami.dev — 公開デモ環境。
+#
+# 設計: DB は emptyDir(PVC なし)。initContainer が起動のたびに
+# seed.ts(初期管理者)→ dev-screenshot-seed.ts(デモデータ: メンバー・打刻・シフト・
+# 有給予告・通知)を流すため、**Pod の再起動=デモの完全リセット**になる。
+# 毎晩の CronJob(下記)が rollout restart を叩くだけでよい。
+# 認証情報は公開前提(サイトに掲示): demo@kizami.dev / kizami-demo
+# 通知系は WEBHOOK_URL 未設定なので外部送信は発生しない。
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kizami-demo
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kizami-demo
+  namespace: kizami-demo
+  labels: {app: kizami-demo}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector:
+    matchLabels: {app: kizami-demo}
+  template:
+    metadata:
+      labels: {app: kizami-demo}
+    spec:
+      securityContext: {fsGroup: 1001}
+      imagePullSecrets: [{name: ghcr-pull}]  # kizami ns からコピー(リポジトリ public 化後は不要)
+      initContainers:
+        - name: seed
+          image: ghcr.io/sasagar/kizami-api:latest
+          imagePullPolicy: Always
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -eu
+              node_modules/.bin/tsx src/seed.ts
+              ADMIN_EMAIL="$SEED_EMAIL" node_modules/.bin/tsx src/dev-screenshot-seed.ts
+          env:
+            - {name: DATABASE_URL, value: "file:/data/kizami.db"}
+            - {name: SEED_EMAIL, value: "demo@kizami.dev"}
+            - {name: SEED_PASSWORD, value: "kizami-demo"}
+            - {name: SEED_TENANT_NAME, value: "サンプル商事株式会社"}
+          volumeMounts: [{name: data, mountPath: /data}]
+      containers:
+        - name: api
+          image: ghcr.io/sasagar/kizami-api:latest
+          imagePullPolicy: Always
+          ports: [{containerPort: 3001}]
+          env:
+            - {name: DATABASE_URL, value: "file:/data/kizami.db"}
+            # デモ専用の使い捨て鍵。リセットのたびに DB ごと消えるので固定でよい
+            - {name: KIZAMI_ENCRYPTION_KEY, value: "ZGVtby1vbmx5LWtleS1ub3QtYS1zZWNyZXQtMzJieXRlcw=="}
+          readinessProbe:
+            httpGet: {path: /healthz, port: 3001}
+            initialDelaySeconds: 3
+          resources:
+            requests: {cpu: 50m, memory: 192Mi}
+            limits: {memory: 512Mi}
+          volumeMounts: [{name: data, mountPath: /data}]
+        - name: web
+          image: ghcr.io/sasagar/kizami-web:latest
+          imagePullPolicy: Always
+          ports: [{containerPort: 3000}]
+          resources:
+            requests: {cpu: 25m, memory: 96Mi}
+            limits: {memory: 256Mi}
+        - name: worker
+          image: ghcr.io/sasagar/kizami-api:latest
+          imagePullPolicy: Always
+          command: ["node_modules/.bin/tsx", "src/worker.ts"]
+          env:
+            - {name: DATABASE_URL, value: "file:/data/kizami.db"}
+            - {name: REDIS_URL, value: "redis://127.0.0.1:6379"}
+            - {name: KIZAMI_ENCRYPTION_KEY, value: "ZGVtby1vbmx5LWtleS1ub3QtYS1zZWNyZXQtMzJieXRlcw=="}
+          resources:
+            requests: {cpu: 25m, memory: 128Mi}
+            limits: {memory: 384Mi}
+          volumeMounts: [{name: data, mountPath: /data}]
+        - name: valkey
+          image: valkey/valkey:8-alpine
+          args: ["--save", "", "--appendonly", "no"]
+          resources:
+            requests: {cpu: 10m, memory: 32Mi}
+            limits: {memory: 128Mi}
+      volumes:
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kizami-demo-web
+  namespace: kizami-demo
+spec:
+  type: NodePort
+  selector: {app: kizami-demo}
+  ports: [{port: 3000, targetPort: 3000, nodePort: 30095}]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kizami-demo-api
+  namespace: kizami-demo
+spec:
+  type: NodePort
+  selector: {app: kizami-demo}
+  ports: [{port: 3001, targetPort: 3001, nodePort: 30096}]
+---
+# 毎晩 JST 4:00(UTC 19:00)にデモをリセット(rollout restart → emptyDir 消滅 → 再シード)
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: demo-reset
+  namespace: kizami-demo
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: demo-reset
+  namespace: kizami-demo
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: demo-reset
+  namespace: kizami-demo
+subjects: [{kind: ServiceAccount, name: demo-reset, namespace: kizami-demo}]
+roleRef: {kind: Role, name: demo-reset, apiGroup: rbac.authorization.k8s.io}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: demo-reset
+  namespace: kizami-demo
+spec:
+  schedule: "0 19 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: demo-reset
+          restartPolicy: Never
+          containers:
+            - name: restart
+              image: bitnami/kubectl:latest
+              command: ["kubectl", "-n", "kizami-demo", "rollout", "restart", "deployment/kizami-demo"]

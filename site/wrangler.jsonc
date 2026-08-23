@@ -1,0 +1,14 @@
+// kizami.dev のプロダクトサイト(静的アセットのみの Worker)。
+// デプロイ: cd site && npx wrangler deploy
+{
+  "name": "kizami-site",
+  "compatibility_date": "2026-08-01",
+  "assets": {
+    "directory": ".",
+    "not_found_handling": "404-page"
+  },
+  "routes": [
+    { "pattern": "kizami.dev", "custom_domain": true },
+    { "pattern": "www.kizami.dev", "custom_domain": true }
+  ]
+}

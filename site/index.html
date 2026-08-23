@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KIZAMI — 日本の労働法制に準拠したセルフホスト勤怠管理OSS</title>
+<meta name="description" content="1分単位の労働時間把握、法定内/時間外/深夜/法定休日の時間区分、フレックス・固定・変形労働時間制、有給の付与と年5日義務、36協定アラート。日本の勤怠慣行を最初から設計の中心に置いた AGPL のセルフホスト勤怠管理システム。">
+<meta property="og:title" content="KIZAMI — 1分を、刻む。">
+<meta property="og:description" content="日本の労働法制に準拠したセルフホスト勤怠管理OSS">
+<meta property="og:url" content="https://kizami.dev/">
+<meta property="og:image" content="https://kizami.dev/assets/dashboard-light.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%231A1A1A'/%3E%3Ctext x='16' y='23' font-size='18' text-anchor='middle' fill='%2300A3D9' font-family='serif' font-weight='bold'%3E刻%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho+B1:wght@600;800&family=Zen+Kaku+Gothic+New:wght@400;500;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<!-- 校正紙の天: インキバー(CMYK)。装飾ではなく「打刻=スタンプ=インキ」という製品の世界観の構造要素 -->
+<div class="inkbar" aria-hidden="true">
+  <i class="c"></i><i class="m"></i><i class="y"></i><i class="k"></i>
+  <i class="c t50"></i><i class="m t50"></i><i class="y t50"></i><i class="k t50"></i>
+</div>
+
+<header class="masthead">
+  <div class="wrap masthead__row">
+    <span class="wordmark">KIZAMI<span class="wordmark__mark">刻</span></span>
+    <nav class="nav">
+      <a href="#features">機能</a>
+      <a href="#screens">画面</a>
+      <a href="#selfhost">セルフホスト</a>
+      <a href="https://docs.kizami.dev/">ドキュメント</a>
+      <a class="nav__gh" href="https://github.com/sasagar/kizami">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+<section class="hero">
+  <div class="wrap hero__grid">
+    <div class="hero__copy">
+      <p class="hero__eyebrow"><span class="regmark" aria-hidden="true">✛</span> 出退勤打刻型・セルフホスト・AGPL-3.0</p>
+      <h1 class="hero__title">1分を、<br><em>刻む。</em></h1>
+      <p class="hero__lede">
+        日本の労働基準法を、あとから貼るのではなく<strong>最初から設計の中心に</strong>。
+        1分単位の労働時間把握、法定内・時間外・深夜・法定休日の時間区分、
+        有給の基準日付与と年5日義務 — 日本の勤怠慣行のための勤怠管理OSSです。
+      </p>
+      <p class="hero__lede--en" lang="en">Self-hosted attendance tracking built for Japanese labor law. UI in 日本語 / English / 한국어 / 简体中文.</p>
+      <div class="hero__cta">
+        <a class="btn btn--ink" href="https://github.com/sasagar/kizami">GitHub で見る</a>
+        <a class="btn" href="https://demo.kizami.dev/">デモを試す</a>
+      </div>
+      <p class="hero__note">デモ: demo@kizami.dev / kizami-demo(毎晩リセットされます)</p>
+      <p class="hero__note">労働者に不利な丸めは実装していません — 名前の由来です。</p>
+    </div>
+    <figure class="hero__shot">
+      <img src="/assets/punch-hero.webp" alt="KIZAMI の打刻画面 — スタンプ演出のある出勤・退勤ボタン" width="680" height="840" loading="eager">
+      <figcaption>打刻画面 — 押した記録がスタンプとして刻まれる</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section id="features" class="section">
+  <div class="wrap">
+    <h2 class="section__title">法律の条文を、そのまま機能に</h2>
+    <p class="section__lede">既存のセルフホスト勤怠OSSは工数トラッキング寄りで、日本の勤怠慣行をカバーしません。KIZAMI の機能一覧は、労働基準法の要求事項の一覧でもあります。</p>
+    <div class="features">
+      <article class="feature">
+        <h3>時間区分の算出<small>労基法37条</small></h3>
+        <p>法定内・法定時間外・深夜・法定休日・月60時間超を1分単位で区分。金額計算は給与システムの仕事と割り切り、CSV / API で区分別時間数を渡します。</p>
+      </article>
+      <article class="feature">
+        <h3>3つの労働時間制<small>32条・32条の3・32条の2</small></h3>
+        <p>フレックスタイム制(清算期間集計)、固定時間制(法定内残業の二段判定)、1ヶ月単位の変形労働時間制(シフトの事前特定・予実乖離の警告)。</p>
+      </article>
+      <article class="feature">
+        <h3>有給休暇<small>39条</small></h3>
+        <p>法定・基準日方式・比例付与。付与は「予告 → 管理者承認 → 本人通知」の3段で、出勤率の参考値を添えて機械任せにしません。年5日取得義務も追跡。</p>
+      </article>
+      <article class="feature">
+        <h3>36協定アラート<small>36条</small></h3>
+        <p>月45時間・年360時間・特別条項。超過見込みを管理者へ通知します。</p>
+      </article>
+      <article class="feature">
+        <h3>不可変の記録<small>109条</small></h3>
+        <p>打刻は追記専用。訂正は「申請 → 承認」で新しい記録を重ね、監査ログが構造として残ります。休憩の自動控除も本人が打ち消し申請できます。</p>
+      </article>
+      <article class="feature">
+        <h3>権限と組織</h3>
+        <p>業務タスク単位の権限カタログ × 部署スコープをチェックボックスで。招待式の登録、実効権限ビュー、最後の管理者保護。MCP サーバー同梱で AI エージェントからの打刻・照会も。</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section id="screens" class="section section--tinted">
+  <div class="wrap">
+    <h2 class="section__title">画面</h2>
+    <div class="screens">
+      <figure><img src="/assets/dashboard-light.webp" alt="ダッシュボード" loading="lazy"><figcaption>ダッシュボード — 今日/今月と要対応</figcaption></figure>
+      <figure><img src="/assets/shifts-light.webp" alt="シフト表" loading="lazy"><figcaption>シフト表 — 週グリッドで割当、法定休日と総枠を確定前に検査</figcaption></figure>
+      <figure><img src="/assets/monthly-dark.webp" alt="月次(ダークテーマ)" loading="lazy"><figcaption>月次 — 区分別集計と警告行(ダークテーマ)</figcaption></figure>
+    </div>
+  </div>
+</section>
+
+<section id="selfhost" class="section">
+  <div class="wrap selfhost">
+    <div>
+      <h2 class="section__title">自分のサーバーで、5分で</h2>
+      <p class="section__lede">勤怠データは人事情報そのもの。外に預けず、Docker Compose ひとつで自社に置けます。k3s / Kubernetes には Helm チャートを用意しています。</p>
+      <ul class="selfhost__points">
+        <li>SQLite 単一ファイル — バックアップは1ファイルの整合コピー</li>
+        <li>API・集計エンジンは純関数設計、テスト 1,000本超</li>
+        <li>通知は Slack / Discord / メール / アプリ内</li>
+      </ul>
+    </div>
+    <pre class="code"><code><span class="code__c"># 1. 取得して設定</span>
+git clone https://github.com/sasagar/kizami.git
+cd kizami/deploy/compose &amp;&amp; cp .env.example .env
+
+<span class="code__c"># 2. 起動して初期管理者を作成</span>
+docker compose up -d
+docker compose run --rm seed
+
+<span class="code__c"># → http://localhost:8080</span></code></pre>
+  </div>
+</section>
+
+<section class="section section--kicker">
+  <div class="wrap kicker">
+    <p class="kicker__line">勤怠は、毎日のこと。<br>だから毎日つかって楽しい道具にする。</p>
+    <div class="hero__cta">
+      <a class="btn btn--ink" href="https://github.com/sasagar/kizami">GitHub で見る</a>
+      <a class="btn" href="https://docs.kizami.dev/">ドキュメントを読む</a>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer class="footer">
+  <div class="inkbar inkbar--foot" aria-hidden="true"><i class="c"></i><i class="m"></i><i class="y"></i><i class="k"></i></div>
+  <div class="wrap footer__row">
+    <span>© SASAGAWA Kiyoshi — <a href="https://github.com/sasagar/kizami/blob/main/LICENSE">AGPL-3.0</a></span>
+    <span>KIZAMI は法的助言を提供するものではありません。制度の適用は最新の法令・通達をご確認ください。</span>
+  </div>
+</footer>
+
+</body>
+</html>
