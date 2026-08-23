@@ -22,7 +22,7 @@ import { createNotificationsRoutes } from "./routes/notifications.js";
 import { createNotificationPreferencesRoutes } from "./routes/notification-preferences.js";
 import { createPresetsRoutes } from "./routes/presets.js";
 import { createPunchesRoutes } from "./routes/punches.js";
-import { createSettingsRoutes, type SettingsRoutesDeps } from "./routes/settings.js";
+import { createSettingsRoutes, type SettingsRoutesDeps } from "./routes/settings/index.js";
 import { createSlackRoutes } from "./routes/slack.js";
 import { createLeaveRoutes } from "./routes/leave.js";
 
