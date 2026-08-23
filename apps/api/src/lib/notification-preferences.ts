@@ -28,6 +28,11 @@ import type { UserNotificationSettings } from "@kizami/db";
  * 通知。migration 0015 で専用列(correction_alert_email/webhook)が入り、他の3カテゴリと
  * 同様に個人設定で ON/OFF できる。
  *
+ * 2026-08-24(v0.7 フェーズ4)追加の2種別も、既存の "leave_" プレフィックス一致で
+ * `leave_alert` に束ねる(新カテゴリは作らない): `leave_grant_proposed`(付与予告を管理者へ)、
+ * `leave_grant_approved`(付与されたことを本人へ)。前者だけは受け手が管理者だが、
+ * 「休暇のお知らせ」として個人設定で一括 ON/OFF できる方が自然と判断した。
+ *
  * `approval_request`(2026-08-23 追加): 承認権限を持つ人向けの「承認依頼が届いた」通知
  * (打刻修正・休暇・休憩自動控除打ち消しの各申請の作成時)。他の3カテゴリは「申請者本人」が
  * 受け手だが、このカテゴリだけは「承認者」が受け手という違いがある(apps/api/src/lib/approvers.ts

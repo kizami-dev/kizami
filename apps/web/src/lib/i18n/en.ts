@@ -78,9 +78,12 @@ export const en = {
     todoApprovalsTitle: "Requests awaiting approval",
     todoApprovalsCorrections: "Punch correction requests",
     todoApprovalsLeave: "Leave requests",
+    /** Leave grant proposals (v0.7 phase 4, added 2026-08-24). Only shown to holders of leave.grant.manage. */
+    todoApprovalsProposals: "Leave grant proposals",
     todoApprovalsCountSuffix: "",
     todoApprovalsGoCorrections: "View correction requests →",
     todoApprovalsGoLeave: "View annual paid leave →",
+    todoApprovalsGoProposals: "View grant proposals →",
 
     todoWarningsTitle: "Days with punch warnings",
     todoWarningsMore: (n: number) => `${n} more day${n === 1 ? "" : "s"}`,
@@ -709,6 +712,7 @@ export const en = {
     openCorrection: "Open the correction request for this day",
     /** Link for leave_* types (added 2026-08-22, notifications list screen). */
     openLeave: "Open the annual paid leave screen",
+    openLeaveSettings: "Open the paid leave settings screen",
     /** Link for overtime_* types (added 2026-08-22, notifications list screen). */
     openMonthly: "Open the monthly screen",
     loadFailed: "Failed to load notifications. Please try again",
@@ -1642,6 +1646,14 @@ export const en = {
     workPolicyKindLabel: "Work system",
     workPolicyEffectiveFromLabel: "Effective from",
     workPolicyEffectiveFromHint: "This change only affects calculations from the specified date onward; past totals are unaffected.",
+    /**
+     * Only shown for the monthly variable system (added 2026-08-24, v0.7 phase 4).
+     * Under that system daily scheduled hours come from the shift plan, so standard_day_minutes
+     * only means "how many minutes one day of paid leave counts for".
+     */
+    workPolicyStandardDayMinutesLabel: "Standard scheduled minutes per day (for paid leave conversion)",
+    workPolicyStandardDayMinutesHint:
+      "How many minutes one day of paid leave counts as on days with no shift (minutes, 1-1440). The default is 480 (8 hours).",
     workPolicySubmit: "Apply this change",
     workPolicySubmitting: "Applying…",
     workPolicySubmitSuccess: "Work system changed.",
@@ -1707,6 +1719,9 @@ export const en = {
       invalid_effective_from: "Please check the effective date",
       effective_from_in_past: "The effective date can only be today or later (past calculation results must not change)",
       assignment_already_exists: "An assignment already exists for that effective date. Please choose a different date",
+      /** Standard scheduled minutes per day for paid leave conversion (v0.7 phase 4, added 2026-08-24). */
+      invalid_standard_day_minutes: "Standard scheduled minutes per day must be a whole number between 1 and 1440",
+      version_already_exists: "A version with the same settings already exists for that effective date. Please choose a different date",
       default: "Something went wrong. Please try again",
     },
   },
@@ -1985,6 +2000,69 @@ export const en = {
       hire_date_not_set: "The target member's hire date is not set",
       leave_settings_not_configured: "Please save the annual paid leave policy settings first",
       stock_conversion_disabled: "The stocking setting is not enabled",
+      forbidden: "You don't have permission to perform this action",
+      default: "Something went wrong. Please try again",
+    },
+  },
+
+  /**
+   * Leave grant proposals (the "Grant proposals" section of /settings/leave, v0.7 phase 4,
+   * added 2026-08-24). docs/requirements.md §11 "proposal -> approval by an administrator ->
+   * notification to the member". The machine never finalizes a grant, and the attendance rate
+   * (the 80% requirement of Article 39-1 of the Labor Standards Act) is shown only as a reference.
+   */
+  leaveGrantProposals: {
+    sectionTitle: "Grant proposals",
+    sectionDesc:
+      "Proposals created by the daily automatic calculation. A proposal alone grants nothing — it takes effect only once someone reviews and approves it. The attendance rate is a reference figure; the final call on the 80% requirement is yours.",
+    loadFailed: "Could not load the grant proposals. Please try again",
+    empty: "There are no grant proposals right now",
+
+    columnMember: "Member",
+    columnLeaveType: "Leave type",
+    columnGrantedOn: "Grant date",
+    columnDays: "Days",
+    columnAttendanceRate: "Attendance rate (reference)",
+    columnActions: "Actions",
+
+    leaveTypeAnnual: "Annual paid leave",
+    leaveTypeStocked: "Stocked leave",
+
+    basisShift: "Based on shifts",
+    basisCalendarEstimate: "Estimated from the calendar",
+    /** Shown when there are no working days, so no rate can be computed. This means "unknown", not 0%. */
+    rateUnknown: "—",
+    rateBelowThreshold: "May be below 80% — please check",
+
+    approve: "Approve",
+    reject: "Reject",
+    confirmApproveTitle: "Approve this proposal?",
+    confirmApproveMessage: "Approving grants the annual paid leave exactly as proposed. The grant date stays the proposed one.",
+    confirmRejectTitle: "Reject this proposal?",
+    confirmRejectMessage: "Rejecting grants nothing. Leaving a reason makes it easier to follow the history later.",
+    noteLabel: "Reason for rejection (optional)",
+    notePlaceholder: "e.g. attendance rate is below 80%",
+    approveSuccess: "Approved and granted.",
+    rejectSuccess: "Rejected.",
+
+    historyTitle: "Decided proposals",
+    historyEmpty: "There are no decided proposals",
+    columnStatus: "Status",
+    columnDecidedAt: "Decided at",
+    columnDecisionNote: "Reason for rejection",
+    statusLabel: {
+      proposed: "Undecided",
+      approved: "Approved",
+      rejected: "Rejected",
+      superseded: "Recreated",
+    },
+
+    errors: {
+      not_found: "The proposal could not be found",
+      not_proposed: "This proposal has already been decided. Please reload to see the latest state",
+      grant_already_exists: "A grant already exists for the same grant date. Please check for a duplicate manual grant",
+      invalid_status: "Please check the filter",
+      invalid_body: "Please check the entered content",
       forbidden: "You don't have permission to perform this action",
       default: "Something went wrong. Please try again",
     },

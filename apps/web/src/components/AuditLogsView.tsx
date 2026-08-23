@@ -11,7 +11,7 @@ import { SettingsNav } from "./SettingsNav";
 
 /**
  * apps/api の監査ログ挿入箇所(apps/api/src/routes/*.ts の insertAuditLog 呼び出し)から
- * grep で収集した action 名の一覧(2026-08-23 時点、44種)。翻訳はしない — action はコードに
+ * grep で収集した action 名の一覧(2026-08-24 時点、46種)。翻訳はしない — action はコードに
  * 現れる識別子そのものであり、4言語で意味が変わるものではないため(依頼の select はこの一覧を
  * そのまま列挙すればよい、と読んだ判断点)。増減したら本配列を追従させる。
  */
@@ -36,6 +36,8 @@ const KNOWN_ACTIONS: readonly string[] = [
   "leave_grant.auto_create",
   "leave_grant.convert_expired",
   "leave_grant.manual_create",
+  "leave_grant_proposal.approve",
+  "leave_grant_proposal.reject",
   "leave_request.approve",
   "leave_request.reject",
   "leave_settings.update",

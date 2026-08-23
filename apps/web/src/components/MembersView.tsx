@@ -26,6 +26,12 @@ import { InviteMemberDialog, type InviteMemberFormValue } from "./InviteMemberDi
 import { SettingsNav } from "./SettingsNav";
 
 /**
+ * 「1日あたりの基準所定時間(有給換算用)」の初期値(分)。8時間 = 480分。
+ * apps/api 側の FALLBACK_STANDARD_DAY_MINUTES と揃えている。
+ */
+const DEFAULT_STANDARD_DAY_MINUTES = "480";
+
+/**
  * メンバー管理画面(/settings/members)。所属変更・権限プリセット割当・実効権限ビュー(必須要件)。
  * docs/requirements.md §4。2026-08-23 Tier 0 その4で、パスワードリセットの管理者発行・
  * 退職処理(無効化/再有効化)・メンバー個別の労働時間制割当を追加した。
@@ -113,9 +119,10 @@ export function MembersView() {
   const todayDate = dateStrFromEpochMinutesJst(nowMinutes());
   const [workPolicy, setWorkPolicy] = useState<MemberWorkPolicySettingsDto | null>(null);
   const [workPolicyLoading, setWorkPolicyLoading] = useState(false);
-  const [workPolicyForm, setWorkPolicyForm] = useState<{ kind: WorkSystemKind; effectiveFrom: string }>({
+  const [workPolicyForm, setWorkPolicyForm] = useState<{ kind: WorkSystemKind; effectiveFrom: string; standardDayMinutes: string }>({
     kind: "flex",
     effectiveFrom: todayDate,
+    standardDayMinutes: DEFAULT_STANDARD_DAY_MINUTES,
   });
   const [workPolicySaving, setWorkPolicySaving] = useState(false);
   const [workPolicyError, setWorkPolicyError] = useState<string | null>(null);
@@ -200,7 +207,7 @@ export function MembersView() {
     setWorkPolicy(null);
     setWorkPolicyError(null);
     setWorkPolicySuccess(false);
-    setWorkPolicyForm({ kind: "flex", effectiveFrom: todayDate });
+    setWorkPolicyForm({ kind: "flex", effectiveFrom: todayDate, standardDayMinutes: DEFAULT_STANDARD_DAY_MINUTES });
     // 権限が無ければ GET も 403 になるため呼ばない(このファイル冒頭の canManageWorkPolicy コメント参照)。
     // 依頼「権限が無ければセクションは読み取り専用」は、この API 設計(GET/POST が同一権限)の下では
     // 「フォームを出さない」以上の読み取り専用状態を提供できないため、セクション自体を非表示にする
@@ -211,7 +218,14 @@ export function MembersView() {
         .getMemberWorkPolicy(member.id)
         .then((res) => {
           setWorkPolicy(res);
-          setWorkPolicyForm({ kind: res.effective?.kind ?? "flex", effectiveFrom: todayDate });
+          // standardDayMinutes は既存値を引き継がず既定の480分から始める(monthly_variable の
+          // 既存版は「無意味な placeholder としての0」が入っていることがあり、そのまま初期値に
+          // すると 1〜1440 のバリデーションに引っかかるため)。
+          setWorkPolicyForm({
+            kind: res.effective?.kind ?? "flex",
+            effectiveFrom: todayDate,
+            standardDayMinutes: DEFAULT_STANDARD_DAY_MINUTES,
+          });
         })
         .catch((err: unknown) => {
           if (err instanceof UnauthorizedError) {
@@ -481,11 +495,32 @@ export function MembersView() {
 
   async function handleWorkPolicySubmit(e: React.FormEvent, memberId: string) {
     e.preventDefault();
-    setWorkPolicySaving(true);
     setWorkPolicyError(null);
     setWorkPolicySuccess(false);
+
+    /*
+     * standardDayMinutes は変形労働時間制(monthly_variable)のときだけ送る(v0.7 フェーズ4、
+     * 2026-08-24 追加)。他の制度ではテナント既定ポリシーの値をそのまま引き継がせたいので、
+     * 画面にも出さず本文にも含めない。クライアント側の検証はサーバーと同じエラーコード
+     * (invalid_standard_day_minutes)の文言を使う。
+     */
+    let standardDayMinutes: number | undefined;
+    if (workPolicyForm.kind === "monthly_variable") {
+      const parsed = Number(workPolicyForm.standardDayMinutes);
+      if (!Number.isInteger(parsed) || parsed < 1 || parsed > 1440) {
+        setWorkPolicyError(messages.members.errors.invalid_standard_day_minutes);
+        return;
+      }
+      standardDayMinutes = parsed;
+    }
+
+    setWorkPolicySaving(true);
     try {
-      await api.assignMemberWorkPolicy(memberId, workPolicyForm);
+      await api.assignMemberWorkPolicy(memberId, {
+        kind: workPolicyForm.kind,
+        effectiveFrom: workPolicyForm.effectiveFrom,
+        ...(standardDayMinutes !== undefined ? { standardDayMinutes } : {}),
+      });
       const res = await api.getMemberWorkPolicy(memberId);
       setWorkPolicy(res);
       setWorkPolicySuccess(true);
@@ -881,6 +916,34 @@ export function MembersView() {
                                               {messages.members.workPolicyEffectiveFromHint}
                                             </span>
                                           </div>
+                                          {/*
+                                            変形労働時間制のときだけ出す(v0.7 フェーズ4、2026-08-24 追加)。
+                                            この制度では日ごとの所定はシフトで決まるため、この値は
+                                            「シフトが無い日に有給1日を何分として扱うか」だけを意味する。
+                                          */}
+                                          {workPolicyForm.kind === "monthly_variable" ? (
+                                            <div className="correction-field">
+                                              <label htmlFor={`member-work-policy-standard-day-minutes-${member.id}`}>
+                                                {messages.members.workPolicyStandardDayMinutesLabel}
+                                              </label>
+                                              <input
+                                                id={`member-work-policy-standard-day-minutes-${member.id}`}
+                                                type="number"
+                                                inputMode="numeric"
+                                                min={1}
+                                                max={1440}
+                                                className="tabular-nums"
+                                                value={workPolicyForm.standardDayMinutes}
+                                                onChange={(e) =>
+                                                  setWorkPolicyForm((prev) => ({ ...prev, standardDayMinutes: e.target.value }))
+                                                }
+                                                required
+                                              />
+                                              <span className="settings-notif__field-hint">
+                                                {messages.members.workPolicyStandardDayMinutesHint}
+                                              </span>
+                                            </div>
+                                          ) : null}
 
                                           {workPolicyError ? (
                                             <p className="correction-error" role="alert">

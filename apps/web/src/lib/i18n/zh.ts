@@ -62,9 +62,12 @@ export const zh = {
     todoApprovalsTitle: "待审批的申请",
     todoApprovalsCorrections: "打卡修正申请",
     todoApprovalsLeave: "休假申请",
+    /** 年假授予预告(v0.7 第4阶段,2026-08-24 新增)。仅对拥有 leave.grant.manage 权限的用户显示。 */
+    todoApprovalsProposals: "年假授予预告",
     todoApprovalsCountSuffix: "条",
     todoApprovalsGoCorrections: "查看修正申请 →",
     todoApprovalsGoLeave: "查看带薪年假 →",
+    todoApprovalsGoProposals: "查看授予预告 →",
 
     todoWarningsTitle: "有警告的打卡日期",
     todoWarningsMore: (n: number) => `还有${n}天`,
@@ -673,6 +676,7 @@ export const zh = {
     openCorrection: "打开当日的修正申请",
     /** 来自 leave_* 类型的入口(通知一览页面)。 */
     openLeave: "打开带薪年假页面",
+    openLeaveSettings: "打开带薪年假设置页面",
     /** 来自 overtime_* 类型的入口(通知一览页面)。 */
     openMonthly: "打开月度页面",
     loadFailed: "通知获取失败,请重试",
@@ -1593,6 +1597,14 @@ export const zh = {
     workPolicyKindLabel: "劳动时间制度",
     workPolicyEffectiveFromLabel: "生效日期",
     workPolicyEffectiveFromHint: "此变更仅影响指定日期以后的计算,过去的统计不会改变。",
+    /**
+     * 仅在综合计算工时制(monthly_variable)时显示的输入项(v0.7 第4阶段,2026-08-24 新增)。
+     * 该制度下每日的应出勤时间由排班决定,因此 standard_day_minutes 仅表示
+     * 「1天带薪年假折算为多少分钟」。
+     */
+    workPolicyStandardDayMinutesLabel: "每日基准应出勤时间(用于年假折算)",
+    workPolicyStandardDayMinutesHint:
+      "在没有排班的日子里休1天带薪年假时,按多少分钟的工作时间计算(分钟,1〜1440)。默认为480分钟(8小时)。",
     workPolicySubmit: "以此内容变更",
     workPolicySubmitting: "变更中…",
     workPolicySubmitSuccess: "劳动时间制度已变更。",
@@ -1656,6 +1668,9 @@ export const zh = {
       invalid_effective_from: "请确认生效日期",
       effective_from_in_past: "生效日期只能指定为今天或以后(否则会改变过去的统计结果)",
       assignment_already_exists: "该生效日期已存在分配,请指定其他日期",
+      /** 每日基准应出勤时间(用于年假折算,v0.7 第4阶段,2026-08-24 新增)。 */
+      invalid_standard_day_minutes: "每日基准应出勤时间请输入1〜1440之间的整数分钟",
+      version_already_exists: "该生效日期已存在相同设置的版本,请指定其他日期",
       default: "处理失败,请重试",
     },
   },
@@ -1933,6 +1948,68 @@ export const zh = {
       hire_date_not_set: "目标成员尚未设置入职日期",
       leave_settings_not_configured: "请先保存带薪年假的制度设置",
       stock_conversion_disabled: "结转设置尚未启用",
+      forbidden: "没有执行此操作的权限",
+      default: "处理失败,请重试",
+    },
+  },
+
+  /**
+   * 年假授予预告(/settings/leave 的「授予预告」区块,v0.7 第4阶段,2026-08-24 新增)。
+   * docs/requirements.md §11「预告 → 管理员审批 → 通知本人」。系统不会自行确定授予,
+   * 出勤率(《劳动基准法》第39条第1款的八成要求)仅作为参考值呈现。
+   */
+  leaveGrantProposals: {
+    sectionTitle: "授予预告",
+    sectionDesc:
+      "这是每日自动计算生成的授予「预告」。仅停留在预告状态不会实际授予,需要负责人确认内容并审批后才会生效。出勤率仅供参考,八成要求的最终判断请由人来做出。",
+    loadFailed: "获取授予预告失败,请重试",
+    empty: "目前没有授予预告",
+
+    columnMember: "成员",
+    columnLeaveType: "休假类型",
+    columnGrantedOn: "基准日",
+    columnDays: "天数",
+    columnAttendanceRate: "出勤率(参考值)",
+    columnActions: "操作",
+
+    leaveTypeAnnual: "带薪年假",
+    leaveTypeStocked: "结转休假",
+
+    basisShift: "按排班计算",
+    basisCalendarEstimate: "按日历推算",
+    /** 应出勤日为0、无法计算出勤率时显示。表示「未知」,而非0%。 */
+    rateUnknown: "—",
+    rateBelowThreshold: "可能不足八成 — 请确认",
+
+    approve: "批准",
+    reject: "驳回",
+    confirmApproveTitle: "要批准该预告吗",
+    confirmApproveMessage: "批准后将按此内容授予带薪年假。授予日期仍为预告中的基准日。",
+    confirmRejectTitle: "要驳回该预告吗",
+    confirmRejectMessage: "驳回后不会进行授予。填写理由有助于日后追溯经过。",
+    noteLabel: "驳回理由(可选)",
+    notePlaceholder: "例:出勤率不足八成",
+    approveSuccess: "已批准并完成授予。",
+    rejectSuccess: "已驳回。",
+
+    historyTitle: "已审批的预告",
+    historyEmpty: "没有已审批的预告",
+    columnStatus: "状态",
+    columnDecidedAt: "审批时间",
+    columnDecisionNote: "驳回理由",
+    statusLabel: {
+      proposed: "未审批",
+      approved: "已批准",
+      rejected: "已驳回",
+      superseded: "已重建",
+    },
+
+    errors: {
+      not_found: "未找到目标预告",
+      not_proposed: "该预告已被审批,请刷新页面确认最新状态",
+      grant_already_exists: "相同基准日的授予已存在,请确认是否与手动授予重复",
+      invalid_status: "请确认筛选条件",
+      invalid_body: "请确认输入内容",
       forbidden: "没有执行此操作的权限",
       default: "处理失败,请重试",
     },

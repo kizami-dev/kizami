@@ -55,11 +55,11 @@ import {
 import { resolveUsageMinutes, type LeaveUnit } from "@kizami/leave";
 import { buildAllowanceTimeline } from "./allowances.js";
 import { resolveMonthlyVariableExtras } from "./monthly-shifts.js";
+import { makeLeaveStandardMinutesResolver } from "./leave-minutes.js";
 import {
   buildLawTimelineForTenant,
-  buildSettingsTimeline,
+  buildSettingsTimelineWithBaseDayMinutes,
   fetchWorkPolicyVersionRowsForTenant,
-  standardDayMinutesForDate,
   TZ_OFFSET_MINUTES_JST,
   type WorkPolicyVersionRow,
 } from "./settings.js";
@@ -172,7 +172,9 @@ export async function computeMonthlyForUser(
   const toMinutes = localMidnightUtcMinutes(monthEndEpochDay + 2, tz) - 1;
 
   const punchRows = await listValidPunches(db, { tenantId, userId, fromMinutes, toMinutes });
-  const settingsTimeline = await buildSettingsTimeline(db, {
+  // 有給の分数換算(下記 paidLeave)にはシフト制の「基準所定(有給換算用)」も要るため、
+  // SettingsSpan[] と併せて BaseDayMinutesSpan[] も受け取る(追加クエリは発生しない)。
+  const settingsWithBase = await buildSettingsTimelineWithBaseDayMinutes(db, {
     tenantId,
     userId,
     fromDate: monthStartDate,
@@ -186,6 +188,7 @@ export async function computeMonthlyForUser(
         }
       : {}),
   });
+  const settingsTimeline = settingsWithBase.timeline;
   const lawTimeline = tenantContext
     ? tenantContext.lawTimeline
     : await buildLawTimelineForTenant(db, { tenantId, fromDate: monthStartDate, toDate: monthEndDate });
@@ -240,11 +243,20 @@ export async function computeMonthlyForUser(
   const effectiveLawTimeline = variableExtras?.lawTimeline ?? lawTimeline;
 
   const punches: ValidPunch[] = effectivePunchRows.map((p) => ({ kind: p.kind as PunchKind, occurredAt: p.occurredAt }));
-  // 判断点: monthly_variable ユーザーの承認済み有給は standardDayMinutesForDate が例外を投げる
-  // (lib/settings.ts のコメント参照、routes/attendance.ts の GET /monthly と同じ既知の限界)。
+  // monthly_variable(シフト制)の1日分の所定は lib/leave-minutes.ts が解決する
+  // (シフトのある日はそのシフトの所定、無い日は基準所定 — v0.7 フェーズ4 の決定。
+  // routes/attendance.ts の GET /monthly と同じ組み立て)。
+  const leaveMinutes = await makeLeaveStandardMinutesResolver(db, {
+    tenantId,
+    userId,
+    timeline: settingsTimeline,
+    baseDayMinutes: settingsWithBase.baseDayMinutes,
+    fromDate: monthStartDate,
+    toDate: monthEndDate,
+  });
   const paidLeave: PaidLeaveEntry[] = approvedLeaveRequests.map((r) => ({
     date: r.leaveDate,
-    minutes: resolveUsageMinutes(r.unit as LeaveUnit, standardDayMinutesForDate(effectiveSettingsTimeline, r.leaveDate), r.minutes ?? undefined),
+    minutes: resolveUsageMinutes(r.unit as LeaveUnit, leaveMinutes.forDate(r.leaveDate), r.minutes ?? undefined),
   }));
 
   const input: EngineInput = {

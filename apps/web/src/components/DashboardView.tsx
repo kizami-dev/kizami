@@ -11,6 +11,7 @@ import {
   type AttendanceStatus,
   type CorrectionRequestDto,
   type LeaveBalanceDto,
+  type LeaveGrantProposalDto,
   type LeaveRequestDto,
   type MonthlyAttendance,
   type NotificationDto,
@@ -84,6 +85,12 @@ export function DashboardView() {
   const [unread, setUnread] = useState<NotificationDto[] | null>(null);
   const [pendingCorrections, setPendingCorrections] = useState<CorrectionRequestDto[] | null>(null);
   const [pendingLeaveRequests, setPendingLeaveRequests] = useState<LeaveRequestDto[] | null>(null);
+  /**
+   * 有給付与の予告のうち未決裁のもの(v0.7 フェーズ4、2026-08-24 追加)。
+   * この枠だけは全員が呼べる API ではない(leave.grant.manage 必須) — 下の allSettled の
+   * 403 特例扱いのコメント参照。
+   */
+  const [pendingLeaveProposals, setPendingLeaveProposals] = useState<LeaveGrantProposalDto[] | null>(null);
   const [leaveBalance, setLeaveBalance] = useState<LeaveBalanceDto | null>(null);
   const [todoDataLoaded, setTodoDataLoaded] = useState(false);
   const [todoLoadFailed, setTodoLoadFailed] = useState(false);
@@ -126,9 +133,10 @@ export function DashboardView() {
       api.listCorrections("pending"),
       api.listLeaveRequests("pending"),
       api.getLeaveBalance(),
+      api.listLeaveGrantProposals("proposed"),
     ]).then((results) => {
       if (cancelled) return;
-      const [notifResult, correctionsResult, leaveReqResult, balanceResult] = results;
+      const [notifResult, correctionsResult, leaveReqResult, balanceResult, proposalsResult] = results;
       let unauthorized = false;
       let anyFailed = false;
 
@@ -151,6 +159,23 @@ export function DashboardView() {
       else {
         anyFailed = true;
         if (balanceResult.reason instanceof UnauthorizedError) unauthorized = true;
+      }
+      /*
+       * 付与の予告だけは「全員が呼べる API」ではない(leave.grant.manage 必須)。一般の従業員では
+       * 必ず 403 になるため、これを失敗に数えると「一部の情報を取得できませんでした」が常時
+       * 出てしまう。403 は「この人には該当なし」として 0 件・失敗ではない扱いにする
+       * (401 は他の枠と同じくログインへ飛ばす。UnauthorizedError は ApiError の派生で status=401
+       * のため、403 判定より先に評価する)。
+       */
+      if (proposalsResult.status === "fulfilled") setPendingLeaveProposals(proposalsResult.value.proposals);
+      else {
+        setPendingLeaveProposals([]);
+        if (proposalsResult.reason instanceof UnauthorizedError) {
+          anyFailed = true;
+          unauthorized = true;
+        } else if (!(proposalsResult.reason instanceof ApiError && proposalsResult.reason.status === 403)) {
+          anyFailed = true;
+        }
       }
 
       if (unauthorized) {
@@ -246,11 +271,13 @@ export function DashboardView() {
   const unreadCount = unread?.length ?? 0;
   const pendingCorrectionsCount = pendingCorrections?.length ?? 0;
   const pendingLeaveCount = pendingLeaveRequests?.length ?? 0;
+  const pendingLeaveProposalCount = pendingLeaveProposals?.length ?? 0;
 
   const hasTodo =
     unreadCount > 0 ||
     pendingCorrectionsCount > 0 ||
     pendingLeaveCount > 0 ||
+    pendingLeaveProposalCount > 0 ||
     warningDates.length > 0 ||
     mandatoryShortages.length > 0 ||
     expiringSoonCount > 0;
@@ -417,7 +444,7 @@ export function DashboardView() {
                 </div>
               ) : null}
 
-              {pendingCorrectionsCount > 0 || pendingLeaveCount > 0 ? (
+              {pendingCorrectionsCount > 0 || pendingLeaveCount > 0 || pendingLeaveProposalCount > 0 ? (
                 <div className="dashboard-todo__group">
                   <p className="dashboard-todo__group-title">{messages.dashboard.todoApprovalsTitle}</p>
                   {pendingCorrectionsCount > 0 ? (
@@ -445,6 +472,20 @@ export function DashboardView() {
                       </span>
                       <Link to="/leave" className="dashboard-todo__row-link">
                         {messages.dashboard.todoApprovalsGoLeave}
+                      </Link>
+                    </p>
+                  ) : null}
+                  {pendingLeaveProposalCount > 0 ? (
+                    <p className="dashboard-todo__row">
+                      <span>
+                        {messages.dashboard.todoApprovalsProposals}
+                        <span className="dashboard-todo__count tabular-nums">
+                          {pendingLeaveProposalCount}
+                          {messages.dashboard.todoApprovalsCountSuffix}
+                        </span>
+                      </span>
+                      <Link to="/settings/leave" className="dashboard-todo__row-link">
+                        {messages.dashboard.todoApprovalsGoProposals}
                       </Link>
                     </p>
                   ) : null}

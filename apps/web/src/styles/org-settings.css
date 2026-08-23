@@ -516,6 +516,14 @@ td.org-table__detail-cell {
   font-weight: 700;
 }
 
+/* 注意喚起のチップ(有給付与の予告の「8割未満の可能性」など、2026-08-24 追加)。 */
+.chip--warning {
+  border-color: var(--k-yellow-ink);
+  background: color-mix(in srgb, var(--k-yellow) 12%, transparent);
+  color: var(--k-yellow-ink);
+  font-weight: 700;
+}
+
 /* ---- メンバー詳細(プリセット割当+実効権限ビュー) ---- */
 
 .member-detail {

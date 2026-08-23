@@ -63,9 +63,12 @@ export const ko = {
     todoApprovalsTitle: "승인 대기 중인 신청",
     todoApprovalsCorrections: "출퇴근 수정 신청",
     todoApprovalsLeave: "휴가 신청",
+    /** 연차 부여 예고(v0.7 4단계, 2026-08-24 추가). leave.grant.manage 보유자에게만 표시된다. */
+    todoApprovalsProposals: "연차 부여 예고",
     todoApprovalsCountSuffix: "건",
     todoApprovalsGoCorrections: "수정 신청 보기 →",
     todoApprovalsGoLeave: "연차유급휴가 보기 →",
+    todoApprovalsGoProposals: "부여 예고 보기 →",
 
     todoWarningsTitle: "경고가 있는 출퇴근 기록일",
     todoWarningsMore: (n: number) => `그 밖에 ${n}일`,
@@ -683,6 +686,7 @@ export const ko = {
     openCorrection: "이날의 수정 신청 열기",
     /** leave_* 종류에서의 링크(2026-08-22 추가, 알림 목록 화면). */
     openLeave: "연차유급휴가 화면 열기",
+    openLeaveSettings: "연차 설정 화면 열기",
     /** overtime_* 종류에서의 링크(2026-08-22 추가, 알림 목록 화면). */
     openMonthly: "월간 화면 열기",
     loadFailed: "알림을 가져오지 못했습니다. 다시 시도해 주세요",
@@ -1608,6 +1612,14 @@ export const ko = {
     workPolicyKindLabel: "근로시간제",
     workPolicyEffectiveFromLabel: "적용 시작일",
     workPolicyEffectiveFromHint: "이 변경은 지정일 이후의 계산에만 영향을 주며, 과거 집계는 바뀌지 않습니다.",
+    /**
+     * 탄력적 근로시간제(monthly_variable)일 때만 표시하는 입력(v0.7 4단계, 2026-08-24 추가).
+     * 이 제도에서는 소정근로시간이 날마다 시프트로 정해지므로, standard_day_minutes 는
+     * 「연차 1일을 몇 분으로 볼 것인가」의 의미만 갖는다.
+     */
+    workPolicyStandardDayMinutesLabel: "1일당 기준 소정근로시간(연차 환산용)",
+    workPolicyStandardDayMinutesHint:
+      "시프트가 없는 날에 연차를 1일 사용했을 때 몇 분의 근로로 볼지에 대한 기준입니다(분, 1~1440). 기본값은 480분(8시간)입니다.",
     workPolicySubmit: "이 내용으로 변경",
     workPolicySubmitting: "변경 중…",
     workPolicySubmitSuccess: "근로시간제를 변경했습니다.",
@@ -1673,6 +1685,9 @@ export const ko = {
       invalid_effective_from: "적용 시작일을 확인해 주세요",
       effective_from_in_past: "적용 시작일은 오늘 이후로만 지정할 수 있습니다(과거 집계 결과가 바뀌기 때문입니다)",
       assignment_already_exists: "해당 적용 시작일에는 이미 할당이 있습니다. 다른 날짜를 지정해 주세요",
+      /** 1일당 기준 소정근로시간(연차 환산용, v0.7 4단계, 2026-08-24 추가). */
+      invalid_standard_day_minutes: "1일당 기준 소정근로시간은 1~1440분의 정수로 입력해 주세요",
+      version_already_exists: "해당 적용 시작일에는 이미 같은 설정의 버전이 있습니다. 다른 날짜를 지정해 주세요",
       default: "처리에 실패했습니다. 다시 시도해 주세요",
     },
   },
@@ -1950,6 +1965,68 @@ export const ko = {
       hire_date_not_set: "대상 멤버의 입사일이 설정되어 있지 않습니다",
       leave_settings_not_configured: "먼저 연차 제도 설정을 저장해 주세요",
       stock_conversion_disabled: "적립 설정이 활성화되어 있지 않습니다",
+      forbidden: "이 작업을 수행할 권한이 없습니다",
+      default: "처리에 실패했습니다. 다시 시도해 주세요",
+    },
+  },
+
+  /**
+   * 연차 부여 예고(/settings/leave 의 「부여 예고」 섹션, v0.7 4단계, 2026-08-24 추가).
+   * docs/requirements.md §11 「예고 → 관리자 승인 → 본인 통지」. 기계는 부여를 확정하지 않으며,
+   * 출근율(노동기준법 제39조 1항의 8할 요건)은 어디까지나 참고값으로만 제시한다.
+   */
+  leaveGrantProposals: {
+    sectionTitle: "부여 예고",
+    sectionDesc:
+      "일일 자동 계산이 만든 부여 「예고」입니다. 예고 상태로는 부여되지 않으며, 내용을 확인하고 담당자가 승인해야 비로소 확정됩니다. 출근율은 참고값이며 8할 요건의 최종 판단은 사람이 해 주세요.",
+    loadFailed: "부여 예고를 가져오지 못했습니다. 다시 시도해 주세요",
+    empty: "현재 부여 예고가 없습니다",
+
+    columnMember: "멤버",
+    columnLeaveType: "휴가 종류",
+    columnGrantedOn: "기준일",
+    columnDays: "일수",
+    columnAttendanceRate: "출근율(참고값)",
+    columnActions: "작업",
+
+    leaveTypeAnnual: "연차유급휴가",
+    leaveTypeStocked: "적립 휴가",
+
+    basisShift: "시프트 기준",
+    basisCalendarEstimate: "달력 기준 추정",
+    /** 전체 소정근로일이 0이라 출근율을 낼 수 없을 때. 0%가 아니라 「알 수 없음」을 뜻한다. */
+    rateUnknown: "—",
+    rateBelowThreshold: "8할 미만일 가능성 — 확인해 주세요",
+
+    approve: "승인",
+    reject: "반려",
+    confirmApproveTitle: "이 예고를 승인하시겠습니까",
+    confirmApproveMessage: "승인하면 이 내용대로 연차유급휴가가 부여됩니다. 부여일은 예고의 기준일 그대로입니다.",
+    confirmRejectTitle: "이 예고를 반려하시겠습니까",
+    confirmRejectMessage: "반려하면 부여되지 않습니다. 사유를 남겨 두면 나중에 경위를 확인할 수 있습니다.",
+    noteLabel: "반려 사유(선택)",
+    notePlaceholder: "예: 출근율이 8할에 미치지 못하기 때문",
+    approveSuccess: "승인하여 부여했습니다.",
+    rejectSuccess: "반려했습니다.",
+
+    historyTitle: "결재 완료된 예고",
+    historyEmpty: "결재 완료된 예고가 없습니다",
+    columnStatus: "상태",
+    columnDecidedAt: "결재 일시",
+    columnDecisionNote: "반려 사유",
+    statusLabel: {
+      proposed: "미결재",
+      approved: "승인",
+      rejected: "반려",
+      superseded: "재작성",
+    },
+
+    errors: {
+      not_found: "대상 예고를 찾을 수 없습니다",
+      not_proposed: "이 예고는 이미 결재되었습니다. 화면을 새로고침하여 최신 상태를 확인해 주세요",
+      grant_already_exists: "같은 기준일의 부여가 이미 있습니다. 수동 부여와 중복되지 않았는지 확인해 주세요",
+      invalid_status: "표시 조건을 확인해 주세요",
+      invalid_body: "입력 내용을 확인해 주세요",
       forbidden: "이 작업을 수행할 권한이 없습니다",
       default: "처리에 실패했습니다. 다시 시도해 주세요",
     },

@@ -7,6 +7,7 @@
  */
 
 export * from "./allocation.js";
+export * from "./attendance-rate.js";
 export * from "./balance.js";
 export * from "./date.js";
 export * from "./hourly.js";

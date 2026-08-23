@@ -247,6 +247,31 @@ export async function setupSecondUser(db: Database, tenantId: string): Promise<S
   return { userId, email, password };
 }
 
+/**
+ * `setupSecondUser` と同じことを任意のメールアドレス・氏名で行う(3人目以降が要るテスト用)。
+ * work_policy 割当は行わない(setupSecondUser と同じ)。
+ */
+export async function setupExtraUser(
+  db: Database,
+  params: { tenantId: string; email: string; name: string },
+): Promise<SeededSecondUser> {
+  const now = 0;
+  const userId = uuidv7();
+  const password = "yet another horse battery staple";
+
+  await db.insert(users).values({ id: userId, tenantId: params.tenantId, email: params.email, name: params.name, isActive: true, createdAt: now });
+  await db.insert(authCredentials).values({
+    id: uuidv7(),
+    tenantId: params.tenantId,
+    userId,
+    passwordHash: await hashPassword(password),
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  return { userId, email: params.email, password };
+}
+
 export function extractCookie(res: Response): string {
   const setCookieHeader = res.headers.get("set-cookie");
   if (!setCookieHeader) {

@@ -10,6 +10,9 @@
  *    overtime-alerts の定期スキャン(BullMQ ワーカー経由)でしか作られず、HTTPでもCLIでも
  *    トリガーする手段が無いため、notifications テーブルへ直接 INSERT する
  *    (本文は各スキャンの実装(reminders.ts / leave-alerts.ts)の文言をそのまま踏襲する)
+ * 3. 有給付与の「予告」(leave_grant_proposals) — 日次ワーカー
+ *    (apps/api/src/leave-grant-proposals.ts)でしか作られず、HTTPでもCLIでもトリガーできないため
+ *    直接 INSERT する(v0.7 フェーズ4、2026-08-24 追加)
  *
  * apps/api の既存機能(routes/*.ts 等)は一切変更しない。DATABASE_URL 以外の入力は
  * すべてこのファイル内の定数(スクリーンショット専用の固定デモデータ)。
@@ -21,6 +24,7 @@ import { eq } from "drizzle-orm";
 import {
   authCredentials,
   departments as departmentsTable,
+  leaveGrantProposals,
   memberships,
   notifications,
   allowanceDefinitions,
@@ -326,6 +330,86 @@ async function insertDemoUsers(
   return created;
 }
 
+/**
+ * 有給付与の「予告」(leave_grant_proposals)を投入する(v0.7 フェーズ4、2026-08-24 追加)。
+ *
+ * 予告行は日次ワーカー(apps/api/src/leave-grant-proposals.ts)が作るもので、HTTP でも CLI でも
+ * 手動でトリガーする手段が無い(notifications と同じ事情)。/settings/leave の「付与の予告」
+ * セクションをスクリーンショットに写すため、ここでテーブルへ直接 INSERT する。
+ *
+ * 2件入れる:
+ * 1. シフト制のデモメンバー(member3)— basis "shift" で「シフト基準」ラベルを見せる
+ * 2. もう1人 — basis "calendar_estimate" かつ出勤率8割未満で、注意チップも一緒に見せる
+ *
+ * 決裁(承認/却下)は行わないので status は "proposed" のまま。テナントは管理者と同じなので、
+ * デモ管理者のスコープ(department_and_descendants)で必ず見える。
+ */
+async function insertLeaveGrantProposals(
+  db: Database,
+  params: { tenantId: string; shiftUserId: string; calendarUserId: string },
+): Promise<void> {
+  const today = jstToday();
+  const now = Math.floor(Date.now() / 60_000);
+
+  const specs = [
+    {
+      userId: params.shiftUserId,
+      // 基準日は少し先の未来にする(「予告」= まだ来ていない付与を事前に承認できることが要点)。
+      grantedOn: fmt(addDays(today, 30)),
+      expiresOn: fmt(addDays(today, 30 + 730)),
+      days: 11,
+      attendanceRate: {
+        periodFrom: fmt(addDays(today, 30 - 365)),
+        periodTo: fmt(addDays(today, 29)),
+        workingDays: 245,
+        attendedDays: 232,
+        rate: 232 / 245,
+        basis: "shift" as const,
+      },
+    },
+    {
+      userId: params.calendarUserId,
+      grantedOn: fmt(addDays(today, 45)),
+      expiresOn: fmt(addDays(today, 45 + 730)),
+      days: 14,
+      attendanceRate: {
+        periodFrom: fmt(addDays(today, 45 - 365)),
+        periodTo: fmt(addDays(today, 44)),
+        workingDays: 245,
+        // 190/245 ≒ 77.6% で8割を下回る(UI の「8割未満の可能性」チップを写すため)。
+        attendedDays: 190,
+        rate: 190 / 245,
+        basis: "calendar_estimate" as const,
+      },
+    },
+  ];
+
+  // 冪等(このファイルの他の関数と同じ流儀): 同じ (user_id, granted_on) の予告が既にあれば作らない。
+  const existing = await db.select().from(leaveGrantProposals).where(eq(leaveGrantProposals.tenantId, params.tenantId));
+
+  for (const spec of specs) {
+    if (existing.some((row) => row.userId === spec.userId && row.grantedOn === spec.grantedOn)) continue;
+    await db.insert(leaveGrantProposals).values({
+      id: uuidv7(),
+      tenantId: params.tenantId,
+      userId: spec.userId,
+      leaveType: "annual",
+      grantedOn: spec.grantedOn,
+      days: spec.days,
+      expiresOn: spec.expiresOn,
+      // attendance_rate は @kizami/leave の AttendanceRateReference を JSON 文字列で持つ列。
+      attendanceRate: JSON.stringify(spec.attendanceRate),
+      status: "proposed",
+      proposedAt: now,
+      decidedBy: null,
+      decidedAt: null,
+      decisionNote: null,
+      grantId: null,
+      createdAt: now,
+    });
+  }
+}
+
 async function insertNotifications(db: Database, params: { tenantId: string; userId: string }): Promise<void> {
   const now = Math.floor(Date.now() / 60_000);
   const today = jstToday();
@@ -450,6 +534,13 @@ async function main(): Promise<void> {
   });
 
   await insertNotifications(db, { tenantId, userId: admin.id });
+
+  // v0.7 フェーズ4: /settings/leave の「付与の予告」セクション用の予告を2件入れる。
+  const shiftProposalUserId = createdUsers.find((u) => u.key === "member3")?.id;
+  const calendarProposalUserId = createdUsers.find((u) => u.key === "member1")?.id;
+  if (shiftProposalUserId && calendarProposalUserId) {
+    await insertLeaveGrantProposals(db, { tenantId, shiftUserId: shiftProposalUserId, calendarUserId: calendarProposalUserId });
+  }
 
   console.log(JSON.stringify({ users: createdUsers, departments: { hq: hqId, sales: salesId, dev: devId } }));
 }

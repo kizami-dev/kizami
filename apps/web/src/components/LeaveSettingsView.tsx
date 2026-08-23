@@ -6,16 +6,19 @@ import {
   api,
   ApiError,
   UnauthorizedError,
+  type AttendanceRateReferenceDto,
   type CreateLeaveGrantInput,
   type LeaveGrantDto,
   type LeaveGrantMethod,
+  type LeaveGrantProposalDto,
   type LeaveType,
   type MemberDto,
   type StockConversionCandidateDto,
   type TenantLeaveSettingsDto,
   type UpdateLeaveSettingsInput,
 } from "../lib/api";
-import { mapLeaveSettingsErrorMessage, messages } from "../lib/messages";
+import { mapLeaveGrantProposalErrorMessage, mapLeaveSettingsErrorMessage, messages } from "../lib/messages";
+import { formatDateTimeJst } from "../lib/time";
 import { useAuthGuard } from "../lib/useAuthGuard";
 import { AppHeader } from "./AppHeader";
 import { ConfirmDialog } from "./ConfirmDialog";
@@ -31,6 +34,33 @@ interface FormState {
   stockConversionEnabled: boolean;
   stockMaxDays: string;
   stockExpiresMonths: string;
+}
+
+/**
+ * 出勤率の8割要件(労基法39条1項)を下回る「可能性」を示す閾値。あくまで注意喚起であり、
+ * この値未満でも承認は妨げない(最終判断は人が行う、docs/requirements.md §11)。
+ */
+const ATTENDANCE_RATE_WARNING_THRESHOLD = 0.8;
+
+/**
+ * 出勤率の参考値の表示(小数第1位までの百分率)。rate が null(全労働日が0)のときは
+ * 「—」を返す — 0% と取り違えられると「8割未満」の誤判断につながるため。
+ *
+ * messages はモジュールスコープで束縛せず、呼び出しのたびに参照する(lib/messages.ts の
+ * Proxy 前提。ここで定数に取り出すと言語切替に追従しなくなる)。
+ */
+function formatAttendanceRate(rate: number | null): string {
+  return rate === null ? messages.leaveGrantProposals.rateUnknown : `${(rate * 100).toFixed(1)}%`;
+}
+
+/** 出勤率の算定根拠のラベル(シフト表から算出したのか、暦日からの推定なのか)。 */
+function attendanceBasisLabel(basis: AttendanceRateReferenceDto["basis"]): string {
+  return basis === "shift" ? messages.leaveGrantProposals.basisShift : messages.leaveGrantProposals.basisCalendarEstimate;
+}
+
+/** 予告の休暇種別ラベル(annual=年次有給 / stocked=積立休暇)。 */
+function proposalLeaveTypeLabel(leaveType: LeaveType): string {
+  return leaveType === "annual" ? messages.leaveGrantProposals.leaveTypeAnnual : messages.leaveGrantProposals.leaveTypeStocked;
 }
 
 function toFormState(s: TenantLeaveSettingsDto): FormState {
@@ -86,6 +116,21 @@ export function LeaveSettingsView() {
   const [manualError, setManualError] = useState<string | null>(null);
   const [manualSuccess, setManualSuccess] = useState(false);
 
+  /*
+   * 付与の予告(v0.7 フェーズ4、2026-08-24 追加)。日次ワーカーが作った予告を管理者が承認して
+   * 初めて付与が確定する。取得は `status=all` の1回だけにして、未決裁(proposed)と決裁済み
+   * (approved/rejected/superseded)をクライアント側で振り分ける — 未決裁の表と履歴の
+   * <details> のために2回叩く必要が無く、両者が必ず同じ時点のスナップショットになるため。
+   */
+  const [proposals, setProposals] = useState<LeaveGrantProposalDto[] | null>(null);
+  const [proposalsError, setProposalsError] = useState<string | null>(null);
+  const [proposalsReloadKey, setProposalsReloadKey] = useState(0);
+  const [proposalConfirm, setProposalConfirm] = useState<{ id: string; action: "approve" | "reject" } | null>(null);
+  const [proposalNote, setProposalNote] = useState("");
+  const [proposalPending, setProposalPending] = useState(false);
+  const [proposalActionError, setProposalActionError] = useState<string | null>(null);
+  const [proposalSuccess, setProposalSuccess] = useState<string | null>(null);
+
   const [convertConfirmOpen, setConvertConfirmOpen] = useState(false);
   const [convertPending, setConvertPending] = useState(false);
   const [convertError, setConvertError] = useState<string | null>(null);
@@ -131,6 +176,37 @@ export function LeaveSettingsView() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [guard.status]);
+
+  /*
+   * 付与の予告の取得。制度設定の取得(上の useEffect)とは別に持つ — 予告は承認・却下のたびに
+   * 取り直す必要があり、設定フォームの再初期化(toFormState)を巻き込みたくないため。
+   * 403 は「この画面自体の権限が無い」ケースなので、上の forbidden バナーに任せて静かに空にする
+   * (同じ leave.grant.manage を要求する API なので、ここだけ 403 になることは無い)。
+   */
+  useEffect(() => {
+    if (guard.status !== "authed") return;
+    let cancelled = false;
+    setProposalsError(null);
+    api
+      .listLeaveGrantProposals("all")
+      .then((res) => {
+        if (!cancelled) setProposals(res.proposals);
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        if (err instanceof UnauthorizedError) {
+          router.push("/login");
+          return;
+        }
+        setProposals([]);
+        if (err instanceof ApiError && err.status === 403) return;
+        setProposalsError(err instanceof ApiError ? messages.leaveGrantProposals.loadFailed : messages.errors.network);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [guard.status, proposalsReloadKey]);
 
   function updateForm(patch: Partial<FormState>) {
     setForm((prev) => (prev ? { ...prev, ...patch } : prev));
@@ -256,6 +332,35 @@ export function LeaveSettingsView() {
     }
   }
 
+  /** 予告の承認・却下(pending/error/success の3状態は他の管理操作と同じ流儀)。 */
+  async function handleProposalConfirm() {
+    if (!proposalConfirm) return;
+    setProposalPending(true);
+    setProposalActionError(null);
+    try {
+      if (proposalConfirm.action === "approve") {
+        await api.approveLeaveGrantProposal(proposalConfirm.id);
+        setProposalSuccess(messages.leaveGrantProposals.approveSuccess);
+      } else {
+        const note = proposalNote.trim();
+        await api.rejectLeaveGrantProposal(proposalConfirm.id, note !== "" ? note : undefined);
+        setProposalSuccess(messages.leaveGrantProposals.rejectSuccess);
+      }
+      setProposalConfirm(null);
+      setProposalNote("");
+      // 決裁の結果(未決裁から履歴への移動)を反映させるため一覧を取り直す。
+      setProposalsReloadKey((k) => k + 1);
+    } catch (err) {
+      if (err instanceof UnauthorizedError) {
+        router.push("/login");
+        return;
+      }
+      setProposalActionError(err instanceof ApiError ? mapLeaveGrantProposalErrorMessage(err.body) : messages.errors.network);
+    } finally {
+      setProposalPending(false);
+    }
+  }
+
   async function handleConvertConfirm() {
     if (!targetUserId) return;
     setConvertPending(true);
@@ -285,6 +390,9 @@ export function LeaveSettingsView() {
   const convertedTotal = convertResult?.reduce((sum, c) => sum + c.convertedDays, 0) ?? 0;
   const truncatedTotal = convertResult?.reduce((sum, c) => sum + c.truncatedDays, 0) ?? 0;
   const autoGrantCreatedTotal = autoGrantResult?.created.length ?? 0;
+
+  const proposedProposals = proposals?.filter((p) => p.status === "proposed") ?? [];
+  const decidedProposals = proposals?.filter((p) => p.status !== "proposed") ?? [];
 
   return (
     <div className="settings-notif">
@@ -614,6 +722,130 @@ export function LeaveSettingsView() {
                 ) : null}
               </div>
             </section>
+
+            {/*
+              ---- 付与の予告(v0.7 フェーズ4、2026-08-24 追加) ----
+              docs/requirements.md §11「予告 → 管理者承認 → 本人通知」。この画面自体が
+              leave.grant.manage を要求し、予告APIも同じ権限・同じスコープなので、ここでの
+              追加の権限確認は行わない(このファイル冒頭のヘッダコメントと同じ理由)。
+            */}
+            <section className="leave-admin-section">
+              <h2 className="settings-notif__section-title">{messages.leaveGrantProposals.sectionTitle}</h2>
+              <p className="leave-admin-section__desc">{messages.leaveGrantProposals.sectionDesc}</p>
+
+              {proposalsError ? (
+                <p className="correction-error" role="alert">
+                  {proposalsError}
+                </p>
+              ) : null}
+              {proposalSuccess ? <p className="settings-notif__success">{proposalSuccess}</p> : null}
+
+              {proposals === null ? (
+                <p className="org-settings__empty">{messages.loading}</p>
+              ) : proposedProposals.length === 0 ? (
+                <p className="org-settings__empty">{messages.leaveGrantProposals.empty}</p>
+              ) : (
+                <div className="org-settings__table-wrap">
+                  <table className="org-table">
+                    <thead>
+                      <tr>
+                        <th>{messages.leaveGrantProposals.columnMember}</th>
+                        <th>{messages.leaveGrantProposals.columnLeaveType}</th>
+                        <th>{messages.leaveGrantProposals.columnGrantedOn}</th>
+                        <th>{messages.leaveGrantProposals.columnDays}</th>
+                        <th>{messages.leaveGrantProposals.columnAttendanceRate}</th>
+                        <th>{messages.leaveGrantProposals.columnActions}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {proposedProposals.map((p) => {
+                        const rate = p.attendanceRate.rate;
+                        // null(全労働日0)は「不明」であって「8割未満」ではないため警告は出さない。
+                        const belowThreshold = rate !== null && rate < ATTENDANCE_RATE_WARNING_THRESHOLD;
+                        return (
+                          <tr key={p.id}>
+                            <td>{p.userName ?? p.userId}</td>
+                            <td>{proposalLeaveTypeLabel(p.leaveType)}</td>
+                            <td className="tabular-nums">{p.grantedOn}</td>
+                            <td className="tabular-nums">{p.days}</td>
+                            <td>
+                              <div className="leave-proposal-rate">
+                                <span className="tabular-nums">{formatAttendanceRate(rate)}</span>
+                                <span className="leave-proposal-rate__basis">{attendanceBasisLabel(p.attendanceRate.basis)}</span>
+                                {belowThreshold ? (
+                                  <span className="chip chip--warning">{messages.leaveGrantProposals.rateBelowThreshold}</span>
+                                ) : null}
+                              </div>
+                            </td>
+                            <td>
+                              <div className="org-table__actions">
+                                <button
+                                  type="button"
+                                  className="org-table__link-btn"
+                                  onClick={() => {
+                                    setProposalActionError(null);
+                                    setProposalSuccess(null);
+                                    setProposalNote("");
+                                    setProposalConfirm({ id: p.id, action: "approve" });
+                                  }}
+                                >
+                                  {messages.leaveGrantProposals.approve}
+                                </button>
+                                <button
+                                  type="button"
+                                  className="org-table__link-btn org-table__link-btn--danger"
+                                  onClick={() => {
+                                    setProposalActionError(null);
+                                    setProposalSuccess(null);
+                                    setProposalNote("");
+                                    setProposalConfirm({ id: p.id, action: "reject" });
+                                  }}
+                                >
+                                  {messages.leaveGrantProposals.reject}
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {/* 決裁済みの履歴。既定では畳んでおく(日常的に見るのは未決裁の方だけのため)。 */}
+              <details className="leave-grant-details leave-proposal-history">
+                <summary>{messages.leaveGrantProposals.historyTitle}</summary>
+                {decidedProposals.length === 0 ? (
+                  <p className="org-settings__empty">{messages.leaveGrantProposals.historyEmpty}</p>
+                ) : (
+                  <div className="leave-grant-table-wrap">
+                    <table className="leave-grant-table">
+                      <thead>
+                        <tr>
+                          <th>{messages.leaveGrantProposals.columnStatus}</th>
+                          <th>{messages.leaveGrantProposals.columnGrantedOn}</th>
+                          <th>{messages.leaveGrantProposals.columnDays}</th>
+                          <th>{messages.leaveGrantProposals.columnDecidedAt}</th>
+                          <th>{messages.leaveGrantProposals.columnDecisionNote}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {decidedProposals.map((p) => (
+                          <tr key={p.id}>
+                            <td>{messages.leaveGrantProposals.statusLabel[p.status]}</td>
+                            <td className="tabular-nums">{p.grantedOn}</td>
+                            <td className="tabular-nums">{p.days}</td>
+                            <td className="tabular-nums">{p.decidedAt !== null ? formatDateTimeJst(p.decidedAt) : "—"}</td>
+                            <td>{p.decisionNote ?? "—"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </details>
+            </section>
           </>
         ) : null}
       </main>
@@ -631,6 +863,36 @@ export function LeaveSettingsView() {
           onCancel={() => {
             setAutoGrantConfirmOpen(false);
             setAutoGrantError(null);
+          }}
+        />
+      ) : null}
+
+      {proposalConfirm ? (
+        <ConfirmDialog
+          title={
+            proposalConfirm.action === "approve"
+              ? messages.leaveGrantProposals.confirmApproveTitle
+              : messages.leaveGrantProposals.confirmRejectTitle
+          }
+          message={
+            proposalConfirm.action === "approve"
+              ? messages.leaveGrantProposals.confirmApproveMessage
+              : messages.leaveGrantProposals.confirmRejectMessage
+          }
+          confirmLabel={
+            proposalConfirm.action === "approve" ? messages.leaveGrantProposals.approve : messages.leaveGrantProposals.reject
+          }
+          tone={proposalConfirm.action === "approve" ? "neutral" : "caution"}
+          note={proposalNote}
+          onNoteChange={proposalConfirm.action === "reject" ? setProposalNote : undefined}
+          noteLabel={proposalConfirm.action === "reject" ? messages.leaveGrantProposals.noteLabel : undefined}
+          notePlaceholder={messages.leaveGrantProposals.notePlaceholder}
+          pending={proposalPending}
+          error={proposalActionError}
+          onConfirm={handleProposalConfirm}
+          onCancel={() => {
+            setProposalConfirm(null);
+            setProposalActionError(null);
           }}
         />
       ) : null}

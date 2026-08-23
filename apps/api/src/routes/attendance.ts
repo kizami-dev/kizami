@@ -61,7 +61,8 @@ import {
   parseMonthParam,
   todayLocalDate,
 } from "../lib/time.js";
-import { buildLawTimelineForTenant, buildSettingsTimeline, standardDayMinutesForDate, TZ_OFFSET_MINUTES_JST } from "../lib/settings.js";
+import { buildLawTimelineForTenant, buildSettingsTimelineWithBaseDayMinutes, TZ_OFFSET_MINUTES_JST } from "../lib/settings.js";
+import { makeLeaveStandardMinutesResolver } from "../lib/leave-minutes.js";
 
 /** docs/design/permission-catalog.md §1.3(勤怠記録閲覧)。 */
 const RECORD_VIEW_PERMISSION = "attendance.record.view";
@@ -217,9 +218,11 @@ export function createAttendanceRoutes(db: Database) {
     const fromMinutes = localMidnightUtcMinutes(monthStartEpochDay - 1, tz);
     const toMinutes = localMidnightUtcMinutes(monthEndEpochDay + 2, tz) - 1;
 
-    const [punchRows, settingsTimeline, lawTimeline, approvedLeaveRequests, autoBreakWaivedDates, allowanceTimeline] = await Promise.all([
+    const [punchRows, settingsWithBase, lawTimeline, approvedLeaveRequests, autoBreakWaivedDates, allowanceTimeline] = await Promise.all([
       listValidPunches(db, { tenantId: user.tenantId, userId: targetUserId, fromMinutes, toMinutes }),
-      buildSettingsTimeline(db, {
+      // 有給の分数換算(下記 paidLeave)にはシフト制の「基準所定(有給換算用)」も要るため、
+      // SettingsSpan[] と併せて BaseDayMinutesSpan[] も受け取る(追加クエリは発生しない)。
+      buildSettingsTimelineWithBaseDayMinutes(db, {
         tenantId: user.tenantId,
         userId: targetUserId,
         fromDate: monthStartDate,
@@ -245,6 +248,7 @@ export function createAttendanceRoutes(db: Database) {
       // 手当(docs/design/allowances.md)。テナント単位の定義なので userId には依存しない。
       buildAllowanceTimeline(db, { tenantId: user.tenantId, fromDate: monthStartDate, toDate: monthEndDate }),
     ]);
+    const settingsTimeline = settingsWithBase.timeline;
 
     // monthly_variable(シフト制、docs/design/shift-work.md): 変形期間全体(前月にまたがりうる)
     // ぶんの settingsTimeline/lawTimeline/punches/shifts を、暦月だけをカバーする上記の値を
@@ -281,13 +285,21 @@ export function createAttendanceRoutes(db: Database) {
     // @kizami/leave の resolveUsageMinutes に委譲する)。同日に複数件(午前+午後の半休等)
     // ある場合は engine 側(calculateFlexBalance)が同一日付のエントリを合算する。
     //
-    // 判断点: monthly_variable ユーザーの有給は standardDayMinutesForDate が例外を投げる
-    // (lib/settings.ts のコメント参照。シフト所定に基づく分数換算は shift-work.md 実装
-    // フェーズ4「有給付与の3段フロー」のスコープ)。本エンドポイントは v0.7 フェーズ2の対象外
-    // として未対応のまま残す — 該当ユーザーに承認済み有給が無ければ影響しない。
+    // monthly_variable(シフト制)の1日分の所定は lib/leave-minutes.ts が解決する
+    // (シフトのある日はそのシフトの所定、無い日は基準所定 — v0.7 フェーズ4 の決定)。
+    // リゾルバに渡す範囲は暦月でよい: approvedLeaveRequests は暦月の範囲で引いており、
+    // 変形期間の前月部分に有給取得日は現れない(そちらは前月の集計で解決される)。
+    const leaveMinutes = await makeLeaveStandardMinutesResolver(db, {
+      tenantId: user.tenantId,
+      userId: targetUserId,
+      timeline: settingsTimeline,
+      baseDayMinutes: settingsWithBase.baseDayMinutes,
+      fromDate: monthStartDate,
+      toDate: monthEndDate,
+    });
     const paidLeave: PaidLeaveEntry[] = approvedLeaveRequests.map((r) => ({
       date: r.leaveDate,
-      minutes: resolveUsageMinutes(r.unit as LeaveUnit, standardDayMinutesForDate(effectiveSettingsTimeline, r.leaveDate), r.minutes ?? undefined),
+      minutes: resolveUsageMinutes(r.unit as LeaveUnit, leaveMinutes.forDate(r.leaveDate), r.minutes ?? undefined),
     }));
 
     const input: EngineInput = {

@@ -1,7 +1,14 @@
 /**
  * GET /leave/balance, GET /leave/requests, POST /leave/requests,
  * POST /leave/requests/:id/{approve,reject,withdraw}, POST /leave/grants,
- * POST /leave/grants/auto, POST /leave/grants/convert-expired
+ * POST /leave/grants/auto, POST /leave/grants/convert-expired,
+ * GET /leave/grant-proposals, POST /leave/grant-proposals/:id/{approve,reject}
+ *
+ * 有給付与の3段フロー(予告 → 管理者承認 → 本人通知、docs/requirements.md §11 /
+ * docs/design/shift-work.md 実装フェーズ4、2026-08-24 追加): 1段目の予告作成は日次ワーカー
+ * (apps/api/src/leave-grant-proposals.ts)、2段目の承認・却下と3段目の本人通知が本ファイルの
+ * /grant-proposals 系エンドポイント。機械が無条件に付与を確定させないための構造であり、
+ * 出勤率(労基法39条1項の8割要件)の最終判断は人が行う。
  *
  * 有給休暇管理(docs/requirements.md §5)。休暇申請→承認フローは routes/corrections.ts
  * (打刻修正申請)と同じ形を踏襲する: 申請→pending→承認/却下/取下げ、承認時に監査ログ
@@ -65,10 +72,17 @@ import {
   listLeaveRequests,
   saveClosingSnapshots,
   createLeaveRequest,
+  getLeaveGrantProposal,
   getLeaveRequest,
+  listLeaveGrantProposals,
+  listTenantUsers,
+  supersedeProposedLeaveGrantProposals,
+  updateLeaveGrantProposalStatus,
   updateLeaveRequestStatus,
   type Database,
   type LeaveGrant,
+  type LeaveGrantProposal,
+  type LeaveGrantProposalStatus,
   type LeaveRequest,
   type LeaveRequestStatus,
 } from "@kizami/db";
@@ -82,6 +96,7 @@ import {
   calculateStockConversions,
   checkMandatoryFiveDays,
   resolveUsageMinutes,
+  type AttendanceRateReference,
   type GrantMethod,
   type LeaveGrantInput,
   type LeaveType,
@@ -96,7 +111,8 @@ import { computeMonthlyOutputForUser } from "../lib/closing-amend.js";
 import { engineOutputFromSnapshots, snapshotInputsFromEngineOutput, sumFixedBreakdown } from "../lib/closing-snapshot.js";
 import { buildPersonalChannels, buildTenantChannels, type BuildPersonalChannelsOptions } from "../lib/notification-channels.js";
 import { resolveAccessibleUserIds } from "../lib/scope.js";
-import { buildSettingsTimeline, standardDayMinutesForDate, TZ_OFFSET_MINUTES_JST } from "../lib/settings.js";
+import { makeLeaveStandardMinutesResolver } from "../lib/leave-minutes.js";
+import { buildSettingsTimelineWithBaseDayMinutes, TZ_OFFSET_MINUTES_JST } from "../lib/settings.js";
 import { nowMinutes, parseMonthParam, todayLocalDate } from "../lib/time.js";
 
 const BALANCE_VIEW_PERMISSION = "leave.balance.view";
@@ -176,9 +192,15 @@ export async function loadBalanceContext(db: Database, tenantId: string, userId:
   const dates = [...new Set([...approvedRequests.map((r) => r.leaveDate), ...extraDates, today])].sort();
   const fromDate = dates[0] as string;
   const toDate = dates[dates.length - 1] as string;
-  const timeline = await buildSettingsTimeline(db, { tenantId, userId, fromDate, toDate });
-  const standardMinutesForDate = (date: string) => standardDayMinutesForDate(timeline, date);
-  const currentStandardDayMinutes = standardMinutesForDate(today);
+  const { timeline, baseDayMinutes } = await buildSettingsTimelineWithBaseDayMinutes(db, { tenantId, userId, fromDate, toDate });
+  // シフト制(monthly_variable)の1日分の所定は日付ごとに変わる(シフトがある日はその所定、
+  // 無い日は基準所定)。解決に DB が要るため非同期のリゾルバを1度だけ組み立て、以後は同期に引く
+  // (apps/api/src/lib/leave-minutes.ts)。flex/fixed では従来と同一の値・同一のクエリ数。
+  const leaveMinutes = await makeLeaveStandardMinutesResolver(db, { tenantId, userId, timeline, baseDayMinutes, fromDate, toDate });
+  const standardMinutesForDate = (date: string) => leaveMinutes.forDate(date);
+  // 残高の日↔分換算は「基準所定」だけを使う(その日のシフトの長短で残日数の見え方が
+  // 変わらないようにするため — leave-minutes.ts の冒頭コメント参照)。
+  const currentStandardDayMinutes = leaveMinutes.baseForDate(today);
 
   const grants = toGrantInputs(grantRows);
   const approvedUsages: LeaveUsageInput[] = approvedRequests.map((r) => ({
@@ -221,6 +243,33 @@ function serializeLeaveGrant(row: LeaveGrant) {
     source: row.source,
     convertedFromGrantId: row.convertedFromGrantId,
     note: row.note,
+    createdAt: row.createdAt,
+  };
+}
+
+const VALID_PROPOSAL_STATUSES: readonly LeaveGrantProposalStatus[] = ["proposed", "approved", "rejected", "superseded"];
+
+/**
+ * 予告1件のレスポンス形。`attendanceRate` は保存時の JSON をそのままオブジェクトへ戻す
+ * (再計算しない — 承認画面で見た数字と監査上の記録を一致させるため、
+ * packages/db/src/schema/leave.ts のコメント参照)。
+ */
+function serializeLeaveGrantProposal(row: LeaveGrantProposal, userName: string | null) {
+  return {
+    id: row.id,
+    userId: row.userId,
+    userName,
+    leaveType: row.leaveType,
+    grantedOn: row.grantedOn,
+    days: row.days,
+    expiresOn: row.expiresOn,
+    attendanceRate: JSON.parse(row.attendanceRate) as AttendanceRateReference,
+    status: row.status,
+    proposedAt: row.proposedAt,
+    decidedBy: row.decidedBy,
+    decidedAt: row.decidedAt,
+    decisionNote: row.decisionNote,
+    grantId: row.grantId,
     createdAt: row.createdAt,
   };
 }
@@ -940,17 +989,223 @@ export function createLeaveRoutes(db: Database, deps: LeaveRoutesDeps = {}) {
       );
     }
 
+    // 予告(leave_grant_proposals)を経由せずに同じ基準日の付与を作った場合、その予告は
+    // もう決裁の余地が無いので superseded にする(依頼の決定。POST /grants/auto は
+    // 「手動の一括経路」として残し、予告フローと二重に付与が生まれないようにする)。
+    const supersededProposals = await supersedeProposedLeaveGrantProposals(db, {
+      tenantId: actor.tenantId,
+      userId,
+      grantedOnDates: created.map((g) => g.grantedOn),
+    });
+
     await insertAuditLog(db, {
       tenantId: actor.tenantId,
       actorId: actor.id,
       action: "leave_grant.auto_create",
       targetType: "user",
       targetId: userId,
-      detail: JSON.stringify({ createdGrantedOn: created.map((g) => g.grantedOn), skipped: calculated.length - toCreate.length }),
+      detail: JSON.stringify({
+        createdGrantedOn: created.map((g) => g.grantedOn),
+        skipped: calculated.length - toCreate.length,
+        supersededProposalIds: supersededProposals.map((p) => p.id),
+      }),
       occurredAt: now,
     });
 
     return c.json({ created: created.map(serializeLeaveGrant), skipped: calculated.length - toCreate.length }, 201);
+  });
+
+  // ---- 有給付与の予告(予告 → 管理者承認 → 本人通知、docs/requirements.md §11) ----
+  //
+  // 予告行そのものは日次ワーカー(apps/api/src/leave-grant-proposals.ts)が作る。ここは
+  // 2段目(管理者の承認・却下)と3段目(本人通知)を担う。認可は POST /leave/grants/auto と
+  // 同じ GRANT_MANAGE_PERMISSION + resolveAccessibleUserIds のスコープ判定。
+
+  /** GET /leave/grant-proposals?status=proposed(既定)|approved|rejected|superseded|all */
+  app.get("/grant-proposals", async (c) => {
+    requirePermission(c, GRANT_MANAGE_PERMISSION, "department_and_descendants");
+    const actor = c.get("user");
+
+    const statusParam = c.req.query("status") ?? "proposed";
+    if (statusParam !== "all" && !VALID_PROPOSAL_STATUSES.includes(statusParam as LeaveGrantProposalStatus)) {
+      return c.json({ error: "invalid_status" }, 400);
+    }
+
+    const accessible = await resolveAccessibleUserIds(db, {
+      actor: { id: actor.id, tenantId: actor.tenantId, permissions: c.get("permissions") },
+      permission: GRANT_MANAGE_PERMISSION,
+    });
+
+    const rows = await listLeaveGrantProposals(db, {
+      tenantId: actor.tenantId,
+      ...(statusParam === "all" ? {} : { statuses: [statusParam as LeaveGrantProposalStatus] }),
+      ...(accessible === "all" ? {} : { userIds: [...accessible] }),
+    });
+
+    // 氏名はテナントのユーザー一覧を1回引いて解決する(予告1件ごとに getUserById を呼ばない)。
+    const nameById = new Map((await listTenantUsers(db, actor.tenantId)).map((u) => [u.id, u.name] as const));
+
+    return c.json({ proposals: rows.map((row) => serializeLeaveGrantProposal(row, nameById.get(row.userId) ?? null)) });
+  });
+
+  /**
+   * POST /leave/grant-proposals/:id/approve — 予告を承認して leave_grants を作る。
+   *
+   * 基準日より前の承認も許す(管理者が事前に承認できることがこのフローの目的の1つ)。
+   * その場合でも付与日は予告の grantedOn のまま — 残高計算(@kizami/leave)は grantedOn を
+   * 起点に時効・年5日期間を決めるため、承認した日を付与日にすると法定の期間がずれる。
+   */
+  app.post("/grant-proposals/:id/approve", async (c) => {
+    requirePermission(c, GRANT_MANAGE_PERMISSION, "department_and_descendants");
+    const actor = c.get("user");
+
+    const existing = await getLeaveGrantProposal(db, { tenantId: actor.tenantId, id: c.req.param("id") });
+    if (!existing) return c.json({ error: "not_found" }, 404);
+
+    const accessible = await resolveAccessibleUserIds(db, {
+      actor: { id: actor.id, tenantId: actor.tenantId, permissions: c.get("permissions") },
+      permission: GRANT_MANAGE_PERMISSION,
+    });
+    if (accessible !== "all" && !accessible.has(existing.userId)) {
+      throw new ForbiddenError(`target user ${existing.userId} is outside actor's scope`);
+    }
+    if (existing.status !== "proposed") return c.json({ error: "not_proposed" }, 409);
+
+    // 予告と並行して手動付与(POST /leave/grants・/grants/auto)が入っていた場合の二重付与防止。
+    const existingGrantDates = await listGrantedOnDates(db, { tenantId: actor.tenantId, userId: existing.userId });
+    if (existingGrantDates.has(existing.grantedOn)) return c.json({ error: "grant_already_exists" }, 409);
+
+    const now = nowMinutes();
+    let grant: LeaveGrant;
+    let updated: LeaveGrantProposal;
+    try {
+      const result = await db.transaction(async (tx) => {
+        const insertedGrant = await insertLeaveGrant(tx, {
+          tenantId: actor.tenantId,
+          userId: existing.userId,
+          leaveType: existing.leaveType,
+          grantedOn: existing.grantedOn,
+          days: existing.days,
+          expiresOn: existing.expiresOn,
+          // "proposal": 予告フロー由来の付与(auto〔一括自動計算〕・manual〔個別調整〕とは
+          // 経路が違うことを残す。packages/db/src/schema/leave.ts の source コメント参照)。
+          source: "proposal",
+          createdAt: now,
+        });
+        const updatedRow = await updateLeaveGrantProposalStatus(tx, {
+          tenantId: actor.tenantId,
+          id: existing.id,
+          fromStatus: "proposed",
+          status: "approved",
+          decidedBy: actor.id,
+          decidedAt: now,
+          grantId: insertedGrant.id,
+        });
+        if (!updatedRow) throw new NotPendingConflictError();
+
+        await insertAuditLog(tx, {
+          tenantId: actor.tenantId,
+          actorId: actor.id,
+          action: "leave_grant_proposal.approve",
+          targetType: "leave_grant_proposal",
+          targetId: existing.id,
+          detail: JSON.stringify({
+            userId: existing.userId,
+            grantedOn: existing.grantedOn,
+            days: existing.days,
+            grantId: insertedGrant.id,
+            attendanceRate: JSON.parse(existing.attendanceRate) as AttendanceRateReference,
+          }),
+          occurredAt: now,
+        });
+        return { insertedGrant, updatedRow };
+      });
+      grant = result.insertedGrant;
+      updated = result.updatedRow;
+    } catch (err) {
+      if (err instanceof NotPendingConflictError) return c.json({ error: "not_proposed" }, 409);
+      throw err;
+    }
+
+    // 3段目: 本人への通知(個人チャネルのみ。テナント共有 Webhook には流さない —
+    // 「誰に何日付与されたか」は本人の勤怠情報であり共有チャネルの原則に反する)。
+    const notificationType = "leave_grant_approved";
+    const title = "年次有給休暇が付与されました";
+    const body = `年次有給休暇が${existing.days}日付与されました(基準日 ${existing.grantedOn})。`;
+    const notification = await createNotificationIfAbsent(db, {
+      tenantId: actor.tenantId,
+      userId: existing.userId,
+      type: notificationType,
+      subjectDate: existing.grantedOn,
+      title,
+      body,
+      createdAt: now,
+    });
+    if (notification) {
+      const channels = await buildPersonalChannels(db, { tenantId: actor.tenantId, userId: existing.userId, notificationType }, deps);
+      if (channels.length > 0) {
+        await dispatch(channels, { to: {}, title, body });
+      }
+    }
+
+    return c.json({ proposal: serializeLeaveGrantProposal(updated, null), grant: serializeLeaveGrant(grant) }, 201);
+  });
+
+  /**
+   * POST /leave/grant-proposals/:id/reject { note? } — 予告を却下する。
+   *
+   * 却下した基準日はワーカーが再提案しない(packages/db/src/queries/leave.ts の
+   * findActiveLeaveGrantProposal の判断点)。やはり付与する場合は手動経路
+   * (POST /leave/grants/auto または POST /leave/grants)を使う。
+   */
+  app.post("/grant-proposals/:id/reject", async (c) => {
+    requirePermission(c, GRANT_MANAGE_PERMISSION, "department_and_descendants");
+    const actor = c.get("user");
+
+    const body = await parseJsonBody(c);
+    if (body === null || (body.note !== undefined && body.note !== null && typeof body.note !== "string")) {
+      return c.json({ error: "invalid_body" }, 400);
+    }
+    const note = typeof body.note === "string" ? body.note : null;
+    if (note !== null && note.length > MAX_REASON_LENGTH) return c.json({ error: "invalid_body" }, 400);
+
+    const existing = await getLeaveGrantProposal(db, { tenantId: actor.tenantId, id: c.req.param("id") });
+    if (!existing) return c.json({ error: "not_found" }, 404);
+
+    const accessible = await resolveAccessibleUserIds(db, {
+      actor: { id: actor.id, tenantId: actor.tenantId, permissions: c.get("permissions") },
+      permission: GRANT_MANAGE_PERMISSION,
+    });
+    if (accessible !== "all" && !accessible.has(existing.userId)) {
+      throw new ForbiddenError(`target user ${existing.userId} is outside actor's scope`);
+    }
+    if (existing.status !== "proposed") return c.json({ error: "not_proposed" }, 409);
+
+    const now = nowMinutes();
+    const updated = await updateLeaveGrantProposalStatus(db, {
+      tenantId: actor.tenantId,
+      id: existing.id,
+      fromStatus: "proposed",
+      status: "rejected",
+      decidedBy: actor.id,
+      decidedAt: now,
+      decisionNote: note,
+    });
+    if (!updated) return c.json({ error: "not_proposed" }, 409);
+
+    await insertAuditLog(db, {
+      tenantId: actor.tenantId,
+      actorId: actor.id,
+      action: "leave_grant_proposal.reject",
+      targetType: "leave_grant_proposal",
+      targetId: existing.id,
+      detail: JSON.stringify({ userId: existing.userId, grantedOn: existing.grantedOn, days: existing.days, note }),
+      occurredAt: now,
+    });
+
+    // 却下は本人へ通知しない(付与されなかったことを本人に自動通知すると、8割出勤要件の
+    // 判断という機微な文脈が説明抜きで伝わるため。管理者から個別に伝える運用に委ねる)。
+    return c.json({ proposal: serializeLeaveGrantProposal(updated, null) });
   });
 
   // ---- POST /leave/grants/convert-expired(失効年休の積立振替) ----

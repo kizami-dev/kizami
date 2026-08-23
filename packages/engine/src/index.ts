@@ -27,6 +27,16 @@ import type { CalcWarning, DailyBreakdown, EngineInput, EngineOutput } from "./t
 
 export type * from "./types.js";
 
+/**
+ * ShiftDay 1件の所定(分)を返す純関数を公開 API に出す(2026-08-24, v0.7 フェーズ4)。
+ *
+ * 理由: シフト制ユーザーの有給1日分の分数換算(apps/api/src/lib/leave-minutes.ts)は
+ * 「その日のシフトの所定」を必要とするが、これは集計(calculate)の副産物ではなく
+ * 単体で問い合わせたい値であり、apps/api 側で同じ計算(日跨ぎの +1440、休憩控除)を
+ * 再実装すると engine の定義とズレる余地が生まれる。所定の定義は engine の1箇所に留める。
+ */
+export { shiftScheduledMinutes } from "./variable.js";
+
 export function calculate(input: EngineInput): EngineOutput {
   const { workedSegments: rawWorkedSegments, breakSegments, warnings, stretches: rawStretches } = deriveSegments(
     input.punches,

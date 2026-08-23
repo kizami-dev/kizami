@@ -63,3 +63,14 @@ export function addMonths(date: PlainDateString, months: number): PlainDateStrin
 export function addYears(date: PlainDateString, years: number): PlainDateString {
   return addMonths(date, years * 12);
 }
+
+/**
+ * 曜日(0=日曜 … 6=土曜)。出勤率参考値の分母を暦日から推定する
+ * (attendance-rate.ts の estimateCalendarWorkingDates)ために使う。
+ *
+ * epoch day 0 = 1970-01-01 = 木曜(4)なので `(epochDay + 4) mod 7` が曜日になる。
+ */
+export function weekdayOf(date: PlainDateString): number {
+  const epochDay = epochDayFromDate(date);
+  return (((epochDay + 4) % 7) + 7) % 7;
+}

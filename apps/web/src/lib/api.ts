@@ -599,6 +599,12 @@ export interface MemberWorkPolicySettingsDto {
 export interface CreateMemberWorkPolicyInput {
   kind: WorkSystemKind;
   effectiveFrom: string;
+  /**
+   * 1日あたりの基準所定時間(分、1〜1440)。省略するとテナント既定ポリシーの値を引き継ぐ。
+   * kind: "monthly_variable" ではこの値が「有給1日を何分に換算するか」を意味する
+   * (シフトが無い日の有給換算に使う、v0.7 フェーズ4、2026-08-24 追加)。
+   */
+  standardDayMinutes?: number;
 }
 
 /** POST /members/:id/work-policy のレスポンス(workPolicyName は含まない — GET と異なる形なので別型にする)。 */
@@ -923,7 +929,8 @@ export interface LeaveGrantDto {
   grantedOn: string;
   days: number;
   expiresOn: string;
-  source: "auto" | "manual" | "conversion";
+  /** proposal: 予告フロー(GET /leave/grant-proposals → 承認)由来の付与(v0.7 フェーズ4 追加)。 */
+  source: "auto" | "manual" | "conversion" | "proposal";
   convertedFromGrantId: string | null;
   note: string | null;
   createdAt: number;
@@ -972,6 +979,48 @@ export interface CreateLeaveGrantInput {
   expiresOn?: string;
   leaveType?: LeaveType;
   note?: string;
+}
+
+/**
+ * 有給付与の予告(v0.7 フェーズ4、2026-08-24 追加)。日次ワーカーが作った「予告」を
+ * 管理者が承認して初めて付与が確定する(機械は付与を確定させない)。
+ * apps/api/src/routes/leave.ts の serializeLeaveGrantProposal と一致させる。
+ */
+export type LeaveGrantProposalStatus = "proposed" | "approved" | "rejected" | "superseded";
+
+/** 出勤率の算定根拠。shift=シフト表から算出、calendar_estimate=暦日からの推定。 */
+export type AttendanceRateBasis = "shift" | "calendar_estimate";
+
+/**
+ * 出勤率の参考値(労基法39条1項の8割要件の判断材料)。あくまで参考値であり、
+ * 最終判断は人が行う。rate は 0〜1、workingDays が 0 のときは null(=不明。0% ではない)。
+ */
+export interface AttendanceRateReferenceDto {
+  periodFrom: string;
+  periodTo: string;
+  workingDays: number;
+  attendedDays: number;
+  rate: number | null;
+  basis: AttendanceRateBasis;
+}
+
+export interface LeaveGrantProposalDto {
+  id: string;
+  userId: string;
+  /** 退職者などで解決できない場合 null(呼び出し側は userId を代わりに出す)。 */
+  userName: string | null;
+  leaveType: LeaveType;
+  grantedOn: string;
+  days: number;
+  expiresOn: string;
+  attendanceRate: AttendanceRateReferenceDto;
+  status: LeaveGrantProposalStatus;
+  proposedAt: number;
+  decidedBy: string | null;
+  decidedAt: number | null;
+  decisionNote: string | null;
+  grantId: string | null;
+  createdAt: number;
 }
 
 /** 失効した年次有給1件について、積立休暇への振替結果を表す(POST /leave/grants/convert-expired)。 */
@@ -1594,6 +1643,27 @@ export const api = {
   /** POST /leave/grants/convert-expired(失効年休の積立振替、leave.grant.manage)。 */
   async convertExpiredLeave(userId: string): Promise<{ conversions: StockConversionCandidateDto[]; created: LeaveGrantDto[] }> {
     return request("/leave/grants/convert-expired", { method: "POST", body: JSON.stringify({ userId }) });
+  },
+
+  /**
+   * GET /leave/grant-proposals(leave.grant.manage、department_and_descendants スコープ)。
+   * status 省略時は "proposed"。"all" を渡すと決裁済み(approved/rejected/superseded)も含む。
+   */
+  async listLeaveGrantProposals(status: LeaveGrantProposalStatus | "all" = "proposed"): Promise<{ proposals: LeaveGrantProposalDto[] }> {
+    return request(`/leave/grant-proposals?status=${status}`);
+  },
+
+  /** POST /leave/grant-proposals/:id/approve(leave.grant.manage)。承認すると付与が確定する。 */
+  async approveLeaveGrantProposal(id: string): Promise<{ proposal: LeaveGrantProposalDto; grant: LeaveGrantDto }> {
+    return request(`/leave/grant-proposals/${encodeURIComponent(id)}/approve`, { method: "POST" });
+  },
+
+  /** POST /leave/grant-proposals/:id/reject(leave.grant.manage)。note は任意・500文字以内。 */
+  async rejectLeaveGrantProposal(id: string, note?: string): Promise<{ proposal: LeaveGrantProposalDto }> {
+    return request(`/leave/grant-proposals/${encodeURIComponent(id)}/reject`, {
+      method: "POST",
+      body: JSON.stringify(note ? { note } : {}),
+    });
   },
 
   /** GET /help/overrides(認証のみ、権限不要 — 従業員も自社の規定を読む必要があるため)。 */

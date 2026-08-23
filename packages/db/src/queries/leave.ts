@@ -1,10 +1,11 @@
 /**
- * 有給休暇管理(§5)のクエリ層。tenant_leave_settings / leave_grants / leave_requests。
+ * 有給休暇管理(§5)のクエリ層。tenant_leave_settings / leave_grants / leave_requests /
+ * leave_grant_proposals(付与予告、v0.7)。
  */
 
-import { and, asc, desc, eq, gte, lte } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, lte, ne } from "drizzle-orm";
 import type { Database, Transaction } from "../migrate.js";
-import { leaveGrants, leaveRequests, tenantLeaveSettings } from "../schema/index.js";
+import { leaveGrantProposals, leaveGrants, leaveRequests, tenantLeaveSettings } from "../schema/index.js";
 import { uuidv7 } from "../uuid.js";
 
 // ---- tenant_leave_settings ----
@@ -262,4 +263,198 @@ export async function updateLeaveRequestStatus(
     .where(and(...conditions))
     .returning();
   return row ?? null;
+}
+
+// ---- leave_grant_proposals(有給付与の予告、v0.7) ----
+
+export type LeaveGrantProposal = typeof leaveGrantProposals.$inferSelect;
+
+/** 予告の状態。superseded は「予告を経由せず POST /leave/grants/auto で同じ付与が作られた」場合。 */
+export type LeaveGrantProposalStatus = "proposed" | "approved" | "rejected" | "superseded";
+
+export interface NewLeaveGrantProposalInput {
+  tenantId: string;
+  userId: string;
+  leaveType: string;
+  grantedOn: string;
+  days: number;
+  expiresOn: string;
+  /** packages/leave の AttendanceRateReference を JSON.stringify した文字列 */
+  attendanceRate: string;
+  /** UTC エポック分 */
+  proposedAt: number;
+}
+
+/**
+ * 予告を1件追記する。呼び出し側は必ず先に `findActiveLeaveGrantProposal` で重複が無いことを
+ * 確認すること(一意性はクエリ層で担保する — schema/leave.ts の判断点コメント参照)。
+ */
+export async function insertLeaveGrantProposal(
+  db: Database | Transaction,
+  input: NewLeaveGrantProposalInput,
+): Promise<LeaveGrantProposal> {
+  const [row] = await db
+    .insert(leaveGrantProposals)
+    .values({
+      id: uuidv7(),
+      tenantId: input.tenantId,
+      userId: input.userId,
+      leaveType: input.leaveType,
+      grantedOn: input.grantedOn,
+      days: input.days,
+      expiresOn: input.expiresOn,
+      attendanceRate: input.attendanceRate,
+      status: "proposed",
+      proposedAt: input.proposedAt,
+      decidedBy: null,
+      decidedAt: null,
+      decisionNote: null,
+      grantId: null,
+      createdAt: input.proposedAt,
+    })
+    .returning();
+  if (!row) {
+    throw new Error("insertLeaveGrantProposal: insert returned no row");
+  }
+  return row;
+}
+
+/**
+ * (tenant, user, leaveType, grantedOn) について superseded 以外の予告があれば返す
+ * (= 「もう予告済み(あるいは決裁済み)なので作り直さない」の判定に使う)。
+ *
+ * 判断点: `rejected` も「作り直さない」側に数える。却下は「この基準日については付与しない」と
+ * いう管理者の意思決定であり、翌日のワーカー実行で同じ予告が復活すると却下の意味が無くなる
+ * (依頼「reject blocks re-proposal」)。却下後にやはり付与したくなった場合は手動の
+ * POST /leave/grants/auto(あるいは POST /leave/grants)を使う。
+ */
+export async function findActiveLeaveGrantProposal(
+  db: Database | Transaction,
+  params: { tenantId: string; userId: string; leaveType: string; grantedOn: string },
+): Promise<LeaveGrantProposal | null> {
+  const rows = await db
+    .select()
+    .from(leaveGrantProposals)
+    .where(
+      and(
+        eq(leaveGrantProposals.tenantId, params.tenantId),
+        eq(leaveGrantProposals.userId, params.userId),
+        eq(leaveGrantProposals.leaveType, params.leaveType),
+        eq(leaveGrantProposals.grantedOn, params.grantedOn),
+        ne(leaveGrantProposals.status, "superseded"),
+      ),
+    )
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export interface ListLeaveGrantProposalsParams {
+  tenantId: string;
+  /** 省略時は全状態 */
+  statuses?: LeaveGrantProposalStatus[];
+  /** 省略時はテナント全体(呼び出し側でスコープ内ユーザーに絞る) */
+  userIds?: string[];
+}
+
+/** 予告一覧(基準日昇順→同日は作成順)。 */
+export async function listLeaveGrantProposals(
+  db: Database | Transaction,
+  params: ListLeaveGrantProposalsParams,
+): Promise<LeaveGrantProposal[]> {
+  const conditions = [eq(leaveGrantProposals.tenantId, params.tenantId)];
+  if (params.statuses !== undefined) {
+    if (params.statuses.length === 0) return [];
+    conditions.push(inArray(leaveGrantProposals.status, params.statuses));
+  }
+  if (params.userIds !== undefined) {
+    if (params.userIds.length === 0) return [];
+    conditions.push(inArray(leaveGrantProposals.userId, params.userIds));
+  }
+  return db
+    .select()
+    .from(leaveGrantProposals)
+    .where(and(...conditions))
+    .orderBy(asc(leaveGrantProposals.grantedOn), asc(leaveGrantProposals.createdAt));
+}
+
+export async function getLeaveGrantProposal(
+  db: Database | Transaction,
+  params: { tenantId: string; id: string },
+): Promise<LeaveGrantProposal | null> {
+  const rows = await db
+    .select()
+    .from(leaveGrantProposals)
+    .where(and(eq(leaveGrantProposals.tenantId, params.tenantId), eq(leaveGrantProposals.id, params.id)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export interface UpdateLeaveGrantProposalStatusParams {
+  tenantId: string;
+  id: string;
+  /** 渡すと条件付き UPDATE になり、0件更新なら null(楽観ロック。updateLeaveRequestStatus と同じ形) */
+  fromStatus?: LeaveGrantProposalStatus;
+  status: LeaveGrantProposalStatus;
+  decidedBy?: string | null;
+  decidedAt?: number | null;
+  decisionNote?: string | null;
+  grantId?: string | null;
+}
+
+export async function updateLeaveGrantProposalStatus(
+  db: Database | Transaction,
+  params: UpdateLeaveGrantProposalStatusParams,
+): Promise<LeaveGrantProposal | null> {
+  const conditions = [eq(leaveGrantProposals.tenantId, params.tenantId), eq(leaveGrantProposals.id, params.id)];
+  if (params.fromStatus !== undefined) {
+    conditions.push(eq(leaveGrantProposals.status, params.fromStatus));
+  }
+  const [row] = await db
+    .update(leaveGrantProposals)
+    .set({
+      status: params.status,
+      decidedBy: params.decidedBy ?? null,
+      decidedAt: params.decidedAt ?? null,
+      decisionNote: params.decisionNote ?? null,
+      grantId: params.grantId ?? null,
+    })
+    .where(and(...conditions))
+    .returning();
+  return row ?? null;
+}
+
+/**
+ * まだ決裁されていない(proposed の)予告のうち、指定の基準日のものを superseded にする。
+ * POST /leave/grants/auto が予告を経由せず付与を作ったときに呼ぶ(依頼の決定)。
+ */
+export async function supersedeProposedLeaveGrantProposals(
+  db: Database | Transaction,
+  params: { tenantId: string; userId: string; grantedOnDates: string[] },
+): Promise<LeaveGrantProposal[]> {
+  if (params.grantedOnDates.length === 0) return [];
+  return db
+    .update(leaveGrantProposals)
+    .set({ status: "superseded" })
+    .where(
+      and(
+        eq(leaveGrantProposals.tenantId, params.tenantId),
+        eq(leaveGrantProposals.userId, params.userId),
+        eq(leaveGrantProposals.status, "proposed"),
+        inArray(leaveGrantProposals.grantedOn, params.grantedOnDates),
+      ),
+    )
+    .returning();
+}
+
+/** ダッシュボードの「要対応」件数などに使う、proposed の件数(スコープ内ユーザーに絞れる)。 */
+export async function countProposedLeaveGrantProposals(
+  db: Database | Transaction,
+  params: { tenantId: string; userIds?: string[] },
+): Promise<number> {
+  const rows = await listLeaveGrantProposals(db, {
+    tenantId: params.tenantId,
+    statuses: ["proposed"],
+    ...(params.userIds !== undefined ? { userIds: params.userIds } : {}),
+  });
+  return rows.length;
 }

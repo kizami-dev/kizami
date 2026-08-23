@@ -63,14 +63,18 @@ export function registerWorkPolicyRoutes(app: Hono<AppEnv>, db: Database, _deps:
   const FIXED_SETTLEMENT_PERIOD_PLACEHOLDER = "monthly";
 
   /**
-   * monthly_variable(シフト制)のとき、work_policy_versions.standard_day_minutes(NOT NULL 列)を
-   * 埋めるためだけのプレースホルダ。engine の WorkSystem["monthly_variable"] は
-   * standardDayMinutes を持たず(所定は ShiftDay が日ごとに決める、types.ts 参照)、
-   * apps/api/src/lib/settings.ts の buildSettingsTimeline も monthly_variable のとき
-   * version.standardDayMinutes を一切読まない。settlementPeriod と同じ理由でこの値自体に
-   * 意味は無い。
+   * monthly_variable(シフト制)で standardDayMinutes が省略されたときの既定値
+   * (1日8時間)。
+   *
+   * 意味の変遷(2026-08-24, v0.7 フェーズ4): 以前この定数は「NOT NULL 列を埋めるためだけの
+   * プレースホルダ(値に意味は無い)」だった。フェーズ4で monthly_variable の
+   * `standard_day_minutes` に **「1日あたりの基準所定時間(有給換算用)」** という明確な意味が
+   * 与えられた(シフトの無い日に有給を取ったとき1日分を何分に換算するか。
+   * apps/api/src/lib/leave-minutes.ts・docs/design/shift-work.md フェーズ4 参照)。
+   * よってリクエストで指定できるようにし、この定数は「未指定時の既定」に降格する
+   * (集計〔engine〕側がこの値を読まないことは従来どおり — 所定は ShiftDay が日ごとに決める)。
    */
-  const VARIABLE_STANDARD_DAY_MINUTES_PLACEHOLDER = 480;
+  const VARIABLE_DEFAULT_STANDARD_DAY_MINUTES = 480;
 
   app.post("/work-policy", async (c) => {
     requirePermission(c, WORK_POLICY_PERMISSION, "tenant");
@@ -103,11 +107,13 @@ export function registerWorkPolicyRoutes(app: Hono<AppEnv>, db: Database, _deps:
       settlementPeriod = FIXED_SETTLEMENT_PERIOD_PLACEHOLDER;
     }
 
-    // standardDayMinutes は monthly_variable では無意味(上記プレースホルダ定数のコメント参照)。
-    // flex/fixed のみリクエストの値を検証して使う。
+    // standardDayMinutes: flex/fixed は「所定労働時間(有給の枠算入にも使う)」、
+    // monthly_variable は「基準所定(有給換算用)」(上記定数のコメント参照)。
+    // monthly_variable でのみ省略を許し、その場合は既定値を使う(後方互換 — フェーズ4以前の
+    // クライアントはこの制度で standardDayMinutes を送っていなかった)。
     let standardDayMinutes: number;
-    if (kind === "monthly_variable") {
-      standardDayMinutes = VARIABLE_STANDARD_DAY_MINUTES_PLACEHOLDER;
+    if (kind === "monthly_variable" && body.standardDayMinutes === undefined) {
+      standardDayMinutes = VARIABLE_DEFAULT_STANDARD_DAY_MINUTES;
     } else {
       if (
         typeof body.standardDayMinutes !== "number" ||

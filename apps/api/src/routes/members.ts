@@ -69,6 +69,7 @@ import {
   listTenantUserIdsWithCredentials,
   listTenantUsers,
   listUserPolicyAssignments,
+  insertWorkPolicyVersion,
   listWorkPolicyVersions,
   reactivateUser,
   revokeAllPasswordResetTokensForUser,
@@ -918,6 +919,23 @@ export function createMembersRoutes(db: Database) {
     }
     const effectiveFrom = body.effectiveFrom;
 
+    // 2026-08-24(v0.7 フェーズ4): monthly_variable(シフト制)の
+    // work_policy_versions.standard_day_minutes は「1日あたりの基準所定時間(有給換算用)」を
+    // 意味するようになった(シフトの無い日に有給を取ったとき1日分を何分に換算するか —
+    // apps/api/src/lib/leave-minutes.ts 参照)。この制度を割り当てるときに管理者が明示できるよう
+    // 任意項目として受け付ける(省略時は従来どおりテナント既定ポリシーの実効値を引き継ぐ)。
+    if (body.standardDayMinutes !== undefined) {
+      if (
+        typeof body.standardDayMinutes !== "number" ||
+        !Number.isInteger(body.standardDayMinutes) ||
+        body.standardDayMinutes <= 0 ||
+        body.standardDayMinutes > 1440
+      ) {
+        return c.json({ error: "invalid_standard_day_minutes" }, 400);
+      }
+    }
+    const requestedStandardDayMinutes = body.standardDayMinutes as number | undefined;
+
     const today = todayLocalDate(TZ_OFFSET_MINUTES_JST);
     if (effectiveFrom < today) {
       return c.json({ error: "effective_from_in_past" }, 409);
@@ -954,7 +972,7 @@ export function createMembersRoutes(db: Database) {
         defaultPolicyEffectiveMinutes = v.standardDayMinutes;
       }
     }
-    const standardDayMinutes = defaultPolicyEffectiveMinutes ?? FALLBACK_STANDARD_DAY_MINUTES;
+    const standardDayMinutes = requestedStandardDayMinutes ?? defaultPolicyEffectiveMinutes ?? FALLBACK_STANDARD_DAY_MINUTES;
 
     const policy = await getOrCreateTenantWorkPolicyByKind(db, {
       tenantId: actor.tenantId,
@@ -974,6 +992,36 @@ export function createMembersRoutes(db: Database) {
         standardDayMinutes,
       },
     });
+
+    // 明示指定があり、既存ポリシーの実効値と食い違う場合は版を1つ追記して反映する
+    // (getOrCreateTenantWorkPolicyByKind の defaultVersion は「ポリシーを新規作成した場合」に
+    // しか使われないため、既にそのkindのポリシーがあるテナントでは指定が無視されてしまう)。
+    // kind ごとの共有ポリシーなので、この変更は同じ制度の他のメンバーにも及ぶ — 制度の
+    // 「基準所定」はテナント全体の運用ルールであり、人ごとに変えたい場合はシフトで表現する
+    // (docs/design/shift-work.md)、という現行モデルの帰結。
+    if (requestedStandardDayMinutes !== undefined) {
+      const policyVersions = await listWorkPolicyVersions(db, { tenantId: actor.tenantId, workPolicyId: policy.id });
+      let effectiveMinutes: number | null = null;
+      for (const v of policyVersions) {
+        if (v.effectiveFrom <= effectiveFrom) effectiveMinutes = v.standardDayMinutes;
+      }
+      if (effectiveMinutes !== requestedStandardDayMinutes) {
+        if (policyVersions.some((v) => v.effectiveFrom === effectiveFrom)) {
+          // 同じ日に別の値の版が既にある。追記専用の版管理では同じ日を2度上書きできない
+          // (routes/settings/work-policy.ts の version_already_exists と同じ規約)。
+          return c.json({ error: "version_already_exists" }, 409);
+        }
+        await insertWorkPolicyVersion(db, {
+          tenantId: actor.tenantId,
+          workPolicyId: policy.id,
+          effectiveFrom,
+          kind,
+          settlementPeriod: kind === "flex" ? "monthly" : FIXED_SETTLEMENT_PERIOD_PLACEHOLDER,
+          standardDayMinutes: requestedStandardDayMinutes,
+          createdAt: now,
+        });
+      }
+    }
 
     await assignUserWorkPolicy(db, { tenantId: actor.tenantId, userId: id, workPolicyId: policy.id, effectiveFrom, createdAt: now });
 

@@ -23,6 +23,7 @@ describe("migrate", () => {
         "departments",
         "help_overrides",
         "invitations",
+        "leave_grant_proposals",
         "leave_grants",
         "leave_requests",
         "memberships",

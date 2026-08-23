@@ -65,9 +65,12 @@ export const ja = {
     todoApprovalsTitle: "承認待ちの申請",
     todoApprovalsCorrections: "打刻の修正申請",
     todoApprovalsLeave: "休暇申請",
+    /** 有給付与の予告(v0.7 フェーズ4、2026-08-24 追加)。leave.grant.manage を持つ人にだけ出る。 */
+    todoApprovalsProposals: "有給付与の予告",
     todoApprovalsCountSuffix: "件",
     todoApprovalsGoCorrections: "修正申請を見る →",
     todoApprovalsGoLeave: "有給休暇を見る →",
+    todoApprovalsGoProposals: "付与の予告を見る →",
 
     todoWarningsTitle: "打刻に警告のある日",
     todoWarningsMore: (n: number) => `ほかに${n}日`,
@@ -709,6 +712,7 @@ export const ja = {
     openCorrection: "この日の修正申請を開く",
     /** leave_* 種別からの導線(2026-08-22 追加、通知一覧画面)。 */
     openLeave: "有給休暇画面を開く",
+    openLeaveSettings: "有給の設定画面を開く",
     /** overtime_* 種別からの導線(2026-08-22 追加、通知一覧画面)。 */
     openMonthly: "月次画面を開く",
     loadFailed: "通知の取得に失敗しました。もう一度お試しください",
@@ -1633,6 +1637,13 @@ export const ja = {
     workPolicyKindLabel: "労働時間制",
     workPolicyEffectiveFromLabel: "適用開始日",
     workPolicyEffectiveFromHint: "この変更は指定日以降の計算にのみ影響し、過去の集計は変わりません。",
+    /**
+     * 変形労働時間制(monthly_variable)のときだけ出す入力(v0.7 フェーズ4、2026-08-24 追加)。
+     * この制度では所定労働時間が日ごとにシフトで決まるため、standard_day_minutes は
+     * 「有給1日を何分として扱うか」の意味だけを持つ。
+     */
+    workPolicyStandardDayMinutesLabel: "1日あたりの基準所定時間(有給換算用)",
+    workPolicyStandardDayMinutesHint: "シフトが無い日に有給を1日取得したとき、何分の労働として扱うかの基準です(分、1〜1440)。既定は480分(8時間)。",
     workPolicySubmit: "この内容で変更",
     workPolicySubmitting: "変更中…",
     workPolicySubmitSuccess: "労働時間制を変更しました。",
@@ -1698,6 +1709,9 @@ export const ja = {
       invalid_effective_from: "適用開始日を確認してください",
       effective_from_in_past: "適用開始日は本日以降のみ指定できます(過去の計算結果が変わってしまうため)",
       assignment_already_exists: "その適用開始日には既に割当があります。別の日付を指定してください",
+      /** 1日あたりの基準所定時間(有給換算用、v0.7 フェーズ4、2026-08-24 追加)。 */
+      invalid_standard_day_minutes: "1日あたりの基準所定時間は1〜1440分の整数で入力してください",
+      version_already_exists: "その適用開始日には既に同じ設定の版があります。別の日付を指定してください",
       default: "処理に失敗しました。もう一度お試しください",
     },
   },
@@ -1977,6 +1991,68 @@ export const ja = {
       hire_date_not_set: "対象メンバーの入社日が設定されていません",
       leave_settings_not_configured: "先に有給の制度設定を保存してください",
       stock_conversion_disabled: "積立の設定が有効になっていません",
+      forbidden: "この操作を行う権限がありません",
+      default: "処理に失敗しました。もう一度お試しください",
+    },
+  },
+
+  /**
+   * 有給付与の予告(/settings/leave の「付与の予告」セクション、v0.7 フェーズ4、2026-08-24 追加)。
+   * docs/requirements.md §11「予告 → 管理者承認 → 本人通知」。機械は付与を確定させず、
+   * 出勤率(労基法39条1項の8割要件)はあくまで参考値として示すだけにする。
+   */
+  leaveGrantProposals: {
+    sectionTitle: "付与の予告",
+    sectionDesc:
+      "日次の自動計算が作成した付与の「予告」です。予告のままでは付与されません — 内容を確認し、担当者が承認して初めて確定します。出勤率は参考値であり、8割要件の最終判断は人が行ってください。",
+    loadFailed: "付与の予告の取得に失敗しました。もう一度お試しください",
+    empty: "現在、付与の予告はありません",
+
+    columnMember: "メンバー",
+    columnLeaveType: "休暇種別",
+    columnGrantedOn: "基準日",
+    columnDays: "日数",
+    columnAttendanceRate: "出勤率(参考値)",
+    columnActions: "操作",
+
+    leaveTypeAnnual: "年次有給",
+    leaveTypeStocked: "積立休暇",
+
+    basisShift: "シフト基準",
+    basisCalendarEstimate: "暦日からの推定",
+    /** 全労働日が0で出勤率を出せないとき。0% ではなく「不明」であることを示す。 */
+    rateUnknown: "—",
+    rateBelowThreshold: "8割未満の可能性 — 確認してください",
+
+    approve: "承認",
+    reject: "却下",
+    confirmApproveTitle: "この予告を承認しますか",
+    confirmApproveMessage: "承認すると、この内容で有給休暇が付与されます。付与日は予告の基準日のままです。",
+    confirmRejectTitle: "この予告を却下しますか",
+    confirmRejectMessage: "却下すると付与は行われません。理由を残しておくと、後から経緯を追えます。",
+    noteLabel: "却下の理由(任意)",
+    notePlaceholder: "例: 出勤率が8割に満たないため",
+    approveSuccess: "承認して付与しました。",
+    rejectSuccess: "却下しました。",
+
+    historyTitle: "決裁済みの予告",
+    historyEmpty: "決裁済みの予告はありません",
+    columnStatus: "状態",
+    columnDecidedAt: "決裁日時",
+    columnDecisionNote: "却下の理由",
+    statusLabel: {
+      proposed: "未決裁",
+      approved: "承認",
+      rejected: "却下",
+      superseded: "作り直し",
+    },
+
+    errors: {
+      not_found: "対象の予告が見つかりません",
+      not_proposed: "この予告は既に決裁済みです。画面を再読み込みして最新の状態をご確認ください",
+      grant_already_exists: "同じ基準日の付与が既にあります。手動付与と重複していないか確認してください",
+      invalid_status: "表示条件を確認してください",
+      invalid_body: "入力内容を確認してください",
       forbidden: "この操作を行う権限がありません",
       default: "処理に失敗しました。もう一度お試しください",
     },

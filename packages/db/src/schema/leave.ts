@@ -4,6 +4,7 @@
  * - `tenant_leave_settings`: テナント単位の付与方式・時間単位年休・積立休暇の設定(1テナント1行)
  * - `leave_grants`: 有給の付与(法定自動付与・手動付与・積立への振替の3経路すべてをここに記録する)
  * - `leave_requests`: 休暇申請(correction_requests と同じ形のワークフロー: pending → approved/rejected/withdrawn)
+ * - `leave_grant_proposals`: 有給付与の「予告」(予告→管理者承認→本人通知の3段フロー、v0.7)
  *
  * 残高・消化の計算は分単位で行う(packages/leave 参照)。`leave_grants.days` は法令上の管理単位
  * (付与日数)として保持し、分への換算はテナントの標準労働時間(所定労働時間)を係数として
@@ -70,7 +71,10 @@ export const leaveGrants = sqliteTable(
     days: integer("days").notNull(),
     /** ローカル日付 "YYYY-MM-DD"。時効日(annual は付与から2年。stocked はテナント設定次第) */
     expiresOn: text("expires_on").notNull(),
-    /** 'auto'(法定付与の自動計算) | 'manual'(管理者による個別調整) | 'conversion'(失効分の積立振替) */
+    /**
+     * 'auto'(法定付与の自動計算) | 'manual'(管理者による個別調整) |
+     * 'conversion'(失効分の積立振替) | 'proposal'(付与予告の承認、v0.7)
+     */
     source: text("source").notNull(),
     /** source='conversion' の場合のみ。振替元の leave_grants.id(自己参照。FK制約は張らない) */
     convertedFromGrantId: text("converted_from_grant_id"),
@@ -130,5 +134,66 @@ export const leaveRequests = sqliteTable(
     // 締め処理・打刻忘れリマインド・36協定アラートすべてがユーザーごとに呼ぶ高頻度パスのため
     // 複合 index を別途持つ。
     index("leave_requests_tenant_user_status_date_idx").on(table.tenantId, table.userId, table.status, table.leaveDate),
+  ],
+);
+
+/**
+ * 有給付与の「予告」(docs/design/shift-work.md 実装フェーズ4、requirements.md §11)。
+ *
+ * 付与基準日が近づいたユーザーについて、日次ワーカー(apps/api/src/leave-grant-proposals.ts)が
+ * 「◯月◯日に◯日付与される予定」という**予告**行をここに積む。管理者が内容(特に出勤率の
+ * 参考値)を確認して承認したときに初めて `leave_grants` の行が生まれる — 機械が無条件に
+ * 付与を確定させない、という §11 の決定をデータ構造として表したテーブル。
+ *
+ * - `attendanceRate`: 出勤率の**参考値**を JSON で保存する(労基法39条1項の8割出勤要件の
+ *   検算材料。最終判断は人が行う)。形は
+ *   `{ periodFrom, periodTo, workingDays, attendedDays, rate, basis }`
+ *   (packages/leave/src/attendance-rate.ts の AttendanceRateReference と同じ)。
+ *   算出時点の値をそのまま凍結保存する(後から再計算すると、承認画面で見た数字と
+ *   監査上の記録が食い違うため)。
+ * - `status`: proposed → approved / rejected。`superseded` は「予告を経由せずに
+ *   POST /leave/grants/auto で同じ付与が作られた」場合に予告側を無効化するための状態。
+ * - `grantId`: 承認して実際に作られた `leave_grants.id`(承認前は null)。
+ *
+ * 判断点(一意制約): (tenant_id, user_id, leave_type, granted_on) は superseded を除いて
+ * 高々1件だが、SQLite の部分 UNIQUE INDEX を drizzle スキーマに持たせると
+ * マイグレーション生成の互換性(将来の PostgreSQL/D1 分離)に不確実性が残るため、
+ * **クエリ層(packages/db/src/queries/leave.ts の findActiveLeaveGrantProposal)で担保**する。
+ * DB 側には検索用の通常 index だけを置く(leave_grants の冪等性を listGrantedOnDates で
+ * 担保しているのと同じ流儀)。
+ */
+export const leaveGrantProposals = sqliteTable(
+  "leave_grant_proposals",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id")
+      .notNull()
+      .references(() => tenants.id),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id),
+    /** 'annual' | 'stocked'(現状は法定付与のみなので 'annual') */
+    leaveType: text("leave_type").notNull(),
+    /** ローカル日付 "YYYY-MM-DD"。付与予定日(基準日) */
+    grantedOn: text("granted_on").notNull(),
+    days: integer("days").notNull(),
+    /** ローカル日付 "YYYY-MM-DD"。承認時に leave_grants.expires_on へそのまま渡す */
+    expiresOn: text("expires_on").notNull(),
+    /** 出勤率の参考値(JSON 文字列)。上記コメント参照 */
+    attendanceRate: text("attendance_rate").notNull(),
+    /** 'proposed' | 'approved' | 'rejected' | 'superseded' */
+    status: text("status").notNull(),
+    /** UTC エポック分 */
+    proposedAt: integer("proposed_at").notNull(),
+    decidedBy: text("decided_by").references(() => users.id),
+    decidedAt: integer("decided_at"),
+    decisionNote: text("decision_note"),
+    /** 承認して作成された付与。FK(leave_grants.id) */
+    grantId: text("grant_id").references(() => leaveGrants.id),
+    createdAt: integer("created_at").notNull(),
+  },
+  (table) => [
+    index("leave_grant_proposals_tenant_status_idx").on(table.tenantId, table.status),
+    index("leave_grant_proposals_lookup_idx").on(table.tenantId, table.userId, table.leaveType, table.grantedOn),
   ],
 );

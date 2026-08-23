@@ -84,6 +84,11 @@ export const mapTenantProfileErrorMessage = makeErrorMapper(() => messages.setti
 export const mapLeaveRequestErrorMessage = makeErrorMapper(() => messages.leave.errors);
 /** 有給の制度設定・付与管理(GET/PUT /settings/leave・POST /leave/grants*)のエラーマッピング(v0.3)。 */
 export const mapLeaveSettingsErrorMessage = makeErrorMapper(() => messages.settingsLeave.errors);
+/**
+ * 有給付与の予告の承認・却下(POST /leave/grant-proposals/:id/{approve,reject})の
+ * エラーマッピング(v0.7 フェーズ4、2026-08-24 追加)。
+ */
+export const mapLeaveGrantProposalErrorMessage = makeErrorMapper(() => messages.leaveGrantProposals.errors);
 /** 社内規定(PUT/DELETE /help/overrides/:key・PUT /settings/work-rules-url)のエラーマッピング(2026-08-22)。 */
 export const mapHelpSettingsErrorMessage = makeErrorMapper(() => messages.settingsHelp.errors);
 /** 勤怠ルールの版管理(POST /settings/attendance・POST /settings/work-policy)のエラーマッピング(2026-08-22 追加)。 */

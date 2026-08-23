@@ -89,6 +89,23 @@ export interface BuildSettingsTimelineParams {
 }
 
 /**
+ * work_policy_versions.standard_day_minutes を「その日から有効な値」として並べた span
+ * (2026-08-24, v0.7 フェーズ4)。
+ *
+ * `SettingsSpan` は engine の型であり、monthly_variable の `WorkSystem` は
+ * standardDayMinutes を持たない(所定は ShiftDay が日ごとに決める)。しかし
+ * **有給1日分の分数換算**には、シフトが無い日のための「基準所定(有給換算用)」が要る
+ * (docs/design/shift-work.md フェーズ4 の決定)。engine の型を歪めずにこの値を運ぶため、
+ * buildSettingsTimeline と同じ変更点・同じ解決規則で組み立てた並行の span 列として返す。
+ * flex/fixed では `WorkSystem.standardDayMinutes` と同じ値になる(同じ列から来るため)。
+ */
+export interface BaseDayMinutesSpan {
+  /** ローカル日付 "YYYY-MM-DD"。この日からこの値が有効 */
+  from: string;
+  minutes: number;
+}
+
+/**
  * [fromDate, toDate] をカバーする engine 用 SettingsSpan[] を組み立てる。
  *
  * 変更点(from 値)は「テナント設定の版」「ユーザーの制度割当」「割当先の制度の版」の
@@ -102,6 +119,22 @@ export async function buildSettingsTimeline(
   db: Database | Transaction,
   params: BuildSettingsTimelineParams,
 ): Promise<SettingsSpan[]> {
+  return (await buildSettingsTimelineWithBaseDayMinutes(db, params)).timeline;
+}
+
+/**
+ * `buildSettingsTimeline` と同じ計算を1回で行い、engine 用の SettingsSpan[] に加えて
+ * `BaseDayMinutesSpan[]`(work_policy_versions.standard_day_minutes の版列)も返す。
+ *
+ * 有給の分数換算を行う呼び出し元(routes/leave.ts・routes/attendance.ts・lib/closing-amend.ts)は
+ * こちらを使い、返った2つを apps/api/src/lib/leave-minutes.ts の
+ * `makeLeaveStandardMinutesResolver` に渡す。DB アクセスは buildSettingsTimeline と同一
+ * (追加クエリは発生しない)。
+ */
+export async function buildSettingsTimelineWithBaseDayMinutes(
+  db: Database | Transaction,
+  params: BuildSettingsTimelineParams,
+): Promise<{ timeline: SettingsSpan[]; baseDayMinutes: BaseDayMinutesSpan[] }> {
   const { tenantId, userId, fromDate, toDate, precomputedTenant } = params;
 
   const tenantTimeline = precomputedTenant ? precomputedTenant.tenantTimeline : await getSettingsTimeline(db, { tenantId, fromDate, toDate });
@@ -141,7 +174,10 @@ export async function buildSettingsTimeline(
 
   const sortedDates = [...changePoints].sort();
 
-  return sortedDates.map((date): SettingsSpan => {
+  const timeline: SettingsSpan[] = [];
+  const baseDayMinutes: BaseDayMinutesSpan[] = [];
+
+  for (const date of sortedDates) {
     // 判断点(バグ修正, 2026-08-23): 各要素(tenantVersion/assignment/version)は本来 `date`
     // (このspanの開始点)で解決すべきだが、`date` が `fromDate` より前になりうる
     // (tenantTimeline は「fromDate 以前の最新版1件」を必ず含むため、その版の effectiveFrom が
@@ -192,8 +228,14 @@ export async function buildSettingsTimeline(
       breakRule: JSON.parse(tenantVersion.breakRule) as BreakRule,
     };
 
-    return { from: date, settings };
-  });
+    timeline.push({ from: date, settings });
+    // 有給換算用の基準所定は制度によらず work_policy_versions.standard_day_minutes をそのまま
+    // 使う(monthly_variable ではこの列が「基準所定(有給換算用)」の意味を持つ —
+    // BaseDayMinutesSpan の JSDoc・docs/design/shift-work.md フェーズ4 参照)。
+    baseDayMinutes.push({ from: date, minutes: version.standardDayMinutes });
+  }
+
+  return { timeline, baseDayMinutes };
 }
 
 /**
@@ -255,39 +297,54 @@ export async function buildLawTimelineForTenant(
  * 有給休暇(§5)の全休・半休の分数換算に使う(routes/leave.ts)。
  *
  * 制度によって `standardDayMinutes` の意味は異なる(`WorkSystem` 型の JSDoc 参照): フレックスでは
- * 「有給日の枠算入に使う標準労働時間」、固定時間制では「所定労働時間そのもの」。しかし
- * どちらも「1日分の有給が何分に換算されるか」としては正しい値であり、この関数はその
- * 共通の役割だけを使うため制度によらず素通しでよい(意味の違いは呼び出し側では意識不要)。
+ * 「有給日の枠算入に使う標準労働時間」、固定時間制では「所定労働時間そのもの」、
+ * monthly_variable(シフト制)では「基準所定(有給換算用)」。しかしどれも
+ * 「1日分の有給が何分に換算されるか」としては正しい値であり、この関数はその共通の役割
+ * だけを使うため制度によらず素通しでよい(意味の違いは呼び出し側では意識不要)。
+ *
+ * monthly_variable の扱い(2026-08-24, v0.7 フェーズ4 の決定): engine の
+ * `WorkSystem["monthly_variable"]` は standardDayMinutes を持たない(所定は ShiftDay が
+ * 日ごとに決める)ため、この制度のときだけ `baseDayMinutes`
+ * (`buildSettingsTimelineWithBaseDayMinutes` の第2の返り値 = work_policy_versions.
+ * standard_day_minutes の版列)を参照する。**その日のシフトを見る規則**(シフトがある日は
+ * シフトの所定を使う)は DB アクセスを伴うため、この同期関数ではなく
+ * apps/api/src/lib/leave-minutes.ts の `makeLeaveStandardMinutesResolver` が担う —
+ * 本関数が返すのは常に「シフトが無い日の基準所定」である。
  *
  * buildSettingsTimeline() が返す SettingsSpan[] は effective-dated(from 昇順、期間初日以前に
  * 有効な版を必ず1つ含む)前提のため、engine 側の findSettingsForDate と同じ「date 以下で
  * 最大の from」を選ぶロジックをここでも再実装する(engine パッケージの内部モジュールは
  * 公開 API に含まれないため import できない — buildSettingsTimeline 自体の判断点コメント参照)。
  */
-export function standardDayMinutesForDate(settingsTimeline: SettingsSpan[], date: string): number {
-  let chosen: SettingsSpan | null = null;
-  for (const span of settingsTimeline) {
+export function standardDayMinutesForDate(settingsTimeline: SettingsSpan[], date: string, baseDayMinutes?: BaseDayMinutesSpan[]): number {
+  const chosen = latestSpanAtOrBefore(settingsTimeline, date);
+  if (!chosen) {
+    throw new Error(`no settings resolvable for ${date}`);
+  }
+  if (chosen.settings.workSystem.kind === "monthly_variable") {
+    const base = baseDayMinutes ? latestSpanAtOrBefore(baseDayMinutes, date) : null;
+    if (!base) {
+      // 呼び出し側の配線ミス(monthly_variable のユーザーに baseDayMinutes を渡し忘れた)。
+      // 根拠のない標準時間を返して有給の枠算入を静かに誤らせるより、明確に失敗させる。
+      throw new Error(
+        `standardDayMinutesForDate: monthly_variable requires baseDayMinutes (date=${date}); ` +
+          "pass the second return value of buildSettingsTimelineWithBaseDayMinutes",
+      );
+    }
+    return base.minutes;
+  }
+  return chosen.settings.workSystem.standardDayMinutes;
+}
+
+/** from 昇順とは限らない span 列から「date 以下で最大の from」を選ぶ(engine の findSettingsForDate と同じ規則)。 */
+function latestSpanAtOrBefore<T extends { from: string }>(spans: readonly T[], date: string): T | null {
+  let chosen: T | null = null;
+  for (const span of spans) {
     if (span.from <= date && (chosen === null || span.from > chosen.from)) {
       chosen = span;
     }
   }
-  if (!chosen) {
-    throw new Error(`no settings resolvable for ${date}`);
-  }
-  // monthly_variable(シフト制)は `standardDayMinutes` という定数を持たない —
-  // 所定は ShiftDay が日ごとに決める(types.ts の WorkSystem コメント参照)。この関数は
-  // 有給の全休・半休の分数換算(routes/leave.ts)専用であり、シフト制ユーザーの有給を
-  // 「その日のシフト所定」で換算する配線は本タスク(v0.7 フェーズ2: シフトのDB/API)の
-  // スコープ外(有給付与フローとの統合は shift-work.md 実装フェーズ4「有給付与の3段フロー」)。
-  // ここでは値を偽装せず、明確に失敗させる(呼び出し側は 500 になるが、原因はログから
-  // 追える — 根拠のない標準時間を返して有給の枠算入を静かに誤らせる方が有害と判断した)。
-  if (chosen.settings.workSystem.kind === "monthly_variable") {
-    throw new Error(
-      `standardDayMinutesForDate: monthly_variable has no constant standardDayMinutes (date=${date}); ` +
-        "leave usage-minutes resolution for shift-based users is not yet implemented (see docs/design/shift-work.md phase 4)",
-    );
-  }
-  return chosen.settings.workSystem.standardDayMinutes;
+  return chosen;
 }
 
 /**
@@ -297,12 +354,7 @@ export function standardDayMinutesForDate(settingsTimeline: SettingsSpan[], date
  * 期間開始日での実効 workSystem(periodStartDay を含む)を読むために使う。
  */
 export function resolveWorkSystemForDate(settingsTimeline: SettingsSpan[], date: string): WorkSystem {
-  let chosen: SettingsSpan | null = null;
-  for (const span of settingsTimeline) {
-    if (span.from <= date && (chosen === null || span.from > chosen.from)) {
-      chosen = span;
-    }
-  }
+  const chosen = latestSpanAtOrBefore(settingsTimeline, date);
   if (!chosen) {
     throw new Error(`no settings resolvable for ${date}`);
   }

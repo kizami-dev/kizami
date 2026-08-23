@@ -331,3 +331,26 @@
 .leave-admin-result-table td:first-child {
   text-align: left;
 }
+
+/* ---- /settings/leave: 付与の予告(v0.7 フェーズ4、2026-08-24 追加) ---- */
+
+/*
+ * 表そのものは既存の .org-settings__table-wrap / .org-table を流用する(この画面のためだけに
+ * 同じ見た目のテーブルを増やさない)。ここで足すのは「出勤率(参考値)」セルの縦積みと、
+ * 8割未満の可能性を示す注意チップ(.chip--warning は org-settings.css)だけ。
+ */
+.leave-proposal-rate {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+}
+
+.leave-proposal-rate__basis {
+  font-size: 0.72rem;
+  color: var(--k-ink-soft);
+}
+
+.leave-proposal-history {
+  margin-top: var(--space-2);
+}

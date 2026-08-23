@@ -13,7 +13,8 @@
  * 存在しないため廃止した(docs/requirements.md §7)。
  *
  * このファイルの責務は「BullMQ の repeatable job を定期実行し、スキャン本体(打刻忘れ
- * リマインド・36協定アラート・有給の失効間近/年5日義務アラート)を呼ぶ」ことだけに限定する。
+ * リマインド・36協定アラート・有給の失効間近/年5日義務アラート・シフト予実乖離・
+ * 有給付与の予告)を呼ぶ」ことだけに限定する。
  * スキャン本体のロジック(検知条件・重複防止・通知作成)は runReminderScan /
  * runOvertimeAlertScan / runLeaveAlertScan 側にあり、BullMQ/Valkey に一切依存しない
  * (要件 §8: キュー層は差し替え可能な抽象。将来 Cloudflare Cron から直接呼ぶ Workers 版
@@ -40,6 +41,7 @@ import { buildEncryptorFromEnv } from "./lib/encryption.js";
 import { buildPersonalChannels } from "./lib/notification-channels.js";
 import { resolveNotificationCategory } from "./lib/notification-preferences.js";
 import { runLeaveAlertScan } from "./leave-alerts.js";
+import { runLeaveGrantProposalScan } from "./leave-grant-proposals.js";
 import { runOvertimeAlertScan } from "./overtime-alerts.js";
 import { nodemailerSendFn } from "./lib/smtp.js";
 import { runReminderScan } from "./reminders.js";
@@ -159,6 +161,22 @@ async function main(): Promise<void> {
         console.error("[kizami-reminders] shift-variance-alert scan failed:", err);
       }
 
+      // 有給付与の予告(docs/requirements.md §11、v0.7 フェーズ4)。宛先はシフト予実乖離と同じく
+      // 「本人ではなく管理者(leave.grant.manage 保持者)+テナント共有 Webhook」のため、
+      // resolveChannels ではなく notifyDeps を渡す。
+      let grantProposalScanned = 0;
+      let grantProposalCreated = 0;
+      try {
+        const result = await runLeaveGrantProposalScan(db, { nowMinutes, notifyDeps: { smtpSendFn: nodemailerSendFn, encryptor } });
+        grantProposalScanned = result.scannedUserCount;
+        grantProposalCreated = result.created.length;
+        console.log(
+          `[kizami-reminders] leave-grant-proposal scan: scanned ${result.scannedUserCount} user(s) with hire date, created ${result.created.length} proposal(s)`,
+        );
+      } catch (err) {
+        console.error("[kizami-reminders] leave-grant-proposal scan failed:", err);
+      }
+
       return {
         scannedUserCount: reminderScanned,
         createdCount: reminderCreated,
@@ -168,6 +186,8 @@ async function main(): Promise<void> {
         leaveAlertCreatedCount: leaveAlertCreated,
         shiftVarianceScannedUserCount: shiftVarianceScanned,
         shiftVarianceCreatedCount: shiftVarianceCreated,
+        leaveGrantProposalScannedUserCount: grantProposalScanned,
+        leaveGrantProposalCreatedCount: grantProposalCreated,
       };
     },
     { connection },
