@@ -77,7 +77,7 @@ function ConfirmDialogDemo({ tone }: { tone: "neutral" | "caution" }) {
 }
 
 const meta = {
-  title: "Patterns/HelpTip & Dialog",
+  title: "パターン/HelpTip とダイアログ",
   parameters: { layout: "fullscreen" },
 } satisfies Meta;
 
@@ -85,13 +85,16 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 export const ContextualHelp: Story = {
+  name: "コンテキストヘルプ",
   render: () => <HelpTipDemo />,
 };
 
 export const ConfirmDialogNeutral: Story = {
+  name: "確認ダイアログ(通常)",
   render: () => <ConfirmDialogDemo tone="neutral" />,
 };
 
 export const ConfirmDialogCaution: Story = {
+  name: "確認ダイアログ(危険操作)",
   render: () => <ConfirmDialogDemo tone="caution" />,
 };

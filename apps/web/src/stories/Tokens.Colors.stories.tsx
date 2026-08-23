@@ -102,7 +102,7 @@ function ColorsCatalog() {
 }
 
 const meta = {
-  title: "Tokens/Colors",
+  title: "トークン/カラー",
   component: ColorsCatalog,
   parameters: { layout: "fullscreen" },
 } satisfies Meta<typeof ColorsCatalog>;
@@ -110,4 +110,4 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-export const Palette: Story = {};
+export const Palette: Story = { name: "パレット" };
