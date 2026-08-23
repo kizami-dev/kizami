@@ -29,6 +29,8 @@ export const en = {
     monthly: "Monthly",
     corrections: "Requests",
     leave: "Leave",
+    /** Shifts (/shifts, /shifts/me). Holders of shift.manage go to /shifts; everyone else goes to /shifts/me (added 2026-08-24). */
+    shifts: "Shifts",
     settings: "Settings",
     logout: "Log out",
   },
@@ -59,6 +61,11 @@ export const en = {
     todayWorkedLabel: "Worked today",
     monthFlexLabel: "This month's flex balance",
     monthFlexMoreLink: "View monthly →",
+
+    /** Today's and tomorrow's shift (added 2026-08-24, v0.7 phase 3). The card itself is hidden when there is no shift at all. */
+    shiftCardTitle: "Today's and tomorrow's shifts",
+    shiftCardTodayLabel: "Today",
+    shiftCardTomorrowLabel: "Tomorrow",
 
     todoTitle: "Needs attention",
     todoEmpty: "Nothing needs your attention right now.",
@@ -429,7 +436,8 @@ export const en = {
     workSystemValue: {
       flex: "Flextime system",
       fixed: "Fixed working hours",
-    } satisfies Record<"flex" | "fixed", string>,
+      monthly_variable: "Monthly variable working hours",
+    } satisfies Record<"flex" | "fixed" | "monthly_variable", string>,
 
     flexBalanceLabel: "Flex balance",
     flexBalanceUnit: "min",
@@ -440,6 +448,30 @@ export const en = {
     overtimeBarRemainingLabel: "Remaining",
     /** Shown when the cap is exceeded (so it's clear from the text, not just the capped bar). */
     overtimeBarOverLabel: "Cap exceeded",
+
+    /**
+     * Replaces the "flex balance bar" under monthly_variable (added 2026-08-24, v0.7 phase 3).
+     * Position of worked time against the period's statutory frame (figures.variablePeriod.statutoryFrameMinutes).
+     */
+    variablePeriodBarLabel: "Worked time against the period's statutory frame",
+    variablePeriodBarUnit: "min",
+    variablePeriodBarRemainingLabel: "Remaining",
+    variablePeriodBarOverLabel: "Frame exceeded",
+    variablePeriodScheduledLabel: "Total scheduled",
+    variablePeriodRangeLabel: (start: string, end: string) => `Variable period ${start} – ${end}`,
+    /** Shown when attributedToThisMonth is false (decision 3: period-level overtime is not yet counted in this month). */
+    variablePeriodNotAttributedNote:
+      "Period-level overtime is counted in the month the period ends. It is not yet included in this month.",
+    /** Closed months (figures.source === "snapshot") always return variablePeriod as null. */
+    variablePeriodUnavailableNote:
+      "This month is already closed, so the variable-period breakdown is not shown (overtime is included in the category totals).",
+
+    /** Daily "scheduled" column under monthly_variable (added 2026-08-24, DailyBreakdown.scheduledMinutes). */
+    columnScheduled: "Scheduled",
+
+    /** Delta minutes appended to shift-variance warnings (same shape as insufficient_break's breakShortfallSuffix). */
+    shiftDeltaSuffix: (delta: string) => `(delta ${delta})`,
+    shiftActualOnlySuffix: (actual: string) => `(worked ${actual})`,
 
     totalsLabel: "Totals by category",
     /** Heading for the monthly allowance totals (see docs/design/allowances.md "UI", added 2026-08-23). */
@@ -469,6 +501,13 @@ export const en = {
     statutoryHoliday: "Statutory holiday",
   } satisfies Record<"statutory" | "overtime" | "overtime60h" | "lateNight" | "statutoryHoliday", string>,
 
+  /** Shift day-type labels (shared by shift_patterns.dayType and shift_days.dayType, added 2026-08-24). */
+  shiftDayTypeLabel: {
+    work: "Work",
+    legal_holiday: "Statutory holiday",
+    non_working: "Non-working",
+  } satisfies Record<"work" | "legal_holiday" | "non_working", string>,
+
   warningLabel: {
     missing_clock_out: "No clock-out was recorded, so this work stretch was excluded from the totals",
     duplicate_clock_in: "A duplicate clock-in while already working was invalidated",
@@ -480,6 +519,12 @@ export const en = {
     mixed_work_system:
       "The working-hours system changed partway through this period. The whole month is totaled under the system in effect at the start of the period. Contact your administrator if you need this period split for review",
     insufficient_break: "The break taken during this shift is shorter than legally required. Please check for missing break punches",
+    /** Shift-vs-actual variance (see docs/design/shift-work.md "Reconciling planned vs. actual"), added 2026-08-24. Delta minutes are appended via monthly.shiftDeltaSuffix etc. */
+    missing_shift: "There is worked time on a day with no shift registered. Please check the shift schedule",
+    shift_late_arrival: "Clocked in later than the shift's start time",
+    shift_early_leave: "Clocked out earlier than the shift's end time",
+    shift_unplanned_work: "There is worked time on a day the shift marked as off",
+    shift_absence: "There is no worked time on a day the shift marked as work",
   } satisfies Record<
     | "missing_clock_out"
     | "duplicate_clock_in"
@@ -489,7 +534,12 @@ export const en = {
     | "unmatched_break_end"
     | "clock_out_during_break"
     | "mixed_work_system"
-    | "insufficient_break",
+    | "insufficient_break"
+    | "missing_shift"
+    | "shift_late_arrival"
+    | "shift_early_leave"
+    | "shift_unplanned_work"
+    | "shift_absence",
     string
   >,
 
@@ -909,6 +959,7 @@ export const en = {
     privacy: "Personal data",
     attendance: "Attendance rules",
     allowances: "Allowance-eligible time",
+    shiftPatterns: "Shift patterns",
     apiKeys: "API keys",
     slack: "Slack integration",
     auditLogs: "Audit log",
@@ -935,6 +986,8 @@ export const en = {
     attendanceDesc: "Change the day boundary, statutory holiday, break rules, GPS, and flextime settings by adding a new version.",
     allowancesTitle: "Allowance-eligible time",
     allowancesDesc: "Define which worked time counts toward company allowances, based on specific dates, weekdays, and time bands.",
+    shiftPatternsTitle: "Shift patterns",
+    shiftPatternsDesc: "Define shift patterns (early, late, off, etc.) to assign per day when building shift schedules.",
     tenantProfileTitle: "Tenant profile",
     tenantProfileDesc: "Review attributes that affect the totals — company size, special-provision workplace status, special clause — and upcoming legal changes.",
     leaveTitle: "Annual paid leave",
@@ -1096,6 +1149,13 @@ export const en = {
      */
     weekStartWeekdayLabel: "Week start weekday",
     weekStartWeekdayHint: "The week boundary used for the 40-hour weekly threshold. Sunday is the default start unless your work rules specify otherwise (1988 Directive No. 1).",
+    /**
+     * Variable period start day (added 2026-08-24, v0.7 phase 3, docs/design/shift-work.md decision 3).
+     * Required on every POST even for tenants that don't use monthly_variable (matches the apps/api convention).
+     */
+    variablePeriodStartDayLabel: "Variable period start day",
+    variablePeriodStartDayHint:
+      "Enter a day from 1 to 28 (29–31 can't be chosen because not every month has them). Shift schedules (Shifts screen) are split into one-month periods starting on this day. Required even if you don't use the shift work system.",
     legalHolidayLabel: "Statutory holiday",
     legalHolidayWeekday: "By weekday",
     legalHolidayDates: "By calendar date",
@@ -1165,6 +1225,7 @@ export const en = {
       invalid_effective_from: "Please check the effective date",
       invalid_day_boundary_minutes: "Day boundary must be between 0 and 1439 (minutes)",
       invalid_week_start_weekday: "Please check the week start weekday",
+      invalid_variable_period_start_day: "Please enter a variable period start day between 1 and 28",
       invalid_legal_holiday_rule: "Please check the statutory holiday setting",
       invalid_break_rule: "Please check the break rules",
       invalid_gps_enabled: "Please check the entered content",
@@ -1255,6 +1316,164 @@ export const en = {
       forbidden: "You don't have permission to perform this action",
       default: "Something went wrong. Please try again",
     },
+  },
+
+  /**
+   * Shift pattern management (/settings/shift-patterns, v0.7 phase 3, added 2026-08-24).
+   * The pattern side of docs/design/shift-work.md decision 2 ("pattern assignment + per-cell edits").
+   * Matches apps/api/src/routes/settings/shift-patterns.ts (GET/POST/:id/archive only — no edit API).
+   */
+  shiftPatterns: {
+    title: "Shift patterns",
+    tagline: "Define patterns such as early shift, late shift, and off day. You assign these to days when building a shift schedule.",
+    noPermission: "You don't have permission to use this screen",
+    loadFailed: "Could not load the pattern list. Please try again",
+    empty: "No patterns yet. Create one from \"Add pattern\".",
+
+    addNew: "Add pattern",
+    columnName: "Name",
+    columnDayType: "Type",
+    columnTime: "Time",
+    columnActions: "Actions",
+    archive: "Archive",
+    archivedBadge: "Archived",
+    showArchived: "Show archived",
+
+    confirmArchiveTitle: "Archive this pattern?",
+    confirmArchiveMessage: "Archiving removes it from the assignment options for new shift schedules. Shifts already assigned this pattern are unaffected.",
+    confirmArchiveLabel: "Archive",
+
+    formTitle: "Add a new pattern",
+    nameLabel: "Name",
+    namePlaceholder: "e.g. Early shift",
+    dayTypeLabel: "Type",
+    startLabel: "Start time",
+    endLabel: "End time",
+    endHint: "If you set the end time earlier than the start time, it's treated as work spanning midnight (a night shift).",
+    breakLabel: "Break (minutes)",
+    submit: "Create with these details",
+    submitting: "Creating…",
+    submitSuccess: "Pattern created.",
+    cancel: "Cancel",
+
+    errors: {
+      invalid_body: "Please check your input",
+      invalid_name: "Please enter a name",
+      invalid_day_type: "Please check the type",
+      invalid_minutes: "Please check the start and end times",
+      invalid_break_minutes: "Break (minutes) must be an integer of 0 or more",
+      not_found: "The pattern could not be found",
+      forbidden: "You don't have permission to perform this action",
+      default: "Something went wrong. Please try again",
+    },
+  },
+
+  /**
+   * Shift schedule creation and publishing (/shifts, for shift.manage holders, v0.7 phase 3,
+   * added 2026-08-24). Matches apps/api/src/routes/shifts.ts. period_start_mismatch carries a
+   * number (the correct start day), so it's kept as periodStartMismatchMessage rather than
+   * inside errors (which is string-only).
+   */
+  shifts: {
+    title: "Shift schedules",
+    tagline: "Build a shift schedule per member for each variable period and publish it. Changes after publishing are kept in history.",
+    noPermission: "You don't have permission to use this screen",
+    loadFailed: "Could not load the shift schedule. Please try again",
+
+    memberLabel: "Member",
+    prevPeriod: "← Previous period",
+    nextPeriod: "Next period →",
+    periodRangeLabel: (start: string, end: string) => `${start} – ${end}`,
+
+    noPlanYet: "There is no shift schedule for this period yet.",
+    createPlan: "Create a shift schedule for this period",
+    creatingPlan: "Creating…",
+
+    publishedBadge: "Published",
+    unpublishedBadge: "Not published",
+    publishAction: "Publish",
+    publishing: "Publishing…",
+    confirmPublishTitle: "Publish this shift schedule?",
+    confirmPublishMessage:
+      "Changes after publishing are recorded as history and cannot be deleted. Specifying each day's and each week's working hours in advance is a legal requirement of the monthly variable working-hours system.",
+    confirmPublishLabel: "Publish",
+
+    historyToggleOpen: "View change history",
+    historyToggleClose: "Hide change history",
+    historyEmpty: "No change history yet",
+    historyColumnDate: "Date",
+    historyColumnDayType: "Type",
+    historyColumnTime: "Time",
+    historyColumnCreatedBy: "Changed by",
+    historyColumnCreatedAt: "Date/time",
+
+    /** Weekly grid (rows = weeks, columns = weekdays; docs/design/shift-work.md decision 2). */
+    cellEmpty: "Not set",
+    cellDialogTitle: (date: string) => `Shift for ${date}`,
+    cellDialogPatternLabel: "Choose from a pattern",
+    cellDialogPatternNone: "Set individually without a pattern",
+    cellDialogDayTypeLabel: "Type",
+    cellDialogStartLabel: "Start time",
+    cellDialogEndLabel: "End time",
+    cellDialogBreakLabel: "Break (minutes)",
+    cellDialogSave: "Save",
+    cellDialogSaving: "Saving…",
+    cellDialogCancel: "Cancel",
+
+    /** Bulk assign (pick a pattern per weekday and apply it across the whole period — decision 2's "key to reducing input cost"). */
+    bulkAssignTitle: "Bulk assign",
+    bulkAssignHint: "Choose a pattern for each weekday and apply it across this whole period at once.",
+    bulkAssignNoneOption: "No change",
+    bulkAssignApply: "Apply these settings",
+    bulkAssignApplying: "Applying…",
+    bulkAssignSuccess: "Applied.",
+
+    /** Pre-publish totals (requirement: shortages must be visible before publishing). */
+    aggregationTitle: "Totals for this period (estimate)",
+    aggregationScheduledLabel: "Total scheduled",
+    aggregationStatutoryFrameLabel: "Statutory frame (40h × calendar days ÷ 7)",
+    aggregationOverLabel: "The statutory frame is exceeded",
+    aggregationLegalHolidayLabel: "Statutory holiday days",
+    aggregationLegalHolidayOk: "Meets the requirement of 1 day per week, or 4 days per 4 weeks",
+    aggregationLegalHolidayShortage: "Does not meet the requirement of 1 day per week, or 4 days per 4 weeks. Cannot be published",
+    aggregationUnassignedDaysLabel: "Unassigned days",
+
+    /** Variable period start day mismatch (400 period_start_mismatch). Shown when the web app's guessed day was wrong; the correct start day is used to fix the period. */
+    periodStartMismatchMessage: (day: number) => `The variable period starts on day ${day}. The period shown has been corrected — please try again`,
+
+    errors: {
+      invalid_body: "Please check your input",
+      invalid_user_id: "Please check the target member",
+      invalid_period_start: "Please check the period start date",
+      tenant_settings_not_found: "No attendance settings were found for this period. Please contact your administrator",
+      plan_already_exists: "A shift schedule for this period already exists",
+      not_found: "The shift schedule could not be found",
+      invalid_days: "Please check the shift details",
+      invalid_date: "Please check the date",
+      date_out_of_period: "This date is outside the period",
+      invalid_pattern_id: "The selected pattern could not be found",
+      archived_pattern: "The selected pattern has been archived. Please choose a different pattern",
+      invalid_day_type: "Please check the type",
+      invalid_minutes: "Please check the start and end times",
+      invalid_break_minutes: "Break (minutes) must be an integer of 0 or more",
+      duplicate_date: "The same date appears more than once",
+      already_published: "This shift schedule has already been published",
+      legal_holiday_shortage: "Statutory holidays are insufficient. Set them to meet 1 day per week, or 4 days per 4 weeks",
+      invalid_range: "Please check the specified range",
+      forbidden: "You don't have permission to perform this action",
+      default: "Something went wrong. Please try again",
+    },
+  },
+
+  /** Viewing your own shifts (/shifts/me, everyone, v0.7 phase 3, added 2026-08-24). */
+  shiftsMe: {
+    title: "My shifts",
+    tagline: "View your published shift schedule (the plan) as a monthly calendar.",
+    loadFailed: "Could not load your shifts. Please try again",
+    prevMonth: "Previous month",
+    nextMonth: "Next month",
+    empty: "No shifts are registered for this month yet.",
+    manageLink: "Manage shift schedules →",
   },
 
   departments: {

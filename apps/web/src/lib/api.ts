@@ -140,10 +140,20 @@ export type WarningKind =
   | "duplicate_break_start"
   | "unmatched_break_end"
   | "clock_out_during_break"
-  /** 期間の途中で労働時間制(flex/fixed)が切り替わった(2026-08-23 追加、packages/engine)。 */
+  /** 期間の途中で労働時間制(flex/fixed/monthly_variable)が切り替わった(2026-08-23 追加、packages/engine)。 */
   | "mixed_work_system"
   /** 勤務区間の休憩が労基法34条の最低時間に足りない(2026-08-23 追加、packages/engine)。 */
-  | "insufficient_break";
+  | "insufficient_break"
+  /**
+   * シフト予実の乖離(2026-08-24 追加、v0.7 フェーズ3、docs/design/shift-work.md「予実の突合」)。
+   * monthly_variable の日別 ShiftDay と実労働(DailyBreakdown)を突き合わせた結果。
+   * 集計(totals)には反映されない(遅刻控除等は給与側の責任)。
+   */
+  | "missing_shift"
+  | "shift_late_arrival"
+  | "shift_early_leave"
+  | "shift_unplanned_work"
+  | "shift_absence";
 
 export interface CalcWarning {
   kind: WarningKind;
@@ -151,6 +161,12 @@ export interface CalcWarning {
   punchAt?: number;
   /** insufficient_break のとき: 必要だった休憩と実際の休憩(分)。 */
   break?: { requiredMinutes: number; actualMinutes: number };
+  /**
+   * シフト予実乖離の警告(missing_shift・shift_late_arrival・shift_early_leave・
+   * shift_unplanned_work・shift_absence)のとき: 乖離の分数(packages/engine/src/shift-variance.ts
+   * と一致、すべて省略可)。missing_shift は actualMinutes のみ(deltaMinutes は無い)。
+   */
+  shift?: { scheduledMinutes?: number; actualMinutes?: number; deltaMinutes?: number };
 }
 
 /** その勤怠日に始まった勤務区間(出勤〜退勤の1まとまり)。中抜けがあれば複数。 */
@@ -178,7 +194,12 @@ export interface DailyBreakdown {
   paidLeaveMinutes: number;
   /** その日に始まった勤務区間。打刻時刻の表示用(2026-08-23 追加)。 */
   stretches: WorkStretch[];
-  /** 所定内(実労働のうち標準労働時間まで)。固定時間制のみ。フレックスでは 0 */
+  /**
+   * その日の所定労働時間(分、2026-08-24 追加、v0.7 フェーズ3)。monthly_variable のみ
+   * ShiftDay(dayType が work の日)から埋まる。flex/fixed では常に 0。
+   */
+  scheduledMinutes: number;
+  /** 所定内(実労働のうち標準労働時間まで)。固定時間制・monthly_variable のみ。フレックスでは 0 */
   withinScheduledMinutes: number;
   /** 所定外だが法定内(所定超〜1日8時間、いわゆる法定内残業)。固定時間制のみ。フレックスでは 0 */
   extraWithinStatutoryMinutes: number;
@@ -208,6 +229,28 @@ export interface FixedBreakdown {
 export type AllowanceTotals = Array<{ definitionId: string; minutes: number }>;
 
 /**
+ * monthly_variable の変形期間サマリ(2026-08-24 追加、v0.7 フェーズ3、
+ * packages/engine の VariablePeriodSummary、docs/design/shift-work.md 決定事項3)。
+ */
+export interface VariablePeriodSummaryDto {
+  periodStart: string;
+  periodEnd: string;
+  /** 期間の法定総枠(分、40時間 × 暦日数 ÷ 7)。 */
+  statutoryFrameMinutes: number;
+  /** 期間の所定合計(分、ShiftDay 由来)。 */
+  scheduledTotalMinutes: number;
+  /** 期間の実労働合計(分)。 */
+  workedTotalMinutes: number;
+  /** 期間段(③)の時間外(分)。①②で時間外にした分を除く。 */
+  periodOvertimeMinutes: number;
+  /**
+   * periodOvertimeMinutes がこの月の totals.overtime に加算済みかどうか。false のときは
+   * 「期間の終了日が属する月」がまだ来ていない(決定事項3、期間はこの月をまたいで継続中)。
+   */
+  attributedToThisMonth: boolean;
+}
+
+/**
  * 締め保護の対象となる集計値一式(区分別合計・フレックス収支・固定時間制内訳・手当合計)。
  * `source` が "snapshot" のときはすべて締めスナップショット由来の確定値
  * (docs/design/v01-data-model.md「GET /attendance/monthly レスポンス契約」)。
@@ -215,10 +258,16 @@ export type AllowanceTotals = Array<{ definitionId: string; minutes: number }>;
 export interface MonthlyFigures {
   source: "live" | "snapshot";
   totals: CategorizedMinutes;
-  /** フレックスのみ。固定時間制では null。 */
+  /** フレックスのみ。固定時間制・monthly_variable では null。 */
   flexBalance: FlexBalance | null;
-  /** 固定時間制のみ。フレックスでは null。 */
+  /** 固定時間制のみ。フレックス・monthly_variable では null。 */
   fixedBreakdown: FixedBreakdown | null;
+  /**
+   * monthly_variable かつ source が "live" のときのみ非null(2026-08-24 追加)。
+   * 締め済み月(source: "snapshot")は常に null(決定事項3、締めスナップショットは既存の
+   * totals 経由でそのまま扱う)。
+   */
+  variablePeriod: VariablePeriodSummaryDto | null;
   allowanceTotals: AllowanceTotals;
   /** 締め後修正(amend)が入っている月のみ、当初(最初の締め)の値をここに持つ。 */
   original?: {
@@ -236,8 +285,8 @@ export interface MonthlyFigures {
 export interface MonthlyAttendance {
   /** 誰の月次か(他人の勤怠閲覧、?userId= 省略時も自分自身の { id, name } が入る)。 */
   user: { id: string; name: string };
-  /** 期間開始日に有効だった労働時間制。 */
-  workSystem: "flex" | "fixed";
+  /** 期間開始日に有効だった労働時間制。monthly_variable(シフト制)は2026-08-24 追加。 */
+  workSystem: "flex" | "fixed" | "monthly_variable";
   days: DailyBreakdown[];
   warnings: CalcWarning[];
   /** 締め保護の対象(集計値)。日別内訳・warnings とは異なり締め済み月はスナップショット固定になる。 */
@@ -438,8 +487,11 @@ export interface UpdateDepartmentInput {
  */
 export type InviteStatus = "active" | "invited" | "invite_expired";
 
-/** 労働時間制の種別(apps/api/src/routes/members.ts の GET/POST /:id/work-policy と一致)。 */
-export type WorkSystemKind = "flex" | "fixed";
+/**
+ * 労働時間制の種別(apps/api/src/routes/members.ts の GET/POST /:id/work-policy と一致)。
+ * monthly_variable(1ヶ月単位の変形労働時間制、シフト制)は2026-08-24 追加、v0.7 フェーズ3。
+ */
+export type WorkSystemKind = "flex" | "fixed" | "monthly_variable";
 
 /** メンバー(apps/api/src/routes/members.ts の GET / のレスポンス要素と一致)。 */
 export interface MemberDto {
@@ -672,6 +724,11 @@ export interface AttendanceSettingVersionDto {
    * (apps/web 側の既存バグ、本タスクで発覚・修正。完了報告に明記)。
    */
   weekStartWeekday: number;
+  /**
+   * 変形期間の開始日(1〜28、2026-08-24 追加、v0.7 フェーズ3、docs/design/shift-work.md 決定事項3)。
+   * monthly_variable を使わないテナントでも常に持つ(POST のたびに必須で送る、apps/api の流儀)。
+   */
+  variablePeriodStartDay: number;
   legalHolidayRule: LegalHolidayRuleDto;
   breakRule: BreakRuleDto;
   gpsEnabled: boolean;
@@ -700,6 +757,7 @@ export interface CreateAttendanceSettingVersionInput {
   effectiveFrom: string;
   dayBoundaryMinutes: number;
   weekStartWeekday: number;
+  variablePeriodStartDay: number;
   legalHolidayRule: LegalHolidayRuleDto;
   breakRule: BreakRuleDto;
   gpsEnabled: boolean;
@@ -1040,6 +1098,84 @@ export interface ListAuditLogsParams {
   cursor?: string;
   /** 既定50・上限200(apps/api/src/routes/audit-logs.ts)。 */
   limit?: number;
+}
+
+/**
+ * シフト制(v0.7 フェーズ3、2026-08-24 追加)。docs/design/shift-work.md 決定事項1・2・3、
+ * apps/api/src/routes/shifts.ts・routes/settings/shift-patterns.ts と一致させる。
+ */
+export type ShiftDayType = "work" | "legal_holiday" | "non_working";
+
+/** シフトパターン(apps/api/src/routes/settings/shift-patterns.ts の serializeShiftPattern と一致)。 */
+export interface ShiftPatternDto {
+  id: string;
+  name: string;
+  dayType: ShiftDayType;
+  /** dayType が work 以外なら 0。 */
+  startMinutes: number;
+  endMinutes: number;
+  breakMinutes: number;
+  createdAt: number;
+  /** UTC エポック分。null = アーカイブされていない。 */
+  archivedAt: number | null;
+}
+
+/** POST /settings/shift-patterns の入力。dayType が work 以外なら start/end/breakMinutes は省略可(サーバー側で0固定)。 */
+export interface CreateShiftPatternInput {
+  name: string;
+  dayType: ShiftDayType;
+  startMinutes?: number;
+  endMinutes?: number;
+  breakMinutes?: number;
+}
+
+/** shift_days の1件(apps/api/src/routes/shifts.ts の serializeShiftDay と一致)。 */
+export interface ShiftDayDto {
+  id: string;
+  date: string;
+  dayType: ShiftDayType;
+  startMinutes: number;
+  endMinutes: number;
+  breakMinutes: number;
+  /** パターンから割り当てた場合のパターンID。個別編集なら null。 */
+  patternId: string | null;
+  planId: string;
+  /** supersede 元の shift_days.id。確定+追記型の変更履歴(決定事項1)。 */
+  supersedesId: string | null;
+  createdBy: string;
+  createdAt: number;
+}
+
+/** シフト表(shift_plans、apps/api/src/routes/shifts.ts の serializePlan と一致)。 */
+export interface ShiftPlanDto {
+  id: string;
+  userId: string;
+  periodStart: string;
+  periodEnd: string;
+  /** UTC エポック分。null = 未確定。 */
+  publishedAt: number | null;
+  publishedBy: string | null;
+  createdAt: number;
+}
+
+/** GET /shifts/plans・PUT /shifts/plans/:id/days のレスポンスに含まれる、その時点の有効な shift_days 込みの1件。 */
+export interface ShiftPlanWithDaysDto extends ShiftPlanDto {
+  days: ShiftDayDto[];
+}
+
+/**
+ * PUT /shifts/plans/:id/days の1要素。patternId 指定ならパターンの値を、個別指定なら
+ * 渡した値をそのまま採用する(決定事項2「パターン割当+個別編集」、apps/api の normalizeDayInput)。
+ * dayType が work 以外のときは start/end/breakMinutes を省略できる(サーバー側で0固定)。
+ */
+export type ShiftDayInput =
+  | { date: string; patternId: string }
+  | { date: string; dayType: ShiftDayType; startMinutes?: number; endMinutes?: number; breakMinutes?: number };
+
+/** GET /shifts/plans/:id/history のレスポンス。history は supersede チェーンをすべて含む(古い順)。 */
+export interface ShiftPlanHistoryDto {
+  plan: ShiftPlanDto;
+  history: ShiftDayDto[];
 }
 
 export const api = {
@@ -1580,6 +1716,72 @@ export const api = {
     if (params.limit !== undefined) qs.set("limit", String(params.limit));
     const query = qs.toString();
     return request(`/audit-logs${query ? `?${query}` : ""}`);
+  },
+
+  // ---- シフト制(v0.7 フェーズ3、2026-08-24 追加) ----
+
+  /** GET /settings/shift-patterns(shift.manage、tenant スコープ)。includeArchived 省略時はアーカイブ済みを含まない。 */
+  async listShiftPatterns(includeArchived?: boolean): Promise<{ patterns: ShiftPatternDto[] }> {
+    const query = includeArchived ? "?includeArchived=true" : "";
+    return request(`/settings/shift-patterns${query}`);
+  },
+
+  /** POST /settings/shift-patterns(shift.manage、tenant スコープ)。 */
+  async createShiftPattern(input: CreateShiftPatternInput): Promise<{ pattern: ShiftPatternDto }> {
+    return request("/settings/shift-patterns", { method: "POST", body: JSON.stringify(input) });
+  },
+
+  /** POST /settings/shift-patterns/:id/archive(shift.manage、tenant スコープ)。編集APIは無い(作成専用のためアーカイブのみ)。 */
+  async archiveShiftPattern(id: string): Promise<{ pattern: ShiftPatternDto }> {
+    return request(`/settings/shift-patterns/${encodeURIComponent(id)}/archive`, { method: "POST" });
+  },
+
+  /**
+   * GET /shifts/plans?userId=&periodStart=。userId 省略時は自分自身(権限不要のセルフサービス)。
+   * 他人を指定するには shift.manage(department スコープ以上)が必要。periodStart 省略時は
+   * その対象者の全期間のプランを返す(期間ナビゲーションが既存プランを一覧できるようにするため)。
+   */
+  async listShiftPlans(params: { userId?: string; periodStart?: string } = {}): Promise<{ plans: ShiftPlanWithDaysDto[] }> {
+    const qs = new URLSearchParams();
+    if (params.userId !== undefined) qs.set("userId", params.userId);
+    if (params.periodStart !== undefined) qs.set("periodStart", params.periodStart);
+    const query = qs.toString();
+    return request(`/shifts/plans${query ? `?${query}` : ""}`);
+  },
+
+  /**
+   * POST /shifts/plans(shift.manage、department スコープ以上)。periodStart の日はテナント設定の
+   * variablePeriodStartDay と一致している必要がある — 一致しなければ 400 period_start_mismatch
+   * (レスポンスボディに正しい variablePeriodStartDay を含む、apps/api/src/routes/shifts.ts 参照)。
+   */
+  async createShiftPlan(input: { userId: string; periodStart: string }): Promise<{ plan: ShiftPlanDto }> {
+    return request("/shifts/plans", { method: "POST", body: JSON.stringify(input) });
+  },
+
+  /**
+   * PUT /shifts/plans/:id/days(shift.manage、department スコープ以上)。days は期間内の一部だけでもよい
+   * (全件を毎回送る必要はない)。確定後の変更も同じ API(確定+追記型、決定事項1)。
+   */
+  async updateShiftPlanDays(planId: string, days: ShiftDayInput[]): Promise<ShiftPlanWithDaysDto> {
+    return request(`/shifts/plans/${encodeURIComponent(planId)}/days`, { method: "PUT", body: JSON.stringify({ days }) });
+  },
+
+  /**
+   * POST /shifts/plans/:id/publish(shift.manage、department スコープ以上)。
+   * 409 legal_holiday_shortage(週1日/4週4日を満たさない)・already_published を返しうる。
+   */
+  async publishShiftPlan(planId: string): Promise<{ plan: ShiftPlanDto }> {
+    return request(`/shifts/plans/${encodeURIComponent(planId)}/publish`, { method: "POST" });
+  },
+
+  /** GET /shifts/plans/:id/history(shift.manage、department スコープ以上)。変更履歴(supersede チェーン)。 */
+  async getShiftPlanHistory(planId: string): Promise<ShiftPlanHistoryDto> {
+    return request(`/shifts/plans/${encodeURIComponent(planId)}/history`);
+  },
+
+  /** GET /shifts/me?from=&to=(セルフサービス、権限不要)。本人のシフト(予定)を閲覧する。 */
+  async getMyShifts(from: string, to: string): Promise<{ shifts: ShiftDayDto[] }> {
+    return request(`/shifts/me?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
   },
 };
 

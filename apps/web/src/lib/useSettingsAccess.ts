@@ -29,6 +29,8 @@ export interface SettingsAccess {
   slackLink: boolean;
   /** /settings/audit-logs(Tier 1 新設)。audit_log.view(department スコープ以上)。 */
   auditLogs: boolean;
+  /** /settings/shift-patterns(v0.7 フェーズ3、2026-08-24 追加)。shift.manage(tenant スコープ)。 */
+  shiftPatterns: boolean;
 }
 
 /**
@@ -86,5 +88,8 @@ export function useSettingsAccess(): SettingsAccess {
     allowances: has("tenant_settings.calendar.manage", "tenant"),
     slack: has("notification.settings.manage", "tenant"),
     auditLogs: has("audit_log.view", "department"),
+    // shift-patterns.ts が GET/POST/:id/archive すべてで SHIFT_MANAGE_PERMISSION を tenant
+    // スコープで要求する(routes/settings/shift-patterns.ts 冒頭コメント参照)ため、それに揃える。
+    shiftPatterns: has("shift.manage", "tenant"),
   };
 }

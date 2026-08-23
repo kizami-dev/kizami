@@ -44,6 +44,7 @@ export function computeShiftVarianceWarnings(
   shifts: ShiftDay[],
   days: DailyBreakdown[],
   settingsTimeline: SettingsSpan[],
+  asOfDate?: PlainDateString,
 ): CalcWarning[] {
   const warnings: CalcWarning[] = [];
   const shiftMap = new Map<PlainDateString, ShiftDay>(shifts.map((shift) => [shift.date, shift]));
@@ -74,7 +75,9 @@ export function computeShiftVarianceWarnings(
 
     // ここから dayType === "work"
     if (actualMinutes === 0) {
-      if (!day.isPaidLeave) {
+      // 基準日以降(当日含む)はまだ欠勤と断定できない(EngineInput.asOfDate のコメント参照)。
+      const isFutureOrToday = asOfDate !== undefined && day.date >= asOfDate;
+      if (!day.isPaidLeave && !isFutureOrToday) {
         const scheduledMinutes = shiftScheduledMinutes(shift);
         warnings.push({
           kind: "shift_absence",

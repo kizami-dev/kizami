@@ -14,6 +14,8 @@ export const ko = {
     monthly: "월간",
     corrections: "신청",
     leave: "연차",
+    /** 시프트(/shifts, /shifts/me). shift.manage 보유자는 /shifts로, 그 외에는 /shifts/me로 이동합니다(2026-08-24 추가). */
+    shifts: "시프트",
     settings: "설정",
     logout: "로그아웃",
   },
@@ -44,6 +46,11 @@ export const ko = {
     todayWorkedLabel: "오늘의 실근로",
     monthFlexLabel: "이번 달 플렉스 수지",
     monthFlexMoreLink: "월간 보기 →",
+
+    /** 오늘·내일의 시프트(2026-08-24 추가, v0.7 3단계). 시프트가 하나도 없으면 카드 자체를 표시하지 않습니다. */
+    shiftCardTitle: "오늘·내일의 시프트",
+    shiftCardTodayLabel: "오늘",
+    shiftCardTomorrowLabel: "내일",
 
     todoTitle: "처리 필요",
     todoEmpty: "처리가 필요한 항목이 없습니다.",
@@ -408,7 +415,8 @@ export const ko = {
     workSystemValue: {
       flex: "플렉스타임제",
       fixed: "고정시간제",
-    } satisfies Record<"flex" | "fixed", string>,
+      monthly_variable: "1개월 단위 변형근로시간제",
+    } satisfies Record<"flex" | "fixed" | "monthly_variable", string>,
 
     flexBalanceLabel: "플렉스 수지",
     flexBalanceUnit: "분",
@@ -419,6 +427,28 @@ export const ko = {
     overtimeBarRemainingLabel: "남음",
     /** 상한을 초과했을 때(막대만이 아니라 문구로도 알 수 있도록). */
     overtimeBarOverLabel: "상한 초과",
+
+    /**
+     * monthly_variable에서의 「플렉스 수지 바」대체(2026-08-24 추가, v0.7 3단계).
+     * 기간의 법정 총 한도(figures.variablePeriod.statutoryFrameMinutes) 대비 실근로 위치.
+     */
+    variablePeriodBarLabel: "기간의 법정 총 한도 대비 실근로",
+    variablePeriodBarUnit: "분",
+    variablePeriodBarRemainingLabel: "남음",
+    variablePeriodBarOverLabel: "총 한도 초과",
+    variablePeriodScheduledLabel: "소정 합계",
+    variablePeriodRangeLabel: (start: string, end: string) => `변형기간 ${start} 〜 ${end}`,
+    /** attributedToThisMonth가 false일 때(결정사항3, 기간 단위의 연장근로가 아직 이번 달에 반영되지 않음). */
+    variablePeriodNotAttributedNote: "기간 단위의 연장근로는 기간이 끝나는 달의 마감에 한꺼번에 반영됩니다. 이번 달에는 아직 반영되지 않았습니다",
+    /** 마감된 달(figures.source === "snapshot")은 variablePeriod 자체가 null로 반환됩니다. */
+    variablePeriodUnavailableNote: "이번 달은 이미 마감되어 변형기간 내역이 표시되지 않습니다(연장근로는 구분별 합계에 포함되어 있습니다)",
+
+    /** monthly_variable의 일별 「소정」열(2026-08-24 추가, DailyBreakdown.scheduledMinutes). */
+    columnScheduled: "소정",
+
+    /** 시프트 예실 괴리 경고에 덧붙이는 분수(insufficient_break의 breakShortfallSuffix와 동일한 형태). */
+    shiftDeltaSuffix: (delta: string) => `(괴리 ${delta})`,
+    shiftActualOnlySuffix: (actual: string) => `(실근로 ${actual})`,
 
     totalsLabel: "구분별 합계",
     /** 수당 대상 시간의 월합계 제목(docs/design/allowances.md「UI」절, 2026-08-23 추가). */
@@ -446,6 +476,13 @@ export const ko = {
     statutoryHoliday: "법정휴일",
   } satisfies Record<"statutory" | "overtime" | "overtime60h" | "lateNight" | "statutoryHoliday", string>,
 
+  /** 시프트 일 구분 라벨(shift_patterns.dayType·shift_days.dayType 공용, 2026-08-24 추가). */
+  shiftDayTypeLabel: {
+    work: "근무",
+    legal_holiday: "법정휴일",
+    non_working: "비근무",
+  } satisfies Record<"work" | "legal_holiday" | "non_working", string>,
+
   warningLabel: {
     missing_clock_out: "퇴근 기록이 없어 해당 근무 구간은 집계에서 제외되었습니다",
     duplicate_clock_in: "근무 중 중복된 출근 기록을 무효 처리했습니다",
@@ -457,6 +494,12 @@ export const ko = {
     mixed_work_system:
       "이 기간 도중에 근로시간제가 변경되었습니다. 기간 시작일 시점의 제도로 이번 달 전체를 집계하고 있습니다. 집계 대상 기간을 나누어 확인하고 싶다면 관리자에게 문의해 주세요",
     insufficient_break: "이 근무의 휴게시간이 법으로 정한 시간에 부족합니다. 휴게 기록 누락이 없는지 확인해 주세요",
+    /** 시프트 예실 괴리(docs/design/shift-work.md 「예실 대조」, 2026-08-24 추가). 괴리 분수는 monthly.shiftDeltaSuffix 등으로 병기합니다. */
+    missing_shift: "시프트가 등록되지 않은 날에 실근로가 있습니다. 시프트표를 확인해 주세요",
+    shift_late_arrival: "시프트 시작 시각보다 늦게 출근했습니다",
+    shift_early_leave: "시프트 종료 시각보다 일찍 퇴근했습니다",
+    shift_unplanned_work: "시프트에서 휴무로 정한 날에 실근로가 있습니다",
+    shift_absence: "시프트에서 근무로 정한 날에 실근로가 없습니다",
   } satisfies Record<
     | "missing_clock_out"
     | "duplicate_clock_in"
@@ -466,7 +509,12 @@ export const ko = {
     | "unmatched_break_end"
     | "clock_out_during_break"
     | "mixed_work_system"
-    | "insufficient_break",
+    | "insufficient_break"
+    | "missing_shift"
+    | "shift_late_arrival"
+    | "shift_early_leave"
+    | "shift_unplanned_work"
+    | "shift_absence",
     string
   >,
 
@@ -883,6 +931,7 @@ export const ko = {
     privacy: "개인정보",
     attendance: "근태 규칙",
     allowances: "수당 대상 시간",
+    shiftPatterns: "시프트 패턴",
     apiKeys: "API 키",
     slack: "Slack 연동",
     auditLogs: "감사 로그",
@@ -909,6 +958,8 @@ export const ko = {
     attendanceDesc: "일계·법정휴일·휴게 규칙·GPS·플렉스타임 설정을, 새 버전을 추가하는 방식으로 변경합니다.",
     allowancesTitle: "수당 대상 시간",
     allowancesDesc: "특정일·요일·시간대 조건에 일치하는 실근무 시간을 수당 지급 대상 시간으로 정의합니다.",
+    shiftPatternsTitle: "시프트 패턴",
+    shiftPatternsDesc: "조근·야근·휴무 등 시프트 패턴을 정의합니다. 시프트표 작성 시 날짜별로 할당합니다.",
     tenantProfileTitle: "테넌트 프로필",
     tenantProfileDesc: "기업 규모·특례조치 대상 사업장·특별조항 등, 집계에 영향을 주는 속성과 적용 예정인 법개정을 확인합니다.",
     leaveTitle: "연차유급휴가",
@@ -1068,6 +1119,13 @@ export const ko = {
      */
     weekStartWeekdayLabel: "주의 기산 요일",
     weekStartWeekdayHint: "주 40시간 판정에 사용하는 주의 구분 기준입니다. 취업규칙에 정함이 없다면 일요일 기산이 원칙입니다(1988년(쇼와63년) 기발 제1호).",
+    /**
+     * 변형기간 시작일(2026-08-24 추가, v0.7 3단계, docs/design/shift-work.md 결정사항3).
+     * monthly_variable을 사용하지 않는 테넌트도 POST 때마다 필수로 전송합니다(apps/api의 방식).
+     */
+    variablePeriodStartDayLabel: "변형기간 시작일",
+    variablePeriodStartDayHint:
+      "1〜28일로 지정합니다(29〜31일은 달에 따라 존재하지 않아 선택할 수 없습니다). 시프트표(시프트 관리 화면)의 기간은 이 날을 기점으로 1개월씩 구분됩니다. 시프트제를 사용하지 않아도 입력이 필요합니다.",
     legalHolidayLabel: "법정휴일",
     legalHolidayWeekday: "요일 지정",
     legalHolidayDates: "역일 지정",
@@ -1137,6 +1195,7 @@ export const ko = {
       invalid_effective_from: "적용 시작일을 확인해 주세요",
       invalid_day_boundary_minutes: "일계는 0~1439 범위(분)로 입력해 주세요",
       invalid_week_start_weekday: "주의 기산 요일을 확인해 주세요",
+      invalid_variable_period_start_day: "변형기간 시작일은 1〜28 범위로 입력해 주세요",
       invalid_legal_holiday_rule: "법정휴일 지정을 확인해 주세요",
       invalid_break_rule: "휴게 규칙을 확인해 주세요",
       invalid_gps_enabled: "입력 내용을 확인해 주세요",
@@ -1225,6 +1284,163 @@ export const ko = {
       forbidden: "이 작업을 수행할 권한이 없습니다",
       default: "처리에 실패했습니다. 다시 시도해 주세요",
     },
+  },
+
+  /**
+   * 시프트 패턴 관리(/settings/shift-patterns, v0.7 3단계, 2026-08-24 추가).
+   * docs/design/shift-work.md 결정사항2 「패턴 할당 + 개별 편집」의 패턴 쪽 CRUD.
+   * apps/api/src/routes/settings/shift-patterns.ts 와 일치(GET/POST/:id/archive만, 수정 API는 없음).
+   */
+  shiftPatterns: {
+    title: "시프트 패턴",
+    tagline: "조근·야근·휴무 등의 패턴을 정의합니다. 시프트표 작성 시 이 패턴을 날짜별로 할당합니다.",
+    noPermission: "이 화면을 이용할 권한이 없습니다",
+    loadFailed: "패턴 목록을 가져오지 못했습니다. 다시 시도해 주세요",
+    empty: "아직 패턴이 없습니다. 「패턴 추가」에서 만들어 주세요.",
+
+    addNew: "패턴 추가",
+    columnName: "이름",
+    columnDayType: "구분",
+    columnTime: "시간",
+    columnActions: "작업",
+    archive: "아카이브",
+    archivedBadge: "아카이브됨",
+    showArchived: "아카이브된 항목도 표시",
+
+    confirmArchiveTitle: "이 패턴을 아카이브하시겠습니까",
+    confirmArchiveMessage: "아카이브하면 새 시프트표의 할당 후보에서 제외됩니다. 이미 할당된 시프트에는 영향이 없습니다.",
+    confirmArchiveLabel: "아카이브",
+
+    formTitle: "새 패턴 추가",
+    nameLabel: "이름",
+    namePlaceholder: "예: 조근",
+    dayTypeLabel: "구분",
+    startLabel: "시작 시각",
+    endLabel: "종료 시각",
+    endHint: "시작 시각보다 앞선 시각을 지정하면 날짜를 넘는 근무(야간 근무)로 처리됩니다.",
+    breakLabel: "휴게(분)",
+    submit: "이 내용으로 만들기",
+    submitting: "만드는 중…",
+    submitSuccess: "패턴을 만들었습니다.",
+    cancel: "취소",
+
+    errors: {
+      invalid_body: "입력 내용을 확인해 주세요",
+      invalid_name: "이름을 입력해 주세요",
+      invalid_day_type: "구분을 확인해 주세요",
+      invalid_minutes: "시작·종료 시각을 확인해 주세요",
+      invalid_break_minutes: "휴게(분)는 0 이상의 정수로 입력해 주세요",
+      not_found: "대상 패턴을 찾을 수 없습니다",
+      forbidden: "이 작업을 수행할 권한이 없습니다",
+      default: "처리에 실패했습니다. 다시 시도해 주세요",
+    },
+  },
+
+  /**
+   * 시프트표 작성·확정(/shifts, shift.manage 보유자, v0.7 3단계, 2026-08-24 추가).
+   * apps/api/src/routes/shifts.ts 와 일치. period_start_mismatch(변형기간 시작일 불일치)만
+   * 숫자(올바른 시작일)를 포함하므로 errors(문자열만)와 별도로 periodStartMismatchMessage를 둔다.
+   */
+  shifts: {
+    title: "시프트표",
+    tagline: "멤버별로 변형기간 시프트표를 작성하고 확정합니다. 확정 후 변경은 이력으로 남습니다.",
+    noPermission: "이 화면을 이용할 권한이 없습니다",
+    loadFailed: "시프트표를 가져오지 못했습니다. 다시 시도해 주세요",
+
+    memberLabel: "대상 멤버",
+    prevPeriod: "← 이전 기간",
+    nextPeriod: "다음 기간 →",
+    periodRangeLabel: (start: string, end: string) => `${start} 〜 ${end}`,
+
+    noPlanYet: "이 기간의 시프트표는 아직 없습니다.",
+    createPlan: "이 기간의 시프트표 만들기",
+    creatingPlan: "만드는 중…",
+
+    publishedBadge: "확정됨",
+    unpublishedBadge: "미확정",
+    publishAction: "확정하기",
+    publishing: "확정하는 중…",
+    confirmPublishTitle: "이 시프트표를 확정하시겠습니까",
+    confirmPublishMessage:
+      "확정 후 변경은 이력으로 기록되며 삭제할 수 없습니다. 변형근로시간제는 각 날짜·각 주의 근로시간을 사전에 특정하는 것이 법률상 요건입니다.",
+    confirmPublishLabel: "확정하기",
+
+    historyToggleOpen: "변경 이력 보기",
+    historyToggleClose: "변경 이력 닫기",
+    historyEmpty: "아직 변경 이력이 없습니다",
+    historyColumnDate: "날짜",
+    historyColumnDayType: "구분",
+    historyColumnTime: "시간",
+    historyColumnCreatedBy: "변경자",
+    historyColumnCreatedAt: "일시",
+
+    /** 주 단위 그리드(행=주, 열=요일. docs/design/shift-work.md 결정사항2). */
+    cellEmpty: "미설정",
+    cellDialogTitle: (date: string) => `${date}의 시프트`,
+    cellDialogPatternLabel: "패턴에서 선택",
+    cellDialogPatternNone: "패턴을 사용하지 않고 개별 설정",
+    cellDialogDayTypeLabel: "구분",
+    cellDialogStartLabel: "시작 시각",
+    cellDialogEndLabel: "종료 시각",
+    cellDialogBreakLabel: "휴게(분)",
+    cellDialogSave: "저장",
+    cellDialogSaving: "저장하는 중…",
+    cellDialogCancel: "취소",
+
+    /** 일괄 할당(요일별로 패턴을 지정해 기간 전체에 한 번에 적용. 결정사항2 「입력 비용 절감의 핵심」). */
+    bulkAssignTitle: "일괄 할당",
+    bulkAssignHint: "요일별로 패턴을 지정하고 이 기간 전체에 한 번에 적용합니다.",
+    bulkAssignNoneOption: "변경 안 함",
+    bulkAssignApply: "이 내용 적용",
+    bulkAssignApplying: "적용하는 중…",
+    bulkAssignSuccess: "적용했습니다.",
+
+    /** 확정 전 집계(요건: 확정 전에 부족분이 보여야 함). */
+    aggregationTitle: "이 기간의 집계(참고치)",
+    aggregationScheduledLabel: "소정 합계",
+    aggregationStatutoryFrameLabel: "법정 총 한도(40시간 × 역일수 ÷ 7)",
+    aggregationOverLabel: "총 한도를 초과했습니다",
+    aggregationLegalHolidayLabel: "법정휴일 일수",
+    aggregationLegalHolidayOk: "주 1일 또는 4주 4일 요건을 충족합니다",
+    aggregationLegalHolidayShortage: "주 1일 또는 4주 4일 요건을 충족하지 않습니다. 확정할 수 없습니다",
+    aggregationUnassignedDaysLabel: "미설정 일수",
+
+    /** 변형기간 시작일 불일치(400 period_start_mismatch). 웹이 추측한 날짜가 틀렸을 때 표시하며 시작일을 보정한다. */
+    periodStartMismatchMessage: (day: number) => `변형기간 시작일은 ${day}일입니다. 표시할 기간을 보정했습니다. 다시 시도해 주세요`,
+
+    errors: {
+      invalid_body: "입력 내용을 확인해 주세요",
+      invalid_user_id: "대상 멤버를 확인해 주세요",
+      invalid_period_start: "기간 시작일을 확인해 주세요",
+      tenant_settings_not_found: "이 기간의 근태 설정을 찾을 수 없습니다. 관리자에게 문의해 주세요",
+      plan_already_exists: "이 기간의 시프트표는 이미 만들어져 있습니다",
+      not_found: "대상 시프트표를 찾을 수 없습니다",
+      invalid_days: "시프트 내용을 확인해 주세요",
+      invalid_date: "날짜를 확인해 주세요",
+      date_out_of_period: "이 기간 범위 밖의 날짜입니다",
+      invalid_pattern_id: "선택한 패턴을 찾을 수 없습니다",
+      archived_pattern: "선택한 패턴은 아카이브되었습니다. 다른 패턴을 선택해 주세요",
+      invalid_day_type: "구분을 확인해 주세요",
+      invalid_minutes: "시작·종료 시각을 확인해 주세요",
+      invalid_break_minutes: "휴게(분)는 0 이상의 정수로 입력해 주세요",
+      duplicate_date: "같은 날짜가 중복되었습니다",
+      already_published: "이 시프트표는 이미 확정되었습니다",
+      legal_holiday_shortage: "법정휴일이 부족합니다. 주 1일 또는 4주 4일을 충족하도록 설정해 주세요",
+      invalid_range: "지정한 기간을 확인해 주세요",
+      forbidden: "이 작업을 수행할 권한이 없습니다",
+      default: "처리에 실패했습니다. 다시 시도해 주세요",
+    },
+  },
+
+  /** 본인의 시프트 열람(/shifts/me, 전원, v0.7 3단계, 2026-08-24 추가). */
+  shiftsMe: {
+    title: "내 시프트",
+    tagline: "확정된 시프트표(예정)를 월 캘린더로 확인합니다.",
+    loadFailed: "시프트를 가져오지 못했습니다. 다시 시도해 주세요",
+    prevMonth: "이전 달",
+    nextMonth: "다음 달",
+    empty: "이번 달의 시프트는 아직 등록되지 않았습니다.",
+    manageLink: "시프트표 관리하기 →",
   },
 
   departments: {

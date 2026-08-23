@@ -119,6 +119,45 @@
   margin: -6px -4px;
 }
 
+/* ---- 1.5 今日・明日のシフト(2026-08-24 追加、v0.7 フェーズ3)。打刻カードの近くに小さく置く。 ---- */
+
+.dashboard-shift-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  border: var(--border-hair);
+  border-radius: var(--radius-m);
+  background: var(--k-surface);
+  padding: var(--space-3) var(--space-4);
+  /* 打刻カード(.dashboard-punch)と同じ幅・中央寄せにして、直下に自然に続けて見せる。 */
+  max-width: 32rem;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.dashboard-shift-card__title {
+  font-family: var(--font-display);
+  font-size: 0.85rem;
+  letter-spacing: 0.04em;
+  color: var(--k-ink-soft);
+}
+
+.dashboard-shift-card__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  font-size: 0.85rem;
+}
+
+.dashboard-shift-card__label {
+  color: var(--k-ink-soft);
+}
+
+.dashboard-shift-card__value {
+  color: var(--k-key);
+  font-weight: 600;
+}
+
 /* ---- 2〜4. カードセクション共通 ---- */
 
 .dashboard-card {

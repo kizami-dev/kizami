@@ -860,6 +860,7 @@ export function MembersView() {
                                             >
                                               <option value="flex">{messages.monthly.workSystemValue.flex}</option>
                                               <option value="fixed">{messages.monthly.workSystemValue.fixed}</option>
+                                              <option value="monthly_variable">{messages.monthly.workSystemValue.monthly_variable}</option>
                                             </select>
                                           </div>
                                           <div className="correction-field">

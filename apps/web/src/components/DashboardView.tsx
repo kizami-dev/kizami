@@ -16,6 +16,7 @@ import {
   type NotificationDto,
   type PunchGpsInput,
   type PunchKind,
+  type ShiftDayDto,
 } from "../lib/api";
 import { getCurrentPositionSafe } from "../lib/geolocation";
 import { messages } from "../lib/messages";
@@ -27,6 +28,7 @@ import {
   formatDateTimeJst,
   formatDurationHm,
   formatMonthParam,
+  minutesToHm,
   nowMinutes,
 } from "../lib/time";
 import { useAuthGuard } from "../lib/useAuthGuard";
@@ -36,6 +38,13 @@ import { OnboardingSection } from "./OnboardingSection";
 
 const MAX_WARNING_DAYS_SHOWN = 5;
 const MAX_NOTIFICATIONS_SHOWN = 3;
+
+/** 今日・明日のシフトカードの1行分の表示文字列。シフトが無い日は "—"。 */
+function formatShiftValue(shift: ShiftDayDto | undefined): string {
+  if (!shift) return "—";
+  if (shift.dayType === "work") return `${minutesToHm(shift.startMinutes)} → ${minutesToHm(shift.endMinutes)}`;
+  return messages.shiftDayTypeLabel[shift.dayType];
+}
 
 /**
  * ホーム(ダッシュボード、`/`、2026-08-22 新設)。docs/design/ui-direction.md
@@ -66,6 +75,10 @@ export function DashboardView() {
   const [gpsLocating, setGpsLocating] = useState(false);
   const [gpsUnavailableNote, setGpsUnavailableNote] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
+
+  // ---- 今日・明日のシフト(2026-08-24 追加、v0.7 フェーズ3)。打刻カードの近くに小さく表示する。 ----
+  const tomorrowDate = dateStrFromEpochMinutesJst(nowMinutes() + 1440);
+  const [todayTomorrowShifts, setTodayTomorrowShifts] = useState<ShiftDayDto[] | null>(null);
 
   // ---- 要対応(打刻とは独立: 打刻のたびに叩き直す必要はない) ----
   const [unread, setUnread] = useState<NotificationDto[] | null>(null);
@@ -153,6 +166,25 @@ export function DashboardView() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [guard.status]);
+
+  // 今日・明日のシフト。セルフサービス(権限不要)のため、シフト制を使わないテナントでも
+  // 静かに0件で終わる(GET /shifts/me は monthly_variable かどうかを問わない)。
+  useEffect(() => {
+    if (guard.status !== "authed") return;
+    let cancelled = false;
+    api
+      .getMyShifts(todayDate, tomorrowDate)
+      .then((res) => {
+        if (!cancelled) setTodayTomorrowShifts(res.shifts);
+      })
+      .catch(() => {
+        if (!cancelled) setTodayTomorrowShifts([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [guard.status, todayDate, tomorrowDate]);
 
   async function handlePunch(kind: PunchKind) {
     if (!isOnline) return;
@@ -285,6 +317,24 @@ export function DashboardView() {
             {messages.mobileNav.stampScreenLink}
           </Link>
         </section>
+
+        {/*
+          ---- 1.5 今日・明日のシフト(2026-08-24 追加、v0.7 フェーズ3)。打刻カードのすぐ近くに
+          小さく置く(依頼どおり)。シフトが1件もなければカード自体を出さない。
+        */}
+        {todayTomorrowShifts && todayTomorrowShifts.length > 0 ? (
+          <section className="dashboard-shift-card" aria-label={messages.dashboard.shiftCardTitle}>
+            <h2 className="dashboard-shift-card__title">{messages.dashboard.shiftCardTitle}</h2>
+            <div className="dashboard-shift-card__row">
+              <span className="dashboard-shift-card__label">{messages.dashboard.shiftCardTodayLabel}</span>
+              <span className="dashboard-shift-card__value tabular-nums">{formatShiftValue(todayTomorrowShifts.find((s) => s.date === todayDate))}</span>
+            </div>
+            <div className="dashboard-shift-card__row">
+              <span className="dashboard-shift-card__label">{messages.dashboard.shiftCardTomorrowLabel}</span>
+              <span className="dashboard-shift-card__value tabular-nums">{formatShiftValue(todayTomorrowShifts.find((s) => s.date === tomorrowDate))}</span>
+            </div>
+          </section>
+        ) : null}
 
         {/* ---- 2〜3. 今日/今月の要点・要対応(2026-08-23: 外枠が wide になった分、
              1カラムを間延びさせず横並びにする。dashboard.css の .dashboard-grid 参照) ---- */}

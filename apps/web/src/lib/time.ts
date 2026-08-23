@@ -178,6 +178,13 @@ export function formatMonthLabel({ year, month }: YearMonth): string {
   return getMessages().time.monthLabel(year, month);
 }
 
+/** その暦月の [初日, 末日]("YYYY-MM-DD")。本人のシフト閲覧(/shifts/me)の月カレンダー範囲取得に使う。 */
+export function monthDateRange({ year, month }: YearMonth): { from: string; to: string } {
+  const first = Temporal.PlainYearMonth.from({ year, month }).toPlainDate({ day: 1 });
+  const last = first.add({ months: 1 }).subtract({ days: 1 });
+  return { from: first.toString(), to: last.toString() };
+}
+
 /** "YYYY-MM-DD" → "M/D(曜)"(ロケールごとの曜日表記・並びは lib/i18n の各辞書 time.* が持つ)。 */
 export function formatDateLabel(dateStr: string): string {
   const date = Temporal.PlainDate.from(dateStr);

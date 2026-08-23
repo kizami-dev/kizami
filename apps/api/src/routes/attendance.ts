@@ -59,6 +59,7 @@ import {
   localMidnightUtcMinutes,
   nowMinutes,
   parseMonthParam,
+  todayLocalDate,
 } from "../lib/time.js";
 import { buildLawTimelineForTenant, buildSettingsTimeline, standardDayMinutesForDate, TZ_OFFSET_MINUTES_JST } from "../lib/settings.js";
 
@@ -297,7 +298,7 @@ export function createAttendanceRoutes(db: Database) {
       paidLeave,
       autoBreakWaivedDates,
       allowances: allowanceTimeline,
-      ...(variableExtras ? { shifts: variableExtras.shifts } : {}),
+      ...(variableExtras ? { shifts: variableExtras.shifts, asOfDate: todayLocalDate(tz) } : {}),
     };
 
     const output = calculate(input);

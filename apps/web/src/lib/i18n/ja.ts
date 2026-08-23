@@ -16,6 +16,8 @@ export const ja = {
     monthly: "月次",
     corrections: "申請",
     leave: "有給",
+    /** シフト(/shifts, /shifts/me)。shift.manage 保持者は /shifts、それ以外は /shifts/me に遷移する(2026-08-24 追加)。 */
+    shifts: "シフト",
     settings: "設定",
     logout: "ログアウト",
   },
@@ -46,6 +48,11 @@ export const ja = {
     todayWorkedLabel: "今日の実労働",
     monthFlexLabel: "今月のフレックス収支",
     monthFlexMoreLink: "月次を見る →",
+
+    /** 今日・明日のシフト(2026-08-24 追加、v0.7 フェーズ3)。シフトが1件もなければカード自体を出さない。 */
+    shiftCardTitle: "今日・明日のシフト",
+    shiftCardTodayLabel: "今日",
+    shiftCardTomorrowLabel: "明日",
 
     todoTitle: "要対応",
     todoEmpty: "対応が必要なものはありません。",
@@ -427,7 +434,8 @@ export const ja = {
     workSystemValue: {
       flex: "フレックスタイム制",
       fixed: "固定時間制",
-    } satisfies Record<"flex" | "fixed", string>,
+      monthly_variable: "変形労働時間制(1ヶ月単位)",
+    } satisfies Record<"flex" | "fixed" | "monthly_variable", string>,
 
     flexBalanceLabel: "フレックス収支",
     flexBalanceUnit: "分",
@@ -438,6 +446,29 @@ export const ja = {
     overtimeBarRemainingLabel: "残り",
     /** 上限を超えたとき(頭打ち表示だけでなく文言でも分かるように)。 */
     overtimeBarOverLabel: "上限を超過",
+
+    /**
+     * monthly_variable での「フレックス収支バー」置き換え(2026-08-24 追加、v0.7 フェーズ3)。
+     * 期間の法定総枠(figures.variablePeriod.statutoryFrameMinutes)に対する実労働の位置。
+     */
+    variablePeriodBarLabel: "期間の法定総枠に対する実労働",
+    variablePeriodBarUnit: "分",
+    variablePeriodBarRemainingLabel: "残り",
+    variablePeriodBarOverLabel: "総枠を超過",
+    variablePeriodScheduledLabel: "所定合計",
+    variablePeriodRangeLabel: (start: string, end: string) => `変形期間 ${start} 〜 ${end}`,
+    /** attributedToThisMonth が false のとき(決定事項3、期間段の時間外はまだこの月に計上されていない)。 */
+    variablePeriodNotAttributedNote:
+      "期間の時間外は、期間が終わる月の締めにまとめて計上されます。この月にはまだ計上されていません",
+    /** 締め済み月(figures.source === "snapshot")は variablePeriod 自体が null で返るため。 */
+    variablePeriodUnavailableNote: "この月は確定済みのため、変形期間の内訳は表示されません(時間外は区分別合計に含まれています)",
+
+    /** monthly_variable の日別「所定」列(2026-08-24 追加、DailyBreakdown.scheduledMinutes)。 */
+    columnScheduled: "所定",
+
+    /** シフト予実乖離の警告に添える分数(insufficient_break の breakShortfallSuffix と同型)。 */
+    shiftDeltaSuffix: (delta: string) => `(乖離 ${delta})`,
+    shiftActualOnlySuffix: (actual: string) => `(実労働 ${actual})`,
 
     totalsLabel: "区分別合計",
     /** 固定時間制の月合計内訳(所定内・法定内残業)の見出し(GET /attendance/monthly の figures.fixedBreakdown、2026-08-23 追加)。 */
@@ -466,6 +497,13 @@ export const ja = {
     statutoryHoliday: "法定休日",
   } satisfies Record<"statutory" | "overtime" | "overtime60h" | "lateNight" | "statutoryHoliday", string>,
 
+  /** シフトの日種別ラベル(shift_patterns.dayType・shift_days.dayType 共通、2026-08-24 追加)。 */
+  shiftDayTypeLabel: {
+    work: "勤務",
+    legal_holiday: "法定休日",
+    non_working: "非勤務",
+  } satisfies Record<"work" | "legal_holiday" | "non_working", string>,
+
   warningLabel: {
     missing_clock_out: "退勤打刻が無く、その勤務区間は集計から除外されました",
     duplicate_clock_in: "勤務中の重複した出勤打刻を無効にしました",
@@ -477,6 +515,12 @@ export const ja = {
     mixed_work_system:
       "この期間の途中で労働時間制が変更されました。期間開始日時点の制度で月全体を集計しています。集計対象の期間を分けて確認したい場合は管理者にご相談ください",
     insufficient_break: "この勤務の休憩が法律で必要な時間に足りていません。休憩の打刻漏れがないか確認してください",
+    /** シフト予実乖離(docs/design/shift-work.md「予実の突合」、2026-08-24 追加)。乖離の分数は monthly.shiftDeltaSuffix 等で併記する。 */
+    missing_shift: "シフトが登録されていない日に実労働があります。シフト表を確認してください",
+    shift_late_arrival: "シフトの開始時刻より遅く出勤しました",
+    shift_early_leave: "シフトの終了時刻より早く退勤しました",
+    shift_unplanned_work: "シフトで休みと定めた日に実労働があります",
+    shift_absence: "シフトで勤務と定めた日に実労働がありません",
   } satisfies Record<
     | "missing_clock_out"
     | "duplicate_clock_in"
@@ -486,7 +530,12 @@ export const ja = {
     | "unmatched_break_end"
     | "clock_out_during_break"
     | "mixed_work_system"
-    | "insufficient_break",
+    | "insufficient_break"
+    | "missing_shift"
+    | "shift_late_arrival"
+    | "shift_early_leave"
+    | "shift_unplanned_work"
+    | "shift_absence",
     string
   >,
 
@@ -908,6 +957,7 @@ export const ja = {
     privacy: "個人情報",
     attendance: "勤怠ルール",
     allowances: "手当対象時間",
+    shiftPatterns: "シフトパターン",
     apiKeys: "APIキー",
     slack: "Slack連携",
     auditLogs: "監査ログ",
@@ -934,6 +984,8 @@ export const ja = {
     attendanceDesc: "日界・法定休日・休憩ルール・GPS・フレックス設定を、版を追加する形で変更します。",
     allowancesTitle: "手当対象時間",
     allowancesDesc: "特定日・曜日・時間帯の条件に一致した実労働時間を、手当支給の対象時間として定義します。",
+    shiftPatternsTitle: "シフトパターン",
+    shiftPatternsDesc: "早番・遅番・休みなどのシフトパターンを定義します。シフト表作成時に日ごとへ割り当てます。",
     tenantProfileTitle: "テナントプロファイル",
     tenantProfileDesc: "企業規模・特例措置対象事業場・特別条項など、集計に影響する属性と適用予定の法改正を確認します。",
     leaveTitle: "有給休暇",
@@ -1093,6 +1145,13 @@ export const ja = {
      */
     weekStartWeekdayLabel: "週の起算曜日",
     weekStartWeekdayHint: "週40時間の判定に使う週の区切り。就業規則に定めがなければ日曜日起算が原則です(昭和63年基発第1号)。",
+    /**
+     * 変形期間の開始日(2026-08-24 追加、v0.7 フェーズ3、docs/design/shift-work.md 決定事項3)。
+     * シフト制(monthly_variable)を使わないテナントでも POST のたびに必須で送る(apps/api の流儀)。
+     */
+    variablePeriodStartDayLabel: "変形期間の開始日",
+    variablePeriodStartDayHint:
+      "1〜28日で指定します(29〜31日は月によって存在しないため選べません)。シフト表(シフト管理画面)の期間はこの日を起点に1か月ごとに区切られます。シフト制を使わない場合も入力が必要です。",
     legalHolidayLabel: "法定休日",
     legalHolidayWeekday: "曜日指定",
     legalHolidayDates: "暦日指定",
@@ -1162,6 +1221,7 @@ export const ja = {
       invalid_effective_from: "適用開始日を確認してください",
       invalid_day_boundary_minutes: "日界は0〜1439の範囲(分)で入力してください",
       invalid_week_start_weekday: "週の起算曜日を確認してください",
+      invalid_variable_period_start_day: "変形期間の開始日は1〜28の範囲で入力してください",
       invalid_legal_holiday_rule: "法定休日の指定を確認してください",
       invalid_break_rule: "休憩ルールを確認してください",
       invalid_gps_enabled: "入力内容を確認してください",
@@ -1249,6 +1309,163 @@ export const ja = {
       forbidden: "この操作を行う権限がありません",
       default: "処理に失敗しました。もう一度お試しください",
     },
+  },
+
+  /**
+   * シフトパターン管理(/settings/shift-patterns、v0.7 フェーズ3、2026-08-24 追加)。
+   * docs/design/shift-work.md 決定事項2「パターン割当+個別編集」のパターン側 CRUD。
+   * apps/api/src/routes/settings/shift-patterns.ts と一致(GET/POST/:id/archive のみ、編集APIは無い)。
+   */
+  shiftPatterns: {
+    title: "シフトパターン",
+    tagline: "早番・遅番・休みなどのパターンを定義します。シフト表作成時にこのパターンを日ごとに割り当てます。",
+    noPermission: "この画面を利用する権限がありません",
+    loadFailed: "パターン一覧の取得に失敗しました。もう一度お試しください",
+    empty: "まだパターンがありません。「パターンを追加」から作成してください。",
+
+    addNew: "パターンを追加",
+    columnName: "名前",
+    columnDayType: "種別",
+    columnTime: "時間",
+    columnActions: "操作",
+    archive: "アーカイブ",
+    archivedBadge: "アーカイブ済み",
+    showArchived: "アーカイブ済みも表示する",
+
+    confirmArchiveTitle: "このパターンをアーカイブしますか",
+    confirmArchiveMessage: "アーカイブすると新しいシフト表の割当候補から外れます。既に割り当て済みのシフトには影響しません。",
+    confirmArchiveLabel: "アーカイブする",
+
+    formTitle: "新しいパターンを追加",
+    nameLabel: "名前",
+    namePlaceholder: "例: 早番",
+    dayTypeLabel: "種別",
+    startLabel: "開始時刻",
+    endLabel: "終了時刻",
+    endHint: "開始時刻より前を指定すると、日をまたぐ勤務(夜勤)として扱われます。",
+    breakLabel: "休憩(分)",
+    submit: "この内容で作成",
+    submitting: "作成中…",
+    submitSuccess: "パターンを作成しました。",
+    cancel: "キャンセル",
+
+    errors: {
+      invalid_body: "入力内容を確認してください",
+      invalid_name: "名前を入力してください",
+      invalid_day_type: "種別を確認してください",
+      invalid_minutes: "開始・終了時刻を確認してください",
+      invalid_break_minutes: "休憩(分)は0以上の整数で入力してください",
+      not_found: "対象のパターンが見つかりません",
+      forbidden: "この操作を行う権限がありません",
+      default: "処理に失敗しました。もう一度お試しください",
+    },
+  },
+
+  /**
+   * シフト表の作成・確定(/shifts、shift.manage 保持者、v0.7 フェーズ3、2026-08-24 追加)。
+   * apps/api/src/routes/shifts.ts と一致。period_start_mismatch(変形期間の開始日の不一致)だけ
+   * 数値(正しい開始日)を含むため、errors(文字列のみ)とは別に periodStartMismatchMessage を持つ。
+   */
+  shifts: {
+    title: "シフト表",
+    tagline: "メンバーごとに変形期間のシフト表を作成し、確定します。確定後の変更は履歴に残ります。",
+    noPermission: "この画面を利用する権限がありません",
+    loadFailed: "シフト表の取得に失敗しました。もう一度お試しください",
+
+    memberLabel: "対象メンバー",
+    prevPeriod: "← 前の期間",
+    nextPeriod: "次の期間 →",
+    periodRangeLabel: (start: string, end: string) => `${start} 〜 ${end}`,
+
+    noPlanYet: "この期間のシフト表はまだありません。",
+    createPlan: "この期間のシフト表を作成",
+    creatingPlan: "作成中…",
+
+    publishedBadge: "確定済み",
+    unpublishedBadge: "未確定",
+    publishAction: "確定する",
+    publishing: "確定中…",
+    confirmPublishTitle: "このシフト表を確定しますか",
+    confirmPublishMessage:
+      "確定後の変更は履歴として記録され、削除できません。変形労働時間制は各日・各週の労働時間をあらかじめ特定することが法律上の要件です。",
+    confirmPublishLabel: "確定する",
+
+    historyToggleOpen: "変更履歴を見る",
+    historyToggleClose: "変更履歴を閉じる",
+    historyEmpty: "まだ変更履歴はありません",
+    historyColumnDate: "日付",
+    historyColumnDayType: "種別",
+    historyColumnTime: "時間",
+    historyColumnCreatedBy: "変更者",
+    historyColumnCreatedAt: "日時",
+
+    /** 週グリッド(行=週、列=曜日。docs/design/shift-work.md 決定事項2)。 */
+    cellEmpty: "未設定",
+    cellDialogTitle: (date: string) => `${date} のシフト`,
+    cellDialogPatternLabel: "パターンから選ぶ",
+    cellDialogPatternNone: "パターンを使わず個別に設定",
+    cellDialogDayTypeLabel: "種別",
+    cellDialogStartLabel: "開始時刻",
+    cellDialogEndLabel: "終了時刻",
+    cellDialogBreakLabel: "休憩(分)",
+    cellDialogSave: "保存",
+    cellDialogSaving: "保存中…",
+    cellDialogCancel: "キャンセル",
+
+    /** まとめて割当(曜日ごとにパターンを指定し、期間全体に一括適用。決定事項2「入力コスト削減の要」)。 */
+    bulkAssignTitle: "まとめて割当",
+    bulkAssignHint: "曜日ごとにパターンを指定し、この期間全体に一括で適用します。",
+    bulkAssignNoneOption: "変更しない",
+    bulkAssignApply: "この内容を適用",
+    bulkAssignApplying: "適用中…",
+    bulkAssignSuccess: "適用しました。",
+
+    /** 確定前の集計(要件: 確定前に不足が見えること)。 */
+    aggregationTitle: "この期間の集計(目安)",
+    aggregationScheduledLabel: "所定合計",
+    aggregationStatutoryFrameLabel: "法定総枠(40時間 × 暦日数 ÷ 7)",
+    aggregationOverLabel: "総枠を超過しています",
+    aggregationLegalHolidayLabel: "法定休日の日数",
+    aggregationLegalHolidayOk: "週1日、または4週4日の要件を満たしています",
+    aggregationLegalHolidayShortage: "週1日、または4週4日の要件を満たしていません。確定できません",
+    aggregationUnassignedDaysLabel: "未設定の日数",
+
+    /** 変形期間の開始日の不一致(400 period_start_mismatch)。webがdayを推測して失敗した場合に表示し、開始日を補正する。 */
+    periodStartMismatchMessage: (day: number) => `変形期間の開始日は${day}日です。表示する期間を補正しました。もう一度お試しください`,
+
+    errors: {
+      invalid_body: "入力内容を確認してください",
+      invalid_user_id: "対象メンバーを確認してください",
+      invalid_period_start: "期間の開始日を確認してください",
+      tenant_settings_not_found: "この期間の勤怠設定が見つかりません。管理者にお問い合わせください",
+      plan_already_exists: "この期間のシフト表はすでに作成されています",
+      not_found: "対象のシフト表が見つかりません",
+      invalid_days: "シフトの内容を確認してください",
+      invalid_date: "日付を確認してください",
+      date_out_of_period: "この期間の範囲外の日付です",
+      invalid_pattern_id: "選択したパターンが見つかりません",
+      archived_pattern: "選択したパターンはアーカイブ済みです。別のパターンを選んでください",
+      invalid_day_type: "種別を確認してください",
+      invalid_minutes: "開始・終了時刻を確認してください",
+      invalid_break_minutes: "休憩(分)は0以上の整数で入力してください",
+      duplicate_date: "同じ日付が重複しています",
+      already_published: "このシフト表はすでに確定されています",
+      legal_holiday_shortage: "法定休日が不足しています。週1日、または4週4日を満たすように設定してください",
+      invalid_range: "指定した期間を確認してください",
+      forbidden: "この操作を行う権限がありません",
+      default: "処理に失敗しました。もう一度お試しください",
+    },
+  },
+
+  /** 本人のシフト閲覧(/shifts/me、全員、v0.7 フェーズ3、2026-08-24 追加)。 */
+  shiftsMe: {
+    title: "自分のシフト",
+    tagline: "確定したシフト表(予定)を月カレンダーで確認します。",
+    loadFailed: "シフトの取得に失敗しました。もう一度お試しください",
+    prevMonth: "前月",
+    nextMonth: "翌月",
+    empty: "この月のシフトはまだ登録されていません。",
+    manageLink: "シフト表を管理する →",
   },
 
   departments: {

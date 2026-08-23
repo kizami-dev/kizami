@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useRouter } from "waku";
 import { api } from "../lib/api";
-import { invalidateEffectivePermissionsCache } from "../lib/useEffectivePermissions";
+import { hasEffectivePermission } from "../lib/permissions";
+import { invalidateEffectivePermissionsCache, useEffectivePermissions } from "../lib/useEffectivePermissions";
 import { messages } from "../lib/messages";
 import { useSettingsAccess } from "../lib/useSettingsAccess";
 import { CorrectionsTabIcon, MonthlyTabIcon, MoreTabIcon, PunchTabIcon } from "./NavIcons";
@@ -16,7 +17,14 @@ import { ThemeToggle } from "./ThemeToggle";
  * "notifications"(通知一覧画面、2026-08-22 追加)はどのタブ・デスクトップナビにも対応させない
  * (dashboard と同じ扱い — ベル・「その他」シートからだけ辿り着く二次的な画面のため)。
  */
-export type AppHeaderActive = "dashboard" | "punch" | "monthly" | "corrections" | "settings" | "leave" | "notifications";
+/**
+ * "shifts" は /shifts(shift.manage 保持者向けのシフト表管理)・/shifts/me(全員のセルフ閲覧)の
+ * 両方に対応する(2026-08-24 追加、v0.7 フェーズ3)。ナビ項目は1つに集約し、行き先は
+ * shift.manage の有無で振り分ける(下記 shiftsHref 参照) — 「一覧に戻る」相当の場所を
+ * 権限で分けると、権限を持つ人だけが自分のシフトへ辿れなくなるため、/shifts 側から
+ * /shifts/me への導線を別途用意する(ShiftsView 参照)。
+ */
+export type AppHeaderActive = "dashboard" | "punch" | "monthly" | "corrections" | "settings" | "leave" | "shifts" | "notifications";
 
 export interface AppHeaderProps {
   displayName: string;
@@ -33,7 +41,8 @@ function tabForActive(active: AppHeaderActive): TabKey | null {
   if (active === "punch") return "punch";
   if (active === "monthly") return "monthly";
   if (active === "corrections") return "corrections";
-  if (active === "leave" || active === "settings") return "other";
+  // シフト(2026-08-24 追加)も既存4タブの構成を崩さず「その他」に畳む(判断点: 完了報告に明記)。
+  if (active === "leave" || active === "settings" || active === "shifts") return "other";
   return null; // dashboard はロゴタップで戻る場所のため、タブには対応させない
 }
 
@@ -68,6 +77,15 @@ export function AppHeader({ displayName, email, tenantName, active }: AppHeaderP
     settingsAccess.presets ||
     settingsAccess.tenantProfile ||
     settingsAccess.leave;
+
+  /**
+   * シフトナビ(2026-08-24 追加)。/shifts/me はセルフサービス(権限不要)のため常に表示する。
+   * shift.manage(department スコープ以上)を持つ人は /shifts(シフト表管理)へ、
+   * それ以外は /shifts/me(本人閲覧)へ遷移する(AppHeaderActive のコメント参照)。
+   */
+  const { permissions: effectivePermissions } = useEffectivePermissions();
+  const canManageShifts = hasEffectivePermission(effectivePermissions, "shift.manage", "department");
+  const shiftsHref = canManageShifts ? "/shifts" : "/shifts/me";
 
   const activeTab = tabForActive(active);
 
@@ -151,6 +169,9 @@ export function AppHeader({ displayName, email, tenantName, active }: AppHeaderP
           </Link>
           <Link to="/leave" className="k-header__navlink" aria-current={active === "leave" ? "page" : undefined}>
             {messages.nav.leave}
+          </Link>
+          <Link to={shiftsHref} className="k-header__navlink" aria-current={active === "shifts" ? "page" : undefined}>
+            {messages.nav.shifts}
           </Link>
           {canSeeSettings ? (
             <Link to="/settings" className="k-header__navlink" aria-current={active === "settings" ? "page" : undefined}>
@@ -251,6 +272,9 @@ export function AppHeader({ displayName, email, tenantName, active }: AppHeaderP
             <div className="more-sheet__body">
               <Link to="/leave" className="more-sheet__row" onClick={() => setSheetOpen(false)}>
                 {messages.nav.leave}
+              </Link>
+              <Link to={shiftsHref} className="more-sheet__row" onClick={() => setSheetOpen(false)}>
+                {messages.nav.shifts}
               </Link>
               {canSeeSettings ? (
                 <Link to="/settings" className="more-sheet__row" onClick={() => setSheetOpen(false)}>

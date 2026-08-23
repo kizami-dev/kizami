@@ -14,6 +14,8 @@ export const zh = {
     monthly: "月度",
     corrections: "申请",
     leave: "年假",
+    /** 排班(/shifts, /shifts/me)。拥有 shift.manage 权限的用户前往 /shifts,其他用户前往 /shifts/me。 */
+    shifts: "排班",
     settings: "设置",
     logout: "退出登录",
   },
@@ -43,6 +45,11 @@ export const zh = {
     todayWorkedLabel: "今日实际工作时长",
     monthFlexLabel: "本月弹性工作时间收支",
     monthFlexMoreLink: "查看月度 →",
+
+    /** 今天、明天的排班。若完全没有排班,则不显示该卡片。 */
+    shiftCardTitle: "今天・明天的排班",
+    shiftCardTodayLabel: "今天",
+    shiftCardTomorrowLabel: "明天",
 
     todoTitle: "待处理",
     todoEmpty: "没有需要处理的事项。",
@@ -400,7 +407,8 @@ export const zh = {
     workSystemValue: {
       flex: "弹性工作时间制",
       fixed: "固定工作时间制",
-    } satisfies Record<"flex" | "fixed", string>,
+      monthly_variable: "1个月单位变形工作时间制",
+    } satisfies Record<"flex" | "fixed" | "monthly_variable", string>,
 
     flexBalanceLabel: "弹性工作时间收支",
     flexBalanceUnit: "分钟",
@@ -411,6 +419,28 @@ export const zh = {
     overtimeBarRemainingLabel: "剩余",
     /** 超过上限时(不仅靠封顶展示,也用文字明确提示)。 */
     overtimeBarOverLabel: "已超过上限",
+
+    /**
+     * monthly_variable 下替代「弹性工作时间收支条」的展示。相对于统计期间法定总额度
+     * (figures.variablePeriod.statutoryFrameMinutes)的实际工作位置。
+     */
+    variablePeriodBarLabel: "相对于期间法定总额度的实际工作时间",
+    variablePeriodBarUnit: "分钟",
+    variablePeriodBarRemainingLabel: "剩余",
+    variablePeriodBarOverLabel: "已超过总额度",
+    variablePeriodScheduledLabel: "应工作时间合计",
+    variablePeriodRangeLabel: (start: string, end: string) => `变形期间 ${start} 〜 ${end}`,
+    /** attributedToThisMonth 为 false 时(决定事项3: 期间层面的加班尚未计入本月)。 */
+    variablePeriodNotAttributedNote: "期间层面的加班将在期间结束所在月的结算中一并计入,本月尚未计入",
+    /** 已结算的月份(figures.source === "snapshot")variablePeriod 本身会返回 null。 */
+    variablePeriodUnavailableNote: "本月已结算,因此不显示变形期间明细(加班已包含在分类合计中)",
+
+    /** monthly_variable 的每日「应工作时间」列(DailyBreakdown.scheduledMinutes)。 */
+    columnScheduled: "应工作时间",
+
+    /** 排班预实偏差警告附加的分钟数(与 insufficient_break 的 breakShortfallSuffix 同类型)。 */
+    shiftDeltaSuffix: (delta: string) => `(偏差 ${delta})`,
+    shiftActualOnlySuffix: (actual: string) => `(实际工作 ${actual})`,
 
     totalsLabel: "分类合计",
     /** 津贴对象时间月合计的标题(docs/design/allowances.md「UI」小节,2026-08-23 新增)。 */
@@ -438,6 +468,13 @@ export const zh = {
     statutoryHoliday: "法定休息日",
   } satisfies Record<"statutory" | "overtime" | "overtime60h" | "lateNight" | "statutoryHoliday", string>,
 
+  /** 排班日类型标签(shift_patterns.dayType・shift_days.dayType 通用)。 */
+  shiftDayTypeLabel: {
+    work: "工作",
+    legal_holiday: "法定休息日",
+    non_working: "非工作",
+  } satisfies Record<"work" | "legal_holiday" | "non_working", string>,
+
   warningLabel: {
     missing_clock_out: "缺少下班打卡,该工作时段已从统计中排除",
     duplicate_clock_in: "已作废工作中重复出现的上班打卡",
@@ -449,6 +486,12 @@ export const zh = {
     mixed_work_system:
       "本统计期间内工作时间制度发生了变更。系统按期间开始日当时的制度统计整月数据。如需分段查看统计结果,请联系管理员",
     insufficient_break: "本次工作的休息时间未达到法律要求的时长,请确认是否存在漏打卡的情况",
+    /** 排班预实偏差(docs/design/shift-work.md「预实对照」)。偏差分钟数通过 monthly.shiftDeltaSuffix 等并列显示。 */
+    missing_shift: "在未登记排班的日期存在实际工作时间,请确认排班表",
+    shift_late_arrival: "上班时间晚于排班的开始时间",
+    shift_early_leave: "下班时间早于排班的结束时间",
+    shift_unplanned_work: "在排班中定为休息的日期存在实际工作时间",
+    shift_absence: "在排班中定为工作的日期没有实际工作时间",
   } satisfies Record<
     | "missing_clock_out"
     | "duplicate_clock_in"
@@ -458,7 +501,12 @@ export const zh = {
     | "unmatched_break_end"
     | "clock_out_during_break"
     | "mixed_work_system"
-    | "insufficient_break",
+    | "insufficient_break"
+    | "missing_shift"
+    | "shift_late_arrival"
+    | "shift_early_leave"
+    | "shift_unplanned_work"
+    | "shift_absence",
     string
   >,
 
@@ -872,6 +920,7 @@ export const zh = {
     privacy: "个人信息",
     attendance: "考勤规则",
     allowances: "津贴对象时间",
+    shiftPatterns: "排班模板",
     apiKeys: "API密钥",
     slack: "Slack集成",
     auditLogs: "审计日志",
@@ -898,6 +947,8 @@ export const zh = {
     attendanceDesc: "以新增版本的方式变更日界、法定休息日、休息规则、GPS、弹性工作时间等设置。",
     allowancesTitle: "津贴对象时间",
     allowancesDesc: "将符合特定日期、星期、时间段条件的实际工作时间,定义为津贴发放对象时间。",
+    shiftPatternsTitle: "排班模板",
+    shiftPatternsDesc: "定义早班、晚班、休息等排班模板。创建排班表时按日期分配。",
     tenantProfileTitle: "租户配置",
     tenantProfileDesc: "查看影响统计的企业规模、特例措施适用单位、特别条款等属性,以及即将生效的法规修订。",
     leaveTitle: "带薪年假",
@@ -1056,6 +1107,13 @@ export const zh = {
      */
     weekStartWeekdayLabel: "每周起算星期",
     weekStartWeekdayHint: "用于判定每周40小时的一周分界。若工作规则中未规定,原则上从周日起算(1988年〔昭和63年〕基发第1号)。",
+    /**
+     * 变形期间起始日(docs/design/shift-work.md 决定事项3)。
+     * 即使租户不使用 monthly_variable,每次 POST 也需必填此项(与 apps/api 的约定一致)。
+     */
+    variablePeriodStartDayLabel: "变形期间起始日",
+    variablePeriodStartDayHint:
+      "请指定1〜28之间的日期(29〜31日因并非每月都存在而无法选择)。排班表(排班管理页面)的期间将以此日为起点按月划分。即使不使用排班制度也需要填写。",
     legalHolidayLabel: "法定休息日",
     legalHolidayWeekday: "按星期指定",
     legalHolidayDates: "按具体日期指定",
@@ -1125,6 +1183,7 @@ export const zh = {
       invalid_effective_from: "请确认生效日期",
       invalid_day_boundary_minutes: "日界请输入0〜1439范围内的数值(分钟)",
       invalid_week_start_weekday: "请确认每周起算星期",
+      invalid_variable_period_start_day: "请输入1〜28范围内的变形期间起始日",
       invalid_legal_holiday_rule: "请确认法定休息日的指定",
       invalid_break_rule: "请确认休息规则",
       invalid_gps_enabled: "请确认输入内容",
@@ -1211,6 +1270,163 @@ export const zh = {
       forbidden: "没有执行此操作的权限",
       default: "处理失败,请重试",
     },
+  },
+
+  /**
+   * 排班模板管理(/settings/shift-patterns)。
+   * docs/design/shift-work.md 决定事项2「模板分配+个别编辑」中模板一侧的 CRUD。
+   * 与 apps/api/src/routes/settings/shift-patterns.ts 一致(仅 GET/POST/:id/archive,无编辑 API)。
+   */
+  shiftPatterns: {
+    title: "排班模板",
+    tagline: "定义早班、晚班、休息等模板。创建排班表时将此模板逐日分配。",
+    noPermission: "没有使用此页面的权限",
+    loadFailed: "获取模板列表失败,请重试",
+    empty: "尚无模板,请从「添加模板」创建。",
+
+    addNew: "添加模板",
+    columnName: "名称",
+    columnDayType: "类型",
+    columnTime: "时间",
+    columnActions: "操作",
+    archive: "归档",
+    archivedBadge: "已归档",
+    showArchived: "同时显示已归档",
+
+    confirmArchiveTitle: "要归档此模板吗",
+    confirmArchiveMessage: "归档后将不再出现在新排班表的分配候选中。已分配的排班不受影响。",
+    confirmArchiveLabel: "归档",
+
+    formTitle: "添加新模板",
+    nameLabel: "名称",
+    namePlaceholder: "例: 早班",
+    dayTypeLabel: "类型",
+    startLabel: "开始时间",
+    endLabel: "结束时间",
+    endHint: "若结束时间早于开始时间,将视为跨日工作(夜班)处理。",
+    breakLabel: "休息(分钟)",
+    submit: "以此内容创建",
+    submitting: "创建中…",
+    submitSuccess: "已创建模板。",
+    cancel: "取消",
+
+    errors: {
+      invalid_body: "请确认输入内容",
+      invalid_name: "请输入名称",
+      invalid_day_type: "请确认类型",
+      invalid_minutes: "请确认开始・结束时间",
+      invalid_break_minutes: "休息(分钟)请输入0以上的整数",
+      not_found: "找不到对应的模板",
+      forbidden: "没有执行此操作的权限",
+      default: "处理失败,请重试",
+    },
+  },
+
+  /**
+   * 排班表创建・确定(/shifts,拥有 shift.manage 权限的用户)。
+   * 与 apps/api/src/routes/shifts.ts 一致。period_start_mismatch(变形期间起始日不一致)
+   * 因携带数字(正确的起始日),故与 errors(仅字符串)分开,单独设置 periodStartMismatchMessage。
+   */
+  shifts: {
+    title: "排班表",
+    tagline: "按成员为每个变形期间创建排班表并确定。确定后的变更将保留在历史记录中。",
+    noPermission: "没有使用此页面的权限",
+    loadFailed: "获取排班表失败,请重试",
+
+    memberLabel: "目标成员",
+    prevPeriod: "← 上一期间",
+    nextPeriod: "下一期间 →",
+    periodRangeLabel: (start: string, end: string) => `${start} 〜 ${end}`,
+
+    noPlanYet: "此期间尚无排班表。",
+    createPlan: "创建此期间的排班表",
+    creatingPlan: "创建中…",
+
+    publishedBadge: "已确定",
+    unpublishedBadge: "未确定",
+    publishAction: "确定",
+    publishing: "确定中…",
+    confirmPublishTitle: "要确定此排班表吗",
+    confirmPublishMessage:
+      "确定后的变更将作为历史记录保存,无法删除。事先明确各日、各周的工作时间是变形工作时间制的法律要求。",
+    confirmPublishLabel: "确定",
+
+    historyToggleOpen: "查看变更历史",
+    historyToggleClose: "收起变更历史",
+    historyEmpty: "尚无变更历史",
+    historyColumnDate: "日期",
+    historyColumnDayType: "类型",
+    historyColumnTime: "时间",
+    historyColumnCreatedBy: "变更人",
+    historyColumnCreatedAt: "日期时间",
+
+    /** 每周网格(行=周,列=星期。docs/design/shift-work.md 决定事项2)。 */
+    cellEmpty: "未设置",
+    cellDialogTitle: (date: string) => `${date} 的排班`,
+    cellDialogPatternLabel: "从模板中选择",
+    cellDialogPatternNone: "不使用模板,单独设置",
+    cellDialogDayTypeLabel: "类型",
+    cellDialogStartLabel: "开始时间",
+    cellDialogEndLabel: "结束时间",
+    cellDialogBreakLabel: "休息(分钟)",
+    cellDialogSave: "保存",
+    cellDialogSaving: "保存中…",
+    cellDialogCancel: "取消",
+
+    /** 批量分配(按星期指定模板,一次性应用到整个期间。决定事项2「降低录入成本的关键」)。 */
+    bulkAssignTitle: "批量分配",
+    bulkAssignHint: "按星期指定模板,一次性应用到此整个期间。",
+    bulkAssignNoneOption: "不变更",
+    bulkAssignApply: "应用此内容",
+    bulkAssignApplying: "应用中…",
+    bulkAssignSuccess: "已应用。",
+
+    /** 确定前的统计(要求: 确定前需能看到不足之处)。 */
+    aggregationTitle: "此期间的统计(参考值)",
+    aggregationScheduledLabel: "应工作时间合计",
+    aggregationStatutoryFrameLabel: "法定总额度(40小时 × 历日数 ÷ 7)",
+    aggregationOverLabel: "已超过总额度",
+    aggregationLegalHolidayLabel: "法定休息日天数",
+    aggregationLegalHolidayOk: "满足每周1天或每4周4天的要求",
+    aggregationLegalHolidayShortage: "不满足每周1天或每4周4天的要求,无法确定",
+    aggregationUnassignedDaysLabel: "未设置天数",
+
+    /** 变形期间起始日不一致(400 period_start_mismatch)。当网页猜测的日期有误时显示,并据此修正期间。 */
+    periodStartMismatchMessage: (day: number) => `变形期间起始日为${day}日。已修正显示的期间,请重试`,
+
+    errors: {
+      invalid_body: "请确认输入内容",
+      invalid_user_id: "请确认目标成员",
+      invalid_period_start: "请确认期间起始日",
+      tenant_settings_not_found: "找不到此期间的考勤设置,请联系管理员",
+      plan_already_exists: "此期间的排班表已存在",
+      not_found: "找不到对应的排班表",
+      invalid_days: "请确认排班内容",
+      invalid_date: "请确认日期",
+      date_out_of_period: "该日期不在此期间范围内",
+      invalid_pattern_id: "找不到所选模板",
+      archived_pattern: "所选模板已归档,请选择其他模板",
+      invalid_day_type: "请确认类型",
+      invalid_minutes: "请确认开始・结束时间",
+      invalid_break_minutes: "休息(分钟)请输入0以上的整数",
+      duplicate_date: "存在重复的日期",
+      already_published: "此排班表已确定",
+      legal_holiday_shortage: "法定休息日不足,请设置为满足每周1天或每4周4天",
+      invalid_range: "请确认指定的期间",
+      forbidden: "没有执行此操作的权限",
+      default: "处理失败,请重试",
+    },
+  },
+
+  /** 查看本人排班(/shifts/me,全员可用)。 */
+  shiftsMe: {
+    title: "我的排班",
+    tagline: "以月历形式查看已确定的排班表(计划)。",
+    loadFailed: "获取排班失败,请重试",
+    prevMonth: "上月",
+    nextMonth: "下月",
+    empty: "本月尚未登记排班。",
+    manageLink: "管理排班表 →",
   },
 
   departments: {

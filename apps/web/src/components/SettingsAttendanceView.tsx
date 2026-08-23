@@ -60,7 +60,7 @@ function summarizeAttendanceVersion(v: AttendanceSettingVersionDto): string {
   const gps = v.gpsEnabled
     ? `GPS: ${messages.settingsAttendance.gpsEnabledYes}${v.gpsRetentionDays ? `(${v.gpsRetentionDays}${messages.settingsAttendance.gpsRetentionDaysUnit})` : ""}`
     : `GPS: ${messages.settingsAttendance.gpsEnabledNo}`;
-  return `${messages.settingsAttendance.dayBoundaryLabel} ${minutesToHm(v.dayBoundaryMinutes)} / ${messages.settingsAttendance.weekStartWeekdayLabel}: ${weekdayLabel(v.weekStartWeekday as 0 | 1 | 2 | 3 | 4 | 5 | 6)} / ${summarizeLegalHoliday(v.legalHolidayRule)} / ${messages.settingsAttendance.breakRuleLabel}: ${summarizeBreakRule(v.breakRule)} / ${gps}`;
+  return `${messages.settingsAttendance.dayBoundaryLabel} ${minutesToHm(v.dayBoundaryMinutes)} / ${messages.settingsAttendance.weekStartWeekdayLabel}: ${weekdayLabel(v.weekStartWeekday as 0 | 1 | 2 | 3 | 4 | 5 | 6)} / ${messages.settingsAttendance.variablePeriodStartDayLabel}: ${v.variablePeriodStartDay} / ${summarizeLegalHoliday(v.legalHolidayRule)} / ${messages.settingsAttendance.breakRuleLabel}: ${summarizeBreakRule(v.breakRule)} / ${gps}`;
 }
 
 /**
@@ -108,6 +108,8 @@ interface AttendanceFormState {
   effectiveFrom: string;
   dayBoundaryHm: string;
   weekStartWeekday: 0 | 1 | 2 | 3 | 4 | 5 | 6;
+  /** 変形期間の開始日(2026-08-24 追加、v0.7 フェーズ3)。文字列のまま保持し、送信時に数値化・範囲検証する。 */
+  variablePeriodStartDayText: string;
   legalHolidayKind: "weekday" | "dates";
   legalHolidayWeekday: 0 | 1 | 2 | 3 | 4 | 5 | 6;
   legalHolidayDatesText: string;
@@ -129,6 +131,7 @@ function initialAttendanceForm(effective: AttendanceSettingVersionDto | null): A
     effectiveFrom: defaultNextMonthFirstDay(),
     dayBoundaryHm: effective ? minutesToHm(effective.dayBoundaryMinutes) : "00:00",
     weekStartWeekday: (effective?.weekStartWeekday as 0 | 1 | 2 | 3 | 4 | 5 | 6 | undefined) ?? 0,
+    variablePeriodStartDayText: String(effective?.variablePeriodStartDay ?? 1),
     legalHolidayKind: effective?.legalHolidayRule.kind ?? "weekday",
     legalHolidayWeekday: effective?.legalHolidayRule.kind === "weekday" ? effective.legalHolidayRule.weekday : 0,
     legalHolidayDatesText: effective?.legalHolidayRule.kind === "dates" ? effective.legalHolidayRule.dates.join(",") : "",
@@ -266,6 +269,12 @@ export function SettingsAttendanceView() {
       return;
     }
 
+    const variablePeriodStartDay = Number(attendanceForm.variablePeriodStartDayText);
+    if (!Number.isInteger(variablePeriodStartDay) || variablePeriodStartDay < 1 || variablePeriodStartDay > 28) {
+      setAttendanceError(messages.settingsAttendance.errors.invalid_variable_period_start_day);
+      return;
+    }
+
     const legalHolidayRule: LegalHolidayRuleDto =
       attendanceForm.legalHolidayKind === "weekday"
         ? { kind: "weekday", weekday: attendanceForm.legalHolidayWeekday }
@@ -287,6 +296,7 @@ export function SettingsAttendanceView() {
         effectiveFrom: attendanceForm.effectiveFrom,
         dayBoundaryMinutes,
         weekStartWeekday: attendanceForm.weekStartWeekday,
+        variablePeriodStartDay,
         legalHolidayRule,
         breakRule,
         gpsEnabled: attendanceForm.gpsEnabled,
@@ -381,6 +391,10 @@ export function SettingsAttendanceView() {
                   </span>
                 </div>
                 <div className="attendance-settings__current-row">
+                  <span className="attendance-settings__current-label">{messages.settingsAttendance.variablePeriodStartDayLabel}</span>
+                  <span className="attendance-settings__current-value tabular-nums">{attendance.effective.variablePeriodStartDay}</span>
+                </div>
+                <div className="attendance-settings__current-row">
                   <span className="attendance-settings__current-label">
                     {messages.settingsAttendance.legalHolidayLabel}
                     <HelpTip helpKey="attendance.legal-holiday" />
@@ -467,6 +481,19 @@ export function SettingsAttendanceView() {
                   ))}
                 </select>
                 <span className="attendance-settings__field-hint">{messages.settingsAttendance.weekStartWeekdayHint}</span>
+              </label>
+
+              <label className="attendance-settings__field">
+                <span>{messages.settingsAttendance.variablePeriodStartDayLabel}</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={28}
+                  value={attendanceForm.variablePeriodStartDayText}
+                  onChange={(e) => setAttendanceForm((prev) => (prev ? { ...prev, variablePeriodStartDayText: e.target.value } : prev))}
+                  required
+                />
+                <span className="attendance-settings__field-hint">{messages.settingsAttendance.variablePeriodStartDayHint}</span>
               </label>
 
               <fieldset className="attendance-settings__field">

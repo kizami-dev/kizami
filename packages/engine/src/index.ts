@@ -160,7 +160,7 @@ export function calculate(input: EngineInput): EngineOutput {
       input.period,
     );
     // シフト予実の乖離警告(docs/design/shift-work.md「予実の突合」)。totals には反映しない。
-    const shiftVarianceWarnings = computeShiftVarianceWarnings(input.shifts ?? [], variableDays, input.settingsTimeline);
+    const shiftVarianceWarnings = computeShiftVarianceWarnings(input.shifts ?? [], variableDays, input.settingsTimeline, input.asOfDate);
     return {
       days: variableDays,
       totals,

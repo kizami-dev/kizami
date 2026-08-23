@@ -15,6 +15,7 @@ export type SettingsSection =
   | "privacy"
   | "attendance"
   | "allowances"
+  | "shiftPatterns"
   | "apiKeys"
   | "slack"
   | "auditLogs";
@@ -30,6 +31,7 @@ type SettingsRoute =
   | "/settings/privacy"
   | "/settings/attendance"
   | "/settings/allowances"
+  | "/settings/shift-patterns"
   | "/settings/api-keys"
   | "/settings/slack"
   | "/settings/audit-logs";
@@ -58,6 +60,12 @@ export function SettingsNav({ active }: { active: SettingsSection }) {
       to: "/settings/allowances",
       label: messages.settingsNav.allowances,
       enabled: access.allowances,
+    },
+    {
+      key: "shiftPatterns",
+      to: "/settings/shift-patterns",
+      label: messages.settingsNav.shiftPatterns,
+      enabled: access.shiftPatterns,
     },
     {
       key: "tenantProfile",

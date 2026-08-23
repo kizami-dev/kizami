@@ -9,10 +9,12 @@ import { ADMIN_EMAIL, ADMIN_PASSWORD } from "./config.js";
 import {
   addDays,
   addMonths,
+  allDaysInMonth,
   fmtDate,
   fmtMonth,
   jstMinutes,
   jstToday,
+  weekdayOf,
   weekdaysBeforeTodayInCurrentMonth,
   weekdaysInMonth,
   type CivilDate,
@@ -35,6 +37,12 @@ export interface SeedHttpResult {
   adminId: string;
   /** v0.5: 固定時間制メンバー(member2)としてログインしたセッション(monthly-fixed 画面用)。 */
   fixedMemberSessionCookie: string;
+  /** v0.7: シフト制メンバー(member3)としてログインしたセッション(shifts-me・monthly-variable 画面用)。 */
+  variableMemberSessionCookie: string;
+  /** v0.7: シフト制メンバー(member3)のuserId。管理者の /shifts?userId= ディープリンク撮影用。 */
+  variableMemberId: string;
+  /** v0.7: 確定済みシフト表のID(将来の履歴画面撮影等で使う可能性を見込んで返しておく)。 */
+  variableMemberShiftPlanId: string;
   /** v0.5: 招待受諾ページ(/invite/{token})の撮影用トークン(未受諾のまま残す)。 */
   inviteToken: string;
   /** Tier 0: パスワードリセット受諾ページ(/reset/{token})の撮影用トークン(未使用のまま残す)。 */
@@ -67,9 +75,11 @@ export async function seedHttp(params: SeedHttpParams): Promise<SeedHttpResult> 
   const managerId = byKey.get("manager");
   const member1Id = byKey.get("member1");
   const member2Id = byKey.get("member2");
+  const member3Id = byKey.get("member3");
   const member1Email = emailByKey.get("member1");
   const member2Email = emailByKey.get("member2");
-  if (!managerId || !member1Id || !member2Id || !member1Email || !member2Email) {
+  const member3Email = emailByKey.get("member3");
+  if (!managerId || !member1Id || !member2Id || !member3Id || !member1Email || !member2Email || !member3Email) {
     throw new Error("extra demo users were not created (dev-screenshot-seed.ts)");
   }
 
@@ -91,10 +101,12 @@ export async function seedHttp(params: SeedHttpParams): Promise<SeedHttpResult> 
   await client.updateMember(managerId, { departmentId: params.departments.sales });
   await client.updateMember(member1Id, { departmentId: params.departments.sales });
   await client.updateMember(member2Id, { departmentId: params.departments.dev });
+  await client.updateMember(member3Id, { departmentId: params.departments.sales });
 
   await client.assignMemberPresets(managerId, [managerPreset.id]);
   await client.assignMemberPresets(member1Id, [memberPreset.id, accountingPreset.preset.id]);
   await client.assignMemberPresets(member2Id, [memberPreset.id]);
+  await client.assignMemberPresets(member3Id, [memberPreset.id]);
 
   // 入社日を設定(法定付与の自動計算に必要)。管理者は約7年前入社にして複数回ぶんの
   // 付与履歴(6ヶ月・1.5年・2.5年…)が一度に生成されるようにする(有給休暇画面を賑やかにする独自判断)。
@@ -311,6 +323,82 @@ export async function seedHttp(params: SeedHttpParams): Promise<SeedHttpResult> 
   }
   const fixedMemberSessionCookie = fixedMemberClient.getSessionCookie();
 
+  // --- v0.7: シフト制メンバー(member3)のシフトパターン・シフト表・打刻 --------------------
+  // work_policy(monthly_variable)は apps/api/src/dev-screenshot-seed.ts が member3 だけに
+  // 1970-01-01 から直接割り当て済み(暦月の初日から monthly_variable でないと、月次の
+  // workSystem 判定(月初日時点の版で月全体を判定する、apps/api/src/lib/monthly-shifts.ts)が
+  // "flex" のままになってしまうため — HTTP の POST /members/:id/work-policy は当日以降の
+  // effectiveFrom しか受け付けられずこれができない、2026-08-24 のシフトUI E2E検証で判明)。
+  // ここから先(パターン定義・シフト表の一括割当・確定)はすべて既存の HTTP API 経由で行う。
+  const earlyPattern = await client.createShiftPattern({ name: "早番", dayType: "work", startMinutes: 8 * 60, endMinutes: 17 * 60, breakMinutes: 60 });
+  const latePattern = await client.createShiftPattern({ name: "遅番", dayType: "work", startMinutes: 13 * 60, endMinutes: 22 * 60, breakMinutes: 60 });
+  const dayOffPattern = await client.createShiftPattern({ name: "公休", dayType: "legal_holiday" });
+  // 2026-08-24 修正: 土曜も勤務にすると所定合計が法定総枠を超え(208:00 > 177:08)、
+  // デモとして不自然な「総枠を超過しています」警告が確定シフトに常設されてしまっていた。
+  // 「公休」(法定休日、週1日要件の充足に使う)とは別に、土曜用の non_working パターンを追加する
+  // (法定休日ではない単なる所定休日 — 週1日要件は日曜の公休だけで満たすため、土曜は
+  // non_working で構わない)。月〜金の5日勤務に絞ることで所定合計は約168:00に収まる。
+  const restPattern = await client.createShiftPattern({ name: "休み", dayType: "non_working" });
+
+  // テナントの変形期間開始日は既定の1日(下の createAttendanceSettingVersion 呼び出しでも
+  // 明示的に1を指定して揃える)なので、今月の1日を起点にシフト表を作る。
+  const shiftPeriodStart = fmtDate({ y: today.y, m: today.m, d: 1 });
+  const shiftPlan = await client.createShiftPlan({ userId: member3Id, periodStart: shiftPeriodStart });
+
+  // まとめて割当のデモ: 日曜=公休(法定休日)、土曜=休み(non_working)、木・金=遅番、
+  // 月〜水=早番(単調にならない見栄えの独自判断)。週1日(日曜)が必ず公休になるため、
+  // 法定休日の週1日要件を満たして確定できる。
+  const shiftDays = allDaysInMonth(today.y, today.m).map((d) => {
+    const w = weekdayOf(d);
+    if (w === 0) return { date: fmtDate(d), patternId: dayOffPattern.pattern.id };
+    if (w === 6) return { date: fmtDate(d), patternId: restPattern.pattern.id };
+    if (w >= 4) return { date: fmtDate(d), patternId: latePattern.pattern.id };
+    return { date: fmtDate(d), patternId: earlyPattern.pattern.id };
+  });
+  await client.updateShiftPlanDays(shiftPlan.plan.id, shiftDays);
+  await client.publishShiftPlan(shiftPlan.plan.id);
+
+  // 本人としてシフトどおりの打刻を入れる(月次画面の3段表示に実データを乗せる)。
+  // 2026-08-24 修正: 過去分が1件も無いと月次の全行が「実労働がありません」警告になり不自然
+  // だったため、他メンバー(punchNormalDay)と同じように当月の過去の勤務日を実際に打刻する。
+  // シフトどおり(早番=月〜水 8:00-17:00、遅番=木・金 13:00-22:00、いずれも休憩1h)に揃え、
+  // 直近1日だけは1時間遅刻させて shift_late_arrival 警告の見本にする。未来日は打刻しない
+  // (未来日の欠勤警告はエンジン側で出さないよう対応済みとのこと)。
+  const variableMemberClient = new ApiClient(params.apiBaseUrl);
+  await variableMemberClient.login(member3Email, ADMIN_PASSWORD);
+
+  const variableMemberPastWeekdays = weekdaysBeforeTodayInCurrentMonth();
+  const lateArrivalDay = variableMemberPastWeekdays.pop(); // 直近の勤務日を遅刻デモにする
+  for (const d of variableMemberPastWeekdays) {
+    if (weekdayOf(d) >= 4) {
+      await punchNormalDay(variableMemberClient, d, { start: 13, end: 22, breakStart: 17, breakEnd: 18 });
+    } else {
+      await punchNormalDay(variableMemberClient, d, { start: 8, end: 17, breakStart: 12, breakEnd: 13 });
+    }
+  }
+  if (lateArrivalDay) {
+    if (weekdayOf(lateArrivalDay) >= 4) {
+      // 遅番(13:00開始)を1時間遅れて出勤。
+      await variableMemberClient.punch("clock_in", jstMinutes(lateArrivalDay, 14, 0));
+      await variableMemberClient.punch("break_start", jstMinutes(lateArrivalDay, 18, 0));
+      await variableMemberClient.punch("break_end", jstMinutes(lateArrivalDay, 19, 0));
+      await variableMemberClient.punch("clock_out", jstMinutes(lateArrivalDay, 22, 0));
+    } else {
+      // 早番(8:00開始)を1時間遅れて出勤。
+      await variableMemberClient.punch("clock_in", jstMinutes(lateArrivalDay, 9, 0));
+      await variableMemberClient.punch("break_start", jstMinutes(lateArrivalDay, 12, 0));
+      await variableMemberClient.punch("break_end", jstMinutes(lateArrivalDay, 13, 0));
+      await variableMemberClient.punch("clock_out", jstMinutes(lateArrivalDay, 17, 0));
+    }
+  }
+
+  // 本日ぶんは他のデモアカウントの「本日打刻」と同じ安全な作法(occurredAt は現在時刻より
+  // 未来にできないため、固定時刻ではなく「実行時刻の少し前」を使う)で出勤のみ打刻する
+  // (打刻画面の「勤務中」表示のデモを兼ねる)。
+  const variableNowMinutes = Math.floor(Date.now() / 60_000);
+  await variableMemberClient.punch("clock_in", variableNowMinutes - 30);
+  const variableMemberSessionCookie = variableMemberClient.getSessionCookie();
+
   // --- テナント設定・個人設定・連携設定 --------------------------------------------------
   await client.updateTenantProfile({
     isSmallOrMediumEnterprise: true,
@@ -376,6 +464,10 @@ export async function seedHttp(params: SeedHttpParams): Promise<SeedHttpResult> 
     // 週の起算曜日。固定時間制の「週40時間超」の判定に使う(就業規則に定めが無ければ
     // 日曜起算が原則 — 昭和63年基発第1号)。デモは既定のまま日曜にする。
     weekStartWeekday: 0,
+    // 変形期間の開始日(v0.7 シフト制、2026-08-24 追加。POST /settings/attendance が必須で
+    // 要求するようになったフィールド — 省略すると 400 invalid_variable_period_start_day)。
+    // 上のシフト表(member3)の periodStart(今月1日)と一致させ続けるため既定の1を維持する。
+    variablePeriodStartDay: 1,
   });
   await client.createWorkPolicyVersion({
     effectiveFrom: fmtDate(today),
@@ -407,6 +499,9 @@ export async function seedHttp(params: SeedHttpParams): Promise<SeedHttpResult> 
     sessionCookie: client.getSessionCookie(),
     adminId,
     fixedMemberSessionCookie,
+    variableMemberSessionCookie,
+    variableMemberId: member3Id,
+    variableMemberShiftPlanId: shiftPlan.plan.id,
     inviteToken: invited.invitation.token,
     resetToken: reset.passwordReset.token,
   };

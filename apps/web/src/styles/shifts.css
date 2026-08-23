@@ -1,0 +1,241 @@
+/**
+ * シフト表の作成・確定(/shifts)・本人のシフト閲覧(/shifts/me)のスタイル(v0.7 フェーズ3、
+ * 2026-08-24 追加)。docs/design/ui-direction.md の方針どおり K 主体で静かに保つ — 週グリッドの
+ * 日種別はテキストラベル+枠線の濃淡だけで区別し、CMYK(打刻アクション専用の意味)は使わない。
+ */
+
+.shifts-view {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+.shifts-view__main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-5) var(--space-4) var(--space-7);
+  max-width: var(--width-content-wide);
+  margin: 0 auto;
+  width: 100%;
+}
+
+.shifts-view__title {
+  font-family: var(--font-display);
+  font-size: 1.4rem;
+  letter-spacing: 0.04em;
+}
+
+.shifts-view__tagline {
+  font-size: 0.85rem;
+  color: var(--k-ink-soft);
+}
+
+.shifts-view__member-picker {
+  max-width: 20rem;
+}
+
+.shifts-view__period-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.shifts-view__period-range {
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.shifts-view__no-plan {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-6) 0;
+  color: var(--k-ink-soft);
+  text-align: center;
+}
+
+.shifts-view__status-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.shifts-view__history {
+  max-height: 20rem;
+  overflow-y: auto;
+}
+
+.shifts-view__publish-row {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* ---- 週グリッド(行=週、列=曜日、決定事項2) ---- */
+
+/*
+ * 7列の週グリッドは狭いビューポート(390px)では潰れて読めなくなるため、org-table と同じ
+ * 「min-width を持たせて横スクロールさせる」パターンに揃える(2026-08-24 追加、判断点)。
+ * シフト表管理(/shifts)は shift.manage 保持者向けの管理画面で、モバイルでの主要動線ではないが、
+ * 見えるだけは見えるようにしておく。
+ */
+.shifts-grid {
+  border: var(--border-hair);
+  border-radius: var(--radius-m);
+  overflow-x: auto;
+}
+
+.shifts-grid__weekday-row,
+.shifts-grid__week-row {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  min-width: 42rem;
+}
+
+.shifts-grid__weekday-row {
+  background: color-mix(in srgb, var(--k-key) 4%, transparent);
+  border-bottom: var(--border-hair);
+}
+
+.shifts-grid__weekday-label {
+  padding: var(--space-2);
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--k-ink-soft);
+}
+
+.shifts-grid__week-row + .shifts-grid__week-row {
+  border-top: 1px solid color-mix(in srgb, var(--k-key) 8%, transparent);
+}
+
+.shifts-grid__cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 4.5rem;
+  padding: var(--space-2);
+  border: none;
+  border-right: 1px solid color-mix(in srgb, var(--k-key) 8%, transparent);
+  background: var(--k-surface);
+  text-align: left;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.shifts-grid__cell:last-child {
+  border-right: none;
+}
+
+.shifts-grid__cell:hover {
+  background: color-mix(in srgb, var(--k-key) 5%, var(--k-surface));
+}
+
+.shifts-grid__cell--readonly {
+  cursor: default;
+}
+
+.shifts-grid__cell--readonly:hover {
+  background: var(--k-surface);
+}
+
+.shifts-grid__cell--out-of-period {
+  background: color-mix(in srgb, var(--k-key) 3%, transparent);
+  border-right: 1px solid color-mix(in srgb, var(--k-key) 8%, transparent);
+}
+
+.shifts-grid__cell--legal_holiday {
+  background: color-mix(in srgb, var(--k-key) 6%, var(--k-surface));
+}
+
+.shifts-grid__cell--non_working {
+  color: var(--k-ink-soft);
+}
+
+.shifts-grid__cell-date {
+  font-size: 0.78rem;
+  color: var(--k-ink-soft);
+}
+
+.shifts-grid__cell-time {
+  font-size: 0.8rem;
+  color: var(--k-key);
+}
+
+.shifts-grid__cell-label {
+  font-size: 0.78rem;
+  color: var(--k-ink-soft);
+}
+
+.shifts-grid__cell-pattern {
+  font-size: 0.72rem;
+  color: var(--k-cyan-ink);
+}
+
+.shifts-grid__cell-empty {
+  font-size: 0.78rem;
+  color: color-mix(in srgb, var(--k-ink-soft) 60%, transparent);
+}
+
+/* ---- パネル共通(まとめて割当・集計) ---- */
+
+.shifts-panel__title {
+  font-family: var(--font-display);
+  font-size: 1rem;
+  letter-spacing: 0.03em;
+}
+
+.shifts-panel__hint {
+  font-size: 0.8rem;
+  color: var(--k-ink-soft);
+}
+
+.shifts-bulk-assign,
+.shifts-aggregation {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  border: var(--border-hair);
+  border-radius: var(--radius-m);
+  padding: var(--space-4);
+}
+
+.shifts-bulk-assign__rows {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+  gap: var(--space-3);
+}
+
+.shifts-bulk-assign__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.shifts-bulk-assign__weekday {
+  font-size: 0.85rem;
+  color: var(--k-ink-soft);
+  min-width: 1.5rem;
+}
+
+.shifts-bulk-assign__row select {
+  flex: 1;
+  border: var(--border-hair);
+  border-radius: var(--radius-s);
+  padding: var(--space-2);
+  font-size: 0.85rem;
+  background: var(--k-surface);
+  font-family: inherit;
+}
+
+.shifts-aggregation__warning {
+  color: var(--k-magenta-ink);
+  font-size: 0.85rem;
+}
+
+.shifts-aggregation__ok {
+  color: var(--k-cyan-ink);
+  font-size: 0.85rem;
+}

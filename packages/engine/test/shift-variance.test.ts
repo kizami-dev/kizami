@@ -77,6 +77,22 @@ describe("computeShiftVarianceWarnings", () => {
     ]);
   });
 
+  it("asOfDate を渡すと、当日以降の勤務日は shift_absence にならない(未来日の誤報防止、2026-08-24)", () => {
+    const shifts = [
+      shift("2026-04-08", "work", 9, 0, 18, 0, 60),
+      shift("2026-04-09", "work", 9, 0, 18, 0, 60),
+      shift("2026-04-10", "work", 9, 0, 18, 0, 60),
+    ];
+    const days = [
+      baseDay("2026-04-08", { workedMinutes: 0 }),
+      baseDay("2026-04-09", { workedMinutes: 0 }),
+      baseDay("2026-04-10", { workedMinutes: 0 }),
+    ];
+    const warnings = computeShiftVarianceWarnings(shifts, days, settingsTimeline, "2026-04-09");
+    // 前日(4/8)だけ欠勤扱い。当日(4/9)は進行中、翌日(4/10)は未到来。
+    expect(warnings.map((w) => w.date)).toEqual(["2026-04-08"]);
+  });
+
   it("有給を取得した日は shift_absence にならない", () => {
     const shifts = [shift("2026-04-09", "work", 9, 0, 18, 0, 60)];
     const days = [baseDay("2026-04-09", { workedMinutes: 0, isPaidLeave: true, paidLeaveMinutes: 480 })];

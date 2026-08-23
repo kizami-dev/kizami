@@ -19,7 +19,8 @@ export interface WorkloadBarProps {
 
 /**
  * フレックス収支バー(フレックスの場合)/ 36協定の月45時間に対する時間外の位置バー
- * (固定時間制の場合)。MonthlyView から切り出したもの(挙動不変、第3波分割)。
+ * (固定時間制の場合)/ 期間の法定総枠に対する実労働バー(monthly_variable の場合、2026-08-24 追加)。
+ * MonthlyView から切り出したもの(挙動不変、第3波分割)。
  */
 export function WorkloadBar({ data }: WorkloadBarProps) {
   const flex = data.figures.flexBalance;
@@ -30,6 +31,57 @@ export function WorkloadBar({ data }: WorkloadBarProps) {
   const overtimeMinutes = data.figures.totals.overtime;
   const overtimeOverLimit = Math.max(0, overtimeMinutes - AGREEMENT36_MONTHLY_LIMIT_MINUTES);
   const overtimePercent = Math.min(100, Math.max(0, (overtimeMinutes / AGREEMENT36_MONTHLY_LIMIT_MINUTES) * 100));
+
+  if (data.workSystem === "monthly_variable") {
+    const vp = data.figures.variablePeriod;
+    // 締め済み月(source: "snapshot")は variablePeriod が常に null(決定事項3)。
+    if (!vp) {
+      return (
+        <div className="flex-balance">
+          <span className="flex-balance__label">
+            {messages.monthly.variablePeriodBarLabel}
+            <HelpTip helpKey="attendance.work-system" />
+          </span>
+          <p className="attendance-settings__field-hint">{messages.monthly.variablePeriodUnavailableNote}</p>
+        </div>
+      );
+    }
+    const workedPercent = vp.statutoryFrameMinutes > 0 ? Math.min(100, Math.max(0, (vp.workedTotalMinutes / vp.statutoryFrameMinutes) * 100)) : 0;
+    const overFrame = Math.max(0, vp.workedTotalMinutes - vp.statutoryFrameMinutes);
+    return (
+      <div className="flex-balance">
+        <span className="flex-balance__label">
+          {messages.monthly.variablePeriodBarLabel}
+          <HelpTip helpKey="attendance.work-system" />
+        </span>
+        <div
+          className={`flex-balance__track${overFrame > 0 ? " flex-balance__track--over" : ""}`}
+          role="meter"
+          aria-valuemin={0}
+          aria-valuemax={vp.statutoryFrameMinutes}
+          aria-valuenow={vp.workedTotalMinutes}
+          aria-label={messages.monthly.variablePeriodBarLabel}
+        >
+          <div className="flex-balance__fill" style={{ width: `${workedPercent}%` }} />
+        </div>
+        <div className="flex-balance__numbers tabular-nums">
+          <span>
+            {formatDurationHm(vp.workedTotalMinutes)} / {formatDurationHm(vp.statutoryFrameMinutes)} {messages.monthly.variablePeriodBarUnit}
+          </span>
+          <span className={overFrame > 0 ? "flex-balance__diff--negative" : "flex-balance__diff--positive"}>
+            {overFrame > 0
+              ? `+${formatDurationHm(overFrame)} ${messages.monthly.variablePeriodBarOverLabel}`
+              : `${messages.monthly.variablePeriodBarRemainingLabel} ${formatDurationHm(vp.statutoryFrameMinutes - vp.workedTotalMinutes)}`}
+          </span>
+        </div>
+        <p className="attendance-settings__field-hint tabular-nums">
+          {messages.monthly.variablePeriodRangeLabel(vp.periodStart, vp.periodEnd)} / {messages.monthly.variablePeriodScheduledLabel}:{" "}
+          {formatDurationHm(vp.scheduledTotalMinutes)}
+        </p>
+        {!vp.attributedToThisMonth ? <p className="attendance-settings__field-hint">{messages.monthly.variablePeriodNotAttributedNote}</p> : null}
+      </div>
+    );
+  }
 
   return data.workSystem === "flex" ? (
     <div className="flex-balance">

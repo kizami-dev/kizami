@@ -89,6 +89,16 @@ interface DemoUserSpec {
    * 固定時間制へ切り替えられる(依頼の判断点どおり)。
    */
   useFixedPolicy?: boolean;
+  /**
+   * true の場合、params.variableWorkPolicyId(v0.7 シフト制デモ用に別途作成する
+   * work_policies 行、kind: "monthly_variable")を割り当てる。useFixedPolicy と同じ理由・
+   * 同じ仕組み(user_policy_assignments は user 単位)。effectiveFrom は他のデモユーザーと同じ
+   * "1970-01-01" にする — 暦月の初日から monthly_variable が効いていないと、月次の
+   * workSystem 判定(月初日時点の版で月全体を判定する)が "flex" のままになってしまうため
+   * (2026-08-24、シフトUIのE2E検証で判明した制約。HTTP の POST /members/:id/work-policy は
+   * 当日以降の effectiveFrom しか受け付けないため、直接 INSERT する以外に選択肢が無い)。
+   */
+  useVariablePolicy?: boolean;
 }
 
 const DEMO_USERS: DemoUserSpec[] = [
@@ -101,6 +111,14 @@ const DEMO_USERS: DemoUserSpec[] = [
     hireDate: "2024-10-01",
     department: "dev",
     useFixedPolicy: true,
+  },
+  {
+    key: "member3",
+    name: "高橋 陽菜",
+    email: "member3@kizami.example",
+    hireDate: "2025-04-01",
+    department: "sales",
+    useVariablePolicy: true,
   },
 ];
 
@@ -143,6 +161,33 @@ async function createFixedWorkPolicy(db: Database, tenantId: string): Promise<st
     settlementPeriod: "monthly", // fixed では無視される placeholder(packages/db/src/schema/settings.ts のコメント参照)
     core: null,
     standardDayMinutes: 420,
+    createdAt: now,
+  });
+  return workPolicyId;
+}
+
+/**
+ * v0.7 シフト制(monthly_variable)デモ用の work_policies を新規作成する
+ * (createFixedWorkPolicy と同じ理由・同じ仕組み)。standardDayMinutes は monthly_variable では
+ * 無意味な placeholder(apps/api/src/routes/settings/work-policy.ts のコメント参照)なので 0 にする。
+ */
+async function createVariableWorkPolicy(db: Database, tenantId: string): Promise<string> {
+  const existingRows = await db.select().from(workPolicies).where(eq(workPolicies.tenantId, tenantId));
+  const existing = existingRows.find((p) => p.name === "変形労働時間制(デモ)");
+  if (existing) return existing.id;
+
+  const now = Math.floor(Date.now() / 60_000);
+  const workPolicyId = uuidv7();
+  await db.insert(workPolicies).values({ id: workPolicyId, tenantId, name: "変形労働時間制(デモ)", createdAt: now });
+  await db.insert(workPolicyVersions).values({
+    id: uuidv7(),
+    tenantId,
+    workPolicyId,
+    effectiveFrom: "1970-01-01",
+    kind: "monthly_variable",
+    settlementPeriod: "monthly", // monthly_variable では無視される placeholder
+    core: null,
+    standardDayMinutes: 0,
     createdAt: now,
   });
   return workPolicyId;
@@ -222,6 +267,7 @@ async function insertDemoUsers(
     tenantId: string;
     workPolicyId: string;
     fixedWorkPolicyId: string;
+    variableWorkPolicyId: string;
     departmentIdByKey: Record<"hq" | "sales" | "dev", string>;
   },
 ): Promise<Array<{ key: string; id: string; email: string }>> {
@@ -258,7 +304,11 @@ async function insertDemoUsers(
       id: uuidv7(),
       tenantId: params.tenantId,
       userId,
-      workPolicyId: spec.useFixedPolicy ? params.fixedWorkPolicyId : params.workPolicyId,
+      workPolicyId: spec.useFixedPolicy
+        ? params.fixedWorkPolicyId
+        : spec.useVariablePolicy
+          ? params.variableWorkPolicyId
+          : params.workPolicyId,
       effectiveFrom: "1970-01-01",
       createdAt: now,
     });
@@ -368,6 +418,8 @@ async function main(): Promise<void> {
   await insertNightAllowanceDefinition(db, tenantId);
   // v0.5: 固定時間制メンバー用の別 work_policies を用意する(テナント既定は変えない)。
   const fixedWorkPolicyId = await createFixedWorkPolicy(db, tenantId);
+  // v0.7: シフト制(monthly_variable)メンバー用の別 work_policies を用意する。
+  const variableWorkPolicyId = await createVariableWorkPolicy(db, tenantId);
 
   // 部署(本社をルート、営業部・開発部を配下に)。既存なら流用する(冪等)。
   const now = Math.floor(Date.now() / 60_000);
@@ -393,6 +445,7 @@ async function main(): Promise<void> {
     tenantId,
     workPolicyId,
     fixedWorkPolicyId,
+    variableWorkPolicyId,
     departmentIdByKey: { hq: hqId, sales: salesId, dev: devId },
   });
 

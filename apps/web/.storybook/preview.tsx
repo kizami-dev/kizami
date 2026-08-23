@@ -23,6 +23,7 @@ import "../src/styles/privacy-settings.css";
 import "../src/styles/attendance-settings.css";
 import "../src/styles/allowance-settings.css";
 import "../src/styles/api-keys-settings.css";
+import "../src/styles/shifts.css";
 // カタログ自体のレイアウト補助(スウォッチの並び等)。トークンのみ使い、独自の色・書体は持ち込まない。
 import "../src/stories/catalog.css";
 

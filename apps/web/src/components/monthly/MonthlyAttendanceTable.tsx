@@ -136,6 +136,15 @@ export function MonthlyAttendanceTable({ data, leaveByDate, onCorrect }: Monthly
         formatDurationHm(w.break.actualMinutes),
       );
     }
+    // シフト予実乖離(2026-08-24 追加)。deltaMinutes があれば乖離分数を、無ければ(missing_shift)
+    // actualMinutes だけを併記する(packages/engine/src/shift-variance.ts が埋めるフィールドの違い、api.ts のコメント参照)。
+    if (w.shift) {
+      if (w.shift.deltaMinutes !== undefined) {
+        label += messages.monthly.shiftDeltaSuffix(formatDurationHm(w.shift.deltaMinutes));
+      } else if (w.shift.actualMinutes !== undefined) {
+        label += messages.monthly.shiftActualOnlySuffix(formatDurationHm(w.shift.actualMinutes));
+      }
+    }
     const list = warningsByDate.get(w.date) ?? [];
     list.push(label);
     warningsByDate.set(w.date, list);
@@ -159,6 +168,8 @@ export function MonthlyAttendanceTable({ data, leaveByDate, onCorrect }: Monthly
               <th className="monthly-table__stretches">{messages.monthly.columnStretches}</th>
               <th className="monthly-table__col-clock-in">{messages.monthly.columnClockIn}</th>
               <th className="monthly-table__col-clock-out">{messages.monthly.columnClockOut}</th>
+              {/* monthly_variable のみ: 日別の所定(2026-08-24 追加、DailyBreakdown.scheduledMinutes)。 */}
+              {data.workSystem === "monthly_variable" ? <th>{messages.monthly.columnScheduled}</th> : null}
               <th>{messages.monthly.columnWorked}</th>
               <th>
                 {messages.monthly.columnBreak}
@@ -168,10 +179,17 @@ export function MonthlyAttendanceTable({ data, leaveByDate, onCorrect }: Monthly
                 {messages.monthly.columnLateNight}
                 <HelpTip helpKey="attendance.late-night" />
               </th>
-              {data.workSystem === "fixed" ? (
+              {/*
+                法定時間外の列は固定時間制・monthly_variable の両方で出す(2026-08-24 追加:
+                monthly_variable も日次の①判定〈所定と法定8hの大きい方〉が決まるため、fixed.ts と
+                同じ理由で列を出せる — ui-direction.md「フレックスでは出さない」の対象外)。
+                HelpTip(attendance.fixed-overtime)は固定時間制向けの解説文のため、monthly_variable
+                では出所を誤らせないよう省略する(apps/web のみのスコープでは help-content を追加できない)。
+              */}
+              {data.workSystem === "fixed" || data.workSystem === "monthly_variable" ? (
                 <th>
                   {messages.monthly.columnOvertime}
-                  <HelpTip helpKey="attendance.fixed-overtime" />
+                  {data.workSystem === "fixed" ? <HelpTip helpKey="attendance.fixed-overtime" /> : null}
                 </th>
               ) : null}
               <th>
@@ -263,6 +281,11 @@ export function MonthlyAttendanceTable({ data, leaveByDate, onCorrect }: Monthly
                       </div>
                     ))}
                   </td>
+                  {data.workSystem === "monthly_variable" ? (
+                    <td className="monthly-table__num tabular-nums" data-label={messages.monthly.columnScheduled}>
+                      {hasActivity || day.scheduledMinutes > 0 ? formatDurationHm(day.scheduledMinutes) : null}
+                    </td>
+                  ) : null}
                   <td className="monthly-table__num tabular-nums" data-label={messages.monthly.columnWorked}>
                     {/* 法定休日の労働は workedMinutes ではなく legalHolidayMinutes に分類される
                         (engine の DailyBreakdown 契約)。日別の行でも「その日働いた時間」として
@@ -300,7 +323,7 @@ export function MonthlyAttendanceTable({ data, leaveByDate, onCorrect }: Monthly
                       </>
                     ) : null}
                   </td>
-                  {data.workSystem === "fixed" ? (
+                  {data.workSystem === "fixed" || data.workSystem === "monthly_variable" ? (
                     <td className="monthly-table__num" data-label={messages.monthly.columnOvertime}>
                       {hasOvertime || hasExtra ? (
                         <>

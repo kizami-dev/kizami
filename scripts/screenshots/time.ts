@@ -70,6 +70,18 @@ function daysInMonth(y: number, m: number): number {
   return Temporal.PlainYearMonth.from({ year: y, month: m }).daysInMonth;
 }
 
+/** 指定した暦月の全日を昇順で返す(v0.7 シフト制デモ用。週末・祝日を含む変形期間の割当に使う)。 */
+export function allDaysInMonth(y: number, m: number): CivilDate[] {
+  const result: CivilDate[] = [];
+  for (let d = 1; d <= daysInMonth(y, m); d++) result.push({ y, m, d });
+  return result;
+}
+
+/** 曜日(0=日曜〜6=土曜、apps/web の buildWeekGrid と同じ並び)。シフトのまとめて割当デモに使う。 */
+export function weekdayOf(date: CivilDate): 0 | 1 | 2 | 3 | 4 | 5 | 6 {
+  return (toPlainDate(date).dayOfWeek % 7) as 0 | 1 | 2 | 3 | 4 | 5 | 6;
+}
+
 /** 指定した暦月の平日をすべて昇順で返す(月全体。過去月を打刻で埋めて締める用)。 */
 export function weekdaysInMonth(y: number, m: number): CivilDate[] {
   const result: CivilDate[] = [];

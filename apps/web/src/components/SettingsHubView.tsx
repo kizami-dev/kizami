@@ -22,6 +22,7 @@ type SettingsRoute =
   | "/settings/privacy"
   | "/settings/attendance"
   | "/settings/allowances"
+  | "/settings/shift-patterns"
   | "/settings/api-keys"
   | "/settings/slack"
   | "/settings/slack-link"
@@ -99,6 +100,13 @@ export function SettingsHubView() {
       to: "/settings/allowances" as const,
       title: messages.settingsHub.allowancesTitle,
       desc: messages.settingsHub.allowancesDesc,
+    },
+    {
+      key: "shiftPatterns",
+      enabled: access.shiftPatterns,
+      to: "/settings/shift-patterns" as const,
+      title: messages.settingsHub.shiftPatternsTitle,
+      desc: messages.settingsHub.shiftPatternsDesc,
     },
     {
       key: "tenantProfile",

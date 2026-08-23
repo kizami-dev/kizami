@@ -182,4 +182,41 @@ export class ApiClient {
   }): Promise<{ waiver: { id: string; status: string; waiveDate: string; reason: string }; targetMonthClosed: boolean }> {
     return this.request("POST", "/auto-break-waivers", input);
   }
+
+  // ---- シフト制(v0.7、2026-08-24 追加) ----
+
+  /** POST /settings/shift-patterns(shift.manage、tenant スコープ)。 */
+  createShiftPattern(input: {
+    name: string;
+    dayType: "work" | "legal_holiday" | "non_working";
+    startMinutes?: number;
+    endMinutes?: number;
+    breakMinutes?: number;
+  }): Promise<{ pattern: { id: string; name: string; dayType: string } }> {
+    return this.request("POST", "/settings/shift-patterns", input);
+  }
+
+  /**
+   * POST /shifts/plans(shift.manage、department スコープ以上)。periodStart はテナントの
+   * variablePeriodStartDay(既定1)に一致する日でなければならない(apps/api/src/routes/shifts.ts)。
+   */
+  createShiftPlan(input: { userId: string; periodStart: string }): Promise<{ plan: { id: string; periodStart: string; periodEnd: string } }> {
+    return this.request("POST", "/shifts/plans", input);
+  }
+
+  /** PUT /shifts/plans/:id/days(shift.manage)。days は期間内の一部だけでもよい。 */
+  updateShiftPlanDays(
+    planId: string,
+    days: Array<
+      | { date: string; patternId: string }
+      | { date: string; dayType: "work" | "legal_holiday" | "non_working"; startMinutes?: number; endMinutes?: number; breakMinutes?: number }
+    >,
+  ): Promise<unknown> {
+    return this.request("PUT", `/shifts/plans/${planId}/days`, { days });
+  }
+
+  /** POST /shifts/plans/:id/publish(shift.manage)。週1日/4週4日の法定休日要件を満たしていないと409。 */
+  publishShiftPlan(planId: string): Promise<unknown> {
+    return this.request("POST", `/shifts/plans/${planId}/publish`);
+  }
 }

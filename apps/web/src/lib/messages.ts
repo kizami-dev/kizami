@@ -99,3 +99,27 @@ export const mapApiKeysErrorMessage = makeErrorMapper(() => messages.settingsApi
  * この関数へ渡すため、`{ error: "conditions_required" }` のような自前オブジェクトも受け付ける。
  */
 export const mapAllowanceSettingsErrorMessage = makeErrorMapper(() => messages.settingsAllowances.errors);
+
+/** シフトパターン(POST /settings/shift-patterns・.../archive)のエラーマッピング(v0.7 フェーズ3、2026-08-24 追加)。 */
+export const mapShiftPatternErrorMessage = makeErrorMapper(() => messages.shiftPatterns.errors);
+
+/**
+ * シフト表(POST /shifts/plans・PUT .../days・POST .../publish)のエラーマッピング(2026-08-24 追加)。
+ * `period_start_mismatch` だけは正しい開始日(数値)をボディに含むため、この汎用マッパーでは
+ * 汎用文言(errors.period_start_mismatch は無い)にフォールバックせず、呼び出し側が
+ * `mapShiftPlanCreateErrorMessage` を使う(下記)。
+ */
+export const mapShiftsErrorMessage = makeErrorMapper(() => messages.shifts.errors);
+
+/**
+ * POST /shifts/plans 専用のエラーマッピング。400 period_start_mismatch のときだけ
+ * レスポンスボディの variablePeriodStartDay(正しい開始日)を埋め込んだ文言を返す。
+ */
+export function mapShiftPlanCreateErrorMessage(body: unknown): string {
+  const code = errorCodeOf(body);
+  if (code === "period_start_mismatch" && body && typeof body === "object" && "variablePeriodStartDay" in body) {
+    const day = (body as { variablePeriodStartDay: unknown }).variablePeriodStartDay;
+    if (typeof day === "number") return messages.shifts.periodStartMismatchMessage(day);
+  }
+  return mapShiftsErrorMessage(body);
+}
