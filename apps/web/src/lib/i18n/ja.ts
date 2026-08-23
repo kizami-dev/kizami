@@ -1659,6 +1659,26 @@ export const ja = {
     hireDateUnset: "未設定",
     hireDateWarning: "入社日が未設定のため、法定付与(有給休暇)が計算できません",
 
+    /**
+     * 有給付与の区分(比例付与、労基法39条3項・労基法施行規則24条の3、2026-08-24 追加)。
+     * 週所定労働時間・日数から自動判定はしない(就業規則を知っている管理者が明示的に選ぶ)。
+     */
+    leaveGrantClassTitle: "有給付与の区分",
+    leaveGrantClassHint:
+      "週所定労働時間30時間未満かつ週所定労働日数が4日以下の場合のみ比例付与(週4日以下)を選びます(労基法39条3項)。",
+    leaveGrantClassLabel: "有給付与の区分を選択",
+    leaveGrantClassOption: {
+      full: "通常(週5日以上)",
+      days4: "週4日",
+      days3: "週3日",
+      days2: "週2日",
+      days1: "週1日",
+    },
+    leaveGrantClassSave: "区分を保存",
+    leaveGrantClassSaving: "保存中…",
+    leaveGrantClassSaved: "有給付与の区分を保存しました",
+    leaveGrantClassNote: "変更は以後の自動付与・付与の予告から反映されます(既に付与済みの日数は変わりません)。",
+
     presetAssignTitle: "割り当てるプリセット",
     presetAssignHint: "チェックを変更すると、下の「できること」にすぐ反映されます。保存するまで実際の割当は変わりません。",
     presetAssignSave: "割当を保存",
@@ -1682,6 +1702,7 @@ export const ja = {
       invalid_name: "氏名を1〜200文字で入力してください",
       invalid_department_id: "指定した部署が見つかりません",
       invalid_hire_date: "入社日はYYYY-MM-DD形式で入力してください",
+      invalid_leave_grant_class: "有給付与の区分の指定が不正です",
       email_already_exists: "このメールアドレスは既に登録されています",
       not_found: "対象のメンバーが見つかりません",
       invalid_preset_id: "指定した権限プリセットが見つかりません",
@@ -2023,6 +2044,11 @@ export const ja = {
     /** 全労働日が0で出勤率を出せないとき。0% ではなく「不明」であることを示す。 */
     rateUnknown: "—",
     rateBelowThreshold: "8割未満の可能性 — 確認してください",
+    /**
+     * 比例付与(労基法39条3項)の対象者であることを示すチップ。フルタイムの表と日数が違う
+     * 理由を管理者がその場で読み取れるようにするための表示(2026-08-24 追加)。
+     */
+    proportionalChip: (weekDaysLabel: string) => `比例付与(${weekDaysLabel})`,
 
     approve: "承認",
     reject: "却下",

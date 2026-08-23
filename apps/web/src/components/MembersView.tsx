@@ -7,6 +7,7 @@ import {
   ApiError,
   UnauthorizedError,
   type DepartmentDto,
+  type LeaveGrantClass,
   type MemberDto,
   type MemberWorkPolicySettingsDto,
   type PermissionCatalogEntryDto,
@@ -30,6 +31,9 @@ import { SettingsNav } from "./SettingsNav";
  * apps/api 側の FALLBACK_STANDARD_DAY_MINUTES と揃えている。
  */
 const DEFAULT_STANDARD_DAY_MINUTES = "480";
+
+/** 有給付与の区分の選択肢(表示順。@kizami/leave の LeaveGrantClass と一致)。 */
+const LEAVE_GRANT_CLASS_OPTIONS: readonly LeaveGrantClass[] = ["full", "days4", "days3", "days2", "days1"];
 
 /**
  * メンバー管理画面(/settings/members)。所属変更・権限プリセット割当・実効権限ビュー(必須要件)。
@@ -67,6 +71,13 @@ export function MembersView() {
   const [hireDatePendingId, setHireDatePendingId] = useState<string | null>(null);
   const [hireDateError, setHireDateError] = useState<{ memberId: string; message: string } | null>(null);
   const [hireDateSavedId, setHireDateSavedId] = useState<string | null>(null);
+
+  // 有給付与の区分(比例付与、2026-08-24 追加)。入社日と同じく行ごとの下書き + 明示的な保存。
+  // 誤って比例付与に落とすと法定より少ない日数しか付与されないため、選択と同時にはコミットしない。
+  const [grantClassDrafts, setGrantClassDrafts] = useState<Record<string, LeaveGrantClass>>({});
+  const [grantClassPendingId, setGrantClassPendingId] = useState<string | null>(null);
+  const [grantClassError, setGrantClassError] = useState<{ memberId: string; message: string } | null>(null);
+  const [grantClassSavedId, setGrantClassSavedId] = useState<string | null>(null);
 
   // 招待式登録(2026-08-23 追加、docs/requirements.md §7)。
   const [inviteFormOpen, setInviteFormOpen] = useState(false);
@@ -289,6 +300,33 @@ export function MembersView() {
       });
     } finally {
       setHireDatePendingId(null);
+    }
+  }
+
+  function grantClassDraftFor(member: MemberDto): LeaveGrantClass {
+    return grantClassDrafts[member.id] ?? member.leaveGrantClass;
+  }
+
+  async function handleGrantClassSave(member: MemberDto) {
+    const value = grantClassDraftFor(member);
+    setGrantClassPendingId(member.id);
+    setGrantClassError(null);
+    setGrantClassSavedId(null);
+    try {
+      await api.updateMemberLeaveGrantClass(member.id, value);
+      setGrantClassSavedId(member.id);
+      setReloadKey((k) => k + 1);
+    } catch (err) {
+      if (err instanceof UnauthorizedError) {
+        router.push("/login");
+        return;
+      }
+      setGrantClassError({
+        memberId: member.id,
+        message: err instanceof ApiError ? mapMemberErrorMessage(err.body) : messages.errors.network,
+      });
+    } finally {
+      setGrantClassPendingId(null);
     }
   }
 
@@ -843,6 +881,46 @@ export function MembersView() {
                                     onClick={() => handleAssignSave(member.id)}
                                   >
                                     {assignPending ? messages.members.presetAssignSaving : messages.members.presetAssignSave}
+                                  </button>
+                                </section>
+
+                                <section className="member-detail__section">
+                                  <h2 className="member-detail__section-title">{messages.members.leaveGrantClassTitle}</h2>
+                                  <p className="member-detail__hint">{messages.members.leaveGrantClassHint}</p>
+                                  <select
+                                    aria-label={messages.members.leaveGrantClassLabel}
+                                    value={grantClassDraftFor(member)}
+                                    disabled={grantClassPendingId === member.id}
+                                    onChange={(e) => {
+                                      const next = e.target.value as LeaveGrantClass;
+                                      setGrantClassSavedId(null);
+                                      setGrantClassDrafts((prev) => ({ ...prev, [member.id]: next }));
+                                    }}
+                                  >
+                                    {LEAVE_GRANT_CLASS_OPTIONS.map((value) => (
+                                      <option key={value} value={value}>
+                                        {messages.members.leaveGrantClassOption[value]}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  <p className="member-detail__hint">{messages.members.leaveGrantClassNote}</p>
+                                  {grantClassError?.memberId === member.id ? (
+                                    <p className="correction-error" role="alert">
+                                      {grantClassError.message}
+                                    </p>
+                                  ) : null}
+                                  {grantClassSavedId === member.id ? (
+                                    <p className="settings-notif__success">{messages.members.leaveGrantClassSaved}</p>
+                                  ) : null}
+                                  <button
+                                    type="button"
+                                    className="k-modal__confirm k-modal__confirm--neutral"
+                                    disabled={grantClassPendingId === member.id}
+                                    onClick={() => handleGrantClassSave(member)}
+                                  >
+                                    {grantClassPendingId === member.id
+                                      ? messages.members.leaveGrantClassSaving
+                                      : messages.members.leaveGrantClassSave}
                                   </button>
                                 </section>
 

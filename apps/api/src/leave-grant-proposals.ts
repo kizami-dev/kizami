@@ -9,9 +9,13 @@
  *
  * **機械は付与を確定させない**(§11 の決定)。このスキャンが作るのはあくまで予告であり、
  * leave_grants の行は管理者が承認したときにだけ生まれる。労基法39条1項の「全労働日の
- * 8割以上出勤」の判定は、比例付与・休職期間の取扱い・全労働日の定義といった、データだけでは
- * 決められない要素を含むため、最終判断は人が行う — スキャンはその**検算材料**として
- * 出勤率の参考値を添えるところまでを担当する。
+ * 8割以上出勤」の判定は、休職・育休期間の取扱い・争議行為の日・全労働日の定義といった、
+ * データだけでは決められない要素を含むため、最終判断は人が行う — スキャンはその**検算材料**
+ * として出勤率の参考値を添えるところまでを担当する。
+ *
+ * 付与日数は users.leave_grant_class(比例付与の区分、労基法39条3項)に従って計算する
+ * (2026-08-24 追加、docs/design/leave-proportional-grant.md)。予告と実際の付与で日数が
+ * 食い違わないよう、POST /leave/grants/auto と同じ区分・同じ関数を使う。
  *
  * 通知(shift-variance-alerts.ts と同じ形):
  * - 宛先は本人ではなく、その人をスコープに含む形で `leave.grant.manage` を持つ管理者
@@ -48,9 +52,11 @@ import {
   calculateAttendanceRate,
   calculateStatutoryGrants,
   estimateCalendarWorkingDates,
+  isLeaveGrantClass,
   resolveAttendanceRatePeriod,
   type AttendanceRateReference,
   type GrantMethod,
+  type LeaveGrantClass,
 } from "@kizami/leave";
 import { dispatch } from "@kizami/notify";
 import { resolveApproversForUser } from "./lib/approvers.js";
@@ -110,14 +116,31 @@ interface ActiveUserWithHireDate {
   tenantId: string;
   name: string;
   hireDate: string | null;
+  /** 有給付与の区分(比例付与、労基法39条3項)。想定外の値は "full" に倒して読む */
+  leaveGrantClass: string;
 }
 
-/** is_active なユーザーを入社日つきで返す(reminders.ts の listActiveUsers に hire_date を足したもの)。 */
+/** is_active なユーザーを入社日・付与区分つきで返す(reminders.ts の listActiveUsers に足したもの)。 */
 async function listActiveUsersWithHireDate(db: Database): Promise<ActiveUserWithHireDate[]> {
   return db
-    .select({ id: users.id, tenantId: users.tenantId, name: users.name, hireDate: users.hireDate })
+    .select({
+      id: users.id,
+      tenantId: users.tenantId,
+      name: users.name,
+      hireDate: users.hireDate,
+      leaveGrantClass: users.leaveGrantClass,
+    })
     .from(users)
     .where(eq(users.isActive, true));
+}
+
+/**
+ * users.leave_grant_class を LeaveGrantClass へ解決する。想定外の値は "full" に倒す
+ * (少なく付与する方向へ倒さない — packages/leave/src/statutory.ts の判断点。
+ * routes/leave.ts の同名ヘルパと同じ扱い)。
+ */
+function resolveLeaveGrantClass(value: string | null | undefined): LeaveGrantClass {
+  return isLeaveGrantClass(value) ? value : "full";
 }
 
 /**
@@ -278,6 +301,7 @@ export async function runLeaveGrantProposalScan(
         horizon,
         settings.grantMethod as GrantMethod,
         settings.fixedDateMmDd ?? undefined,
+        resolveLeaveGrantClass(user.leaveGrantClass),
       );
       const upcoming = calculated.filter((g) => g.grantedOn >= today && g.grantedOn <= horizon);
       if (upcoming.length === 0) continue;

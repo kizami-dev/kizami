@@ -86,6 +86,31 @@ export async function updateUserHireDate(
   return row;
 }
 
+/**
+ * 有給付与の区分(leave_grant_class)を更新する(UPDATE、現在値のみ — users テーブルは
+ * effective-dated ではない)。値の妥当性(full/days4/days3/days2/days1)は呼び出し側で
+ * 検証すること(@kizami/leave の isLeaveGrantClass)。監査ログの記録も呼び出し側の担当。
+ *
+ * 判断点: 区分を変えても**既に作られた leave_grants の日数は遡って直さない**。付与済みの
+ * 日数は「その基準日にその区分だった」という事実の記録であり、後から区分を変えたからといって
+ * 過去の付与を書き換えるのは実務上も監査上も誤り(必要なら手動付与で差分を足す)。
+ * 区分変更が効くのは以後の自動付与・予告からになる。
+ */
+export async function updateUserLeaveGrantClass(
+  db: Database,
+  params: { tenantId: string; userId: string; leaveGrantClass: string },
+): Promise<MemberUser> {
+  const [row] = await db
+    .update(users)
+    .set({ leaveGrantClass: params.leaveGrantClass })
+    .where(and(eq(users.tenantId, params.tenantId), eq(users.id, params.userId)))
+    .returning();
+  if (!row) {
+    throw new Error(`updateUserLeaveGrantClass: user not found: ${params.userId}`);
+  }
+  return row;
+}
+
 export interface MembershipDepartmentRow {
   userId: string;
   departmentId: string;

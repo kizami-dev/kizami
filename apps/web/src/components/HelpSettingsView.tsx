@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "waku";
 import { api, ApiError, UnauthorizedError, type HelpOverridesDto } from "../lib/api";
-import { HELP, type HelpEntry, type HelpKey } from "../lib/help";
+import { helpEntries, helpEntry, helpNotice, type HelpEntry, type HelpKey } from "../lib/help";
 import { mapHelpSettingsErrorMessage, messages } from "../lib/messages";
 import { invalidateHelpOverridesCache } from "../lib/useHelpOverrides";
 import { useAuthGuard } from "../lib/useAuthGuard";
@@ -80,7 +80,10 @@ export function HelpSettingsView() {
   const [workRulesError, setWorkRulesError] = useState<string | null>(null);
   const [workRulesSuccess, setWorkRulesSuccess] = useState(false);
 
-  const grouped = useMemo(() => groupEntries(Object.values(HELP)), []);
+  // helpEntries() は現在の UI ロケールのヘルプ本文を返す(訳文が無いキーは日本語。lib/help.ts 参照)。
+  // 依存配列が空でよいのは、言語切替時に LocaleGate が子ツリーごと再マウントするため
+  // (lib/i18n/index.ts のコメント参照) — この useMemo もそこで作り直される。
+  const grouped = useMemo(() => groupEntries(helpEntries()), []);
 
   function load() {
     setLoading(true);
@@ -194,7 +197,8 @@ export function HelpSettingsView() {
     return <p className="monthly-error">{messages.errors.network}</p>;
   }
 
-  const selectedEntry = selectedKey ? HELP[selectedKey] : null;
+  const selectedEntry = selectedKey ? helpEntry(selectedKey) : null;
+  const translationNotice = helpNotice();
 
   function renderList(title: string, entries: { law: HelpEntry[]; product: HelpEntry[] }) {
     if (entries.law.length === 0 && entries.product.length === 0) return null;
@@ -303,6 +307,7 @@ export function HelpSettingsView() {
                           : originLabel(selectedEntry.origin)}
                       </span>
                       <p className="help-settings__reference-summary">{selectedEntry.summary}</p>
+                      {translationNotice ? <p className="help-tip__notice">{translationNotice}</p> : null}
                     </section>
 
                     <form className="settings-notif__form" onSubmit={handleSave}>

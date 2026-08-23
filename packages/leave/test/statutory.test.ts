@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { calculateStatutoryGrants } from "../src/statutory.js";
+import {
+  calculateStatutoryGrants,
+  isLeaveGrantClass,
+  LEAVE_GRANT_CLASS_DAYS_TABLE,
+  LEAVE_GRANT_CLASSES,
+} from "../src/statutory.js";
+import type { LeaveGrantClass } from "../src/types.js";
 
 describe("calculateStatutoryGrants — statutory (入社日基準)", () => {
   const hireDate = "2020-01-01";
@@ -73,5 +79,64 @@ describe("calculateStatutoryGrants — fixed_date (基準日方式・全社一�
   it("as-of date before the first eligible basis date yields no grants", () => {
     const grants = calculateStatutoryGrants("2020-08-20", "2021-02-28", "fixed_date", "03-01");
     expect(grants).toEqual([]);
+  });
+});
+
+/**
+ * 比例付与(労基法39条3項・労基法施行規則24条の3、2026-08-24 追加)。
+ * 期待値は e-Gov の条文表そのもの。区分は導出せず引数で明示的に受け取る設計のため、
+ * ここでは「区分 → 日数列」の対応と上限の張り付きだけを確かめる。
+ */
+describe("calculateStatutoryGrants — 比例付与(労基法施行規則24条の3)", () => {
+  const hireDate = "2020-01-01";
+  /** 入社から8年経過時点まで見る(7回目の付与に加えて上限に張り付いた8回目を含む)。 */
+  const asOf = "2028-06-30";
+
+  const CASES: ReadonlyArray<{ grantClass: LeaveGrantClass; expected: number[] }> = [
+    { grantClass: "full", expected: [10, 11, 12, 14, 16, 18, 20, 20] },
+    { grantClass: "days4", expected: [7, 8, 9, 10, 12, 13, 15, 15] },
+    { grantClass: "days3", expected: [5, 6, 6, 8, 9, 10, 11, 11] },
+    { grantClass: "days2", expected: [3, 4, 4, 5, 6, 6, 7, 7] },
+    { grantClass: "days1", expected: [1, 2, 2, 2, 3, 3, 3, 3] },
+  ];
+
+  for (const { grantClass, expected } of CASES) {
+    it(`follows the 規則24条の3 table for ${grantClass} and caps at the last value thereafter`, () => {
+      const grants = calculateStatutoryGrants(hireDate, asOf, "statutory", undefined, grantClass);
+      expect(grants.map((g) => g.days)).toEqual(expected);
+    });
+  }
+
+  it("defaults to full when no grant class is passed (existing call sites keep their behaviour)", () => {
+    const withoutClass = calculateStatutoryGrants(hireDate, asOf, "statutory");
+    const explicitFull = calculateStatutoryGrants(hireDate, asOf, "statutory", undefined, "full");
+    expect(withoutClass).toEqual(explicitFull);
+  });
+
+  it("applies the class to fixed_date grants as well (occurrence order, not elapsed years)", () => {
+    const grants = calculateStatutoryGrants("2020-01-10", "2023-04-01", "fixed_date", "04-01", "days3");
+    expect(grants.map((g) => g.grantedOn)).toEqual(["2021-04-01", "2022-04-01", "2023-04-01"]);
+    expect(grants.map((g) => g.days)).toEqual([5, 6, 6]);
+  });
+
+  it("keeps grantedOn/expiresOn identical to the full class — only the days differ", () => {
+    const full = calculateStatutoryGrants(hireDate, asOf, "statutory");
+    const days2 = calculateStatutoryGrants(hireDate, asOf, "statutory", undefined, "days2");
+    expect(days2.map((g) => g.grantedOn)).toEqual(full.map((g) => g.grantedOn));
+    expect(days2.map((g) => g.expiresOn)).toEqual(full.map((g) => g.expiresOn));
+  });
+
+  it("days4 crosses the 10-day line at the 4th occurrence (3年6ヶ月) — the 年5日取得義務 boundary", () => {
+    // 3回目(2年6ヶ月)= 9日 → 義務の対象外 / 4回目(3年6ヶ月)= 10日 → 対象
+    const grants = calculateStatutoryGrants(hireDate, "2023-07-01", "statutory", undefined, "days4");
+    expect(grants.map((g) => g.days)).toEqual([7, 8, 9, 10]);
+  });
+
+  it("exposes the same table through LEAVE_GRANT_CLASS_DAYS_TABLE (single source of truth)", () => {
+    expect(LEAVE_GRANT_CLASS_DAYS_TABLE.days4).toEqual([7, 8, 9, 10, 12, 13, 15]);
+    expect(LEAVE_GRANT_CLASSES).toEqual(["full", "days4", "days3", "days2", "days1"]);
+    expect(isLeaveGrantClass("days3")).toBe(true);
+    expect(isLeaveGrantClass("days9")).toBe(false);
+    expect(isLeaveGrantClass(null)).toBe(false);
   });
 });

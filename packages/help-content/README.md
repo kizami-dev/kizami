@@ -57,8 +57,33 @@ companyExample: |                   # 任意。社内規定の記入例(プレ�
 - **自社で決めたことだけ書く** — 期限・窓口・例外の扱いなど
 - 就業規則の該当条文を参照する形が望ましい
 
+## 多言語(ja / en / ko / zh)
+
+UI と同じ4言語に対応する。1エントリ=言語ごとに1ファイルで、`content/<slug>.<lang>.md` を
+兄弟ファイルとして置く(例: `leave-hourly.ja.md` / `.en.md` / `.ko.md` / `.zh.md`)。
+
+- **日本語(`ja`)が単一の正**。翻訳は ja に存在するキーの訳文としてのみ置ける
+  (ja に対応が無い訳文ファイルはビルドエラー)
+- `key` / `audience` / `origin` は翻訳せず ja と同じ値にする(分類用の値であり表示文言ではない)。
+  ズレているとビルドエラー
+- `basis` / `summary` / `companyExample` / 本文は翻訳する
+- 本文の見出し構成・表・`](./スラッグ)` の内部リンク先は ja と揃える(テストで検証する)
+- **訳文であることの免責をファイルごとに書かない**。注記は `scripts/generate.mjs` の
+  `TRANSLATION_NOTICE` に1箇所だけ持ち、生成物 `HELP_TRANSLATION_NOTICE` 経由で
+  UI が1行だけ表示する
+- 訳文が欠けているキーは生成物の `HELP_MISSING_KEYS` に残り、`pnpm --filter @kizami/help-content test`
+  の完全性テストが落ちる。実行時は `helpEntryFor(key, locale)` が **明示的に日本語へ
+  フォールバック**するため画面は壊れないが、それは翻訳漏れの許容ではない
+
+法令用語は厚生労働省・法令外国語訳の公式訳に合わせる(例: 年次有給休暇 = annual paid leave、
+フレックスタイム制 = flexible working hours system、36協定 = Article 36 agreement)。
+日本固有で対応語が無いものは日本語のまま残し、初出で短い注釈を付ける
+(例: `36協定 (Article 36 agreement)`)。
+
 ## 展開先
 
-- アプリ: ビルド時に型付き辞書へ変換(キーの参照ミス・訳文欠落は CI エラー)
-- VitePress: 同じ Markdown をページとして取り込む
+- アプリ: ビルド時に型付き辞書へ変換(キーの参照ミス・訳文欠落は CI エラー)。
+  表示ロケールは `apps/web/src/lib/help.ts` が `lib/i18n#getLocale()` から解決する
+- VitePress: 同じ Markdown をページとして取り込む。ただし現状 `docs/guide/` は
+  **日本語のみ**生成する(`scripts/sync-help-docs.mjs`)。サイト自体が多言語化されていないため
 - 通知: 文面の一部として参照する(例: 年5日通知の法的注意)

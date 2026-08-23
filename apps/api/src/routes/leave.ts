@@ -95,9 +95,11 @@ import {
   calculateStatutoryGrants,
   calculateStockConversions,
   checkMandatoryFiveDays,
+  isLeaveGrantClass,
   resolveUsageMinutes,
   type AttendanceRateReference,
   type GrantMethod,
+  type LeaveGrantClass,
   type LeaveGrantInput,
   type LeaveType,
   type LeaveUnit,
@@ -160,6 +162,15 @@ async function loadLeaveSettings(db: Database, tenantId: string): Promise<Resolv
     stockMaxDays: row.stockMaxDays,
     stockExpiresMonths: row.stockExpiresMonths,
   };
+}
+
+/**
+ * users.leave_grant_class(TEXT)を LeaveGrantClass へ解決する。想定外の値は "full" に倒す
+ * — 区分の取り違えは「法定より少なく付与する」方向の事故になり得るため、不明なら常に
+ * 最も日数の多い通常付与を選ぶ(packages/leave/src/statutory.ts の判断点と同じ)。
+ */
+function resolveLeaveGrantClass(value: string | null | undefined): LeaveGrantClass {
+  return isLeaveGrantClass(value) ? value : "full";
 }
 
 function toGrantInputs(rows: LeaveGrant[]): LeaveGrantInput[] {
@@ -254,11 +265,17 @@ const VALID_PROPOSAL_STATUSES: readonly LeaveGrantProposalStatus[] = ["proposed"
  * (再計算しない — 承認画面で見た数字と監査上の記録を一致させるため、
  * packages/db/src/schema/leave.ts のコメント参照)。
  */
-function serializeLeaveGrantProposal(row: LeaveGrantProposal, userName: string | null) {
+function serializeLeaveGrantProposal(row: LeaveGrantProposal, userName: string | null, leaveGrantClass: LeaveGrantClass | null = null) {
   return {
     id: row.id,
     userId: row.userId,
     userName,
+    /**
+     * 予告作成時点ではなく「現在の」対象者の付与区分(users.leave_grant_class)。
+     * 予告一覧で「なぜ日数がフルタイムの表と違うのか」を管理者が読み取れるようにするための
+     * 表示用の値であり、日数そのものは予告行(days)が正。解決できない場合は null。
+     */
+    leaveGrantClass,
     leaveType: row.leaveType,
     grantedOn: row.grantedOn,
     days: row.days,
@@ -967,6 +984,9 @@ export function createLeaveRoutes(db: Database, deps: LeaveRoutesDeps = {}) {
       today,
       settingsRow.grantMethod as GrantMethod,
       settingsRow.fixedDateMmDd ?? undefined,
+      // 比例付与の区分(労基法39条3項)。未設定・想定外の値は "full" に倒す
+      // (少なく付与する方向へ倒さない、packages/leave/src/statutory.ts の判断点)。
+      resolveLeaveGrantClass(target.leaveGrantClass),
     );
 
     const existingDates = await listGrantedOnDates(db, { tenantId: actor.tenantId, userId });
@@ -1042,10 +1062,16 @@ export function createLeaveRoutes(db: Database, deps: LeaveRoutesDeps = {}) {
       ...(accessible === "all" ? {} : { userIds: [...accessible] }),
     });
 
-    // 氏名はテナントのユーザー一覧を1回引いて解決する(予告1件ごとに getUserById を呼ばない)。
-    const nameById = new Map((await listTenantUsers(db, actor.tenantId)).map((u) => [u.id, u.name] as const));
+    // 氏名・付与区分はテナントのユーザー一覧を1回引いて解決する(予告1件ごとに getUserById を呼ばない)。
+    const tenantUsers = await listTenantUsers(db, actor.tenantId);
+    const nameById = new Map(tenantUsers.map((u) => [u.id, u.name] as const));
+    const grantClassById = new Map(tenantUsers.map((u) => [u.id, resolveLeaveGrantClass(u.leaveGrantClass)] as const));
 
-    return c.json({ proposals: rows.map((row) => serializeLeaveGrantProposal(row, nameById.get(row.userId) ?? null)) });
+    return c.json({
+      proposals: rows.map((row) =>
+        serializeLeaveGrantProposal(row, nameById.get(row.userId) ?? null, grantClassById.get(row.userId) ?? null),
+      ),
+    });
   });
 
   /**

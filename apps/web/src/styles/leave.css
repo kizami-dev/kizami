@@ -346,6 +346,14 @@
   gap: var(--space-1);
 }
 
+/* 付与日数セル。比例付与(労基法39条3項)のときだけ区分チップが日数の下に付く。 */
+.leave-proposal-days {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+}
+
 .leave-proposal-rate__basis {
   font-size: 0.72rem;
   color: var(--k-ink-soft);

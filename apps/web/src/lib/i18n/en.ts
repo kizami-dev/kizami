@@ -1669,6 +1669,22 @@ export const en = {
     hireDateUnset: "Not set",
     hireDateWarning: "The statutory grant of annual paid leave can't be calculated because the hire date isn't set",
 
+    leaveGrantClassTitle: "Annual leave grant class",
+    leaveGrantClassHint:
+      "Choose a proportional class (4 days a week or fewer) only when the contracted hours are under 30 per week AND the contracted days are 4 or fewer per week (Labor Standards Act art. 39(3)).",
+    leaveGrantClassLabel: "Select the annual leave grant class",
+    leaveGrantClassOption: {
+      full: "Standard (5+ days/week)",
+      days4: "4 days/week",
+      days3: "3 days/week",
+      days2: "2 days/week",
+      days1: "1 day/week",
+    },
+    leaveGrantClassSave: "Save class",
+    leaveGrantClassSaving: "Saving…",
+    leaveGrantClassSaved: "Annual leave grant class saved",
+    leaveGrantClassNote: "The change applies to future automatic grants and grant proposals (days already granted stay as they are).",
+
     presetAssignTitle: "Presets to assign",
     presetAssignHint: "Changing a checkbox immediately updates the \"can do\" list below. Nothing is actually changed until you save.",
     presetAssignSave: "Save assignments",
@@ -1692,6 +1708,7 @@ export const en = {
       invalid_name: "Please enter a name between 1 and 200 characters",
       invalid_department_id: "The specified department could not be found",
       invalid_hire_date: "Please enter the hire date in YYYY-MM-DD format",
+      invalid_leave_grant_class: "The annual leave grant class is invalid",
       email_already_exists: "This email address is already registered",
       not_found: "The member could not be found",
       invalid_preset_id: "The specified permission preset could not be found",
@@ -2033,6 +2050,7 @@ export const en = {
     /** Shown when there are no working days, so no rate can be computed. This means "unknown", not 0%. */
     rateUnknown: "—",
     rateBelowThreshold: "May be below 80% — please check",
+    proportionalChip: (weekDaysLabel: string) => `Proportional (${weekDaysLabel})`,
 
     approve: "Approve",
     reject: "Reject",

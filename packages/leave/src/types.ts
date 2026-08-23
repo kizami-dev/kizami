@@ -18,6 +18,19 @@ export type PlainDateString = string;
 /** テナントの有給付与方式。 */
 export type GrantMethod = "statutory" | "fixed_date";
 
+/**
+ * 年次有給休暇の付与区分(2026-08-24 追加、労基法39条3項・労基法施行規則24条の3)。
+ *
+ * - full: 通常の付与(週所定労働日数5日以上、または週所定労働時間30時間以上)
+ * - days4 / days3 / days2 / days1: 比例付与。週所定労働日数がそれぞれ4/3/2/1日
+ *
+ * 「週所定労働時間30時間未満」**かつ**「週所定労働日数4日以下」の両方を満たす労働者だけが
+ * 比例付与の対象であり、この判定は就業規則・雇用契約の内容を知っている管理者が行う
+ * (本パッケージは区分を受け取るだけで、労働時間から導出しない。理由は statutory.ts の
+ * 冒頭コメント参照)。
+ */
+export type LeaveGrantClass = "full" | "days4" | "days3" | "days2" | "days1";
+
 /** annual: 通常の年次有給休暇。stocked: 時効失効分の積立休暇(失効年休積立制度)。 */
 export type LeaveType = "annual" | "stocked";
 

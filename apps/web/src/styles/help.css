@@ -149,3 +149,14 @@
   color: var(--k-key);
   white-space: pre-wrap;
 }
+
+/*
+ * 訳文であることの注記(2026-08-24 多言語化)。日本語では出さない(正文そのものなので
+ * 断り書きの対象にならない)。文言は @kizami/help-content 側に1箇所だけ持ち、
+ * ヘルプ本文のファイルごとに免責を書かない方針。
+ */
+.help-tip__notice {
+  font-size: 0.7rem;
+  line-height: 1.5;
+  color: var(--k-ink-soft);
+}

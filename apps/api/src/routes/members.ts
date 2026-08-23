@@ -78,6 +78,7 @@ import {
   revokePasswordResetToken,
   revokePendingInvitationForUser,
   updateUserHireDate,
+  updateUserLeaveGrantClass,
   upsertMembership,
   userHasCredential,
   type Database,
@@ -88,6 +89,7 @@ import {
   getOrCreateTenantWorkPolicyByKind,
   assignUserWorkPolicy,
 } from "@kizami/db";
+import { isLeaveGrantClass, type LeaveGrantClass } from "@kizami/leave";
 import type { AppEnv } from "../auth/middleware.js";
 import { generateInvitationToken, INVITATION_TTL_MINUTES } from "../auth/invitation-token.js";
 import { generatePasswordResetToken, PASSWORD_RESET_TTL_MINUTES } from "../auth/password-reset-token.js";
@@ -258,6 +260,9 @@ export function createMembersRoutes(db: Database) {
         // 入社日(2026-08-22 追加)。法定付与の計算に使う(routes/leave.ts の
         // POST /leave/grants/auto)。null = 未設定 → 法定付与ができない(画面側で警告表示)。
         hireDate: u.hireDate,
+        // 有給付与の区分(2026-08-24 追加、労基法39条3項の比例付与)。想定外の値は "full"
+        // に倒す(少なく付与する方向へ倒さない — packages/leave/src/statutory.ts の判断点)。
+        leaveGrantClass: isLeaveGrantClass(u.leaveGrantClass) ? u.leaveGrantClass : "full",
         department: departmentByUser.get(u.id) ?? null,
         presetNames: presetNamesByUser.get(u.id) ?? [],
         // 招待式登録(2026-08-23 追加)の状態。値の意味は inviteStatusFor() 参照。
@@ -793,9 +798,10 @@ export function createMembersRoutes(db: Database) {
 
     const body = await parseJsonBody(c);
     if (body === null) return c.json({ error: "invalid_body" }, 400);
-    // 対応フィールド: departmentId(所属変更、v0.2) / hireDate(入社日、2026-08-22 追加)。
-    // どちらも省略可能な PATCH(部分更新)だが、両方省略は無効なリクエストとして拒否する。
-    if (body.departmentId === undefined && body.hireDate === undefined) {
+    // 対応フィールド: departmentId(所属変更、v0.2) / hireDate(入社日、2026-08-22 追加) /
+    // leaveGrantClass(有給付与の区分=比例付与、2026-08-24 追加)。
+    // いずれも省略可能な PATCH(部分更新)だが、全部省略は無効なリクエストとして拒否する。
+    if (body.departmentId === undefined && body.hireDate === undefined && body.leaveGrantClass === undefined) {
       return c.json({ error: "invalid_body" }, 400);
     }
 
@@ -820,12 +826,25 @@ export function createMembersRoutes(db: Database) {
       }
     }
 
+    // 有給付与の区分(労基法39条3項・労基法施行規則24条の3)。null は許さない — 「未設定」は
+    // 存在せず、比例付与に該当しない人は明示的に "full" である(DB の DEFAULT も 'full')。
+    let leaveGrantClass: LeaveGrantClass | undefined;
+    if (body.leaveGrantClass !== undefined) {
+      if (!isLeaveGrantClass(body.leaveGrantClass)) {
+        return c.json({ error: "invalid_leave_grant_class" }, 400);
+      }
+      leaveGrantClass = body.leaveGrantClass;
+    }
+
     const now = nowMinutes();
     if (departmentId !== undefined) {
       await upsertMembership(db, { tenantId: user.tenantId, userId: target.id, departmentId, createdAt: now });
     }
     if (hireDate !== undefined) {
       await updateUserHireDate(db, { tenantId: user.tenantId, userId: target.id, hireDate });
+    }
+    if (leaveGrantClass !== undefined) {
+      await updateUserLeaveGrantClass(db, { tenantId: user.tenantId, userId: target.id, leaveGrantClass });
     }
 
     await insertAuditLog(db, {
@@ -834,7 +853,13 @@ export function createMembersRoutes(db: Database) {
       action: "member.update",
       targetType: "user",
       targetId: target.id,
-      detail: JSON.stringify({ ...(departmentId !== undefined ? { departmentId } : {}), ...(hireDate !== undefined ? { hireDate } : {}) }),
+      detail: JSON.stringify({
+        ...(departmentId !== undefined ? { departmentId } : {}),
+        ...(hireDate !== undefined ? { hireDate } : {}),
+        // 付与区分の変更は付与日数に直結するため、変更前後の両方を残す(監査で「いつ誰が
+        // 比例付与へ落としたか」を日数の根拠として追えるようにする)。
+        ...(leaveGrantClass !== undefined ? { leaveGrantClassFrom: target.leaveGrantClass, leaveGrantClass } : {}),
+      }),
       occurredAt: now,
     });
 
@@ -843,6 +868,7 @@ export function createMembersRoutes(db: Database) {
         id: target.id,
         ...(departmentId !== undefined ? { departmentId } : {}),
         ...(hireDate !== undefined ? { hireDate } : {}),
+        ...(leaveGrantClass !== undefined ? { leaveGrantClass } : {}),
       },
     });
   });

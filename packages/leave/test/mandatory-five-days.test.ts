@@ -88,6 +88,21 @@ describe("checkMandatoryFiveDays", () => {
     expect(statuses[0]?.taken).toBe(0);
   });
 
+  /**
+   * 比例付与(2026-08-24 追加)との境界。年5日取得義務は「その付与が10日以上か」だけで決まり
+   * (労基法39条7項)、比例付与かどうかは条件ではない。週4日区分の 3年6ヶ月 は10日なので対象、
+   * 2年6ヶ月 は9日なので対象外 — この判定は grants[].days に対して行われている必要がある。
+   */
+  it("proportional grants are judged by days alone: days4 at 3年6ヶ月 (10日) is subject, at 2年6ヶ月 (9日) is not", () => {
+    const days4At30Months: LeaveGrantInput = { id: "g-9", leaveType: "annual", grantedOn: "2024-04-01", days: 9, expiresOn: "2026-04-01" };
+    const days4At42Months: LeaveGrantInput = { id: "g-10", leaveType: "annual", grantedOn: "2025-04-01", days: 10, expiresOn: "2027-04-01" };
+
+    const statuses = checkMandatoryFiveDays([days4At30Months, days4At42Months], [], "2025-06-01");
+    expect(statuses.map((s) => s.grantId)).toEqual(["g-10"]);
+    expect(statuses[0]?.required).toBe(5);
+    expect(statuses[0]?.shortage).toBe(5);
+  });
+
   it("right before the deadline: shortage reflects the exact remaining gap", () => {
     const usages: LeaveUsageInput[] = [
       { id: "u1", date: "2024-04-01", unit: "full_day", minutes: 480, leaveType: "annual" },

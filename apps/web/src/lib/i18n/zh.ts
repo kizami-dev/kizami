@@ -1620,6 +1620,22 @@ export const zh = {
     hireDateUnset: "未设置",
     hireDateWarning: "由于未设置入职日期,无法计算带薪年假的法定授予天数",
 
+    leaveGrantClassTitle: "年假授予区分",
+    leaveGrantClassHint:
+      "仅当每周约定工作时间不足30小时且每周约定工作日数在4日以下时,才选择比例授予(每周4日以下)(日本劳基法39条3项)。",
+    leaveGrantClassLabel: "选择年假授予区分",
+    leaveGrantClassOption: {
+      full: "普通(每周5日以上)",
+      days4: "每周4日",
+      days3: "每周3日",
+      days2: "每周2日",
+      days1: "每周1日",
+    },
+    leaveGrantClassSave: "保存区分",
+    leaveGrantClassSaving: "保存中…",
+    leaveGrantClassSaved: "已保存年假授予区分",
+    leaveGrantClassNote: "变更将从之后的自动授予·授予预告开始生效(已授予的天数不会改变)。",
+
     presetAssignTitle: "要分配的预设",
     presetAssignHint: "更改勾选后,下方「可执行的操作」会立即反映变化。保存之前实际分配不会改变。",
     presetAssignSave: "保存分配",
@@ -1641,6 +1657,7 @@ export const zh = {
       invalid_name: "姓名请输入1〜200个字符",
       invalid_department_id: "未找到指定的部门",
       invalid_hire_date: "入职日期请使用YYYY-MM-DD格式输入",
+      invalid_leave_grant_class: "年假授予区分的指定不正确",
       email_already_exists: "该邮箱地址已被注册",
       not_found: "未找到目标成员",
       invalid_preset_id: "未找到指定的权限预设",
@@ -1980,6 +1997,7 @@ export const zh = {
     /** 应出勤日为0、无法计算出勤率时显示。表示「未知」,而非0%。 */
     rateUnknown: "—",
     rateBelowThreshold: "可能不足八成 — 请确认",
+    proportionalChip: (weekDaysLabel: string) => `比例授予(${weekDaysLabel})`,
 
     approve: "批准",
     reject: "驳回",

@@ -493,6 +493,13 @@ export type InviteStatus = "active" | "invited" | "invite_expired";
  */
 export type WorkSystemKind = "flex" | "fixed" | "monthly_variable";
 
+/**
+ * 年次有給休暇の付与区分(2026-08-24 追加、労基法39条3項・労基法施行規則24条の3)。
+ * "full" = 通常(週5日以上)、それ以外は比例付与(週所定労働日数4/3/2/1日)。
+ * @kizami/leave の LeaveGrantClass と一致させる。
+ */
+export type LeaveGrantClass = "full" | "days4" | "days3" | "days2" | "days1";
+
 /** メンバー(apps/api/src/routes/members.ts の GET / のレスポンス要素と一致)。 */
 export interface MemberDto {
   id: string;
@@ -501,6 +508,8 @@ export interface MemberDto {
   isActive: boolean;
   /** 入社日 "YYYY-MM-DD"。null = 未設定(法定付与の自動計算ができない)。 */
   hireDate: string | null;
+  /** 有給付与の区分(比例付与、2026-08-24 追加)。既定 "full"。 */
+  leaveGrantClass: LeaveGrantClass;
   department: { id: string; name: string } | null;
   presetNames: string[];
   inviteStatus: InviteStatus;
@@ -1009,6 +1018,11 @@ export interface LeaveGrantProposalDto {
   userId: string;
   /** 退職者などで解決できない場合 null(呼び出し側は userId を代わりに出す)。 */
   userName: string | null;
+  /**
+   * 対象者の現在の有給付与区分(2026-08-24 追加)。"full" 以外なら比例付与であり、
+   * days がフルタイムの表と異なる理由を管理者に示すために使う。解決できない場合 null。
+   */
+  leaveGrantClass: LeaveGrantClass | null;
   leaveType: LeaveType;
   grantedOn: string;
   days: number;
@@ -1527,6 +1541,17 @@ export const api = {
   /** PATCH /members/:id { hireDate }(member.profile.edit)。null で未設定に戻せる。 */
   async updateMemberHireDate(id: string, hireDate: string | null): Promise<{ member: { id: string; hireDate: string | null } }> {
     return request(`/members/${id}`, { method: "PATCH", body: JSON.stringify({ hireDate }) });
+  },
+
+  /**
+   * PATCH /members/:id { leaveGrantClass }(member.profile.edit)。
+   * 比例付与の区分(労基法39条3項)。hireDate と違い null は無い(該当しない人は "full")。
+   */
+  async updateMemberLeaveGrantClass(
+    id: string,
+    leaveGrantClass: LeaveGrantClass,
+  ): Promise<{ member: { id: string; leaveGrantClass: LeaveGrantClass } }> {
+    return request(`/members/${id}`, { method: "PATCH", body: JSON.stringify({ leaveGrantClass }) });
   },
 
   async assignMemberPresets(id: string, presetIds: string[]): Promise<{ presetIds: string[] }> {

@@ -22,6 +22,19 @@ export const users = sqliteTable(
     isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
     /** 入社日。ローカル日付 "YYYY-MM-DD"。法定有給付与の計算に使う。null = 未設定(有給自動付与不可) */
     hireDate: text("hire_date"),
+    /**
+     * 年次有給休暇の付与区分(2026-08-24 追加、労基法39条3項・労基法施行規則24条の3)。
+     * "full"(通常=週5日以上)| "days4" | "days3" | "days2" | "days1"(比例付与)。
+     *
+     * 判断点: 週所定労働日数・週所定労働時間を保存して導出するのではなく、**就業規則ベースの
+     * 区分そのもの**を明示的に持つ。比例付与の要件は「週所定労働時間30時間未満」かつ
+     * 「週所定労働日数4日以下」という連言で、これは雇用契約を結んだ管理者が既に知っている
+     * 事実である一方、KIZAMI 側には週所定を表すデータが無い(シフト制では実績が週ごとに
+     * 変動し、実績から推定すると閑散期に区分が下がる)。黙って導出して外すと**法定より
+     * 少ない日数しか付与しない**方向の事故=労基法39条違反になるため、導出はしない。
+     * 既定は最も日数の多い "full"。
+     */
+    leaveGrantClass: text("leave_grant_class").notNull().default("full"),
     createdAt: integer("created_at").notNull(),
   },
   (table) => [uniqueIndex("users_tenant_email_idx").on(table.tenantId, table.email)],

@@ -767,7 +767,20 @@ export function LeaveSettingsView() {
                             <td>{p.userName ?? p.userId}</td>
                             <td>{proposalLeaveTypeLabel(p.leaveType)}</td>
                             <td className="tabular-nums">{p.grantedOn}</td>
-                            <td className="tabular-nums">{p.days}</td>
+                            <td className="tabular-nums">
+                              <div className="leave-proposal-days">
+                                <span className="tabular-nums">{p.days}</span>
+                                {/* 比例付与(労基法39条3項)のときだけ区分を出す。フルタイムの表と日数が
+                                    違う理由をその場で読み取れるようにするため(2026-08-24 追加)。 */}
+                                {p.leaveGrantClass !== null && p.leaveGrantClass !== "full" ? (
+                                  <span className="chip">
+                                    {messages.leaveGrantProposals.proportionalChip(
+                                      messages.members.leaveGrantClassOption[p.leaveGrantClass],
+                                    )}
+                                  </span>
+                                ) : null}
+                              </div>
+                            </td>
                             <td>
                               <div className="leave-proposal-rate">
                                 <span className="tabular-nums">{formatAttendanceRate(rate)}</span>

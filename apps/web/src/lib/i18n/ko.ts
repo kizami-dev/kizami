@@ -1635,6 +1635,22 @@ export const ko = {
     hireDateUnset: "미설정",
     hireDateWarning: "입사일이 설정되지 않아 법정 부여(연차유급휴가)를 계산할 수 없습니다",
 
+    leaveGrantClassTitle: "연차 부여 구분",
+    leaveGrantClassHint:
+      "주 소정근로시간 30시간 미만이면서 주 소정근로일수가 4일 이하인 경우에만 비례부여(주 4일 이하)를 선택합니다(일본 노동기준법 39조 3항).",
+    leaveGrantClassLabel: "연차 부여 구분 선택",
+    leaveGrantClassOption: {
+      full: "일반(주 5일 이상)",
+      days4: "주 4일",
+      days3: "주 3일",
+      days2: "주 2일",
+      days1: "주 1일",
+    },
+    leaveGrantClassSave: "구분 저장",
+    leaveGrantClassSaving: "저장 중…",
+    leaveGrantClassSaved: "연차 부여 구분을 저장했습니다",
+    leaveGrantClassNote: "변경은 이후의 자동 부여·부여 예고부터 반영됩니다(이미 부여된 일수는 변하지 않습니다).",
+
     presetAssignTitle: "할당할 프리셋",
     presetAssignHint: "체크를 변경하면 아래 「가능한 작업」에 바로 반영됩니다. 저장하기 전까지는 실제 할당이 바뀌지 않습니다.",
     presetAssignSave: "할당 저장",
@@ -1658,6 +1674,7 @@ export const ko = {
       invalid_name: "이름을 1~200자로 입력해 주세요",
       invalid_department_id: "지정한 부서를 찾을 수 없습니다",
       invalid_hire_date: "입사일은 YYYY-MM-DD 형식으로 입력해 주세요",
+      invalid_leave_grant_class: "연차 부여 구분 지정이 올바르지 않습니다",
       email_already_exists: "이 이메일 주소는 이미 등록되어 있습니다",
       not_found: "대상 멤버를 찾을 수 없습니다",
       invalid_preset_id: "지정한 권한 프리셋을 찾을 수 없습니다",
@@ -1997,6 +2014,7 @@ export const ko = {
     /** 전체 소정근로일이 0이라 출근율을 낼 수 없을 때. 0%가 아니라 「알 수 없음」을 뜻한다. */
     rateUnknown: "—",
     rateBelowThreshold: "8할 미만일 가능성 — 확인해 주세요",
+    proportionalChip: (weekDaysLabel: string) => `비례부여(${weekDaysLabel})`,
 
     approve: "승인",
     reject: "반려",

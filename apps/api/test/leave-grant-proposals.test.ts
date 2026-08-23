@@ -43,6 +43,7 @@ interface ProposalJson {
   id: string;
   userId: string;
   userName: string | null;
+  leaveGrantClass: string | null;
   leaveType: string;
   grantedOn: string;
   days: number;
@@ -62,6 +63,11 @@ interface ProposalJson {
 
 async function setHireDate(db: Database, userId: string, hireDate: string): Promise<void> {
   await db.update(users).set({ hireDate }).where(eq(users.id, userId));
+}
+
+/** 比例付与の区分(users.leave_grant_class、労基法39条3項)を直接書き換える。 */
+async function setLeaveGrantClass(db: Database, userId: string, leaveGrantClass: string): Promise<void> {
+  await db.update(users).set({ leaveGrantClass }).where(eq(users.id, userId));
 }
 
 /** 有給設定(付与方式)を保存する。POST /settings/leave は leave.grant.manage が要るので API 経由で。 */
@@ -128,6 +134,38 @@ describe("runLeaveGrantProposalScan", () => {
     expect(memberNotifications.filter((n) => n.type === "leave_grant_proposed")).toHaveLength(0);
     // テナント共有 Webhook 未設定なので外部送信は起きない。
     expect(hits).toHaveLength(0);
+  });
+
+  /**
+   * 比例付与(2026-08-24 追加)。予告の日数も区分に従う — 予告と実際の付与で日数が食い違うと
+   * 承認画面の意味が無くなるため、スキャンも calculateStatutoryGrants に区分を渡す。
+   */
+  it("比例付与の区分が設定されたメンバーは、予告の日数も比例付与の表に従う", async () => {
+    const { db, tenantId, userId, email, password } = await setupTestDb();
+    await grantPermission(db, { tenantId, userId, permission: GRANT_MANAGE_PERMISSION, scope: "tenant" });
+    const app = createApp({ db });
+    const cookie = await loginAndGetCookie(app, email, password);
+    await configureLeaveSettings(app, cookie);
+
+    const member = await setupSecondUser(db, tenantId);
+    await setHireDate(db, member.userId, HIRE_DATE);
+    await setLeaveGrantClass(db, member.userId, "days4");
+
+    const { fetchImpl } = makeFetchSpy();
+    const result = await runLeaveGrantProposalScan(db, { nowMinutes: FIXED_NOW_MINUTES, notifyDeps: { fetchImpl } });
+
+    expect(result.created).toHaveLength(1);
+    expect(result.created[0]?.proposal.grantedOn).toBe(EXPECTED_GRANTED_ON);
+    // 週4日区分の初回(6ヶ月)は7日。フルタイムなら10日。
+    expect(result.created[0]?.proposal.days).toBe(7);
+
+    // 一覧 API は表示用に「現在の区分」を返す(なぜ日数が違うのかを管理者に示すため)。
+    const listRes = await app.request("/leave/grant-proposals?status=proposed", { headers: { cookie } });
+    expect(listRes.status).toBe(200);
+    const listed = ((await listRes.json()) as { proposals: ProposalJson[] }).proposals;
+    expect(listed).toHaveLength(1);
+    expect(listed[0]?.leaveGrantClass).toBe("days4");
+    expect(listed[0]?.days).toBe(7);
   });
 
   it("テナント共有 Webhook が設定されていれば件数だけを1件通知する(個人の詳細は書かない)", async () => {

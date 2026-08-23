@@ -6,6 +6,11 @@
  * 書き出す。docs/api/(typedoc生成物)と同じ扱いで、docs/guide/ は生成物なので .gitignore に
  * 含め、コミットはしない(単一ソースは content/ 側)。
  *
+ * 日本語のみ書き出す(2026-08-24 時点)。content/ には en/ko/zh の訳文もあるが、VitePress
+ * サイト自体が多言語化されていない(ロケール別ルート・言語切替UIが無い)ため、ここで訳文の
+ * ページを出しても到達手段が無く、サイドバー生成(docs/.vitepress/config.ts)も日本語前提。
+ * アプリ内ヘルプ(HelpTip)は訳文を使う — そちらは apps/web/src/lib/help.ts が解決する。
+ *
  * 各ページの先頭に出所バッジ(法令 or KIZAMIの仕様。法令は根拠条文つき)を1行差し込む。
  * ここで使う HELP のエントリ抽出ロジックは packages/help-content/scripts/generate.mjs の
  * collectEntries を再利用し、frontmatterパーサを二重に持たない。

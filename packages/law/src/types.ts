@@ -67,7 +67,7 @@ export interface LawRules {
     /** 月45時間超が許される回数、年6回まで */
     specialMonthlyExceedCountLimit: number;
   };
-  /** 有給の法定付与(週所定5日/フルタイム前提。比例付与はスコープ外) */
+  /** 有給の法定付与(週所定5日/フルタイムの表。比例付与の日数表は @kizami/leave が持つ) */
   annualLeave: {
     /** 勤続月数 → 付与日数。昇順。例 [{months:6,days:10}, {months:18,days:11}, ...] */
     grantTable: Array<{ months: number; days: number }>;

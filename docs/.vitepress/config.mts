@@ -189,6 +189,7 @@ export default defineConfig({
           { text: "休憩の扱い", link: "/design/breaks" },
           { text: "手当対象時間の算出", link: "/design/allowances" },
           { text: "シフト制と変形労働", link: "/design/shift-work" },
+          { text: "年次有給休暇の比例付与", link: "/design/leave-proportional-grant" },
           { text: "権限カタログ", link: "/design/permission-catalog" },
         ],
       },

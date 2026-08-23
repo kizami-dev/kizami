@@ -1,0 +1,1 @@
+ALTER TABLE `users` ADD `leave_grant_class` text DEFAULT 'full' NOT NULL;

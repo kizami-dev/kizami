@@ -27,6 +27,7 @@ function buildProposals(): LeaveGrantProposalDto[] {
       id: "p-normal",
       userId: "u-1",
       userName: "山田 太郎",
+      leaveGrantClass: "full",
       leaveType: "annual",
       grantedOn: "2026-09-15",
       days: 11,
@@ -52,6 +53,7 @@ function buildProposals(): LeaveGrantProposalDto[] {
       id: "p-below",
       userId: "u-2",
       userName: "鈴木 愛",
+      leaveGrantClass: "full",
       leaveType: "annual",
       grantedOn: "2026-10-01",
       days: 14,
@@ -77,6 +79,7 @@ function buildProposals(): LeaveGrantProposalDto[] {
       id: "p-unknown",
       userId: "u-3",
       userName: null,
+      leaveGrantClass: "full",
       leaveType: "stocked",
       grantedOn: "2026-11-01",
       days: 3,
@@ -88,6 +91,32 @@ function buildProposals(): LeaveGrantProposalDto[] {
         attendedDays: 0,
         rate: null,
         basis: "calendar_estimate",
+      },
+      status: "proposed",
+      proposedAt,
+      decidedBy: null,
+      decidedAt: null,
+      decisionNote: null,
+      grantId: null,
+      createdAt: proposedAt,
+    },
+    {
+      // 比例付与(週3日)の行。日数がフルタイムの表と違う理由を区分チップで示す。
+      id: "p-proportional",
+      userId: "u-4",
+      userName: "高橋 みどり",
+      leaveGrantClass: "days3",
+      leaveType: "annual",
+      grantedOn: "2026-12-01",
+      days: 6,
+      expiresOn: "2028-12-01",
+      attendanceRate: {
+        periodFrom: "2025-12-01",
+        periodTo: "2026-11-30",
+        workingDays: 150,
+        attendedDays: 144,
+        rate: 144 / 150,
+        basis: "shift",
       },
       status: "proposed",
       proposedAt,
@@ -130,7 +159,16 @@ function ProposalTable({ proposals }: { proposals: LeaveGrantProposalDto[] }) {
                     : messages.leaveGrantProposals.leaveTypeStocked}
                 </td>
                 <td className="tabular-nums">{p.grantedOn}</td>
-                <td className="tabular-nums">{p.days}</td>
+                <td className="tabular-nums">
+                  <div className="leave-proposal-days">
+                    <span className="tabular-nums">{p.days}</span>
+                    {p.leaveGrantClass !== null && p.leaveGrantClass !== "full" ? (
+                      <span className="chip">
+                        {messages.leaveGrantProposals.proportionalChip(messages.members.leaveGrantClassOption[p.leaveGrantClass])}
+                      </span>
+                    ) : null}
+                  </div>
+                </td>
                 <td>
                   <div className="leave-proposal-rate">
                     <span className="tabular-nums">{formatAttendanceRate(rate)}</span>
@@ -172,7 +210,7 @@ function LeaveGrantProposalPatterns() {
         <h1 className="story-section__title">Patterns / Leave grant proposals</h1>
         <p className="story-section__lead">
           有給付与の「予告」一覧(/settings/leave)。通常行・8割未満の可能性がある行(注意チップ)・
-          出勤率が出せない行(「—」)・空状態・決裁済みの履歴。
+          出勤率が出せない行(「—」)・比例付与の行(区分チップ)・空状態・決裁済みの履歴。
         </p>
       </div>
 

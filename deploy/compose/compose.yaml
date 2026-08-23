@@ -1,0 +1,81 @@
+# KIZAMI をワンコマンドで動かす配布用 Compose(小規模セルフホスト向けの参考構成)。
+#
+#   cp .env.example .env   # KIZAMI_ENCRYPTION_KEY と初期管理者を設定
+#   docker compose up -d
+#   docker compose run --rm seed   # 初回のみ: 初期管理者を作成(冪等)
+#   → http://localhost:8080
+#
+# 構成のポイント:
+# - web の本番ビルドは同一オリジンの /api/* を叩く前提(docker/web.Dockerfile の
+#   WAKU_PUBLIC_API_URL=/api 焼き込み)のため、前段の Caddy が / → web、/api/* → api に
+#   振り分ける。API を別オリジンにしたい場合は web イメージの再ビルドが必要。
+# - DB は SQLite ファイル(named volume)。バックアップは `sqlite3 ... ".backup"` の整合コピーを
+#   推奨(WAL があるため生 cp は不可)。k8s 構成や運用の詳細は ../k8s/README.md を参照。
+# - worker は api と同じイメージで src/worker.ts を実行(リマインダー・乖離通知・有給予告の
+#   日次スキャン)。キューは Valkey(永続化なし — ジョブは毎日再スケジュールされるため)。
+name: kizami
+services:
+  proxy:
+    image: caddy:2-alpine
+    ports:
+      - "${KIZAMI_HTTP_PORT:-8080}:8080"
+    configs:
+      - source: caddyfile
+        target: /etc/caddy/Caddyfile
+    depends_on: [web, api]
+    restart: unless-stopped
+  web:
+    image: ghcr.io/sasagar/kizami-web:${KIZAMI_TAG:-latest}
+    restart: unless-stopped
+  api:
+    image: ghcr.io/sasagar/kizami-api:${KIZAMI_TAG:-latest}
+    environment:
+      DATABASE_URL: file:/data/kizami.db
+      KIZAMI_ENCRYPTION_KEY: ${KIZAMI_ENCRYPTION_KEY:?openssl rand -base64 32 で生成して .env に設定してください}
+    volumes:
+      - data:/data
+    restart: unless-stopped
+  worker:
+    image: ghcr.io/sasagar/kizami-api:${KIZAMI_TAG:-latest}
+    command: ["node_modules/.bin/tsx", "src/worker.ts"]
+    environment:
+      DATABASE_URL: file:/data/kizami.db
+      REDIS_URL: redis://valkey:6379
+      KIZAMI_ENCRYPTION_KEY: ${KIZAMI_ENCRYPTION_KEY:?openssl rand -base64 32 で生成して .env に設定してください}
+      # Slack/Discord 互換 Webhook(テナント共有の管理者向け通知)。未設定なら Webhook 送信はスキップされる。
+      WEBHOOK_URL: ${KIZAMI_WEBHOOK_URL:-}
+    volumes:
+      - data:/data
+    depends_on: [valkey, api]
+    restart: unless-stopped
+  valkey:
+    image: valkey/valkey:8-alpine
+    command: ["--save", "", "--appendonly", "no"]
+    restart: unless-stopped
+  # 初回セットアップ専用(docker compose run --rm seed)。SEED_EMAIL のユーザーが既に居れば
+  # 何もしない冪等実装なので、誤って再実行しても安全。権限カタログに項目が増えた
+  # バージョンアップ後に再実行すると、システムプリセットへ新権限が追加同期される。
+  seed:
+    image: ghcr.io/sasagar/kizami-api:${KIZAMI_TAG:-latest}
+    profiles: [setup]
+    command: ["node_modules/.bin/tsx", "src/seed.ts"]
+    environment:
+      DATABASE_URL: file:/data/kizami.db
+      SEED_EMAIL: ${KIZAMI_SEED_EMAIL:?初期管理者のメールアドレスを .env に設定してください}
+      SEED_PASSWORD: ${KIZAMI_SEED_PASSWORD:?初期管理者のパスワードを .env に設定してください}
+      SEED_TENANT_NAME: ${KIZAMI_SEED_TENANT_NAME:-}
+    volumes:
+      - data:/data
+configs:
+  caddyfile:
+    content: |
+      :8080 {
+        handle /api/* {
+          reverse_proxy api:3001
+        }
+        handle {
+          reverse_proxy web:3000
+        }
+      }
+volumes:
+  data:

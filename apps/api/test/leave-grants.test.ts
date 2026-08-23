@@ -10,6 +10,29 @@ async function setHireDate(db: Database, userId: string, hireDate: string): Prom
   await db.update(users).set({ hireDate }).where(eq(users.id, userId));
 }
 
+/** 比例付与の区分(users.leave_grant_class)を直接書き換える。API 経由の検証は members.test.ts が持つ。 */
+async function setLeaveGrantClass(db: Database, userId: string, leaveGrantClass: string): Promise<void> {
+  await db.update(users).set({ leaveGrantClass }).where(eq(users.id, userId));
+}
+
+/** テナントの有給設定を法定(入社日基準)で保存する。 */
+async function configureStatutoryLeaveSettings(app: ReturnType<typeof createApp>, cookie: string): Promise<void> {
+  const res = await app.request("/settings/leave", {
+    method: "PUT",
+    headers: { "content-type": "application/json", cookie },
+    body: JSON.stringify({
+      grantMethod: "statutory",
+      hourlyLeaveEnabled: false,
+      hourlyLeaveMaxDays: 5,
+      halfDayLeaveEnabled: true,
+      stockConversionEnabled: false,
+      stockMaxDays: 40,
+      stockExpiresMonths: null,
+    }),
+  });
+  if (res.status !== 200) throw new Error(`configureStatutoryLeaveSettings failed: ${res.status}`);
+}
+
 async function auditActionsFor(db: Database, tenantId: string): Promise<string[]> {
   const rows = await db.select().from(auditLogs).where(eq(auditLogs.tenantId, tenantId));
   return rows.map((r) => r.action);
@@ -128,6 +151,60 @@ describe("leave grants API", () => {
     const secondBody = (await secondRes.json()) as { created: LeaveGrantJson[]; skipped: number };
     expect(secondBody.created).toHaveLength(0);
     expect(secondBody.skipped).toBe(7);
+  });
+
+  /**
+   * 比例付与(労基法39条3項・労基法施行規則24条の3、2026-08-24 追加)。
+   * users.leave_grant_class が "days3" の人には週3日の表(5,6,6,8,9,10,11)が適用される。
+   */
+  it("POST /leave/grants/auto applies the proportional table when the user's leave_grant_class is not 'full'", async () => {
+    const { db, tenantId, userId, email, password } = await setupTestDb();
+    await grantPermission(db, { tenantId, userId, permission: "leave.grant.manage", scope: "tenant" });
+    await setHireDate(db, userId, "2020-01-01");
+    await setLeaveGrantClass(db, userId, "days3");
+
+    const app = createApp({ db });
+    const cookie = await loginAndGetCookie(app, email, password);
+    await configureStatutoryLeaveSettings(app, cookie);
+
+    const res = await app.request("/leave/grants/auto", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ userId }),
+    });
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as { created: LeaveGrantJson[] };
+    // 同じ基準日・同じ時効で、日数だけが週3日の表になる(フルタイムなら 10,11,12,14,16,18,20)
+    expect(body.created.map((g) => g.days)).toEqual([5, 6, 6, 8, 9, 10, 11]);
+    expect(body.created.map((g) => g.grantedOn)).toEqual([
+      "2020-07-01",
+      "2021-07-01",
+      "2022-07-01",
+      "2023-07-01",
+      "2024-07-01",
+      "2025-07-01",
+      "2026-07-01",
+    ]);
+  });
+
+  it("POST /leave/grants/auto falls back to the full table when leave_grant_class holds an unexpected value", async () => {
+    // 少なく付与する方向へ倒さない(packages/leave/src/statutory.ts の判断点)。
+    const { db, tenantId, userId, email, password } = await setupTestDb();
+    await grantPermission(db, { tenantId, userId, permission: "leave.grant.manage", scope: "tenant" });
+    await setHireDate(db, userId, "2020-01-01");
+    await setLeaveGrantClass(db, userId, "days9");
+
+    const app = createApp({ db });
+    const cookie = await loginAndGetCookie(app, email, password);
+    await configureStatutoryLeaveSettings(app, cookie);
+
+    const res = await app.request("/leave/grants/auto", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ userId }),
+    });
+    const body = (await res.json()) as { created: LeaveGrantJson[] };
+    expect(body.created.map((g) => g.days)).toEqual([10, 11, 12, 14, 16, 18, 20]);
   });
 
   it("scope is enforced: an actor with department_and_descendants scope but no department membership can only target themself (403 on others)", async () => {

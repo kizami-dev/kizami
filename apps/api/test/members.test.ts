@@ -196,6 +196,72 @@ describe("members API", () => {
     expect(await res.json()).toEqual({ member: { id: userId, hireDate: null } });
   });
 
+  /**
+   * 有給付与の区分(比例付与、労基法39条3項・労基法施行規則24条の3、2026-08-24 追加)。
+   * hireDate と同じ member.profile.edit で編集し、監査ログに変更前後を残す。
+   */
+  it("GET returns leaveGrantClass 'full' by default and PATCH updates it with an audit entry", async () => {
+    const { db, tenantId, userId, email, password } = await setupTestDb();
+    await grantPermission(db, { tenantId, userId, permission: "member.profile.edit", scope: "department" });
+    await grantPermission(db, { tenantId, userId, permission: "member.view", scope: "tenant" });
+    await grantPermission(db, { tenantId, userId, permission: "audit_log.view", scope: "tenant" });
+    const app = createApp({ db });
+    const cookie = await loginAndGetCookie(app, email, password);
+
+    const before = await app.request("/members", { headers: { cookie } });
+    const beforeBody = (await before.json()) as { members: { id: string; leaveGrantClass: string }[] };
+    expect(beforeBody.members.find((m) => m.id === userId)?.leaveGrantClass).toBe("full");
+
+    const patchRes = await app.request(`/members/${userId}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ leaveGrantClass: "days4" }),
+    });
+    expect(patchRes.status).toBe(200);
+    expect(await patchRes.json()).toEqual({ member: { id: userId, leaveGrantClass: "days4" } });
+
+    const after = await app.request("/members", { headers: { cookie } });
+    const afterBody = (await after.json()) as { members: { id: string; leaveGrantClass: string }[] };
+    expect(afterBody.members.find((m) => m.id === userId)?.leaveGrantClass).toBe("days4");
+
+    expect(await auditActionsFor(db, tenantId)).toContain("member.update");
+    // 監査ログには変更前後の両方を残す(日数の根拠を後から追えるようにするため)。
+    const details = (await db.select().from(auditLogs).where(eq(auditLogs.tenantId, tenantId)))
+      .filter((r) => r.action === "member.update")
+      .map((r) => JSON.parse(r.afterDigest ?? "{}") as Record<string, unknown>);
+    expect(details.some((d) => d.leaveGrantClass === "days4" && d.leaveGrantClassFrom === "full")).toBe(true);
+  });
+
+  it("PATCH rejects an unknown leaveGrantClass with 400 invalid_leave_grant_class", async () => {
+    const { db, tenantId, userId, email, password } = await setupTestDb();
+    await grantPermission(db, { tenantId, userId, permission: "member.profile.edit", scope: "department" });
+    const app = createApp({ db });
+    const cookie = await loginAndGetCookie(app, email, password);
+
+    for (const value of ["days5", "", null, 4]) {
+      const res = await app.request(`/members/${userId}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json", cookie },
+        body: JSON.stringify({ leaveGrantClass: value }),
+      });
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error: "invalid_leave_grant_class" });
+    }
+  });
+
+  it("PATCH requires member.profile.edit for leaveGrantClass too (403 without it)", async () => {
+    const { db, userId, email, password } = await setupTestDb();
+    const app = createApp({ db });
+    const cookie = await loginAndGetCookie(app, email, password);
+
+    const res = await app.request(`/members/${userId}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ leaveGrantClass: "days3" }),
+    });
+    expect(res.status).toBe(403);
+  });
+
   it("hireDate enables the statutory leave auto-grant that otherwise fails with hire_date_not_set", async () => {
     const { db, tenantId, userId, email, password } = await setupTestDb();
     await grantPermission(db, { tenantId, userId, permission: "member.profile.edit", scope: "department" });
@@ -260,6 +326,8 @@ describe("members API", () => {
       email: second.email,
       isActive: true,
       hireDate: null,
+      // 有給付与の区分(2026-08-24 追加)。DB の DEFAULT が 'full'。
+      leaveGrantClass: "full",
       department: null,
       presetNames: [],
       // setupSecondUser は auth_credentials も作るため受諾済み(active)扱いになる

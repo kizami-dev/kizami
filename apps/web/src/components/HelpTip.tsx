@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { HelpKey } from "../lib/help";
-import { helpDocHref, helpEntry } from "../lib/help";
+import { helpDocHref, helpEntry, helpNotice } from "../lib/help";
 import { messages } from "../lib/messages";
 import { useHelpOverrides } from "../lib/useHelpOverrides";
 
@@ -15,7 +15,7 @@ export interface HelpTipProps {
 /**
  * 出所バッジのラベル(2026-08-23 4言語対応: messages.helpTip から読む関数化。
  * モジュールスコープの定数だと言語切り替え時に更新されないため、呼び出しの都度評価する)。
- * ヘルプ本文自体(@kizami/help-content)は日本語のみで今回のスコープ外。
+ * ヘルプ本文自体(@kizami/help-content)も 2026-08-24 から4言語対応済み(lib/help.ts 参照)。
  */
 function originLabels(): Record<string, string> {
   return {
@@ -52,7 +52,9 @@ const VIEWPORT_MARGIN = 12;
  *   自然だと判断した。
  */
 export function HelpTip({ helpKey, className }: HelpTipProps) {
+  // 現在の UI ロケールのヘルプ本文(訳文が無ければ日本語へフォールバック、lib/help.ts 参照)。
   const entry = helpEntry(helpKey);
+  const translationNotice = helpNotice();
   const ORIGIN_LABEL = originLabels();
   const badgeLabel = entry.origin === "law" && entry.basis ? `${ORIGIN_LABEL.law} · ${entry.basis}` : (ORIGIN_LABEL[entry.origin] ?? entry.origin);
   const { overrides, workRulesUrl } = useHelpOverrides();
@@ -117,6 +119,13 @@ export function HelpTip({ helpKey, className }: HelpTipProps) {
         <a className="help-tip__link" href={helpDocHref(helpKey)} target="_blank" rel="noreferrer">
           {messages.helpTip.detailLink}
         </a>
+        {translationNotice ? <p className="help-tip__notice">{translationNotice}</p> : null}
+        {/*
+          社内規定(help_overrides)は導入企業の管理者が自由記述で入力した文章で、訳文は存在しない。
+          現在のロケールに関わらず、入力されたまま(通常は日本語)表示する — 就業規則の写しや
+          社内の運用ルールという性質上、勝手に言い換えると原文と食い違うおそれがあり、
+          「自社の規定」バッジが指しているのは入力されたその文章そのものだから。
+        */}
         {companyOverride ? (
           <div className="help-tip__company">
             <span className="help-tip__badge help-tip__badge--company">{ORIGIN_LABEL.company}</span>
