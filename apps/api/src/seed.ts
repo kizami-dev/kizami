@@ -104,7 +104,13 @@ async function main(): Promise<void> {
 
   const existing = await db.select().from(users).where(eq(users.email, seedEmail)).limit(1);
   if (existing[0]) {
-    console.log(`user ${seedEmail} already exists, skipping seed`);
+    // 既存環境: 初回シードはスキップするが、同梱(システム)プリセットの権限だけは同期する。
+    // 権限カタログに項目が増えたとき(例: 2026-08-23 の shift.manage)、本番の「管理者」
+    // 「マネージャー」プリセットに新権限を付ける経路がこれしか無い — システムプリセットは
+    // UI から編集できない(固定原則)ため。追加のみで削除はしない(運用側が意図的に外した
+    // 権限を勝手に戻さない。同梱プリセットは編集不可なので実際には差分は常に「カタログ追加分」)。
+    await syncSystemPresetGrants(db, existing[0].tenantId);
+    console.log(`user ${seedEmail} already exists, skipped seed (system preset grants synced)`);
     return;
   }
 
@@ -213,3 +219,32 @@ main().catch((err: unknown) => {
   console.error(err);
   process.exitCode = 1;
 });
+
+
+/**
+ * システムプリセット(isSystem=true、名前で識別)の grants に、コード側の定義
+ * (ADMIN_GRANTS / MANAGER_GRANTS / MEMBER_GRANTS)に存在して DB 側に無いものを追加する。
+ * 既存の grant は一切変更・削除しない(scope の変更もしない)。
+ */
+async function syncSystemPresetGrants(db: Awaited<ReturnType<typeof migrateDb>>["db"], tenantId: string): Promise<void> {
+  const expected: Record<string, Grant[]> = {
+    管理者: ADMIN_GRANTS,
+    マネージャー: MANAGER_GRANTS,
+    メンバー: MEMBER_GRANTS,
+  };
+  const rows = await db.select().from(permissionPresets).where(eq(permissionPresets.tenantId, tenantId));
+  for (const row of rows) {
+    if (!row.isSystem) continue;
+    const target = expected[row.name];
+    if (!target) continue;
+    const current = JSON.parse(row.grants) as Grant[];
+    const have = new Set(current.map((g) => g.key));
+    const missing = target.filter((g) => !have.has(g.key));
+    if (missing.length === 0) continue;
+    await db
+      .update(permissionPresets)
+      .set({ grants: JSON.stringify([...current, ...missing]) })
+      .where(eq(permissionPresets.id, row.id));
+    console.log(`preset ${row.name}: added ${missing.map((g) => g.key).join(", ")}`);
+  }
+}
