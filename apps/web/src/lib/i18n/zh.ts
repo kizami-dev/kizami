@@ -256,6 +256,40 @@ export const zh = {
     },
   },
 
+  /**
+   * 密码重置接受页面(/reset/[token],2026-08-23 Tier 0 第4部分新增,无需认证·公开)。
+   * 参照 inviteAccept 的结构(构成、状态机、文案基调都沿用)。使用管理员发放的重置链接
+   * 设置新密码后会直接进入登录状态(routes/password-resets.ts)。
+   */
+  passwordResetAccept: {
+    tenantUnnamed: "该公司",
+    introSuffix: " 正在重置账户密码",
+    nameLabel: "姓名",
+    emailLabel: "邮箱地址",
+    newPasswordLabel: "新密码(至少12位)",
+    newPasswordConfirmLabel: "确认新密码",
+    passwordMismatch: "两次输入的密码不一致",
+    passwordTooShort: "密码至少需要12位",
+    submit: "重置密码",
+    submitting: "重置中…",
+    loading: "正在确认重置链接…",
+
+    invalidTitle: "此重置链接无效",
+    invalidMessage: "此重置链接无效,请联系管理员确认。",
+    expiredTitle: "此重置链接已过期",
+    expiredMessage: "此重置链接已过期,请联系管理员重新发放。",
+    acceptedRedirecting: "密码已重置,正在跳转…",
+
+    sessionIssuanceFailedTitle: "密码已更新",
+    sessionIssuanceFailedMessage: "密码已更新完成。抱歉给您带来不便,请前往登录页面重新登录。",
+    goToLogin: "前往登录页面",
+
+    errors: {
+      invalid_password: "密码至少需要12位",
+      default: "处理失败,请重试",
+    },
+  },
+
   attendanceState: {
     out: "未上班",
     working: "工作中",
@@ -694,6 +728,8 @@ export const zh = {
       leave_alert: "带薪年假即将失效·年5天强制使用义务提醒",
       /** 修正类申请(如休息自动扣除撤销等)的批准/驳回通知。 */
       correction_alert: "申请的批准/驳回(如休息自动扣除撤销等)",
+      /** 2026-08-23 Tier 0 第4部分新增。面向拥有批准权限的人 — 管辖范围内成员提交申请时的通知。 */
+      approval_request: "审批请求(管辖范围内成员提交申请时。面向拥有批准权限的人)",
     } as Record<string, string>,
 
     emailSectionTitle: "通知邮箱地址",
@@ -1212,12 +1248,26 @@ export const zh = {
     columnPresets: "已分配预设",
     columnHireDate: "入职日期",
     columnInviteStatus: "邀请状态",
+    /** 离职处理(停用,2026-08-23 Tier 0 第4部分新增)的状态徽章列。 */
+    columnStatus: "状态",
+    /** 成员个人劳动时间制度(2026-08-23 Tier 0 第4部分新增)的小型展示列。 */
+    columnWorkSystem: "劳动时间制度",
     columnActions: "操作",
     noDepartment: "未分配",
     noPresets: "未分配",
+    /** workSystemKind 为 null 时(从未分配过)。与 monthly.workSystemValue 保持一致,并新增「未设置」。 */
+    workSystemUnset: "未设置",
 
     detailToggleOpen: "展开详情",
     detailToggleClose: "收起详情",
+
+    /** 已离职处理(停用)成员的状态徽章(2026-08-23 Tier 0 第4部分新增)。 */
+    inactiveBadge: "已停用",
+    /**
+     * 列表筛选(默认仅显示在职成员)。由于此前没有既有的筛选惯例,采用了最简单的
+     * 单个复选框开关。
+     */
+    showInactiveToggle: "同时显示已停用的成员",
 
     /**
      * 邀请制注册。创建成员的同时会一并发放邀请(POST /members)。
@@ -1258,6 +1308,64 @@ export const zh = {
     revokeInviteButton: "撤销",
     revokeInviteConfirmTitle: "确定要撤销邀请吗",
     revokeInviteConfirmMessage: "此邀请链接将失效。如有需要可以稍后重新生成。",
+
+    /**
+     * 管理员发放密码重置(2026-08-23 Tier 0 第4部分新增)。与邀请共用同样的一次性链接展示
+     * (InviteLinkDialog 通过 variant="reset" 复用)。仅面向已接受邀请的成员。
+     */
+    passwordResetButton: "重置密码",
+    passwordResetBadge: "重置发放中",
+    passwordResetRevokeButton: "撤销",
+    passwordResetRevokeConfirmTitle: "确定要撤销密码重置吗",
+    passwordResetRevokeConfirmMessage: "此重置链接将失效。如有需要可以稍后重新发放。",
+
+    resetLinkTitle: "密码重置链接已生成",
+    resetLinkTargetPrefix: "对象: ",
+    resetLinkWarning: "此链接仅在当前显示一次,关闭后将无法再次查看(可以重新发放)。",
+    resetLinkLabel: "重置链接",
+    resetLinkCopy: "复制链接",
+    resetLinkCopied: "已复制",
+    resetLinkCopyFailed: "复制失败,请手动选择并复制",
+    resetLinkExpiresLabel: "有效期限",
+    resetLinkDone: "关闭",
+
+    /**
+     * 离职处理(停用·重新启用,2026-08-23 Tier 0 第4部分新增)。停用的影响较大,因此沿用
+     * 现有危险操作的处理方式(与批准/驳回相同的 ConfirmDialog,平静的语气),在确认文案中
+     * 明确影响(无法登录、当前会话全部失效、待处理的邀请/重置链接失效)。重新启用属于
+     * 恢复性操作(不会新造成破坏),因此不设确认步骤。
+     */
+    deactivateButton: "停用",
+    deactivateConfirmTitle: "确定要停用此成员吗",
+    deactivateConfirmMessage: "停用后将会发生以下情况。",
+    deactivateConfirmImpactLogin: "将无法登录",
+    deactivateConfirmImpactSession: "当前所有登录会话都将失效",
+    deactivateConfirmImpactInviteReset: "待处理的邀请、密码重置链接将失效",
+    reactivateButton: "重新启用",
+    reactivating: "重新启用中…",
+
+    /**
+     * 成员个人劳动时间制度分配(2026-08-23 Tier 0 第4部分新增)。GET/POST
+     * /members/:id/work-policy(tenant_settings.flex.manage,仅限租户全局范围)。没有此权限时
+     * GET 本身也会返回 403,因此整个区块都不显示(参见 MembersView 的判断)。
+     */
+    workPolicyTitle: "劳动时间制度",
+    workPolicyHint: "用于分配月度统计按弹性工作制还是固定工时制计算。变更以追加新分配的形式进行,过去的统计不会改变。",
+    workPolicyCurrentLabel: "当前劳动时间制度",
+    workPolicyCurrentEffectiveFrom: "此分配的生效日期",
+    workPolicyNoneYet: "尚未分配",
+    workPolicyHistoryTitle: "分配历史",
+    workPolicyHistoryEmpty: "暂无历史记录",
+    workPolicyHistoryColumnEffectiveFrom: "生效日期",
+    workPolicyHistoryColumnKind: "制度",
+    workPolicyFormTitle: "变更制度",
+    workPolicyKindLabel: "劳动时间制度",
+    workPolicyEffectiveFromLabel: "生效日期",
+    workPolicyEffectiveFromHint: "此变更仅影响指定日期以后的计算,过去的统计不会改变。",
+    workPolicySubmit: "以此内容变更",
+    workPolicySubmitting: "变更中…",
+    workPolicySubmitSuccess: "劳动时间制度已变更。",
+    workPolicyNoPermission: "没有权限变更此设置",
 
     departmentChangeLabel: "变更所属部门",
     departmentChangeSaved: "所属部门已变更",
@@ -1300,6 +1408,23 @@ export const zh = {
       already_active: "该成员已完成正式注册(无需重新发放邀请)",
       already_accepted: "此邀请已被接受",
       already_revoked: "此邀请已被撤销",
+      /** 对已离职处理成员重新发放邀请、发放密码重置(2026-08-23 Tier 0 第4部分新增)。 */
+      member_inactive: "该成员已办理离职处理。请先重新启用后再进行此操作",
+      /** 管理员发放密码重置(2026-08-23 Tier 0 第4部分新增)。无法对尚未接受邀请的成员发放。 */
+      not_active: "该成员尚未接受邀请,请改用重新发放邀请",
+      /** 撤销密码重置(2026-08-23 Tier 0 第4部分新增)。 */
+      password_reset_already_used: "此重置已被使用",
+      password_reset_already_revoked: "此重置已被撤销",
+      /** 离职处理(停用·重新启用,2026-08-23 Tier 0 第4部分新增)。 */
+      cannot_deactivate_self: "无法停用自己的账户",
+      already_inactive: "该成员已被停用",
+      /** 重新启用(2026-08-23 Tier 0 第4部分新增)。与邀请的 already_active 文案区分开。 */
+      member_already_active: "该成员已处于启用状态",
+      /** 成员个人劳动时间制度分配(2026-08-23 Tier 0 第4部分新增)。 */
+      invalid_work_system_kind: "请选择制度",
+      invalid_effective_from: "请确认生效日期",
+      effective_from_in_past: "生效日期只能指定为今天或以后(否则会改变过去的统计结果)",
+      assignment_already_exists: "该生效日期已存在分配,请指定其他日期",
       default: "处理失败,请重试",
     },
   },

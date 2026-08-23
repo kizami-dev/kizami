@@ -188,6 +188,7 @@ export default defineConfig({
           { text: "労働時間制と時間外の判定", link: "/design/work-systems" },
           { text: "休憩の扱い", link: "/design/breaks" },
           { text: "手当対象時間の算出", link: "/design/allowances" },
+          { text: "シフト制と変形労働(ドラフト)", link: "/design/shift-work" },
           { text: "権限カタログ", link: "/design/permission-catalog" },
         ],
       },

@@ -9,7 +9,7 @@ import { defineConfig } from "waku/config";
 export default defineConfig({
   vite: {
     resolve: {
-      dedupe: ["react", "react-dom"],
+      dedupe: ["react", "react-dom", "react-server-dom-webpack"],
     },
   },
 });

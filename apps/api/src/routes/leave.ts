@@ -39,6 +39,12 @@
  * 対象ユーザーのスナップショットを再計算・新世代保存 + closing_events に amend を追記する
  * (routes/corrections.ts の POST /:id/approve と同じ形。有給取得は集計(フレックス実績)に
  * 影響するため、打刻修正と同様に amend の対象にする)。
+ *
+ * 承認依頼の通知(2026-08-23 追加): POST /requests で申請が作成されたら、
+ * apps/api/src/lib/approvers.ts の resolveApproversForUser で承認者(申請者をスコープに含む
+ * 形で APPROVE_PERMISSION を持つ人)を解決し、申請者自身を除いて通知する(routes/corrections.ts
+ * の POST / と同じ形。詳細な設計理由・テナント共有 Webhook の扱いは routes/corrections.ts の
+ * ヘッダコメント参照)。
  */
 
 import { Hono } from "hono";
@@ -84,10 +90,11 @@ import {
 } from "@kizami/leave";
 import type { AppEnv } from "../auth/middleware.js";
 import { ForbiddenError, requirePermission } from "../authz.js";
+import { resolveApproversForUser } from "../lib/approvers.js";
 import { assertAmendAllowed } from "../lib/closing-guard.js";
 import { computeMonthlyOutputForUser } from "../lib/closing-amend.js";
 import { engineOutputFromSnapshots, snapshotInputsFromEngineOutput, sumFixedBreakdown } from "../lib/closing-snapshot.js";
-import { buildPersonalChannels, type BuildPersonalChannelsOptions } from "../lib/notification-channels.js";
+import { buildPersonalChannels, buildTenantChannels, type BuildPersonalChannelsOptions } from "../lib/notification-channels.js";
 import { resolveAccessibleUserIds } from "../lib/scope.js";
 import { buildSettingsTimeline, standardDayMinutesForDate, TZ_OFFSET_MINUTES_JST } from "../lib/settings.js";
 import { nowMinutes, parseMonthParam, todayLocalDate } from "../lib/time.js";
@@ -452,6 +459,46 @@ export function createLeaveRoutes(db: Database, deps: LeaveRoutesDeps = {}) {
       reason,
       createdAt: nowMinutes(),
     });
+
+    // 承認依頼の通知(routes/corrections.ts の POST / と同じ形。詳細な設計理由は
+    // routes/corrections.ts のヘッダコメント参照)。申請者自身が承認権限を持つ場合でも、
+    // 自分の申請の通知は自分には送らない。
+    const approverIds = (
+      await resolveApproversForUser(db, { tenantId: user.tenantId, subjectUserId: user.id, permission: APPROVE_PERMISSION })
+    ).filter((id) => id !== user.id);
+
+    const notificationType = "approval_request_leave";
+    const title = "承認待ちの休暇申請があります";
+    const notificationBody = `${user.displayName}さんから休暇申請が届きました。確認してください。`;
+
+    for (const approverId of approverIds) {
+      const notification = await createNotificationIfAbsent(db, {
+        tenantId: user.tenantId,
+        userId: approverId,
+        type: notificationType,
+        subjectDate: null,
+        title,
+        body: notificationBody,
+        createdAt: created.createdAt,
+      });
+      if (notification) {
+        const channels = await buildPersonalChannels(db, { tenantId: user.tenantId, userId: approverId, notificationType }, deps);
+        if (channels.length > 0) {
+          await dispatch(channels, { to: {}, title, body: notificationBody });
+        }
+      }
+    }
+
+    // テナント共有 Webhook にも1件(routes/corrections.ts の POST / と同じ判断: 承認者が
+    // 1人もいなくてもテナント側の共有チャネルが設定されていれば送る)。
+    const tenantChannels = await buildTenantChannels(db, user.tenantId, deps);
+    if (tenantChannels.length > 0) {
+      await dispatch(tenantChannels, {
+        to: {},
+        title,
+        body: `${user.displayName}さんから休暇申請が届きました。/leave/requests で確認してください。`,
+      });
+    }
 
     // 締め後修正(amend): 申請自体は締め済み月でも作成できる。leaveDate の属する月が
     // 締め済みなら targetMonthClosed=true を返し、UI が警告を出せるようにする

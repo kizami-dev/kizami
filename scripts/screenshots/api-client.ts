@@ -150,6 +150,11 @@ export class ApiClient {
     return this.request("POST", "/settings/work-policy", input);
   }
 
+  /** パスワードリセット発行(Tier 0)。passwordReset.token は平文で、この1度しか取得できない。 */
+  issuePasswordReset(memberId: string): Promise<{ passwordReset: { token: string } }> {
+    return this.request("POST", `/members/${memberId}/password-resets`);
+  }
+
   /** 招待付きメンバー作成(v0.5)。invitation.token は平文で、この1度しか取得できない。 */
   createMemberWithInvitation(input: Record<string, unknown>): Promise<{ member: { id: string }; invitation: { token: string } }> {
     return this.request("POST", "/members", input);

@@ -277,6 +277,45 @@ export const ja = {
     },
   },
 
+  /**
+   * パスワードリセット受諾画面(/reset/[token]、2026-08-23 Tier 0 その4 追加、認証ガード無し・公開)。
+   * inviteAccept と同型(構成・状態機械・文言のトーンを流用)。管理者発行のリセットリンクから
+   * 新しいパスワードを設定すると、そのままログイン状態になる(routes/password-resets.ts)。
+   */
+  passwordResetAccept: {
+    tenantUnnamed: "会社",
+    introSuffix: " のアカウントのパスワードを再設定します",
+    nameLabel: "氏名",
+    emailLabel: "メールアドレス",
+    newPasswordLabel: "新しいパスワード(12文字以上)",
+    newPasswordConfirmLabel: "新しいパスワード(確認)",
+    passwordMismatch: "パスワードが一致しません",
+    passwordTooShort: "パスワードは12文字以上で入力してください",
+    submit: "パスワードを再設定する",
+    submitting: "再設定しています…",
+    loading: "リセットの内容を確認しています…",
+
+    invalidTitle: "このリセットリンクは無効です",
+    invalidMessage: "このリセットリンクは無効です。管理者に確認してください。",
+    expiredTitle: "このリセットリンクは期限切れです",
+    expiredMessage: "このリセットリンクは期限切れです。管理者に再発行を依頼してください。",
+    acceptedRedirecting: "パスワードを再設定しました。移動しています…",
+
+    /**
+     * パスワード自体は更新済みだがセッション発行だけ失敗した場合。apps/api は 200 のまま
+     * `{ passwordUpdated: true, error: "session_issuance_failed" }` を返す(エラーとして throw
+     * されない)。routes/password-resets.ts が返す message とほぼ同じ文言に揃えている。
+     */
+    sessionIssuanceFailedTitle: "パスワードを更新しました",
+    sessionIssuanceFailedMessage: "パスワードは更新済みです。お手数ですが、ログイン画面から改めてログインしてください。",
+    goToLogin: "ログインページへ",
+
+    errors: {
+      invalid_password: "パスワードは12文字以上で入力してください",
+      default: "処理に失敗しました。もう一度お試しください",
+    },
+  },
+
   attendanceState: {
     out: "退勤中",
     working: "勤務中",
@@ -724,6 +763,8 @@ export const ja = {
       leave_alert: "有給の失効間近・年5日取得義務アラート",
       /** 2026-08-23 追加。修正系申請(休憩自動控除の打ち消し等)の承認・却下通知。 */
       correction_alert: "申請の承認・却下(休憩自動控除の打ち消しなど)",
+      /** 2026-08-23 Tier 0 その4 追加。承認権限を持つ人向け — スコープ内のメンバーから申請が届いたときの通知。 */
+      approval_request: "承認依頼(スコープ内のメンバーから申請が届いたとき。承認権限を持つ方向け)",
     } as Record<string, string>,
 
     emailSectionTitle: "通知先メールアドレス",
@@ -1243,12 +1284,26 @@ export const ja = {
     columnPresets: "割当プリセット",
     columnHireDate: "入社日",
     columnInviteStatus: "招待状況",
+    /** 退職処理(無効化、2026-08-23 Tier 0 その4 追加)の状態バッジ用の列。 */
+    columnStatus: "状態",
+    /** メンバー個別の労働時間制(2026-08-23 Tier 0 その4 追加)の小さい表示用の列。 */
+    columnWorkSystem: "労働時間制",
     columnActions: "操作",
     noDepartment: "未所属",
     noPresets: "割当なし",
+    /** workSystemKind が null のとき(割当が一度も無い)。monthly.workSystemValue と揃えつつ「未設定」を追加。 */
+    workSystemUnset: "未設定",
 
     detailToggleOpen: "詳細を開く",
     detailToggleClose: "詳細を閉じる",
+
+    /** 退職処理(無効化)済みメンバーの状態バッジ(2026-08-23 Tier 0 その4 追加)。 */
+    inactiveBadge: "無効",
+    /**
+     * 一覧のフィルタ(既定は有効のみ表示、依頼「既存のフィルタ流儀がなければシンプルなトグル」)。
+     * 専用のフィルタUIがこれまで無かったため、チェックボックス1つの単純なトグルにした。
+     */
+    showInactiveToggle: "無効なメンバーも表示する",
 
     /**
      * 招待式登録(2026-08-23 追加、docs/requirements.md §7「登録は招待式のみ」)。
@@ -1290,6 +1345,64 @@ export const ja = {
     revokeInviteButton: "取り消し",
     revokeInviteConfirmTitle: "招待を取り消しますか",
     revokeInviteConfirmMessage: "この招待リンクは使えなくなります。必要であれば後から再発行できます。",
+
+    /**
+     * パスワードリセットの管理者発行(2026-08-23 Tier 0 その4 追加)。招待と同型の一度きり
+     * リンク提示(InviteLinkDialog を variant="reset" で共用)。対象は受諾済みメンバーのみ。
+     */
+    passwordResetButton: "パスワードリセット",
+    passwordResetBadge: "リセット発行中",
+    passwordResetRevokeButton: "取り消し",
+    passwordResetRevokeConfirmTitle: "パスワードリセットを取り消しますか",
+    passwordResetRevokeConfirmMessage: "このリセットリンクは使えなくなります。必要であれば後から再度発行できます。",
+
+    resetLinkTitle: "パスワードリセットのリンクを発行しました",
+    resetLinkTargetPrefix: "対象: ",
+    resetLinkWarning: "このリンクは今だけ表示されます。閉じると再表示できません(再度の発行は可能です)。",
+    resetLinkLabel: "リセットリンク",
+    resetLinkCopy: "リンクをコピー",
+    resetLinkCopied: "コピーしました",
+    resetLinkCopyFailed: "コピーに失敗しました。手動で選択してコピーしてください",
+    resetLinkExpiresLabel: "有効期限",
+    resetLinkDone: "閉じる",
+
+    /**
+     * 退職処理(無効化・再有効化、2026-08-23 Tier 0 その4 追加)。無効化は影響が大きいため
+     * 既存の危険操作の作法(承認・却下と同じ ConfirmDialog、Mトーン)に合わせ、
+     * 影響(ログイン不可・セッション失効・招待/リセット失効)を確認文言に明記する。
+     * 再有効化は元に戻す操作(セッション等を新たに壊すものではない)のため確認は挟まない。
+     */
+    deactivateButton: "無効にする",
+    deactivateConfirmTitle: "このメンバーを無効にしますか",
+    deactivateConfirmMessage: "無効にすると、次のようになります。",
+    deactivateConfirmImpactLogin: "ログインできなくなります",
+    deactivateConfirmImpactSession: "現在ログイン中のセッションはすべて失効します",
+    deactivateConfirmImpactInviteReset: "未処理の招待・パスワードリセットのリンクは失効します",
+    reactivateButton: "再有効化",
+    reactivating: "再有効化中…",
+
+    /**
+     * メンバー個別の労働時間制割当(2026-08-23 Tier 0 その4 追加)。GET/POST /members/:id/work-policy
+     * (tenant_settings.flex.manage、テナント全体スコープのみ)。この権限が無い場合、そもそも
+     * GET も 403 になるため、セクション自体を表示しない(呼び出し側 MembersView の判断点)。
+     */
+    workPolicyTitle: "労働時間制",
+    workPolicyHint: "フレックスタイム制/固定時間制のどちらで月次を集計するかの割当です。変更は新しい割当を追加する形で行い、過去の集計は変わりません。",
+    workPolicyCurrentLabel: "現在の労働時間制",
+    workPolicyCurrentEffectiveFrom: "この割当が適用された日",
+    workPolicyNoneYet: "まだ割当がありません",
+    workPolicyHistoryTitle: "割当履歴",
+    workPolicyHistoryEmpty: "まだ履歴がありません",
+    workPolicyHistoryColumnEffectiveFrom: "適用開始日",
+    workPolicyHistoryColumnKind: "制度",
+    workPolicyFormTitle: "制度を変更",
+    workPolicyKindLabel: "労働時間制",
+    workPolicyEffectiveFromLabel: "適用開始日",
+    workPolicyEffectiveFromHint: "この変更は指定日以降の計算にのみ影響し、過去の集計は変わりません。",
+    workPolicySubmit: "この内容で変更",
+    workPolicySubmitting: "変更中…",
+    workPolicySubmitSuccess: "労働時間制を変更しました。",
+    workPolicyNoPermission: "この設定を変更する権限がありません",
 
     departmentChangeLabel: "所属部署を変更",
     departmentChangeSaved: "所属部署を変更しました",
@@ -1334,6 +1447,23 @@ export const ja = {
       already_active: "このメンバーは既に本登録済みです(招待の再発行は不要です)",
       already_accepted: "この招待は既に受諾されています",
       already_revoked: "この招待は既に取り消し済みです",
+      /** 退職処理済みのメンバーへの招待再発行・パスワードリセット発行(2026-08-23 Tier 0 その4 追加)。 */
+      member_inactive: "退職処理済みのメンバーです。操作するには先に再有効化してください",
+      /** パスワードリセットの管理者発行(2026-08-23 Tier 0 その4 追加)。未受諾メンバーへの発行は不可。 */
+      not_active: "このメンバーは未受諾のため、招待の再発行をご利用ください",
+      /** パスワードリセットの取り消し(2026-08-23 Tier 0 その4 追加)。 */
+      password_reset_already_used: "このリセットは既に使用されています",
+      password_reset_already_revoked: "このリセットは既に取り消し済みです",
+      /** 退職処理(無効化・再有効化、2026-08-23 Tier 0 その4 追加)。 */
+      cannot_deactivate_self: "自分自身を無効化することはできません",
+      already_inactive: "このメンバーは既に無効化されています",
+      /** 再有効化(2026-08-23 Tier 0 その4 追加)。招待の already_active とは文言を分けている。 */
+      member_already_active: "このメンバーは既に有効です",
+      /** メンバー個別の労働時間制割当(2026-08-23 Tier 0 その4 追加)。 */
+      invalid_work_system_kind: "制度を選択してください",
+      invalid_effective_from: "適用開始日を確認してください",
+      effective_from_in_past: "適用開始日は本日以降のみ指定できます(過去の計算結果が変わってしまうため)",
+      assignment_already_exists: "その適用開始日には既に割当があります。別の日付を指定してください",
       default: "処理に失敗しました。もう一度お試しください",
     },
   },

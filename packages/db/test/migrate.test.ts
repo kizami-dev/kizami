@@ -16,6 +16,7 @@ describe("migrate", () => {
         "audit_logs",
         "auth_credentials",
         "auto_break_waivers",
+        "password_reset_tokens",
         "closing_events",
         "closing_snapshots",
         "correction_requests",

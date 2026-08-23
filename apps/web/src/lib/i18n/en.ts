@@ -280,6 +280,40 @@ export const en = {
     },
   },
 
+  /**
+   * Password reset acceptance screen (/reset/[token], added 2026-08-23 Tier 0 part 4, no auth guard,
+   * public). Mirrors inviteAccept (structure, state machine, tone). Setting a new password from an
+   * admin-issued reset link signs you in immediately (routes/password-resets.ts).
+   */
+  passwordResetAccept: {
+    tenantUnnamed: "Your company",
+    introSuffix: " — reset your account password",
+    nameLabel: "Full name",
+    emailLabel: "Email address",
+    newPasswordLabel: "New password (12+ characters)",
+    newPasswordConfirmLabel: "New password (confirm)",
+    passwordMismatch: "Passwords do not match",
+    passwordTooShort: "Password must be at least 12 characters",
+    submit: "Reset password",
+    submitting: "Resetting…",
+    loading: "Checking your reset link…",
+
+    invalidTitle: "This reset link is invalid",
+    invalidMessage: "This reset link is invalid. Please check with your administrator.",
+    expiredTitle: "This reset link has expired",
+    expiredMessage: "This reset link has expired. Please ask your administrator to issue a new one.",
+    acceptedRedirecting: "Your password has been reset. Redirecting…",
+
+    sessionIssuanceFailedTitle: "Your password has been updated",
+    sessionIssuanceFailedMessage: "Your password has been updated. Please sign in again from the login page.",
+    goToLogin: "Go to login",
+
+    errors: {
+      invalid_password: "Password must be at least 12 characters",
+      default: "Something went wrong. Please try again",
+    },
+  },
+
   attendanceState: {
     out: "Off duty",
     working: "Working",
@@ -729,6 +763,8 @@ export const en = {
       leave_alert: "Leave expiring soon / mandatory 5-day minimum alert",
       /** Added 2026-08-23. Approval/rejection notifications for correction-type requests (e.g. break auto-deduction waivers). */
       correction_alert: "Request approved/rejected (e.g. break auto-deduction waiver)",
+      /** Added 2026-08-23 Tier 0 part 4. For people with approval permission — a request has arrived from a member within their scope. */
+      approval_request: "Approval requests (when a member in your scope submits a request — for approvers)",
     } as Record<string, string>,
 
     emailSectionTitle: "Notification email address",
@@ -1253,12 +1289,26 @@ export const en = {
     columnPresets: "Assigned presets",
     columnHireDate: "Hire date",
     columnInviteStatus: "Invitation status",
+    /** Status badge column for deactivation (added 2026-08-23 Tier 0 part 4). */
+    columnStatus: "Status",
+    /** Small display column for per-member work system (added 2026-08-23 Tier 0 part 4). */
+    columnWorkSystem: "Work system",
     columnActions: "Actions",
     noDepartment: "No department",
     noPresets: "None assigned",
+    /** workSystemKind is null (never assigned). Kept aligned with monthly.workSystemValue, plus "not set". */
+    workSystemUnset: "Not set",
 
     detailToggleOpen: "Show details",
     detailToggleClose: "Hide details",
+
+    /** Status badge for deactivated members (added 2026-08-23 Tier 0 part 4). */
+    inactiveBadge: "Inactive",
+    /**
+     * List filter (default shows active only). Added a simple checkbox toggle since there was no
+     * existing filter convention to follow.
+     */
+    showInactiveToggle: "Show inactive members too",
 
     /**
      * Invitation-based sign-up (added 2026-08-23, docs/requirements.md §7 "Sign-up is
@@ -1300,6 +1350,65 @@ export const en = {
     revokeInviteButton: "Revoke",
     revokeInviteConfirmTitle: "Revoke this invitation?",
     revokeInviteConfirmMessage: "This invitation link will stop working. You can reissue it later if needed.",
+
+    /**
+     * Admin-issued password reset (added 2026-08-23 Tier 0 part 4). Shares the same one-time
+     * link presentation as invitations (InviteLinkDialog with variant="reset"). Only for
+     * members who have already accepted their invitation.
+     */
+    passwordResetButton: "Reset password",
+    passwordResetBadge: "Reset pending",
+    passwordResetRevokeButton: "Revoke",
+    passwordResetRevokeConfirmTitle: "Revoke this password reset?",
+    passwordResetRevokeConfirmMessage: "This reset link will stop working. You can issue a new one later if needed.",
+
+    resetLinkTitle: "Password reset link issued",
+    resetLinkTargetPrefix: "For: ",
+    resetLinkWarning: "This link is only shown once. It cannot be shown again after you close this (though you can issue a new one).",
+    resetLinkLabel: "Reset link",
+    resetLinkCopy: "Copy link",
+    resetLinkCopied: "Copied",
+    resetLinkCopyFailed: "Copy failed. Please select and copy it manually",
+    resetLinkExpiresLabel: "Expires",
+    resetLinkDone: "Close",
+
+    /**
+     * Deactivation / reactivation (added 2026-08-23 Tier 0 part 4). Deactivation has a large
+     * impact, so it follows the same dangerous-action convention as approve/reject (ConfirmDialog,
+     * calm tone), spelling out the impact (can't log in, sessions revoked, invitations/resets
+     * revoked). Reactivation doesn't break anything new, so no confirmation is required.
+     */
+    deactivateButton: "Deactivate",
+    deactivateConfirmTitle: "Deactivate this member?",
+    deactivateConfirmMessage: "Deactivating this member will do the following:",
+    deactivateConfirmImpactLogin: "They will no longer be able to log in",
+    deactivateConfirmImpactSession: "All of their current login sessions will be revoked",
+    deactivateConfirmImpactInviteReset: "Any pending invitation or password reset link will be revoked",
+    reactivateButton: "Reactivate",
+    reactivating: "Reactivating…",
+
+    /**
+     * Per-member work system assignment (added 2026-08-23 Tier 0 part 4). GET/POST
+     * /members/:id/work-policy (tenant_settings.flex.manage, tenant scope only). Without this
+     * permission, even GET returns 403, so the whole section is hidden (see MembersView).
+     */
+    workPolicyTitle: "Work system",
+    workPolicyHint: "Assigns whether monthly totals are calculated under flextime or a fixed schedule. Changes are made by adding a new assignment; past totals are unaffected.",
+    workPolicyCurrentLabel: "Current work system",
+    workPolicyCurrentEffectiveFrom: "This assignment took effect on",
+    workPolicyNoneYet: "No assignment yet",
+    workPolicyHistoryTitle: "Assignment history",
+    workPolicyHistoryEmpty: "No history yet",
+    workPolicyHistoryColumnEffectiveFrom: "Effective from",
+    workPolicyHistoryColumnKind: "System",
+    workPolicyFormTitle: "Change work system",
+    workPolicyKindLabel: "Work system",
+    workPolicyEffectiveFromLabel: "Effective from",
+    workPolicyEffectiveFromHint: "This change only affects calculations from the specified date onward; past totals are unaffected.",
+    workPolicySubmit: "Apply this change",
+    workPolicySubmitting: "Applying…",
+    workPolicySubmitSuccess: "Work system changed.",
+    workPolicyNoPermission: "You don't have permission to change this setting",
 
     departmentChangeLabel: "Change department",
     departmentChangeSaved: "Department changed",
@@ -1344,6 +1453,23 @@ export const en = {
       already_active: "This member has already completed sign-up (no need to reissue the invitation)",
       already_accepted: "This invitation has already been accepted",
       already_revoked: "This invitation has already been revoked",
+      /** Reissuing an invitation / issuing a password reset for a deactivated member (added 2026-08-23 Tier 0 part 4). */
+      member_inactive: "This member has been deactivated. Please reactivate them before performing this action",
+      /** Admin-issued password reset (added 2026-08-23 Tier 0 part 4). Can't be issued to a member who hasn't accepted yet. */
+      not_active: "This member hasn't accepted their invitation yet. Please reissue the invitation instead",
+      /** Revoking a password reset (added 2026-08-23 Tier 0 part 4). */
+      password_reset_already_used: "This password reset has already been used",
+      password_reset_already_revoked: "This password reset has already been revoked",
+      /** Deactivation / reactivation (added 2026-08-23 Tier 0 part 4). */
+      cannot_deactivate_self: "You can't deactivate yourself",
+      already_inactive: "This member is already deactivated",
+      /** Reactivation (added 2026-08-23 Tier 0 part 4). Kept separate from invitation's already_active wording. */
+      member_already_active: "This member is already active",
+      /** Per-member work system assignment (added 2026-08-23 Tier 0 part 4). */
+      invalid_work_system_kind: "Please select a work system",
+      invalid_effective_from: "Please check the effective date",
+      effective_from_in_past: "The effective date can only be today or later (past calculation results must not change)",
+      assignment_already_exists: "An assignment already exists for that effective date. Please choose a different date",
       default: "Something went wrong. Please try again",
     },
   },

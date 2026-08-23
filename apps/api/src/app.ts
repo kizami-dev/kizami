@@ -20,6 +20,7 @@ import { createMeRoutes } from "./routes/me.js";
 import { createMembersRoutes } from "./routes/members.js";
 import { createNotificationsRoutes } from "./routes/notifications.js";
 import { createNotificationPreferencesRoutes } from "./routes/notification-preferences.js";
+import { createPasswordResetsRoutes } from "./routes/password-resets.js";
 import { createPresetsRoutes } from "./routes/presets.js";
 import { createPunchesRoutes } from "./routes/punches.js";
 import { createSettingsRoutes, type SettingsRoutesDeps } from "./routes/settings/index.js";
@@ -75,6 +76,11 @@ export function createApp(deps: CreateAppDeps) {
   // 外側に置く。受諾前のユーザーはまだ auth_credentials を持たずセッションも張れないため
   // (docs/requirements.md §認証)。
   app.route("/invitations", createInvitationsRoutes(db, { secureCookies }));
+
+  // GET /password-resets/:token, POST /password-resets/:token/use(管理者発行パスワードリセットの
+  // 使用、Tier 0)も同じ理由で認証ミドルウェアの外側に置く(使用前のユーザーはまだ有効なセッションを
+  // 張れない・張っていても新しいパスワードを知らないため、この経路自体を未認証で開放する)。
+  app.route("/password-resets", createPasswordResetsRoutes(db, { secureCookies }));
 
   // POST /slack/commands(Slackスラッシュコマンド打刻)は認証ミドルウェアの外側に置く。
   // Slackはセッションを持たないため、署名検証(routes/slack.ts)が認証の代わりになる

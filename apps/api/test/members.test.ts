@@ -264,6 +264,10 @@ describe("members API", () => {
       presetNames: [],
       // setupSecondUser は auth_credentials も作るため受諾済み(active)扱いになる
       inviteStatus: "active",
+      // パスワードリセット(Tier 0)を一度も発行していないので false。
+      hasPendingPasswordReset: false,
+      // setupSecondUser は work_policy 割当を行わないため未割当(null)。
+      workSystemKind: null,
     });
   });
 });

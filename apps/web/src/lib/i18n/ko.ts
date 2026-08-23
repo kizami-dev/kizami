@@ -263,6 +263,40 @@ export const ko = {
     },
   },
 
+  /**
+   * 비밀번호 재설정 수락 화면(/reset/[token], 2026-08-23 Tier 0 4번째 추가, 인증 가드 없음·공개).
+   * inviteAccept와 동일한 구조(구성·상태 머신·문구 톤 재사용). 관리자가 발급한 재설정 링크로
+   * 새 비밀번호를 설정하면 그대로 로그인 상태가 됩니다(routes/password-resets.ts).
+   */
+  passwordResetAccept: {
+    tenantUnnamed: "회사",
+    introSuffix: " 계정의 비밀번호를 재설정합니다",
+    nameLabel: "이름",
+    emailLabel: "이메일 주소",
+    newPasswordLabel: "새 비밀번호(12자 이상)",
+    newPasswordConfirmLabel: "새 비밀번호(확인)",
+    passwordMismatch: "비밀번호가 일치하지 않습니다",
+    passwordTooShort: "비밀번호는 12자 이상 입력해 주세요",
+    submit: "비밀번호 재설정",
+    submitting: "재설정하는 중…",
+    loading: "재설정 내용을 확인하는 중…",
+
+    invalidTitle: "이 재설정 링크는 유효하지 않습니다",
+    invalidMessage: "이 재설정 링크는 유효하지 않습니다. 관리자에게 문의해 주세요.",
+    expiredTitle: "이 재설정 링크는 기한이 만료되었습니다",
+    expiredMessage: "이 재설정 링크는 기한이 만료되었습니다. 관리자에게 재발급을 요청해 주세요.",
+    acceptedRedirecting: "비밀번호를 재설정했습니다. 이동하는 중…",
+
+    sessionIssuanceFailedTitle: "비밀번호를 변경했습니다",
+    sessionIssuanceFailedMessage: "비밀번호는 이미 변경되었습니다. 번거로우시겠지만 로그인 페이지에서 다시 로그인해 주세요.",
+    goToLogin: "로그인 페이지로 이동",
+
+    errors: {
+      invalid_password: "비밀번호는 12자 이상 입력해 주세요",
+      default: "처리에 실패했습니다. 다시 시도해 주세요",
+    },
+  },
+
   attendanceState: {
     out: "퇴근 상태",
     working: "근무 중",
@@ -705,6 +739,8 @@ export const ko = {
       leave_alert: "연차 소멸 임박·연 5일 취득 의무 알림",
       /** 2026-08-23 추가. 수정 계열 신청(휴게 자동 공제 취소 등)의 승인·반려 알림. */
       correction_alert: "신청 승인·반려(휴게 자동 공제 취소 등)",
+      /** 2026-08-23 Tier 0 4번째 추가. 승인 권한을 가진 사람을 위한 — 관할 범위 내 멤버로부터 신청이 도착했을 때의 알림. */
+      approval_request: "승인 요청(관할 범위 내 멤버로부터 신청이 도착했을 때. 승인 권한이 있는 분 대상)",
     } as Record<string, string>,
 
     emailSectionTitle: "알림 수신 이메일 주소",
@@ -1225,12 +1261,26 @@ export const ko = {
     columnPresets: "할당된 프리셋",
     columnHireDate: "입사일",
     columnInviteStatus: "초대 상태",
+    /** 퇴직 처리(비활성화, 2026-08-23 Tier 0 4번째 추가)의 상태 배지용 열. */
+    columnStatus: "상태",
+    /** 멤버별 근로시간제(2026-08-23 Tier 0 4번째 추가)의 작은 표시용 열. */
+    columnWorkSystem: "근로시간제",
     columnActions: "작업",
     noDepartment: "미소속",
     noPresets: "할당 없음",
+    /** workSystemKind가 null일 때(할당이 한 번도 없음). monthly.workSystemValue와 맞추면서 "미설정"을 추가. */
+    workSystemUnset: "미설정",
 
     detailToggleOpen: "상세 열기",
     detailToggleClose: "상세 닫기",
+
+    /** 퇴직 처리(비활성화)된 멤버의 상태 배지(2026-08-23 Tier 0 4번째 추가). */
+    inactiveBadge: "비활성",
+    /**
+     * 목록 필터(기본값은 활성 멤버만 표시). 기존 필터 관례가 없었으므로 체크박스 1개의
+     * 단순한 토글로 구현했습니다.
+     */
+    showInactiveToggle: "비활성 멤버도 표시",
 
     /**
      * 초대 방식 등록(2026-08-23 추가, docs/requirements.md §7 「등록은 초대 방식만 허용」).
@@ -1272,6 +1322,64 @@ export const ko = {
     revokeInviteButton: "취소",
     revokeInviteConfirmTitle: "초대를 취소하시겠습니까",
     revokeInviteConfirmMessage: "이 초대 링크는 사용할 수 없게 됩니다. 필요하다면 나중에 다시 발급할 수 있습니다.",
+
+    /**
+     * 관리자 발급 비밀번호 재설정(2026-08-23 Tier 0 4번째 추가). 초대와 동일한 형태의 1회성
+     * 링크 제시(InviteLinkDialog를 variant="reset"으로 공용). 대상은 이미 초대를 수락한 멤버만.
+     */
+    passwordResetButton: "비밀번호 재설정",
+    passwordResetBadge: "재설정 발급 중",
+    passwordResetRevokeButton: "취소",
+    passwordResetRevokeConfirmTitle: "비밀번호 재설정을 취소하시겠습니까",
+    passwordResetRevokeConfirmMessage: "이 재설정 링크는 사용할 수 없게 됩니다. 필요하다면 나중에 다시 발급할 수 있습니다.",
+
+    resetLinkTitle: "비밀번호 재설정 링크를 발급했습니다",
+    resetLinkTargetPrefix: "대상: ",
+    resetLinkWarning: "이 링크는 지금만 표시됩니다. 닫으면 다시 표시할 수 없습니다(다시 발급하는 것은 가능합니다).",
+    resetLinkLabel: "재설정 링크",
+    resetLinkCopy: "링크 복사",
+    resetLinkCopied: "복사했습니다",
+    resetLinkCopyFailed: "복사에 실패했습니다. 직접 선택해서 복사해 주세요",
+    resetLinkExpiresLabel: "유효 기간",
+    resetLinkDone: "닫기",
+
+    /**
+     * 퇴직 처리(비활성화·재활성화, 2026-08-23 Tier 0 4번째 추가). 비활성화는 영향이 크므로
+     * 기존 위험 조작의 방식(승인·반려와 동일한 ConfirmDialog, 차분한 톤)에 맞춰 영향
+     * (로그인 불가·세션 실효·초대/재설정 실효)을 확인 문구에 명시합니다. 재활성화는 되돌리는
+     * 조작(새로 무언가를 파괴하지 않음)이므로 확인 절차를 두지 않습니다.
+     */
+    deactivateButton: "비활성화",
+    deactivateConfirmTitle: "이 멤버를 비활성화하시겠습니까",
+    deactivateConfirmMessage: "비활성화하면 다음과 같이 됩니다.",
+    deactivateConfirmImpactLogin: "로그인할 수 없게 됩니다",
+    deactivateConfirmImpactSession: "현재 로그인 중인 세션이 모두 실효됩니다",
+    deactivateConfirmImpactInviteReset: "처리되지 않은 초대·비밀번호 재설정 링크가 실효됩니다",
+    reactivateButton: "재활성화",
+    reactivating: "재활성화하는 중…",
+
+    /**
+     * 멤버별 근로시간제 할당(2026-08-23 Tier 0 4번째 추가). GET/POST /members/:id/work-policy
+     * (tenant_settings.flex.manage, 테넌트 전체 스코프만). 이 권한이 없으면 GET도 403이 되므로
+     * 섹션 자체를 표시하지 않습니다(MembersView 참고).
+     */
+    workPolicyTitle: "근로시간제",
+    workPolicyHint: "월별 집계를 플렉스타임제/고정시간제 중 무엇으로 할지에 대한 할당입니다. 변경은 새 할당을 추가하는 형태로 이루어지며, 과거 집계는 바뀌지 않습니다.",
+    workPolicyCurrentLabel: "현재 근로시간제",
+    workPolicyCurrentEffectiveFrom: "이 할당이 적용된 날",
+    workPolicyNoneYet: "아직 할당이 없습니다",
+    workPolicyHistoryTitle: "할당 이력",
+    workPolicyHistoryEmpty: "아직 이력이 없습니다",
+    workPolicyHistoryColumnEffectiveFrom: "적용 시작일",
+    workPolicyHistoryColumnKind: "제도",
+    workPolicyFormTitle: "제도 변경",
+    workPolicyKindLabel: "근로시간제",
+    workPolicyEffectiveFromLabel: "적용 시작일",
+    workPolicyEffectiveFromHint: "이 변경은 지정일 이후의 계산에만 영향을 주며, 과거 집계는 바뀌지 않습니다.",
+    workPolicySubmit: "이 내용으로 변경",
+    workPolicySubmitting: "변경 중…",
+    workPolicySubmitSuccess: "근로시간제를 변경했습니다.",
+    workPolicyNoPermission: "이 설정을 변경할 권한이 없습니다",
 
     departmentChangeLabel: "소속 부서 변경",
     departmentChangeSaved: "소속 부서를 변경했습니다",
@@ -1316,6 +1424,23 @@ export const ko = {
       already_active: "이 멤버는 이미 본등록이 완료되었습니다(초대 재발급이 필요하지 않습니다)",
       already_accepted: "이 초대는 이미 수락되었습니다",
       already_revoked: "이 초대는 이미 취소되었습니다",
+      /** 퇴직 처리된 멤버에 대한 초대 재발급·비밀번호 재설정 발급(2026-08-23 Tier 0 4번째 추가). */
+      member_inactive: "퇴직 처리된 멤버입니다. 조작하려면 먼저 재활성화해 주세요",
+      /** 관리자 발급 비밀번호 재설정(2026-08-23 Tier 0 4번째 추가). 미수락 멤버에게는 발급할 수 없습니다. */
+      not_active: "이 멤버는 아직 초대를 수락하지 않았습니다. 초대 재발급을 이용해 주세요",
+      /** 비밀번호 재설정 취소(2026-08-23 Tier 0 4번째 추가). */
+      password_reset_already_used: "이 재설정은 이미 사용되었습니다",
+      password_reset_already_revoked: "이 재설정은 이미 취소되었습니다",
+      /** 퇴직 처리(비활성화·재활성화, 2026-08-23 Tier 0 4번째 추가). */
+      cannot_deactivate_self: "자기 자신을 비활성화할 수 없습니다",
+      already_inactive: "이 멤버는 이미 비활성화되어 있습니다",
+      /** 재활성화(2026-08-23 Tier 0 4번째 추가). 초대의 already_active와 문구를 구분함. */
+      member_already_active: "이 멤버는 이미 활성 상태입니다",
+      /** 멤버별 근로시간제 할당(2026-08-23 Tier 0 4번째 추가). */
+      invalid_work_system_kind: "제도를 선택해 주세요",
+      invalid_effective_from: "적용 시작일을 확인해 주세요",
+      effective_from_in_past: "적용 시작일은 오늘 이후로만 지정할 수 있습니다(과거 집계 결과가 바뀌기 때문입니다)",
+      assignment_already_exists: "해당 적용 시작일에는 이미 할당이 있습니다. 다른 날짜를 지정해 주세요",
       default: "처리에 실패했습니다. 다시 시도해 주세요",
     },
   },

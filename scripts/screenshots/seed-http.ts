@@ -37,6 +37,8 @@ export interface SeedHttpResult {
   fixedMemberSessionCookie: string;
   /** v0.5: 招待受諾ページ(/invite/{token})の撮影用トークン(未受諾のまま残す)。 */
   inviteToken: string;
+  /** Tier 0: パスワードリセット受諾ページ(/reset/{token})の撮影用トークン(未使用のまま残す)。 */
+  resetToken: string;
 }
 
 /** 1日ぶんの勤務(既定 9:00-18:00, 休憩12:00-13:00)を打刻として積む。休憩は勤務時間内に収める。 */
@@ -397,5 +399,15 @@ export async function seedHttp(params: SeedHttpParams): Promise<SeedHttpResult> 
     departmentId: params.departments.dev,
   });
 
-  return { sessionCookie: client.getSessionCookie(), adminId, fixedMemberSessionCookie, inviteToken: invited.invitation.token };
+  // パスワードリセット(Tier 0): 受諾済みメンバー(member1)へ発行し、受諾ページの撮影に使う。
+  // 使用はしない(トークンが有効なまま残り、メンバー一覧の「リセット発行中」バッジも写る)。
+  const reset = await client.issuePasswordReset(member1Id);
+
+  return {
+    sessionCookie: client.getSessionCookie(),
+    adminId,
+    fixedMemberSessionCookie,
+    inviteToken: invited.invitation.token,
+    resetToken: reset.passwordReset.token,
+  };
 }

@@ -361,6 +361,23 @@ td.org-table__detail-cell {
   color: var(--k-magenta-ink);
 }
 
+/* 退職処理(無効化、2026-08-23 Tier 0 その4 追加)の状態バッジ。invite-status-badge と
+   同じ「塗りつぶさない・危険色の枠のみ」の見た目を踏襲する(危険=Mの原則どおり)。 */
+.invite-status-badge--inactive {
+  border: 1px solid var(--k-magenta-ink);
+  color: var(--k-magenta-ink);
+}
+
+/*
+ * 無効化されたメンバーの行(2026-08-23 Tier 0 その4 追加)。既定では非表示(フィルタ側で除外)
+ * だが、フィルタで表示したときは全体をグレー表示にして「操作対象から外れている」ことを示す。
+ * opacity ではなく color の継承を使う(opacity は子孫の意味色バッジ・操作リンクごと薄めてしまい
+ * 個別要素で打ち消せないため、地の文字色だけを下げてバッジ・リンクの明示色は素通りさせる)。
+ */
+.org-table tr.member-row--inactive td {
+  color: var(--k-ink-soft);
+}
+
 /* 招待リンクの提示画面(発行・再発行の直後)。api-keys-settings.css の
    .api-keys__reveal と同じ「二度と表示されない」強調枠を踏襲する。 */
 .invite-link__target {
@@ -753,4 +770,62 @@ td.org-table__detail-cell {
   background: color-mix(in srgb, var(--k-magenta) 6%, transparent);
   border-radius: var(--radius-s);
   padding: var(--space-2) var(--space-3);
+}
+
+/* ---- 一覧フィルタ(無効なメンバーの表示切替、2026-08-23 Tier 0 その4 追加) ---- */
+
+.org-settings__filter {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.85rem;
+  color: var(--k-ink-soft);
+}
+
+.org-settings__filter input[type="checkbox"] {
+  accent-color: var(--k-key);
+  width: 1.05rem;
+  height: 1.05rem;
+}
+
+/* ---- メンバー詳細: 労働時間制セクション(2026-08-23 Tier 0 その4 追加) ---- */
+
+/* member-detail は既定 1fr 1fr の2カラム(プリセット割当・実効権限)。労働時間制セクションは
+   その下に全幅で追加する(kind + 適用開始日の小さいフォーム+履歴テーブルのため半分幅では窮屈)。 */
+.member-detail__section--full {
+  grid-column: 1 / -1;
+}
+
+.member-work-policy__current {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: 0.9rem;
+}
+
+.member-work-policy__current-effective-from {
+  font-size: 0.78rem;
+  color: var(--k-ink-soft);
+}
+
+.member-work-policy__form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-4);
+}
+
+.member-work-policy__form .correction-field {
+  min-width: 12rem;
+}
+
+/* ---- 退職処理(無効化)の確認ダイアログの影響一覧(2026-08-23 Tier 0 その4 追加) ---- */
+
+.deactivate-confirm__impact {
+  margin: 0;
+  padding-left: 1.4rem;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: 0.88rem;
 }

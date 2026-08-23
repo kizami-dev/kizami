@@ -311,7 +311,17 @@ export interface NotificationTestResult {
  * apps/api/src/routes/notification-preferences.ts の serialize と一致させる。
  * 上の NotificationSettingsDto(テナント共有のチャネル接続情報)とは別物 — 混同しないこと。
  */
-export type PersonalNotificationCategory = "missing_clock_out" | "overtime_alert" | "leave_alert" | "correction_alert";
+/**
+ * "approval_request"(2026-08-23 Tier 0 その4 追加): 承認権限を持つ人向けの「承認依頼が届いた」
+ * カテゴリ(apps/api/src/lib/notification-preferences.ts の CATEGORIES と一致)。他カテゴリと違い
+ * 「申請者本人」ではなく承認権限のある人に配られる通知だが、個人設定の型・UIとしては同格に扱う。
+ */
+export type PersonalNotificationCategory =
+  | "missing_clock_out"
+  | "overtime_alert"
+  | "leave_alert"
+  | "correction_alert"
+  | "approval_request";
 
 export interface PersonalNotificationCategoryPrefsDto {
   /** 常時 true(アプリ内通知はOFFにできない)。 */
@@ -399,6 +409,9 @@ export interface UpdateDepartmentInput {
  */
 export type InviteStatus = "active" | "invited" | "invite_expired";
 
+/** 労働時間制の種別(apps/api/src/routes/members.ts の GET/POST /:id/work-policy と一致)。 */
+export type WorkSystemKind = "flex" | "fixed";
+
 /** メンバー(apps/api/src/routes/members.ts の GET / のレスポンス要素と一致)。 */
 export interface MemberDto {
   id: string;
@@ -410,6 +423,14 @@ export interface MemberDto {
   department: { id: string; name: string } | null;
   presetNames: string[];
   inviteStatus: InviteStatus;
+  /** パスワードリセット(管理者発行、2026-08-23 Tier 0 その4 追加)の未処理トークン有無。一覧のバッジ用。 */
+  hasPendingPasswordReset: boolean;
+  /**
+   * 現在の労働時間制(2026-08-23 Tier 0 その4 追加)。null = 割当が一度も無い、または解決不能。
+   * apps/api/src/routes/members.ts の workSystemKind と一致(一覧のバッジ用の参考値であり、
+   * 実際に計算へ使われる値は engine 側が effective-dated に解決する)。
+   */
+  workSystemKind: WorkSystemKind | null;
 }
 
 /**
@@ -454,6 +475,56 @@ export interface InvitationPreviewDto {
   tenantName: string | null;
   userName: string;
   email: string;
+}
+
+/**
+ * パスワードリセットの管理者発行(2026-08-23 Tier 0 その4 追加、招待と同型)。
+ * POST /members/:id/password-resets のレスポンスのみ、平文トークンを含む(この後は二度と
+ * 取得できない、IssuedInvitationDto と同じ作法)。完成URL(`${location.origin}/reset/${token}`)は
+ * APIが組み立てないため、フロント側で組み立てる(招待と同じ理由)。
+ */
+export interface IssuedPasswordResetDto {
+  id: string;
+  token: string;
+  /** UTC エポック分。 */
+  expiresAt: number;
+}
+
+/** GET /password-resets/:token(公開・未認証)のレスポンス。再設定画面の表示用。 */
+export interface PasswordResetPreviewDto {
+  tenantName: string | null;
+  userName: string;
+  email: string;
+}
+
+/**
+ * メンバー個別の労働時間制割当1件(2026-08-23 Tier 0 その4 追加)。
+ * GET /members/:id/work-policy のレスポンス要素と一致。
+ */
+export interface MemberWorkPolicyAssignmentDto {
+  effectiveFrom: string;
+  kind: WorkSystemKind;
+  standardDayMinutes: number;
+  workPolicyName: string;
+}
+
+/** GET /members/:id/work-policy のレスポンス。 */
+export interface MemberWorkPolicySettingsDto {
+  effective: MemberWorkPolicyAssignmentDto | null;
+  history: MemberWorkPolicyAssignmentDto[];
+}
+
+/** POST /members/:id/work-policy の入力。 */
+export interface CreateMemberWorkPolicyInput {
+  kind: WorkSystemKind;
+  effectiveFrom: string;
+}
+
+/** POST /members/:id/work-policy のレスポンス(workPolicyName は含まない — GET と異なる形なので別型にする)。 */
+export interface CreateMemberWorkPolicyResultDto {
+  kind: WorkSystemKind;
+  effectiveFrom: string;
+  standardDayMinutes: number;
 }
 
 export interface PermissionGrantDto {
@@ -1136,6 +1207,59 @@ export const api = {
     password: string,
   ): Promise<{ user: AuthUser } | { accountActivated: true; error: "session_issuance_failed" }> {
     return request(`/invitations/${encodeURIComponent(token)}/accept`, { method: "POST", body: JSON.stringify({ password }) });
+  },
+
+  /**
+   * POST /members/:id/password-resets(member.invite)。パスワードリセットの管理者発行。
+   * 対象は受諾済みメンバーに限る(409 not_active/member_inactive)。
+   */
+  async issueMemberPasswordReset(memberId: string): Promise<{ passwordReset: IssuedPasswordResetDto }> {
+    return request(`/members/${encodeURIComponent(memberId)}/password-resets`, { method: "POST" });
+  },
+
+  /** DELETE /members/:id/password-resets(member.invite)。未処理のリセットトークンの取り消し。 */
+  async revokeMemberPasswordReset(memberId: string): Promise<{ passwordReset: { id: string; revokedAt: number } }> {
+    return request(`/members/${encodeURIComponent(memberId)}/password-resets`, { method: "DELETE" });
+  },
+
+  /** GET /password-resets/:token(公開・未認証)。再設定画面の表示情報のみ返す。 */
+  async getPasswordResetPreview(token: string): Promise<PasswordResetPreviewDto> {
+    return request(`/password-resets/${encodeURIComponent(token)}`);
+  },
+
+  /**
+   * POST /password-resets/:token/use(公開・未認証)。成功するとセッションCookieが発行され、
+   * そのままログイン状態になる(routes/password-resets.ts の判断点コメントと同じ、
+   * acceptInvitation と同型)。
+   */
+  async usePasswordReset(
+    token: string,
+    password: string,
+  ): Promise<{ user: AuthUser } | { passwordUpdated: true; error: "session_issuance_failed" }> {
+    return request(`/password-resets/${encodeURIComponent(token)}/use`, { method: "POST", body: JSON.stringify({ password }) });
+  },
+
+  /** POST /members/:id/deactivate(member.deactivate)。退職処理(無効化)。 */
+  async deactivateMember(memberId: string): Promise<{ member: { id: string; isActive: boolean } }> {
+    return request(`/members/${encodeURIComponent(memberId)}/deactivate`, { method: "POST" });
+  },
+
+  /** POST /members/:id/reactivate(member.deactivate)。再有効化。 */
+  async reactivateMember(memberId: string): Promise<{ member: { id: string; isActive: boolean } }> {
+    return request(`/members/${encodeURIComponent(memberId)}/reactivate`, { method: "POST" });
+  },
+
+  /** GET /members/:id/work-policy(tenant_settings.flex.manage)。現在実効の割当+割当履歴。 */
+  async getMemberWorkPolicy(memberId: string): Promise<MemberWorkPolicySettingsDto> {
+    return request(`/members/${encodeURIComponent(memberId)}/work-policy`);
+  },
+
+  /** POST /members/:id/work-policy(tenant_settings.flex.manage)。新しい割当を1件追記する。 */
+  async assignMemberWorkPolicy(
+    memberId: string,
+    input: CreateMemberWorkPolicyInput,
+  ): Promise<{ assignment: CreateMemberWorkPolicyResultDto }> {
+    return request(`/members/${encodeURIComponent(memberId)}/work-policy`, { method: "POST", body: JSON.stringify(input) });
   },
 
   async updateMemberDepartment(id: string, departmentId: string): Promise<{ member: { id: string; departmentId: string } }> {

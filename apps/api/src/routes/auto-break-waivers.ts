@@ -14,6 +14,10 @@
  * 2026-08-23 に corrections.ts / leave.ts 側もこのファイルと同じ権限ベース方式へ統一した
  * (routes/corrections.ts・routes/leave.ts のヘッダコメント参照)。3ファイルとも現在は
  * 同じ認可の形。
+ *
+ * 承認依頼の通知(2026-08-23 追加): POST / で申請が作成されたら承認者(申請者をスコープに
+ * 含む形で APPROVE_PERMISSION を持つ人)へ通知する。routes/corrections.ts の POST / と同じ
+ * 形(詳細な設計理由・テナント共有 Webhook の扱いはそちらのヘッダコメント参照)。
  */
 
 import { Hono } from "hono";
@@ -37,10 +41,11 @@ import {
 import { dispatch } from "@kizami/notify";
 import type { AppEnv } from "../auth/middleware.js";
 import { ForbiddenError, requirePermission } from "../authz.js";
+import { resolveApproversForUser } from "../lib/approvers.js";
 import { computeMonthlyOutputForUser } from "../lib/closing-amend.js";
 import { assertAmendAllowed } from "../lib/closing-guard.js";
 import { engineOutputFromSnapshots, snapshotInputsFromEngineOutput, sumFixedBreakdown } from "../lib/closing-snapshot.js";
-import { buildPersonalChannels, type BuildPersonalChannelsOptions } from "../lib/notification-channels.js";
+import { buildPersonalChannels, buildTenantChannels, type BuildPersonalChannelsOptions } from "../lib/notification-channels.js";
 import { resolveAccessibleUserIds } from "../lib/scope.js";
 import { nowMinutes, parseMonthParam } from "../lib/time.js";
 
@@ -198,6 +203,46 @@ export function createAutoBreakWaiversRoutes(db: Database, deps: AutoBreakWaiver
       reason,
       createdAt: nowMinutes(),
     });
+
+    // 承認依頼の通知(routes/corrections.ts の POST / と同じ形。詳細な設計理由は
+    // routes/corrections.ts のヘッダコメント参照)。申請者自身が承認権限を持つ場合でも、
+    // 自分の申請の通知は自分には送らない。
+    const approverIds = (
+      await resolveApproversForUser(db, { tenantId: user.tenantId, subjectUserId: user.id, permission: APPROVE_PERMISSION })
+    ).filter((id) => id !== user.id);
+
+    const notificationType = "approval_request_waiver";
+    const title = "承認待ちの休憩自動控除打ち消し申請があります";
+    const notificationBody = `${user.displayName}さんから休憩自動控除の打ち消し申請が届きました。確認してください。`;
+
+    for (const approverId of approverIds) {
+      const notification = await createNotificationIfAbsent(db, {
+        tenantId: user.tenantId,
+        userId: approverId,
+        type: notificationType,
+        subjectDate: null,
+        title,
+        body: notificationBody,
+        createdAt: created.createdAt,
+      });
+      if (notification) {
+        const channels = await buildPersonalChannels(db, { tenantId: user.tenantId, userId: approverId, notificationType }, deps);
+        if (channels.length > 0) {
+          await dispatch(channels, { to: {}, title, body: notificationBody });
+        }
+      }
+    }
+
+    // テナント共有 Webhook にも1件(routes/corrections.ts の POST / と同じ判断: 承認者が
+    // 1人もいなくてもテナント側の共有チャネルが設定されていれば送る)。
+    const tenantChannels = await buildTenantChannels(db, user.tenantId, deps);
+    if (tenantChannels.length > 0) {
+      await dispatch(tenantChannels, {
+        to: {},
+        title,
+        body: `${user.displayName}さんから休憩自動控除の打ち消し申請が届きました。/auto-break-waivers で確認してください。`,
+      });
+    }
 
     // 締め後修正(amend): 申請自体は締め済み月でも作成できる(意思表示の記録に過ぎない —
     // corrections.ts / leave.ts と同じ)。承認時にのみ closing.unlock を要求する。

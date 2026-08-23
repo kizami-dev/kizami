@@ -33,6 +33,16 @@
  * 権限を要求し(assertAmendAllowed)、許可されれば月を開けずに反映し、対象ユーザーの
  * スナップショットを再計算して新しい世代を保存 + closing_events に `amend` を追記する
  * (apps/api/src/lib/closing-guard.ts・closing-amend.ts 参照)。
+ *
+ * 承認依頼の通知(2026-08-23 追加): POST / で申請が作成されたら、apps/api/src/lib/approvers.ts
+ * の resolveApproversForUser で APPROVE_PERMISSION をこの申請者をスコープに含む形で保持する
+ * ユーザー(=この申請を承認できる人)を解決し、申請者自身を除いた各人へ通知する
+ * (アプリ内通知 + buildPersonalChannels 経由の個人チャネル、カテゴリは新設の
+ * approval_request)。加えてテナント共有 Webhook(buildTenantChannels)にも1件通知する —
+ * こちらは「誰から・何の申請か」の最小限の文面のみで、理由・時刻等の個人の詳細は書かない
+ * (lib/notification-channels.ts の設計原則: テナント共有チャネルに他人の勤怠情報を流さない)。
+ * 通知は完全にベストエフォート(失敗しても申請作成自体は成功のまま返す — 承認・却下時の
+ * 本人通知と同じ扱いで、ここでも例外を握りつぶす特別な try/catch は追加しない)。
  */
 
 import { Hono } from "hono";
@@ -60,11 +70,12 @@ import { dispatch } from "@kizami/notify";
 import type { PunchKind } from "@kizami/engine";
 import type { AppEnv } from "../auth/middleware.js";
 import { ForbiddenError, requirePermission, requireSelf } from "../authz.js";
+import { resolveApproversForUser } from "../lib/approvers.js";
 import { periodFromDate, resolveAttendanceDate } from "../lib/attendance-date.js";
 import { assertAmendAllowed } from "../lib/closing-guard.js";
 import { computeMonthlyOutputForUser } from "../lib/closing-amend.js";
 import { engineOutputFromSnapshots, snapshotInputsFromEngineOutput, sumFixedBreakdown } from "../lib/closing-snapshot.js";
-import { buildPersonalChannels, type BuildPersonalChannelsOptions } from "../lib/notification-channels.js";
+import { buildPersonalChannels, buildTenantChannels, type BuildPersonalChannelsOptions } from "../lib/notification-channels.js";
 import { resolveAccessibleUserIds } from "../lib/scope.js";
 import { FUTURE_TOLERANCE_MINUTES, isValidPunchKind } from "./punches.js";
 import { nowMinutes, parseMonthParam } from "../lib/time.js";
@@ -299,6 +310,46 @@ export function createCorrectionsRoutes(db: Database, deps: CorrectionsRoutesDep
       reason,
       createdAt: nowMinutes(),
     });
+
+    // 承認依頼の通知(ヘッダコメント参照)。申請者自身が承認権限を持ち自分に対して
+    // 承認できる場合でも、自分の申請の通知は自分には送らない。
+    const approverIds = (
+      await resolveApproversForUser(db, { tenantId: user.tenantId, subjectUserId: user.id, permission: APPROVE_PERMISSION })
+    ).filter((id) => id !== user.id);
+
+    const notificationType = "approval_request_correction";
+    const title = "承認待ちの打刻修正申請があります";
+    const notificationBody = `${user.displayName}さんから打刻修正申請が届きました。確認してください。`;
+
+    for (const approverId of approverIds) {
+      const notification = await createNotificationIfAbsent(db, {
+        tenantId: user.tenantId,
+        userId: approverId,
+        type: notificationType,
+        subjectDate: null,
+        title,
+        body: notificationBody,
+        createdAt: created.createdAt,
+      });
+      if (notification) {
+        const channels = await buildPersonalChannels(db, { tenantId: user.tenantId, userId: approverId, notificationType }, deps);
+        if (channels.length > 0) {
+          await dispatch(channels, { to: {}, title, body: notificationBody });
+        }
+      }
+    }
+
+    // テナント共有 Webhook にも1件(理由・時刻等の個人の詳細は書かない — ヘッダコメント参照)。
+    // 承認者が(自己承認除外の結果)1人もいない場合でも、テナント側の共有チャネルが
+    // 設定されていれば送る(buildTenantChannels が未設定なら自然に空配列になる)。
+    const tenantChannels = await buildTenantChannels(db, user.tenantId, deps);
+    if (tenantChannels.length > 0) {
+      await dispatch(tenantChannels, {
+        to: {},
+        title,
+        body: `${user.displayName}さんから打刻修正申請が届きました。/corrections で確認してください。`,
+      });
+    }
 
     return c.json({ request: serializeCorrectionRequest(created), targetMonthClosed }, 201);
   });

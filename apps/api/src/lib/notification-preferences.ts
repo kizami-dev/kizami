@@ -27,8 +27,20 @@ import type { UserNotificationSettings } from "@kizami/db";
  * `correction_alert`(2026-08-23 追加): 修正系申請(休憩自動控除の打ち消し等)の承認・却下
  * 通知。migration 0015 で専用列(correction_alert_email/webhook)が入り、他の3カテゴリと
  * 同様に個人設定で ON/OFF できる。
+ *
+ * `approval_request`(2026-08-23 追加): 承認権限を持つ人向けの「承認依頼が届いた」通知
+ * (打刻修正・休暇・休憩自動控除打ち消しの各申請の作成時)。他の3カテゴリは「申請者本人」が
+ * 受け手だが、このカテゴリだけは「承認者」が受け手という違いがある(apps/api/src/lib/approvers.ts
+ * で解決した承認者一覧に対して個人チャネルを組み立てる際にこのカテゴリを使う)。migration 0019
+ * で専用列(approval_request_email/webhook)が入り、他のカテゴリと同様に個人設定で ON/OFF できる。
  */
-export const NOTIFICATION_CATEGORIES = ["missing_clock_out", "overtime_alert", "leave_alert", "correction_alert"] as const;
+export const NOTIFICATION_CATEGORIES = [
+  "missing_clock_out",
+  "overtime_alert",
+  "leave_alert",
+  "correction_alert",
+  "approval_request",
+] as const;
 export type NotificationCategory = (typeof NOTIFICATION_CATEGORIES)[number];
 
 export interface CategoryChannelPrefs {
@@ -43,6 +55,7 @@ export const DEFAULT_USER_NOTIFICATION_PREFS: Readonly<Record<NotificationCatego
     overtime_alert: Object.freeze({ email: false, webhook: false }),
     leave_alert: Object.freeze({ email: false, webhook: false }),
     correction_alert: Object.freeze({ email: false, webhook: false }),
+    approval_request: Object.freeze({ email: false, webhook: false }),
   });
 
 /**
@@ -57,9 +70,16 @@ export const DEFAULT_USER_NOTIFICATION_PREFS: Readonly<Record<NotificationCatego
  * 「休暇のお知らせ」)に束ねる。打刻修正申請の承認・却下通知("correction_request_*")は
  * auto_break_waiver と同じ correction_alert カテゴリに束ねる(routes/corrections.ts・
  * routes/leave.ts のヘッダコメント参照)。
+ *
+ * 判断点(2026-08-23 追加): 承認依頼通知("approval_request_*"。routes/corrections.ts・
+ * routes/leave.ts・routes/auto-break-waivers.ts の各 POST / 作成時に承認者へ送る)は
+ * "leave_" 判定より前に置く必要がある — "approval_request_leave" は "leave_" では
+ * 始まらないため実害は無いが、"correction_request_" 系との取り違えを避けるため専用の
+ * プレフィックスとして最初に判定する。
  */
 export function resolveNotificationCategory(notificationType: string): NotificationCategory {
   if (notificationType === "missing_clock_out") return "missing_clock_out";
+  if (notificationType.startsWith("approval_request_")) return "approval_request";
   if (notificationType.startsWith("overtime_")) return "overtime_alert";
   if (notificationType.startsWith("leave_")) return "leave_alert";
   if (notificationType.startsWith("auto_break_waiver_") || notificationType.startsWith("correction_request_")) {
@@ -80,6 +100,7 @@ export function resolveUserNotificationPrefs(
       overtime_alert: { ...DEFAULT_USER_NOTIFICATION_PREFS.overtime_alert },
       leave_alert: { ...DEFAULT_USER_NOTIFICATION_PREFS.leave_alert },
       correction_alert: { ...DEFAULT_USER_NOTIFICATION_PREFS.correction_alert },
+      approval_request: { ...DEFAULT_USER_NOTIFICATION_PREFS.approval_request },
     };
   }
   return {
@@ -87,6 +108,7 @@ export function resolveUserNotificationPrefs(
     overtime_alert: { email: row.overtimeAlertEmail, webhook: row.overtimeAlertWebhook },
     leave_alert: { email: row.leaveAlertEmail, webhook: row.leaveAlertWebhook },
     correction_alert: { email: row.correctionAlertEmail, webhook: row.correctionAlertWebhook },
+    approval_request: { email: row.approvalRequestEmail, webhook: row.approvalRequestWebhook },
   };
 }
 

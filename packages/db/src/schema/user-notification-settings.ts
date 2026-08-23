@@ -54,6 +54,10 @@ export const userNotificationSettings = sqliteTable(
     correctionAlertEmail: integer("correction_alert_email", { mode: "boolean" }).notNull().default(false),
     correctionAlertWebhook: integer("correction_alert_webhook", { mode: "boolean" }).notNull().default(false),
 
+    /** 承認依頼(スコープ内で申請が作成されたことを承認権限保持者へ。2026-08-23 Tier0 追加) */
+    approvalRequestEmail: integer("approval_request_email", { mode: "boolean" }).notNull().default(false),
+    approvalRequestWebhook: integer("approval_request_webhook", { mode: "boolean" }).notNull().default(false),
+
     /** null なら users.email を使う(API 層で解決) */
     emailAddress: text("email_address"),
     /** 個人の Webhook URL。暗号化して保存(apps/api/src/lib/encryption.ts) */

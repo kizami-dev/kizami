@@ -17,7 +17,14 @@ import { useSettingsAccess } from "../lib/useSettingsAccess";
 import { AppHeader } from "./AppHeader";
 import { ConfirmDialog } from "./ConfirmDialog";
 
-const CATEGORIES: PersonalNotificationCategory[] = ["missing_clock_out", "overtime_alert", "leave_alert", "correction_alert"];
+const CATEGORIES: PersonalNotificationCategory[] = [
+  "missing_clock_out",
+  "overtime_alert",
+  "leave_alert",
+  "correction_alert",
+  // approval_request(2026-08-23 Tier 0 その4 追加): 承認権限を持つ人向けの「承認依頼が届いた」カテゴリ。
+  "approval_request",
+];
 
 interface FormState {
   categories: Record<PersonalNotificationCategory, { email: boolean; webhook: boolean }>;
@@ -114,6 +121,7 @@ export function PersonalNotificationSettingsView() {
         overtime_alert: { email: form.categories.overtime_alert.email, webhook: form.categories.overtime_alert.webhook },
         leave_alert: { email: form.categories.leave_alert.email, webhook: form.categories.leave_alert.webhook },
         correction_alert: { email: form.categories.correction_alert.email, webhook: form.categories.correction_alert.webhook },
+        approval_request: { email: form.categories.approval_request.email, webhook: form.categories.approval_request.webhook },
       },
       // 空欄のまま送信 = 既存値を維持(3値ルールのうち「省略」に相当)。
       ...(form.emailAddress.trim() !== "" ? { emailAddress: form.emailAddress.trim() } : {}),

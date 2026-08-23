@@ -8,9 +8,13 @@
  * routes/settings.ts の GET/PUT /settings/notifications(`notification.settings.manage` 権限必須)
  * のままで、こちらとは完全に別物。
  *
- * カテゴリ(missing_clock_out / overtime_alert / leave_alert)・既定値
- * (アプリ内=常時ON・メール=OFF・Webhook=未設定)の定義は lib/notification-preferences.ts に
- * 一元化してあり、このファイルはそれを読み書きするだけ(独自のデフォルト値を持たない)。
+ * カテゴリ(missing_clock_out / overtime_alert / leave_alert / correction_alert /
+ * approval_request)・既定値(アプリ内=常時ON・メール=OFF・Webhook=未設定)の定義は
+ * lib/notification-preferences.ts に一元化してあり、このファイルはそれを読み書きするだけ
+ * (独自のデフォルト値を持たない)。approval_request は他と異なり「申請者本人」ではなく
+ * 「承認権限を持つ人」が受け手のカテゴリ(apps/api/src/lib/approvers.ts 参照)だが、
+ * 個人の受け取り設定という枠組み自体は同じなのでこの GET/PUT /settings/notifications/me で
+ * 一緒くたに扱う。
  *
  * 秘密情報のマスキング方針(GET のレスポンス。routes/settings.ts の webhookUrl と同じ考え方):
  * - webhookUrl: 全文は返さない。`{ configured: boolean, preview: string | null }`
@@ -135,6 +139,7 @@ export function createNotificationPreferencesRoutes(db: Database, deps: Notifica
       overtime_alert: { ...currentPrefs.overtime_alert },
       leave_alert: { ...currentPrefs.leave_alert },
       correction_alert: { ...currentPrefs.correction_alert },
+      approval_request: { ...currentPrefs.approval_request },
     };
     for (const category of NOTIFICATION_CATEGORIES) {
       const input = body.categories[category];
@@ -187,6 +192,8 @@ export function createNotificationPreferencesRoutes(db: Database, deps: Notifica
       leaveAlertWebhook: resolvedPrefs.leave_alert.webhook,
       correctionAlertEmail: resolvedPrefs.correction_alert.email,
       correctionAlertWebhook: resolvedPrefs.correction_alert.webhook,
+      approvalRequestEmail: resolvedPrefs.approval_request.email,
+      approvalRequestWebhook: resolvedPrefs.approval_request.webhook,
       emailAddress: emailAddressResult.value,
       webhookUrl: webhookUrlToStore,
       updatedAt: now,

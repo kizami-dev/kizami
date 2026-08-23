@@ -104,7 +104,7 @@ async function main(): Promise<void> {
     await waitForHttp(WEB_BASE_URL, { timeoutMs: 30_000 });
 
     console.log("[screenshots] [5/7] デモデータ(打刻・修正申請・有給・設定)を投入中...");
-    const { sessionCookie, fixedMemberSessionCookie, inviteToken } = await seedHttp({
+    const { sessionCookie, fixedMemberSessionCookie, inviteToken, resetToken } = await seedHttp({
       apiBaseUrl: API_BASE_URL,
       extraUsers: extra.users,
       departments: extra.departments,
@@ -114,7 +114,7 @@ async function main(): Promise<void> {
     const prevMonth = fmtMonth(addMonths(jstToday(), -1));
     const shots = await captureAll({
       sessionCookie,
-      vars: { prevMonth, inviteToken },
+      vars: { prevMonth, inviteToken, resetToken },
       extraSessionCookies: { "fixed-member": fixedMemberSessionCookie },
     });
 

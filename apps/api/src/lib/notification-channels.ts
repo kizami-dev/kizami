@@ -8,10 +8,13 @@
  *   今回の修正の核心。以前はテナント共有 Webhook に全員分の本人宛通知が集約されていて、
  *   他人の勤怠情報が見える状態だった)。
  * - `buildTenantChannels`(旧 buildNotificationChannels) — **管理者向けの集約通知**用。
- *   テナント共有 Webhook + テナント SMTP。現状の呼び出し元は
- *   POST /settings/notifications/test(管理者が「自社のチャネル設定」を確認するテスト送信)
- *   のみ。将来の承認依頼通知など「管理者向け」の通知はこちらを使う想定
- *   (今回のスコープでは呼び出し箇所を増やさない)。
+ *   テナント共有 Webhook + テナント SMTP。呼び出し元は POST /settings/notifications/test
+ *   (管理者が「自社のチャネル設定」を確認するテスト送信)と、routes/corrections.ts・
+ *   routes/leave.ts・routes/auto-break-waivers.ts の POST /(申請作成時、承認依頼を
+ *   テナント共有 Webhook へ1件通知する。2026-08-23 追加)。テナント共有チャネルへ流す本文は
+ *   「誰から・何の申請か」の最小限に留め、理由・時刻等の個人の詳細は書かない
+ *   (buildPersonalChannels との使い分けの核心である「他人の勤怠情報を見せない」原則を
+ *   承認依頼通知でも守るため)。
  *
  * 環境変数 WEBHOOK_URL は「buildTenantChannels 呼び出し時、そのテナントに
  * tenant_notification_settings の行が一切無い場合のフォールバック」としてのみ使う

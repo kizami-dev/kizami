@@ -72,7 +72,13 @@ export function ConfirmDialog({
           </button>
         </div>
         <div className="k-modal__body">
-          <p className="confirm-dialog__message">{message}</p>
+          {/*
+           * div(p ではない): message は ReactNode を許容しており、退職処理の確認(影響の箇条書き)
+           * のように <ul> 等のブロック要素を含むケースがある(2026-08-23 Tier 0 その4 で発覚・修正
+           * — p の中に ul を置くと「In HTML, <ul> cannot be a descendant of <p>」のハイドレーション
+           * エラーになっていた)。confirm-dialog__message の見た目(corrections.css)は div でも同じ。
+           */}
+          <div className="confirm-dialog__message">{message}</div>
           {extraNote ? <p className="confirm-dialog__extra-note">{extraNote}</p> : null}
           {onNoteChange ? (
             <div className="correction-field">

@@ -41,6 +41,14 @@ export const SCREENS: Screen[] = [
     mobile: true,
   },
   {
+    slug: "reset-accept",
+    path: "/reset/{resetToken}",
+    title: "パスワードの再設定",
+    caption: "管理者が発行したリセットリンクを開いた画面。新しいパスワードを設定するとそのままログインされる(自前認証でも詰まない)。",
+    requiresAuth: false,
+    mobile: false,
+  },
+  {
     slug: "dashboard",
     path: "/",
     title: "ダッシュボード",
