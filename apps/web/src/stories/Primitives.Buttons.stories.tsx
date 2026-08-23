@@ -66,7 +66,7 @@ function ButtonsCatalog() {
 }
 
 const meta = {
-  title: "プリミティブ/ボタン",
+  title: "Primitives/Buttons",
   component: ButtonsCatalog,
   parameters: { layout: "fullscreen" },
 } satisfies Meta<typeof ButtonsCatalog>;
@@ -74,4 +74,4 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-export const AllButtons: Story = { name: "ボタン一覧" };
+export const AllButtons: Story = {};

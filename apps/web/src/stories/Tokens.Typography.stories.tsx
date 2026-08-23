@@ -69,7 +69,7 @@ function TypographyCatalog() {
 }
 
 const meta = {
-  title: "トークン/タイポグラフィ",
+  title: "Tokens/Typography",
   component: TypographyCatalog,
   parameters: { layout: "fullscreen" },
 } satisfies Meta<typeof TypographyCatalog>;
@@ -77,4 +77,4 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-export const TypeScale: Story = { name: "型見本" };
+export const TypeScale: Story = {};

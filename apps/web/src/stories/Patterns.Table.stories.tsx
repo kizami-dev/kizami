@@ -179,7 +179,7 @@ function TablePatterns() {
 }
 
 const meta = {
-  title: "パターン/テーブル",
+  title: "Patterns/Table",
   component: TablePatterns,
   parameters: { layout: "fullscreen" },
 } satisfies Meta<typeof TablePatterns>;
@@ -187,4 +187,4 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-export const RowTypes: Story = { name: "行の型" };
+export const RowTypes: Story = {};

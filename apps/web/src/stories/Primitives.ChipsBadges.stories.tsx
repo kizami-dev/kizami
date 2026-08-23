@@ -75,7 +75,7 @@ function ChipsBadgesCatalog() {
 }
 
 const meta = {
-  title: "プリミティブ/チップとバッジ",
+  title: "Primitives/Chips & Badges",
   component: ChipsBadgesCatalog,
   parameters: { layout: "fullscreen" },
 } satisfies Meta<typeof ChipsBadgesCatalog>;
@@ -83,4 +83,4 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-export const AllChipsAndBadges: Story = { name: "チップとバッジ一覧" };
+export const AllChipsAndBadges: Story = {};

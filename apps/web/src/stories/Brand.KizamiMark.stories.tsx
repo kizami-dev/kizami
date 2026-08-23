@@ -31,7 +31,7 @@ function SizeVariants() {
 }
 
 const meta = {
-  title: "ブランド/KizamiMark",
+  title: "Brand/KizamiMark",
   component: SizeVariants,
   parameters: { layout: "fullscreen" },
 } satisfies Meta<typeof SizeVariants>;
@@ -39,4 +39,4 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-export const Sizes: Story = { name: "サイズ展開" };
+export const Sizes: Story = {};
