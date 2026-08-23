@@ -1,0 +1,33 @@
+{{- if .Values.seed.enabled }}
+# 初期管理者の作成(冪等)。post-install/post-upgrade hook として実行され、
+# 既存ユーザーが居ればシステムプリセットの権限同期のみ行う(apps/api/src/seed.ts)。
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Release.Name }}-seed
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 2
+  template:
+    spec:
+      restartPolicy: Never
+      securityContext: {fsGroup: 1001}
+      containers:
+        - name: seed
+          image: "{{ .Values.image.api.repository }}:{{ .Values.image.api.tag }}"
+          command: ["node_modules/.bin/tsx", "src/seed.ts"]
+          env:
+            - {name: DATABASE_URL, value: "file:/data/kizami.db"}
+            - name: SEED_EMAIL
+              valueFrom: {secretKeyRef: {name: {{ .Values.seed.secretName }}, key: email}}
+            - name: SEED_PASSWORD
+              valueFrom: {secretKeyRef: {name: {{ .Values.seed.secretName }}, key: password}}
+            - name: SEED_TENANT_NAME
+              valueFrom: {secretKeyRef: {name: {{ .Values.seed.secretName }}, key: tenantName, optional: true}}
+          volumeMounts: [{name: data, mountPath: /data}]
+      volumes:
+        - name: data
+          persistentVolumeClaim: {claimName: {{ .Release.Name }}-data}
+{{- end }}

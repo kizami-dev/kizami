@@ -1,0 +1,68 @@
+# KIZAMI Helm chart の設定値。
+#
+# 前提(deploy/k8s と同じ): SQLite ファイル DB + RWO PVC のため replicas は 1 固定・
+# 更新戦略 Recreate。スケールアウトしたい場合は将来の PostgreSQL 対応を待つこと。
+image:
+  api:
+    repository: ghcr.io/sasagar/kizami-api
+    tag: latest
+  web:
+    repository: ghcr.io/sasagar/kizami-web
+    tag: latest
+  valkey:
+    repository: valkey/valkey
+    tag: 8-alpine
+  pullPolicy: Always
+
+# 必須: 秘密情報(Webhook URL 等)の保存時暗号化鍵を入れた Secret。
+# 事前に `kubectl create secret generic kizami-encryption --from-literal=key="$(openssl rand -base64 32)"`
+# などで作成し、その名前とキーを指定する(チャートは Secret を生成しない —
+# helm upgrade で鍵が回転して復号不能になる事故を防ぐため)。
+encryptionSecret:
+  name: kizami-encryption
+  key: key
+
+# 任意: worker の管理者向け Webhook(未設定ならスキップ)
+notifySecret:
+  name: ""
+  key: webhookUrl
+
+persistence:
+  storageClassName: ""   # 空ならクラスタ既定(k3s なら local-path)
+  size: 1Gi
+
+service:
+  type: ClusterIP        # NodePort にする場合は nodePort も指定
+  web:
+    port: 3000
+    nodePort: null
+  api:
+    port: 3001
+    nodePort: null
+
+ingress:
+  enabled: false
+  className: ""
+  host: kizami.example.com
+  tls: []                # [{secretName: ..., hosts: [...]}]
+  annotations: {}
+
+resources:
+  api:
+    requests: {cpu: 100m, memory: 256Mi}
+    limits: {memory: 1Gi}
+  web:
+    requests: {cpu: 50m, memory: 128Mi}
+    limits: {memory: 512Mi}
+  worker:
+    requests: {cpu: 50m, memory: 192Mi}
+    limits: {memory: 512Mi}
+  valkey:
+    requests: {cpu: 20m, memory: 32Mi}
+    limits: {memory: 128Mi}
+
+# 初期管理者を作るシードジョブ(helm test ではなく post-install/post-upgrade hook)。
+# 冪等: 既存ユーザーが居ればスキップし、権限カタログ追加分のシステムプリセット同期だけ行う。
+seed:
+  enabled: false
+  secretName: kizami-seed   # SEED_EMAIL / SEED_PASSWORD (/ SEED_TENANT_NAME) を持つ Secret

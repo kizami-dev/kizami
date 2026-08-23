@@ -1,0 +1,30 @@
+{{- if .Values.ingress.enabled }}
+# web は同一オリジンの /api/* を叩く前提(docker/web.Dockerfile の WAKU_PUBLIC_API_URL=/api)
+# のため、/api を api サービスへ、それ以外を web へ振り分ける。
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ .Release.Name }}
+  {{- with .Values.ingress.annotations }}
+  annotations: {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.ingress.className }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  {{- with .Values.ingress.tls }}
+  tls: {{- toYaml . | nindent 4 }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.host }}
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service: {name: {{ .Release.Name }}-api, port: {name: http}}
+          - path: /
+            pathType: Prefix
+            backend:
+              service: {name: {{ .Release.Name }}-web, port: {name: http}}
+{{- end }}

@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-web
+spec:
+  type: {{ .Values.service.type }}
+  selector: {app: {{ .Release.Name }}}
+  ports:
+    - name: http
+      port: {{ .Values.service.web.port }}
+      targetPort: web-http
+      {{- if and (eq .Values.service.type "NodePort") .Values.service.web.nodePort }}
+      nodePort: {{ .Values.service.web.nodePort }}
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-api
+spec:
+  type: {{ .Values.service.type }}
+  selector: {app: {{ .Release.Name }}}
+  ports:
+    - name: http
+      port: {{ .Values.service.api.port }}
+      targetPort: api-http
+      {{- if and (eq .Values.service.type "NodePort") .Values.service.api.nodePort }}
+      nodePort: {{ .Values.service.api.nodePort }}
+      {{- end }}

@@ -1,0 +1,9 @@
+apiVersion: v2
+name: kizami
+description: 日本の労働法制に準拠したセルフホスト勤怠管理システム KIZAMI
+type: application
+version: 0.1.0
+appVersion: "0.7"
+home: https://github.com/sasagar/kizami
+sources:
+  - https://github.com/sasagar/kizami
