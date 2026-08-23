@@ -393,13 +393,17 @@ export interface NotificationTestResult {
  * "approval_request"(2026-08-23 Tier 0 その4 追加): 承認権限を持つ人向けの「承認依頼が届いた」
  * カテゴリ(apps/api/src/lib/notification-preferences.ts の CATEGORIES と一致)。他カテゴリと違い
  * 「申請者本人」ではなく承認権限のある人に配られる通知だが、個人設定の型・UIとしては同格に扱う。
+ *
+ * "shift_variance"(2026-08-24 追加): 前日の自分の勤務がシフトとずれたことを本人へ知らせる
+ * カテゴリ(apps/api/src/shift-variance-alerts.ts の日次スキャン)。受け手は本人に戻る。
  */
 export type PersonalNotificationCategory =
   | "missing_clock_out"
   | "overtime_alert"
   | "leave_alert"
   | "correction_alert"
-  | "approval_request";
+  | "approval_request"
+  | "shift_variance";
 
 export interface PersonalNotificationCategoryPrefsDto {
   /** 常時 true(アプリ内通知はOFFにできない)。 */

@@ -24,6 +24,8 @@ const CATEGORIES: PersonalNotificationCategory[] = [
   "correction_alert",
   // approval_request(2026-08-23 Tier 0 その4 追加): 承認権限を持つ人向けの「承認依頼が届いた」カテゴリ。
   "approval_request",
+  // shift_variance(2026-08-24 追加): 前日の自分の勤務がシフトとずれたときの本人向け通知。
+  "shift_variance",
 ];
 
 interface FormState {
@@ -122,6 +124,7 @@ export function PersonalNotificationSettingsView() {
         leave_alert: { email: form.categories.leave_alert.email, webhook: form.categories.leave_alert.webhook },
         correction_alert: { email: form.categories.correction_alert.email, webhook: form.categories.correction_alert.webhook },
         approval_request: { email: form.categories.approval_request.email, webhook: form.categories.approval_request.webhook },
+        shift_variance: { email: form.categories.shift_variance.email, webhook: form.categories.shift_variance.webhook },
       },
       // 空欄のまま送信 = 既存値を維持(3値ルールのうち「省略」に相当)。
       ...(form.emailAddress.trim() !== "" ? { emailAddress: form.emailAddress.trim() } : {}),

@@ -38,6 +38,13 @@ import type { UserNotificationSettings } from "@kizami/db";
  * 受け手だが、このカテゴリだけは「承認者」が受け手という違いがある(apps/api/src/lib/approvers.ts
  * で解決した承認者一覧に対して個人チャネルを組み立てる際にこのカテゴリを使う)。migration 0019
  * で専用列(approval_request_email/webhook)が入り、他のカテゴリと同様に個人設定で ON/OFF できる。
+ *
+ * `shift_variance`(2026-08-24 追加): 前日の自分の勤務がシフトとずれたことを**本人**へ知らせる
+ * 通知(apps/api/src/shift-variance-alerts.ts の日次スキャンが送る "shift_variance_self")。
+ * 判断点: 既存の correction_alert / leave_alert に相乗りさせず新カテゴリにした — 受け手にとって
+ * 「申請の結果」でも「休暇のお知らせ」でもなく、毎日届きうる自分の勤務の指摘という性質が
+ * まったく違い、他カテゴリを OFF にせずにこれだけ止めたい(あるいはこれだけメールで欲しい)
+ * 要望が自然に想定できるため。migration 0024 で専用列(shift_variance_email/webhook)が入る。
  */
 export const NOTIFICATION_CATEGORIES = [
   "missing_clock_out",
@@ -45,6 +52,7 @@ export const NOTIFICATION_CATEGORIES = [
   "leave_alert",
   "correction_alert",
   "approval_request",
+  "shift_variance",
 ] as const;
 export type NotificationCategory = (typeof NOTIFICATION_CATEGORIES)[number];
 
@@ -61,6 +69,7 @@ export const DEFAULT_USER_NOTIFICATION_PREFS: Readonly<Record<NotificationCatego
     leave_alert: Object.freeze({ email: false, webhook: false }),
     correction_alert: Object.freeze({ email: false, webhook: false }),
     approval_request: Object.freeze({ email: false, webhook: false }),
+    shift_variance: Object.freeze({ email: false, webhook: false }),
   });
 
 /**
@@ -81,10 +90,17 @@ export const DEFAULT_USER_NOTIFICATION_PREFS: Readonly<Record<NotificationCatego
  * "leave_" 判定より前に置く必要がある — "approval_request_leave" は "leave_" では
  * 始まらないため実害は無いが、"correction_request_" 系との取り違えを避けるため専用の
  * プレフィックスとして最初に判定する。
+ *
+ * 判断点(2026-08-24 追加): シフト予実乖離の**本人宛**通知("shift_variance_self")だけを
+ * shift_variance カテゴリに対応付ける。同じスキャンが作る管理者向け日次ダイジェスト
+ * ("shift_variance_alert")は個人チャネルを一切使わない(アプリ内 + テナント共有 Webhook のみ
+ * — apps/api/src/shift-variance-alerts.ts)ため、ここには意図的に載せない。誤って
+ * buildPersonalChannels へ渡した場合は未知の type として例外になり、実装ミスに気づける。
  */
 export function resolveNotificationCategory(notificationType: string): NotificationCategory {
   if (notificationType === "missing_clock_out") return "missing_clock_out";
   if (notificationType.startsWith("approval_request_")) return "approval_request";
+  if (notificationType === "shift_variance_self") return "shift_variance";
   if (notificationType.startsWith("overtime_")) return "overtime_alert";
   if (notificationType.startsWith("leave_")) return "leave_alert";
   if (notificationType.startsWith("auto_break_waiver_") || notificationType.startsWith("correction_request_")) {
@@ -106,6 +122,7 @@ export function resolveUserNotificationPrefs(
       leave_alert: { ...DEFAULT_USER_NOTIFICATION_PREFS.leave_alert },
       correction_alert: { ...DEFAULT_USER_NOTIFICATION_PREFS.correction_alert },
       approval_request: { ...DEFAULT_USER_NOTIFICATION_PREFS.approval_request },
+      shift_variance: { ...DEFAULT_USER_NOTIFICATION_PREFS.shift_variance },
     };
   }
   return {
@@ -114,6 +131,7 @@ export function resolveUserNotificationPrefs(
     leave_alert: { email: row.leaveAlertEmail, webhook: row.leaveAlertWebhook },
     correction_alert: { email: row.correctionAlertEmail, webhook: row.correctionAlertWebhook },
     approval_request: { email: row.approvalRequestEmail, webhook: row.approvalRequestWebhook },
+    shift_variance: { email: row.shiftVarianceEmail, webhook: row.shiftVarianceWebhook },
   };
 }
 

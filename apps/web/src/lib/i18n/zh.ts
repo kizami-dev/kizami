@@ -793,6 +793,8 @@ export const zh = {
       correction_alert: "申请的批准/驳回(如休息自动扣除撤销等)",
       /** 2026-08-23 Tier 0 第4部分新增。面向拥有批准权限的人 — 管辖范围内成员提交申请时的通知。 */
       approval_request: "审批请求(管辖范围内成员提交申请时。面向拥有批准权限的人)",
+      /** 2026-08-24 追加。前日の自分の勤務がシフトとずれたときの本人向け通知。 */
+      shift_variance: "与排班的偏差(自己的出勤与排班不一致时。迟到、早退、可能缺勤等)",
     } as Record<string, string>,
 
     emailSectionTitle: "通知邮箱地址",

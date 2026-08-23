@@ -58,6 +58,10 @@ export const userNotificationSettings = sqliteTable(
     approvalRequestEmail: integer("approval_request_email", { mode: "boolean" }).notNull().default(false),
     approvalRequestWebhook: integer("approval_request_webhook", { mode: "boolean" }).notNull().default(false),
 
+    /** シフトとの乖離(前日の自分の勤務がシフトとずれたことを本人へ。2026-08-24 追加) */
+    shiftVarianceEmail: integer("shift_variance_email", { mode: "boolean" }).notNull().default(false),
+    shiftVarianceWebhook: integer("shift_variance_webhook", { mode: "boolean" }).notNull().default(false),
+
     /** null なら users.email を使う(API 層で解決) */
     emailAddress: text("email_address"),
     /** 個人の Webhook URL。暗号化して保存(apps/api/src/lib/encryption.ts) */

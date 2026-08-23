@@ -39,6 +39,8 @@ export interface UpsertUserNotificationSettingsInput {
   correctionAlertWebhook: boolean;
   approvalRequestEmail: boolean;
   approvalRequestWebhook: boolean;
+  shiftVarianceEmail: boolean;
+  shiftVarianceWebhook: boolean;
   emailAddress: string | null;
   webhookUrl: string | null;
   /** UTC エポック分 */
@@ -63,6 +65,8 @@ export async function upsertUserNotificationSettings(
     correctionAlertWebhook: input.correctionAlertWebhook,
     approvalRequestEmail: input.approvalRequestEmail,
     approvalRequestWebhook: input.approvalRequestWebhook,
+    shiftVarianceEmail: input.shiftVarianceEmail,
+    shiftVarianceWebhook: input.shiftVarianceWebhook,
     emailAddress: input.emailAddress,
     webhookUrl: input.webhookUrl,
     updatedAt: input.updatedAt,

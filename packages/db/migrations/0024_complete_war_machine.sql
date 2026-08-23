@@ -1,0 +1,2 @@
+ALTER TABLE `user_notification_settings` ADD `shift_variance_email` integer DEFAULT false NOT NULL;--> statement-breakpoint
+ALTER TABLE `user_notification_settings` ADD `shift_variance_webhook` integer DEFAULT false NOT NULL;

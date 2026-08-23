@@ -7,8 +7,9 @@
  * - DATABASE_URL (既定 "file:./kizami.db"、apps/api/src/node.ts と同じ既定値)
  *
  * 2026-08-22: 3スキャンが作る通知はすべて本人宛(打刻忘れ・36協定アラート・有給失効間近/
- * 年5日義務)であるため、通知チャネルはテナント共有 Webhook ではなく**本人の個人設定**
- * (user_notification_settings)から組み立てる(buildPersonalChannels)。以前ここにあった
+ * 年5日義務。2026-08-24 にシフト予実乖離の**本人宛**通知も加わった)であるため、通知チャネルは
+ * テナント共有 Webhook ではなく**本人の個人設定**(user_notification_settings)から組み立てる
+ * (buildPersonalChannels)。以前ここにあった
  * WEBHOOK_URL 環境変数フォールバックはテナント共有チャネル専用の概念であり、個人チャネルには
  * 存在しないため廃止した(docs/requirements.md §7)。
  *
@@ -144,26 +145,32 @@ async function main(): Promise<void> {
         console.error("[kizami-reminders] leave-alert scan failed:", err);
       }
 
-      // シフト予実乖離の日次通知(docs/design/shift-work.md 決定事項4)。他の3スキャンと違い
-      // 宛先は本人ではなく承認権限者+テナント共有 Webhook のみ(個人チャネル配信は次フェーズ)
-      // のため、上の resolveChannels ではなく notifyDeps(テナント共有チャネルの組み立てに使う
-      // smtpSendFn/encryptor)を渡す。
+      // シフト予実乖離の日次通知(docs/design/shift-work.md 決定事項4)。このスキャンだけは
+      // 宛先が2系統あるため両方の依存を渡す: 管理者向け日次ダイジェストはテナント共有チャネル
+      // (notifyDeps)、本人向け通知(2026-08-24 追加)は他の3スキャンと同じ個人チャネル
+      // (resolveChannels = buildPersonalChannels)。
       let shiftVarianceScanned = 0;
       let shiftVarianceCreated = 0;
+      let shiftVarianceSelfCreated = 0;
       try {
-        const result = await runShiftVarianceAlertScan(db, { nowMinutes, notifyDeps: { smtpSendFn: nodemailerSendFn, encryptor } });
+        const result = await runShiftVarianceAlertScan(db, {
+          nowMinutes,
+          notifyDeps: { smtpSendFn: nodemailerSendFn, encryptor },
+          resolveChannels,
+        });
         shiftVarianceScanned = result.scannedUserCount;
         shiftVarianceCreated = result.created.length;
+        shiftVarianceSelfCreated = result.createdSelf.length;
         console.log(
-          `[kizami-reminders] shift-variance-alert scan: scanned ${result.scannedUserCount} active users, created ${result.created.length} notification(s)`,
+          `[kizami-reminders] shift-variance-alert scan: scanned ${result.scannedUserCount} active users, created ${result.created.length} manager notification(s) and ${result.createdSelf.length} personal notification(s)`,
         );
       } catch (err) {
         console.error("[kizami-reminders] shift-variance-alert scan failed:", err);
       }
 
-      // 有給付与の予告(docs/requirements.md §11、v0.7 フェーズ4)。宛先はシフト予実乖離と同じく
-      // 「本人ではなく管理者(leave.grant.manage 保持者)+テナント共有 Webhook」のため、
-      // resolveChannels ではなく notifyDeps を渡す。
+      // 有給付与の予告(docs/requirements.md §11、v0.7 フェーズ4)。宛先は「本人ではなく管理者
+      // (leave.grant.manage 保持者)+テナント共有 Webhook」だけなので(シフト予実乖離と違い
+      // 本人宛の系統を持たない)、resolveChannels ではなく notifyDeps のみを渡す。
       let grantProposalScanned = 0;
       let grantProposalCreated = 0;
       try {
@@ -186,6 +193,7 @@ async function main(): Promise<void> {
         leaveAlertCreatedCount: leaveAlertCreated,
         shiftVarianceScannedUserCount: shiftVarianceScanned,
         shiftVarianceCreatedCount: shiftVarianceCreated,
+        shiftVarianceSelfCreatedCount: shiftVarianceSelfCreated,
         leaveGrantProposalScannedUserCount: grantProposalScanned,
         leaveGrantProposalCreatedCount: grantProposalCreated,
       };

@@ -832,6 +832,8 @@ export const en = {
       correction_alert: "Request approved/rejected (e.g. break auto-deduction waiver)",
       /** Added 2026-08-23 Tier 0 part 4. For people with approval permission — a request has arrived from a member within their scope. */
       approval_request: "Approval requests (when a member in your scope submits a request — for approvers)",
+      /** 2026-08-24 追加。前日の自分の勤務がシフトとずれたときの本人向け通知。 */
+      shift_variance: "Shift variance (when your work differs from your shift — late arrival, early leave, possible absence, and so on)",
     } as Record<string, string>,
 
     emailSectionTitle: "Notification email address",

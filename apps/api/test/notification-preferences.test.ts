@@ -37,6 +37,8 @@ describe("GET/PUT /settings/notifications/me", () => {
       // approval_request(2026-08-23 追加): 承認者向けカテゴリ。他カテゴリと同じ既定値
       // (アプリ内=常時ON・メール/Webhook=OFF)。
       approval_request: { inapp: true, email: false, webhook: false },
+      // shift_variance(2026-08-24 追加): シフト予実乖離の本人向け通知。既定値は同じ。
+      shift_variance: { inapp: true, email: false, webhook: false },
     });
     expect(body.emailAddress).toEqual({ value: null, effective: email });
     expect(body.webhookUrl).toEqual({ configured: false, preview: null });
@@ -61,6 +63,7 @@ describe("GET/PUT /settings/notifications/me", () => {
       leave_alert: { inapp: true, email: false, webhook: false },
       correction_alert: { inapp: true, email: false, webhook: false },
       approval_request: { inapp: true, email: false, webhook: false },
+      shift_variance: { inapp: true, email: false, webhook: false },
     });
 
     // 再読み込み(GET)しても反映されている
@@ -190,6 +193,7 @@ describe("GET/PUT /settings/notifications/me", () => {
       leave_alert: { inapp: true, email: false, webhook: false },
       correction_alert: { inapp: true, email: false, webhook: false },
       approval_request: { inapp: true, email: false, webhook: false },
+      shift_variance: { inapp: true, email: false, webhook: false },
     });
     expect(body2.emailAddress).toEqual({ value: null, effective: email2 });
 
