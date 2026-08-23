@@ -93,8 +93,8 @@ describe("手当対象時間: 定義→打刻→monthly→締め→スナップ�
     // 3. GET /attendance/monthly に手当分数が乗る
     const before = await getMonthly(app, cookie, "2026-04");
     expect(before.status).toBe(200);
-    expect(before.body.closed).toBe(false);
-    expect(before.body.allowanceTotals).toEqual([{ definitionId, minutes: 90 }]);
+    expect(before.body.closing.closed).toBe(false);
+    expect(before.body.figures.allowanceTotals).toEqual([{ definitionId, minutes: 90 }]);
     expect(before.body.allowanceDefinitions).toEqual({ [definitionId]: "早朝手当" });
     const day = before.body.days.find((d: { date: string }) => d.date === "2026-04-10");
     expect(day.allowances).toEqual([{ definitionId, minutes: 90 }]);
@@ -110,8 +110,8 @@ describe("手当対象時間: 定義→打刻→monthly→締め→スナップ�
     expect(closeRes.status).toBe(200);
 
     const afterClose = await getMonthly(app, freshCookie, "2026-04");
-    expect(afterClose.body.closed).toBe(true);
-    expect(afterClose.body.allowanceTotals).toEqual([{ definitionId, minutes: 90 }]);
+    expect(afterClose.body.closing.closed).toBe(true);
+    expect(afterClose.body.figures.allowanceTotals).toEqual([{ definitionId, minutes: 90 }]);
 
     // 5. 締め後に定義の条件を変更しても、締め済み月の値は変わらない(原則6)。
     //    新しい版は対象月より後(2026-06)から有効にする。
@@ -127,9 +127,9 @@ describe("手当対象時間: 定義→打刻→monthly→締め→スナップ�
     expect(changeRes.status).toBe(201);
 
     const afterDefinitionChange = await getMonthly(app, freshCookie, "2026-04");
-    expect(afterDefinitionChange.body.closed).toBe(true);
+    expect(afterDefinitionChange.body.closing.closed).toBe(true);
     // 締め済み月(2026-04)はスナップショットから返るので、条件変更・分数(90分)とも変わらない。
-    expect(afterDefinitionChange.body.allowanceTotals).toEqual([{ definitionId, minutes: 90 }]);
+    expect(afterDefinitionChange.body.figures.allowanceTotals).toEqual([{ definitionId, minutes: 90 }]);
     // 名前マップは締め済み月でも「期間開始日時点」ではなく現在の定義に対して素直に組み立てているため、
     // 2026-04 の名前は当時有効だった "早朝手当"(2026-06から有効な改定はこの期間に関係しない)のまま。
     expect(afterDefinitionChange.body.allowanceDefinitions).toEqual({ [definitionId]: "早朝手当" });
@@ -162,6 +162,6 @@ describe("手当対象時間: 定義→打刻→monthly→締め→スナップ�
     const res = await getMonthly(app, cookie, "2026-04");
     expect(res.status).toBe(200);
     // 定義は期間内に有効だが実労働が無いので0分。行自体は含まれる(engine の契約)。
-    expect(res.body.allowanceTotals).toEqual([{ definitionId, minutes: 0 }]);
+    expect(res.body.figures.allowanceTotals).toEqual([{ definitionId, minutes: 0 }]);
   });
 });

@@ -46,6 +46,21 @@
   letter-spacing: 0.04em;
 }
 
+/* 他人の勤怠閲覧(2026-08-23 追加)。切替セレクトは .correction-field(corrections.css)を流用し、
+   ここでは幅だけ絞る。 */
+.monthly-member-switcher {
+  max-width: 24rem;
+}
+
+.monthly__viewing-others {
+  font-size: 0.85rem;
+  color: var(--k-ink-soft);
+  border: var(--border-hair);
+  border-radius: var(--radius-s);
+  padding: var(--space-2) var(--space-3);
+  background: color-mix(in srgb, var(--k-key) 3%, transparent);
+}
+
 /* フレックス収支: C 濃度バー */
 .flex-balance {
   border: var(--border-hair);
@@ -385,6 +400,19 @@
 
 .closing-badge--amended {
   --badge-color: var(--k-yellow-ink);
+}
+
+/* 確定値バッジ(figures.source === "snapshot"、2026-08-23 追加)。確定済み/修正ありバッジより
+   一段控えめにするため --small で縮小する(依頼: 小さく示す)。 */
+.closing-badge--snapshot {
+  --badge-color: var(--k-ink-soft);
+}
+
+.closing-badge--small {
+  border-width: 1px;
+  padding: 2px var(--space-2);
+  font-size: 0.72rem;
+  font-weight: 600;
 }
 
 .closing-diff {

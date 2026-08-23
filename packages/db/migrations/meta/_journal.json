@@ -141,6 +141,20 @@
       "when": 1787479392948,
       "tag": "0019_whole_piledriver",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "6",
+      "when": 1787493553327,
+      "tag": "0020_huge_wong",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "6",
+      "when": 1787495298289,
+      "tag": "0021_grey_dark_beast",
+      "breakpoints": true
     }
   ]
 }

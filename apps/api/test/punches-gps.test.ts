@@ -29,6 +29,7 @@ async function enableTenantGps(
       effectiveFrom: "2026-06-15",
       dayBoundaryMinutes: 0,
       weekStartWeekday: 0,
+      variablePeriodStartDay: 1,
       legalHolidayRule: { kind: "weekday", weekday: 0 },
       breakRule: { mode: "punch" },
       gpsEnabled: true,

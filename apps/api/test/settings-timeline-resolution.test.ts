@@ -14,8 +14,21 @@
 import { describe, expect, it } from "vitest";
 import { uuidv7, workPolicies, workPolicyVersions, type Database } from "@kizami/db";
 import { eq } from "drizzle-orm";
+import type { WorkSystem } from "@kizami/engine";
 import { buildSettingsTimeline } from "../src/lib/settings.js";
 import { setupTestDb } from "./support/setup.js";
+
+/**
+ * monthly_variable は standardDayMinutes を持たない(types.ts の WorkSystem 参照)。
+ * このテストは flex/fixed しか作らないため、テスト側で narrowing してアクセスする
+ * (buildSettingsTimeline 自体が monthly_variable を返しうる型になったための型合わせ)。
+ */
+function standardDayMinutesOf(ws: WorkSystem): number {
+  if (ws.kind === "monthly_variable") {
+    throw new Error("unexpected monthly_variable in this test");
+  }
+  return ws.standardDayMinutes;
+}
 
 /** setupTestDb() が作った work_policy に新しい版を追記する(原則6どおり追記専用)。 */
 async function appendWorkPolicyVersion(
@@ -64,7 +77,7 @@ describe("buildSettingsTimeline: 対象期間より前の制度変更の解決",
 
     expect(timeline).toHaveLength(1);
     expect(timeline[0]?.settings.workSystem.kind).toBe("fixed");
-    expect(timeline[0]?.settings.workSystem.standardDayMinutes).toBe(420);
+    expect(standardDayMinutesOf(timeline[0]!.settings.workSystem)).toBe(420);
   });
 
   it("フレックスのままでも、対象月より前の所定労働時間の変更が反映される", async () => {
@@ -86,7 +99,7 @@ describe("buildSettingsTimeline: 対象期間より前の制度変更の解決",
 
     // 制度は変わらず所定労働時間だけが変わるケース。有給の分数換算に効くため、
     // 見落とすと有給1日の枠算入が旧値のままになる。
-    expect(timeline[0]?.settings.workSystem.standardDayMinutes).toBe(450);
+    expect(standardDayMinutesOf(timeline[0]!.settings.workSystem)).toBe(450);
   });
 
   it("対象期間の途中で切り替わる場合は、切り替え日で span が分かれる", async () => {

@@ -35,17 +35,34 @@ async function closePeriod(app: RequestLike, cookie: string, period: string) {
   expect(res.status).toBe(200);
 }
 
+/**
+ * GET /attendance/monthly の新レスポンス契約(2026-08-23、docs/design/v01-data-model.md
+ * 「GET /attendance/monthly レスポンス契約」参照)を、このファイル内の既存アサーションが
+ * そのまま使えるフラットな形に変換して返す。このファイル自体は amend(締め後修正)の
+ * 挙動の検証が関心であり、契約の形そのものはこの1関数に閉じて吸収する。
+ */
 async function getMonthly(app: RequestLike, cookie: string, month: string) {
   const res = await app.request(`/attendance/monthly?month=${month}`, { headers: { cookie } });
   expect(res.status).toBe(200);
-  return res.json() as Promise<{
-    closed: boolean;
-    amended: boolean;
-    totals: { statutory: number; overtime: number };
-    flexBalance: { frameMinutes: number; actualMinutes: number; diffMinutes: number };
-    originalTotals?: { statutory: number; overtime: number };
-    originalFlexBalance?: { frameMinutes: number; actualMinutes: number; diffMinutes: number };
-  }>;
+  const body = (await res.json()) as {
+    closing: { closed: boolean; amended: boolean };
+    figures: {
+      totals: { statutory: number; overtime: number };
+      flexBalance: { frameMinutes: number; actualMinutes: number; diffMinutes: number };
+      original?: {
+        totals: { statutory: number; overtime: number };
+        flexBalance: { frameMinutes: number; actualMinutes: number; diffMinutes: number };
+      };
+    };
+  };
+  return {
+    closed: body.closing.closed,
+    amended: body.closing.amended,
+    totals: body.figures.totals,
+    flexBalance: body.figures.flexBalance,
+    originalTotals: body.figures.original?.totals,
+    originalFlexBalance: body.figures.original?.flexBalance,
+  };
 }
 
 async function getClosingHistory(app: RequestLike, cookie: string, period: string) {

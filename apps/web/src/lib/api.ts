@@ -122,6 +122,13 @@ export interface AttendanceStatus {
   lastPunch: { kind: PunchKind; occurredAt: number } | null;
 }
 
+/** GET /attendance/members の1件(2026-08-23 新設、月次の閲覧対象切替UI向け)。 */
+export interface AttendanceMemberDto {
+  id: string;
+  name: string;
+  departmentId: string | null;
+}
+
 export type TimeCategory = "statutory" | "overtime" | "overtime60h" | "lateNight" | "statutoryHoliday";
 export type CategorizedMinutes = Record<TimeCategory, number>;
 
@@ -191,31 +198,53 @@ export interface FlexBalance {
   diffMinutes: number;
 }
 
-export interface MonthlyAttendance {
-  days: DailyBreakdown[];
+/** 固定時間制の月合計内訳(所定内・法定内残業)。フレックスでは null。 */
+export interface FixedBreakdown {
+  withinScheduledMinutes: number;
+  extraWithinStatutoryMinutes: number;
+}
+
+/** 手当定義ごとの分数(月合計、definitionId ベース)。 */
+export type AllowanceTotals = Array<{ definitionId: string; minutes: number }>;
+
+/**
+ * 締め保護の対象となる集計値一式(区分別合計・フレックス収支・固定時間制内訳・手当合計)。
+ * `source` が "snapshot" のときはすべて締めスナップショット由来の確定値
+ * (docs/design/v01-data-model.md「GET /attendance/monthly レスポンス契約」)。
+ */
+export interface MonthlyFigures {
+  source: "live" | "snapshot";
   totals: CategorizedMinutes;
-  /** フレックスのみ。固定時間制では null(packages/engine の EngineOutput と一致、2026-08-23)。 */
+  /** フレックスのみ。固定時間制では null。 */
   flexBalance: FlexBalance | null;
-  /** 期間開始日に有効だった労働時間制(2026-08-23 追加)。 */
+  /** 固定時間制のみ。フレックスでは null。 */
+  fixedBreakdown: FixedBreakdown | null;
+  allowanceTotals: AllowanceTotals;
+  /** 締め後修正(amend)が入っている月のみ、当初(最初の締め)の値をここに持つ。 */
+  original?: {
+    totals: CategorizedMinutes;
+    flexBalance: FlexBalance | null;
+    fixedBreakdown: FixedBreakdown | null;
+    allowanceTotals: AllowanceTotals;
+  };
+}
+
+/**
+ * GET /attendance/monthly のレスポンス(2026-08-23 破壊的変更、旧形の12キーのフラット構造を廃止)。
+ * 設計判断は docs/design/v01-data-model.md「GET /attendance/monthly レスポンス契約」節。
+ */
+export interface MonthlyAttendance {
+  /** 誰の月次か(他人の勤怠閲覧、?userId= 省略時も自分自身の { id, name } が入る)。 */
+  user: { id: string; name: string };
+  /** 期間開始日に有効だった労働時間制。 */
   workSystem: "flex" | "fixed";
+  days: DailyBreakdown[];
   warnings: CalcWarning[];
-  /** 締め済みかどうか(apps/api/src/routes/attendance.ts の GET /attendance/monthly、v0.3 追加)。 */
-  closed: boolean;
-  /** 締め後修正(amend)が入っているか。true の場合のみ originalTotals/originalFlexBalance が入る。 */
-  amended: boolean;
-  /** 当初(最初の締め)の確定値。amended のときのみ存在する。 */
-  originalTotals?: CategorizedMinutes;
-  originalFlexBalance?: FlexBalance | null;
-  /**
-   * 手当定義ごとの月合計(分、docs/design/allowances.md、2026-08-23 追加)。期間内のいずれかの
-   * 日に有効だった定義は、その月の合計が0分でも1件として含める(packages/engine の
-   * EngineOutput.allowanceTotals と同じ契約 — DailyBreakdown.allowances が sparse なのとは扱いが違う)。
-   */
-  allowanceTotals: Array<{ definitionId: string; minutes: number }>;
-  /** 定義ID → 名前(表示用、締め済み・未締めを問わず常に付く)。 */
+  /** 締め保護の対象(集計値)。日別内訳・warnings とは異なり締め済み月はスナップショット固定になる。 */
+  figures: MonthlyFigures;
+  /** 定義ID → 名前(表示用、締め済み・未締めを問わず常に付く。締め保護の対象外)。 */
   allowanceDefinitions: Record<string, string>;
-  /** 当初(最初の締め)の手当月合計。amended のときのみ存在する。 */
-  originalAllowanceTotals?: Array<{ definitionId: string; minutes: number }>;
+  closing: { closed: boolean; amended: boolean };
 }
 
 export type CorrectionStatus = "pending" | "approved" | "rejected" | "withdrawn";
@@ -983,6 +1012,36 @@ export interface CreateAutoBreakWaiverInput {
   reason: string;
 }
 
+/**
+ * GET /audit-logs の1件(apps/api/src/routes/audit-logs.ts の AuditLogDto と一致、Tier 1 新設)。
+ * detail は JSON 文字列のまま(整形はUI側)。読み取り専用 — 監査ログの更新・削除APIは存在しない。
+ */
+export interface AuditLogDto {
+  id: string;
+  actorId: string;
+  actorName: string;
+  action: string;
+  targetType: string;
+  targetId: string;
+  detail: string | null;
+  occurredAt: number;
+}
+
+export interface ListAuditLogsParams {
+  actorId?: string;
+  targetType?: string;
+  targetId?: string;
+  action?: string;
+  /** UTC エポック分(inclusive)。 */
+  from?: number;
+  /** UTC エポック分(inclusive)。 */
+  to?: number;
+  /** 前ページ最後の id(カーソルページング)。 */
+  cursor?: string;
+  /** 既定50・上限200(apps/api/src/routes/audit-logs.ts)。 */
+  limit?: number;
+}
+
 export const api = {
   /**
    * tenantId 省略時、同一メール+パスワードが複数テナントに一致すると 409 multiple_tenants
@@ -1040,9 +1099,23 @@ export const api = {
     return request("/attendance/status");
   },
 
-  /** month は "YYYY-MM"。 */
-  async monthly(month: string): Promise<MonthlyAttendance> {
-    return request(`/attendance/monthly?month=${encodeURIComponent(month)}`);
+  /**
+   * month は "YYYY-MM"。userId 省略時は自分自身。他人を指定するには
+   * attendance.record.view(department スコープ以上)が必要(apps/api/src/routes/attendance.ts)。
+   * スコープ外・存在しない userId は 404(存在推測を避けるための一律404、同ファイル冒頭コメント参照)。
+   */
+  async monthly(month: string, userId?: string): Promise<MonthlyAttendance> {
+    const query = userId !== undefined ? `&userId=${encodeURIComponent(userId)}` : "";
+    return request(`/attendance/monthly?month=${encodeURIComponent(month)}${query}`);
+  },
+
+  /**
+   * GET /attendance/members(2026-08-23 新設)。月次の「閲覧対象を切り替える」UI向けに、
+   * 実効権限のスコープ内メンバー一覧を返す。attendance.record.view を持たない一般従業員は
+   * 自分1人だけの配列を受け取る(このエンドポイント自体は権限が無くても403にしない)。
+   */
+  async getAttendanceMembers(): Promise<{ members: AttendanceMemberDto[] }> {
+    return request("/attendance/members");
   },
 
   async listCorrections(status: "pending" | "all" = "all"): Promise<{ requests: CorrectionRequestDto[] }> {
@@ -1331,8 +1404,9 @@ export const api = {
     return request(`/leave/balance${userId ? `?userId=${encodeURIComponent(userId)}` : ""}`);
   },
 
-  async listLeaveRequests(status: "pending" | "all" = "all"): Promise<{ requests: LeaveRequestDto[] }> {
-    return request(`/leave/requests?status=${status}`);
+  /** userId 省略時は自分自身。他人を指定するには leave.request.view_all 相当の権限が要る(apps/api/src/routes/leave.ts GET /requests)。 */
+  async listLeaveRequests(status: "pending" | "all" = "all", userId?: string): Promise<{ requests: LeaveRequestDto[] }> {
+    return request(`/leave/requests?status=${status}${userId ? `&userId=${encodeURIComponent(userId)}` : ""}`);
   },
 
   /** POST /leave/requests。targetMonthClosed=true の場合、対象月は締め済み(承認には closing.unlock が必要)。 */
@@ -1488,6 +1562,24 @@ export const api = {
   /** DELETE /api-keys/:id(権限不要、自分のキーのみ失効可)。 */
   async revokeApiKey(id: string): Promise<{ apiKey: ApiKeyDto }> {
     return request(`/api-keys/${encodeURIComponent(id)}`, { method: "DELETE" });
+  },
+
+  /**
+   * GET /audit-logs(audit_log.view、department スコープ以上、Tier 1 新設)。読み取り専用。
+   * カーソルページング: nextCursor が null でなければ、それを次呼び出しの params.cursor に渡すと続きを取れる。
+   */
+  async listAuditLogs(params: ListAuditLogsParams = {}): Promise<{ logs: AuditLogDto[]; nextCursor: string | null }> {
+    const qs = new URLSearchParams();
+    if (params.actorId !== undefined) qs.set("actorId", params.actorId);
+    if (params.targetType !== undefined) qs.set("targetType", params.targetType);
+    if (params.targetId !== undefined) qs.set("targetId", params.targetId);
+    if (params.action !== undefined) qs.set("action", params.action);
+    if (params.from !== undefined) qs.set("from", String(params.from));
+    if (params.to !== undefined) qs.set("to", String(params.to));
+    if (params.cursor !== undefined) qs.set("cursor", params.cursor);
+    if (params.limit !== undefined) qs.set("limit", String(params.limit));
+    const query = qs.toString();
+    return request(`/audit-logs${query ? `?${query}` : ""}`);
   },
 };
 

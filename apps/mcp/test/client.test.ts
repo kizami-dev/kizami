@@ -41,7 +41,9 @@ describe("KizamiApiClient — success paths", () => {
   });
 
   it("getMonthlySummary() omits the month query param when not given", async () => {
-    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(200, { totals: {}, flexBalance: {}, warnings: [], days: [], closed: false, amended: false }));
+    const fetchImpl = vi.fn().mockResolvedValue(
+      jsonResponse(200, { days: [], warnings: [], figures: { totals: {}, flexBalance: {} }, closing: { closed: false, amended: false } }),
+    );
     const client = new KizamiApiClient({ baseUrl: "http://localhost:3091", apiKey: "kzm_test", fetchImpl });
 
     await client.getMonthlySummary();

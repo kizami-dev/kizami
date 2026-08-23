@@ -30,9 +30,15 @@ export type PlainDateString = string;
 /**
  * 労働時間制(判別可能ユニオン)。`kind` で分岐する。
  *
- * `standardDayMinutes` は両方の branch に存在する。固定時間制では「所定労働時間」そのもの
- * (日次の所定内/所定外法定内の境界に使う)、フレックスでは有給日の枠算入に使う値であり、
- * 意味は違うが「その日の基準となる労働時間」という役割は共通しているため、フィールド名を揃えている。
+ * `standardDayMinutes` は flex/fixed の両方の branch に存在する。固定時間制では
+ * 「所定労働時間」そのもの(日次の所定内/所定外法定内の境界に使う)、フレックスでは
+ * 有給日の枠算入に使う値であり、意味は違うが「その日の基準となる労働時間」という役割は
+ * 共通しているため、フィールド名を揃えている。
+ *
+ * `monthly_variable`(1ヶ月単位の変形労働時間制、労基法32条の2、docs/design/shift-work.md)は
+ * `standardDayMinutes` を持たない — 日ごとの所定は定数ではなく `EngineInput.shifts` の
+ * `ShiftDay` が個別に決めるため(シフト制の本質: 所定がテナント単位の定数から
+ * user×日付の可変データになる)。
  */
 export type WorkSystem =
   | {
@@ -47,6 +53,16 @@ export type WorkSystem =
       kind: "fixed";
       /** 所定労働時間(分)。1日8時間(法定)以内で設定される前提 */
       standardDayMinutes: number;
+    }
+  | {
+      kind: "monthly_variable";
+      /**
+       * 変形期間の起点日(1〜28、docs/design/shift-work.md 決定事項3)。
+       * 期間はこの日から翌月の同日前日までの1ヶ月(例: 16なら16日〜翌15日)。
+       * 1〜28に制限しているのは、29〜31日だと月によって存在せず期間の起点が
+       * 一意に決まらなくなるため(2月は28日までしかない)。
+       */
+      periodStartDay: number;
     };
 
 /** フレックス(月清算)の設定。`WorkSystem` の flex 分岐と同じ形(判別子 `kind` を除く)。 */
@@ -55,6 +71,33 @@ export type FlexSettings = Omit<Extract<WorkSystem, { kind: "flex" }>, "kind">;
 export type LegalHolidayRule =
   | { kind: "weekday"; weekday: 0 | 1 | 2 | 3 | 4 | 5 | 6 } // 0=日曜
   | { kind: "dates"; dates: PlainDateString[] };
+
+/**
+ * シフト制(monthly_variable)における1日の所定(docs/design/shift-work.md 決定事項5)。
+ *
+ * 固定時間制・フレックスの所定はテナント設定の定数だったが、シフト制では所定が
+ * user×日付の可変データになる。エンジンはこれを `EngineInput.shifts` という
+ * 新しいタイムラインとして受け取る(打刻・設定・法令と同じ「入力は呼び出し側が集めて渡す」原則)。
+ *
+ * `dayType` が "work" 以外(legal_holiday/non_working)の日は startMinutes/endMinutes/
+ * breakMinutes をすべて 0 にする契約(呼び出し側が保証する。エンジンはこれらのフィールドを
+ * work 以外の日について参照しない — variable.ts の scheduledMinutesForShift 参照)。
+ */
+export interface ShiftDay {
+  date: PlainDateString;
+  dayType: ShiftDayType;
+  /** ローカル0時からの分(dayBoundaryMinutes と同じ表現)。dayType が work 以外なら 0 */
+  startMinutes: number;
+  /**
+   * ローカル0時からの分。startMinutes より小さければ日跨ぎ(翌日の朝にまたがる夜勤)を表す
+   * (22:00〜翌6:00 = startMinutes:1320, endMinutes:360)。dayType が work 以外なら 0
+   */
+  endMinutes: number;
+  /** dayType が work 以外なら 0 */
+  breakMinutes: number;
+}
+
+export type ShiftDayType = "work" | "legal_holiday" | "non_working";
 
 export interface CalcSettings {
   /** ローカルと UTC の差(分)。Asia/Tokyo = 540。エンジンは固定オフセットのみ扱う */
@@ -175,6 +218,16 @@ export interface EngineInput {
    * (省略可能にしているのは、手当を1件も定義していないテナントで無駄な計算をしないため)。
    */
   allowances?: AllowanceTimelineSpan[];
+  /**
+   * シフト(monthly_variable の所定、docs/design/shift-work.md 決定事項5)。
+   *
+   * 契約: `period` の月内の日だけでなく、**変形期間全体**(`periodStartDay` 起点の1ヶ月。
+   * 月をまたぐため前後の月の日を含みうる)ぶんを渡すこと。③期間段の時間外判定
+   * (variable.ts)には期間全体の実労働・所定が要るため、`punches` も同様に期間全体分を
+   * 渡す前提になる(`period` の月範囲外の日は `EngineOutput.days` には出さないが、
+   * ③の計算には使う)。monthly_variable 以外の労働時間制では無視して構わない。
+   */
+  shifts?: ShiftDay[];
 }
 
 /** 有給の取得。日単位・時間単位のどちらも「その日に何分ぶん有給を使ったか」で表す */
@@ -204,10 +257,24 @@ export type WarningKind =
   | "unmatched_break_end"
   /** 休憩中に clock_out: 休憩を clock_out 時刻で閉じて退勤扱い(労働時間は減る方向) */
   | "clock_out_during_break"
-  /** 期間の途中で労働時間制(flex/fixed)が切り替わった: 期間開始日の版で計算を続行する */
+  /** 期間の途中で労働時間制(flex/fixed/monthly_variable)が切り替わった: 期間開始日の版で計算を続行する */
   | "mixed_work_system"
   /** 勤務区間の実労働に対して休憩(合計)が労基法34条1項の必要分に満たない: 不足量を警告 */
-  | "insufficient_break";
+  | "insufficient_break"
+  /**
+   * シフト予実の乖離(docs/design/shift-work.md「予実の突合」、shift-variance.ts)。
+   * 集計(totals)には反映しない — 遅刻控除等の賃金処理は給与側の責任という既存の原則を踏襲する。
+   */
+  /** monthly_variable なのにその日の ShiftDay が無く、かつ実労働がある: 所定0として①②を判定した */
+  | "missing_shift"
+  /** シフトの開始時刻より遅い最初の出勤 */
+  | "shift_late_arrival"
+  /** シフトの終了時刻より早い最後の退勤 */
+  | "shift_early_leave"
+  /** シフトが work 以外(legal_holiday/non_working)の日に実労働がある */
+  | "shift_unplanned_work"
+  /** シフトが work の日に実労働が0分、かつ有給取得もない */
+  | "shift_absence";
 
 export interface CalcWarning {
   kind: WarningKind;
@@ -220,6 +287,12 @@ export interface CalcWarning {
    * (requiredMinutes - actualMinutes)を出すのに使う。他の警告種別では未設定。
    */
   break?: { requiredMinutes: number; actualMinutes: number };
+  /**
+   * シフト予実乖離の警告(missing_shift・shift_late_arrival・shift_early_leave・
+   * shift_unplanned_work・shift_absence)のとき: UI が乖離の分数を表示するための値。
+   * 警告種別ごとに埋まるフィールドが異なる(shift-variance.ts 参照。すべて省略可)。他の警告種別では未設定。
+   */
+  shift?: { scheduledMinutes?: number; actualMinutes?: number; deltaMinutes?: number };
 }
 
 export type TimeCategory =
@@ -280,11 +353,26 @@ export interface DailyBreakdown {
    * discard された未退勤の区間)も打刻の事実として含む — 集計と表示は別物として扱う。
    */
   stretches: WorkStretch[];
-  /** 所定内(実労働のうち標準労働時間まで)。固定時間制のみ。フレックスでは 0 */
+  /**
+   * その日の所定労働時間(分、docs/design/shift-work.md)。monthly_variable のみ
+   * ShiftDay(dayType が work の日)から埋まる。flex/fixed では常に 0
+   * (固定時間制の所定は `withinScheduledMinutes` の境界として使うのみで、この
+   * フィールド自体には表れない — standardDayMinutes はテナント単位の定数であり
+   * 「その日固有の値」を持つ意味がないため)。
+   */
+  scheduledMinutes: number;
+  /**
+   * 所定内(実労働のうち所定労働時間まで)。固定時間制・monthly_variable で埋まる。
+   * フレックスでは 0。monthly_variable では日ごとの所定が ShiftDay により異なるため、
+   * この値は `scheduledMinutes` を上限に決まる(variable.ts 参照)。
+   */
   withinScheduledMinutes: number;
-  /** 所定外だが法定内(所定超〜1日8時間)。固定時間制のみ。フレックスでは 0 */
+  /**
+   * 所定外だが法定内(所定超〜1日8時間、または所定が8時間超の日は常に0)。
+   * 固定時間制・monthly_variable で埋まる。フレックスでは 0
+   */
   extraWithinStatutoryMinutes: number;
-  /** 法定時間外(日8時間超 + 週法定超)。固定時間制のみ。フレックスでは 0 */
+  /** 法定時間外(日8時間超 + 週法定超、monthly_variable はさらに期間総枠超も加わりうる)。固定時間制・monthly_variable で埋まる。フレックスでは 0 */
   statutoryOvertimeMinutes: number;
   /**
    * この日の手当対象時間(定義ごと)。0分になった定義は含めない(sparse — UI は
@@ -304,13 +392,37 @@ export interface FlexBalance {
   diffMinutes: number;
 }
 
+/**
+ * monthly_variable の変形期間サマリ(docs/design/shift-work.md 決定事項3)。
+ *
+ * `periodStart`〜`periodEnd` は `periodStartDay` 起点の1ヶ月(月をまたぐ)。この期間の
+ * **終了日が属する月の締めでのみ** `periodOvertimeMinutes` が `EngineOutput.totals.overtime`
+ * に加算される(`attributedToThisMonth: true`)。期間が完結していなければ(monthly_variable
+ * 採用直後で完結した前期間が存在しない等)計算自体は返すが加算しない —
+ * 「判断される事実が発生した日」の原則(v01-data-model.md)の適用。
+ */
+export interface VariablePeriodSummary {
+  periodStart: PlainDateString;
+  periodEnd: PlainDateString;
+  /** floor(週法定労働時間 × 期間の暦日数 / 7)。flex.ts の月枠と同じ日割り按分 */
+  statutoryFrameMinutes: number;
+  /** 期間全体のシフト所定合計(分) */
+  scheduledTotalMinutes: number;
+  /** 期間全体の実労働合計(分、法定休日労働を除く) */
+  workedTotalMinutes: number;
+  /** 期間の実労働合計 −(①②で時間外にした分)− statutoryFrameMinutes の正の部分 */
+  periodOvertimeMinutes: number;
+  /** true のときのみ periodOvertimeMinutes が totals.overtime に加算されている */
+  attributedToThisMonth: boolean;
+}
+
 export interface EngineOutput {
   days: DailyBreakdown[];
   totals: CategorizedMinutes;
-  /** フレックスのみ。固定時間制では null */
+  /** フレックスのみ。固定時間制・monthly_variable では null */
   flexBalance: FlexBalance | null;
   /** 期間開始日に有効だった労働時間制 */
-  workSystem: "flex" | "fixed";
+  workSystem: "flex" | "fixed" | "monthly_variable";
   warnings: CalcWarning[];
   /**
    * 手当定義ごとの月合計(分)。期間内のいずれかの日に有効だった定義は、その月の合計が
@@ -318,4 +430,6 @@ export interface EngineOutput {
    * DailyBreakdown.allowances が sparse なのとは扱いを変えている)。
    */
   allowanceTotals: Array<{ definitionId: string; minutes: number }>;
+  /** monthly_variable のみ。他の労働時間制では未設定 */
+  variablePeriod?: VariablePeriodSummary;
 }

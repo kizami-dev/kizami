@@ -92,25 +92,30 @@ export async function handleGetMonthlySummary(client: KizamiApiClient, args: Mon
   // 「引数省略時は当月」という依頼の契約を満たすため、ここで当月(JST)を計算して明示的に渡す。
   const month = args.month ?? currentJstMonth();
   const summary = await client.getMonthlySummary({ month });
+  const { totals, flexBalance, original } = summary.figures;
 
-  const headerFlags = [summary.closed ? "締め済み" : null, summary.amended ? "締め後修正あり" : null].filter(
+  const headerFlags = [summary.closing.closed ? "締め済み" : null, summary.closing.amended ? "締め後修正あり" : null].filter(
     (v): v is string => v !== null,
   );
   const header = `月次集計(${month})${headerFlags.length > 0 ? `  [${headerFlags.join(" / ")}]` : ""}`;
 
   const lines = [header, ""];
   lines.push("■ 実労働時間の内訳");
-  lines.push(`  法定内: ${formatDuration(summary.totals.statutory)}`);
-  lines.push(`  時間外(残業): ${formatDuration(summary.totals.overtime)}`);
-  lines.push(`  時間外(月60時間超): ${formatDuration(summary.totals.overtime60h)}`);
-  lines.push(`  深夜: ${formatDuration(summary.totals.lateNight)}`);
-  lines.push(`  法定休日労働: ${formatDuration(summary.totals.statutoryHoliday)}`);
-  lines.push("");
-  lines.push("■ フレックス収支");
-  lines.push(`  枠: ${formatDuration(summary.flexBalance.frameMinutes)}`);
-  lines.push(`  実績: ${formatDuration(summary.flexBalance.actualMinutes)}`);
-  const diffSuffix = summary.flexBalance.diffMinutes < 0 ? "(不足)" : summary.flexBalance.diffMinutes > 0 ? "(超過)" : "";
-  lines.push(`  過不足: ${formatDuration(summary.flexBalance.diffMinutes)}${diffSuffix}`);
+  lines.push(`  法定内: ${formatDuration(totals.statutory)}`);
+  lines.push(`  時間外(残業): ${formatDuration(totals.overtime)}`);
+  lines.push(`  時間外(月60時間超): ${formatDuration(totals.overtime60h)}`);
+  lines.push(`  深夜: ${formatDuration(totals.lateNight)}`);
+  lines.push(`  法定休日労働: ${formatDuration(totals.statutoryHoliday)}`);
+
+  // 固定時間制の月は flexBalance が null(依頼どおり — フレックスにのみ意味がある値)。
+  if (flexBalance) {
+    lines.push("");
+    lines.push("■ フレックス収支");
+    lines.push(`  枠: ${formatDuration(flexBalance.frameMinutes)}`);
+    lines.push(`  実績: ${formatDuration(flexBalance.actualMinutes)}`);
+    const diffSuffix = flexBalance.diffMinutes < 0 ? "(不足)" : flexBalance.diffMinutes > 0 ? "(超過)" : "";
+    lines.push(`  過不足: ${formatDuration(flexBalance.diffMinutes)}${diffSuffix}`);
+  }
 
   if (summary.warnings.length > 0) {
     lines.push("");
@@ -120,14 +125,14 @@ export async function handleGetMonthlySummary(client: KizamiApiClient, args: Mon
     }
   }
 
-  if (summary.amended && summary.originalTotals && summary.originalFlexBalance) {
+  if (summary.closing.amended && original) {
     lines.push("");
     lines.push("■ 締め後修正: 当初確定値との差分");
-    lines.push(`  法定内: ${formatDuration(summary.originalTotals.statutory)} → ${formatDuration(summary.totals.statutory)}`);
-    lines.push(`  時間外: ${formatDuration(summary.originalTotals.overtime)} → ${formatDuration(summary.totals.overtime)}`);
-    lines.push(
-      `  フレックス過不足: ${formatDuration(summary.originalFlexBalance.diffMinutes)} → ${formatDuration(summary.flexBalance.diffMinutes)}`,
-    );
+    lines.push(`  法定内: ${formatDuration(original.totals.statutory)} → ${formatDuration(totals.statutory)}`);
+    lines.push(`  時間外: ${formatDuration(original.totals.overtime)} → ${formatDuration(totals.overtime)}`);
+    if (original.flexBalance && flexBalance) {
+      lines.push(`  フレックス過不足: ${formatDuration(original.flexBalance.diffMinutes)} → ${formatDuration(flexBalance.diffMinutes)}`);
+    }
   }
 
   return textResult(lines.join("\n"));

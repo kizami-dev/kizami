@@ -54,6 +54,7 @@ import {
 } from "@kizami/engine";
 import { resolveUsageMinutes, type LeaveUnit } from "@kizami/leave";
 import { buildAllowanceTimeline } from "./allowances.js";
+import { resolveMonthlyVariableExtras } from "./monthly-shifts.js";
 import {
   buildLawTimelineForTenant,
   buildSettingsTimeline,
@@ -215,20 +216,46 @@ export async function computeMonthlyForUser(
     ? tenantContext.allowanceTimeline
     : await buildAllowanceTimeline(db, { tenantId, fromDate: monthStartDate, toDate: monthEndDate });
 
-  const punches: ValidPunch[] = punchRows.map((p) => ({ kind: p.kind as PunchKind, occurredAt: p.occurredAt }));
+  // monthly_variable(シフト制、docs/design/shift-work.md): 変形期間全体(前月にまたがりうる)
+  // ぶんの settingsTimeline/lawTimeline/punches/shifts を、暦月だけをカバーする上記の値を
+  // baseline として解決し直す(apps/api/src/routes/attendance.ts の GET /monthly と同じ配線 —
+  // 締め・締め後修正・打刻忘れ以外の月次系すべてがこの1本〔computeMonthlyForUser〕を通るため、
+  // ここに1箇所だけ配線すれば全員に効く)。
+  const variableExtras = await resolveMonthlyVariableExtras(db, {
+    tenantId,
+    userId,
+    year,
+    month,
+    monthStartDate,
+    monthEndDate,
+    tzOffsetMinutes: tz,
+    baseline: { settingsTimeline, lawTimeline, punchFromMinutes: fromMinutes },
+  });
+
+  const effectivePunchRows =
+    variableExtras && variableExtras.punchFromMinutes < fromMinutes
+      ? await listValidPunches(db, { tenantId, userId, fromMinutes: variableExtras.punchFromMinutes, toMinutes })
+      : punchRows;
+  const effectiveSettingsTimeline = variableExtras?.settingsTimeline ?? settingsTimeline;
+  const effectiveLawTimeline = variableExtras?.lawTimeline ?? lawTimeline;
+
+  const punches: ValidPunch[] = effectivePunchRows.map((p) => ({ kind: p.kind as PunchKind, occurredAt: p.occurredAt }));
+  // 判断点: monthly_variable ユーザーの承認済み有給は standardDayMinutesForDate が例外を投げる
+  // (lib/settings.ts のコメント参照、routes/attendance.ts の GET /monthly と同じ既知の限界)。
   const paidLeave: PaidLeaveEntry[] = approvedLeaveRequests.map((r) => ({
     date: r.leaveDate,
-    minutes: resolveUsageMinutes(r.unit as LeaveUnit, standardDayMinutesForDate(settingsTimeline, r.leaveDate), r.minutes ?? undefined),
+    minutes: resolveUsageMinutes(r.unit as LeaveUnit, standardDayMinutesForDate(effectiveSettingsTimeline, r.leaveDate), r.minutes ?? undefined),
   }));
 
   const input: EngineInput = {
     punches,
-    settingsTimeline,
-    lawTimeline,
+    settingsTimeline: effectiveSettingsTimeline,
+    lawTimeline: effectiveLawTimeline,
     period: { year, month },
     paidLeave,
     autoBreakWaivedDates,
     allowances,
+    ...(variableExtras ? { shifts: variableExtras.shifts } : {}),
   };
 
   return { output: calculate(input), settingsTimeline };

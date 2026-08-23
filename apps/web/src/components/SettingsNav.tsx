@@ -16,7 +16,8 @@ export type SettingsSection =
   | "attendance"
   | "allowances"
   | "apiKeys"
-  | "slack";
+  | "slack"
+  | "auditLogs";
 
 type SettingsRoute =
   | "/settings/notifications"
@@ -30,7 +31,8 @@ type SettingsRoute =
   | "/settings/attendance"
   | "/settings/allowances"
   | "/settings/api-keys"
-  | "/settings/slack";
+  | "/settings/slack"
+  | "/settings/audit-logs";
 
 /**
  * /settings/* 画面間の行き来用サブナビ(要件: 既存の設定ナビから各画面へ辿れること)。
@@ -68,6 +70,7 @@ export function SettingsNav({ active }: { active: SettingsSection }) {
     { key: "privacy", to: "/settings/privacy", label: messages.settingsNav.privacy, enabled: access.privacy },
     { key: "apiKeys", to: "/settings/api-keys", label: messages.settingsNav.apiKeys, enabled: access.apiKeys },
     { key: "slack", to: "/settings/slack", label: messages.settingsNav.slack, enabled: access.slack },
+    { key: "auditLogs", to: "/settings/audit-logs", label: messages.settingsNav.auditLogs, enabled: access.auditLogs },
   ];
   const visible = items.filter((i) => i.enabled);
   if (visible.length === 0) return null;

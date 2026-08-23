@@ -16,6 +16,7 @@ export * from "./permissions.js";
 export * from "./punches.js";
 export * from "./sessions.js";
 export * from "./settings.js";
+export * from "./shifts.js";
 export * from "./slack.js";
 export * from "./tenants.js";
 export * from "./user-notification-settings.js";

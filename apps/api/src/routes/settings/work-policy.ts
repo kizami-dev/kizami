@@ -62,6 +62,16 @@ export function registerWorkPolicyRoutes(app: Hono<AppEnv>, db: Database, _deps:
    */
   const FIXED_SETTLEMENT_PERIOD_PLACEHOLDER = "monthly";
 
+  /**
+   * monthly_variable(シフト制)のとき、work_policy_versions.standard_day_minutes(NOT NULL 列)を
+   * 埋めるためだけのプレースホルダ。engine の WorkSystem["monthly_variable"] は
+   * standardDayMinutes を持たず(所定は ShiftDay が日ごとに決める、types.ts 参照)、
+   * apps/api/src/lib/settings.ts の buildSettingsTimeline も monthly_variable のとき
+   * version.standardDayMinutes を一切読まない。settlementPeriod と同じ理由でこの値自体に
+   * 意味は無い。
+   */
+  const VARIABLE_STANDARD_DAY_MINUTES_PLACEHOLDER = 480;
+
   app.post("/work-policy", async (c) => {
     requirePermission(c, WORK_POLICY_PERMISSION, "tenant");
     const user = c.get("user");
@@ -72,14 +82,17 @@ export function registerWorkPolicyRoutes(app: Hono<AppEnv>, db: Database, _deps:
     if (!isValidLocalDate(body.effectiveFrom)) return c.json({ error: "invalid_effective_from" }, 400);
     const effectiveFrom = body.effectiveFrom;
 
-    if (body.kind !== "flex" && body.kind !== "fixed") {
+    // 2026-08-23 shift-work.md 決定事項5: WorkSystem の3値目 "monthly_variable"(1ヶ月単位の
+    // 変形労働時間制)を受け付ける。periodStartDay はこのポリシー版ではなくテナント設定
+    // (tenant_setting_versions.variable_period_start_day、POST /settings/attendance)側が持つ。
+    if (body.kind !== "flex" && body.kind !== "fixed" && body.kind !== "monthly_variable") {
       return c.json({ error: "invalid_work_system_kind" }, 400);
     }
     const kind = body.kind;
 
-    // settlementPeriod はフレックス専用の列。固定時間制ではリクエストの値を見ず(検証もせず)、
-    // 上記プレースホルダで DB 列を埋める。v0.1 はフレックスの清算期間 "monthly" のみ対応
-    // (packages/engine の FlexSettings.settlement)。
+    // settlementPeriod はフレックス専用の列。固定時間制・monthly_variable ではリクエストの値を
+    // 見ず(検証もせず)、上記プレースホルダで DB 列を埋める。v0.1 はフレックスの清算期間
+    // "monthly" のみ対応(packages/engine の FlexSettings.settlement)。
     let settlementPeriod: string;
     if (kind === "flex") {
       if (body.settlementPeriod !== "monthly") {
@@ -90,15 +103,22 @@ export function registerWorkPolicyRoutes(app: Hono<AppEnv>, db: Database, _deps:
       settlementPeriod = FIXED_SETTLEMENT_PERIOD_PLACEHOLDER;
     }
 
-    if (
-      typeof body.standardDayMinutes !== "number" ||
-      !Number.isInteger(body.standardDayMinutes) ||
-      body.standardDayMinutes <= 0 ||
-      body.standardDayMinutes > 1440
-    ) {
-      return c.json({ error: "invalid_standard_day_minutes" }, 400);
+    // standardDayMinutes は monthly_variable では無意味(上記プレースホルダ定数のコメント参照)。
+    // flex/fixed のみリクエストの値を検証して使う。
+    let standardDayMinutes: number;
+    if (kind === "monthly_variable") {
+      standardDayMinutes = VARIABLE_STANDARD_DAY_MINUTES_PLACEHOLDER;
+    } else {
+      if (
+        typeof body.standardDayMinutes !== "number" ||
+        !Number.isInteger(body.standardDayMinutes) ||
+        body.standardDayMinutes <= 0 ||
+        body.standardDayMinutes > 1440
+      ) {
+        return c.json({ error: "invalid_standard_day_minutes" }, 400);
+      }
+      standardDayMinutes = body.standardDayMinutes;
     }
-    const standardDayMinutes = body.standardDayMinutes;
 
     const today = todayLocalDate(TZ_OFFSET_MINUTES_JST);
     if (effectiveFrom < today) {

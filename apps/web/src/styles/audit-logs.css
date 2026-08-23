@@ -1,0 +1,45 @@
+/**
+ * 監査ログ閲覧(/settings/audit-logs、Tier 1 新設)。
+ * ページ外枠・フォーム部品は settings-notif__*(settings.css)・correction-field(corrections.css)を
+ * 流用し、ここでは監査ログ特有の見た目(不可変性の注記・フィルタ行・詳細JSONの折りたたみ)のみ持つ。
+ * 一覧テーブル自体は org-table(org-settings.css)を流用する。
+ */
+
+.audit-logs__immutable-note {
+  font-size: 0.82rem;
+  color: var(--k-ink-soft);
+  border: var(--border-hair);
+  border-radius: var(--radius-s);
+  padding: var(--space-3);
+}
+
+.audit-logs__filters {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  border: var(--border-hair);
+  border-radius: var(--radius-m);
+  padding: var(--space-4);
+}
+
+.audit-logs__detail summary {
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: var(--k-key);
+}
+
+.audit-logs__detail-json {
+  margin-top: var(--space-2);
+  max-width: 28rem;
+  max-height: 16rem;
+  overflow: auto;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  line-height: 1.4;
+  background: var(--k-paper);
+  border: var(--border-hair);
+  border-radius: var(--radius-s);
+  padding: var(--space-2);
+  white-space: pre-wrap;
+  word-break: break-word;
+}

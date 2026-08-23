@@ -141,6 +141,56 @@ export async function switchToFixedWorkPolicy(
 }
 
 /**
+ * `setupTestDb()` 済みのテナントを monthly_variable(シフト制)へ切り替える
+ * (switchToFixedWorkPolicy と同じ形。settlementPeriod/standardDayMinutes は
+ * monthly_variable では無視されるプレースホルダ — routes/settings/work-policy.ts の
+ * VARIABLE_STANDARD_DAY_MINUTES_PLACEHOLDER と同じ理由)。
+ */
+export async function switchToMonthlyVariableWorkPolicy(
+  db: Database,
+  params: { tenantId: string; effectiveFrom?: string },
+): Promise<void> {
+  const rows = await db.select().from(workPolicies).where(eq(workPolicies.tenantId, params.tenantId)).limit(1);
+  const workPolicyId = rows[0]?.id;
+  if (!workPolicyId) {
+    throw new Error("switchToMonthlyVariableWorkPolicy: no work_policies row found for tenant (call setupTestDb() first)");
+  }
+  await db.insert(workPolicyVersions).values({
+    id: uuidv7(),
+    tenantId: params.tenantId,
+    workPolicyId,
+    effectiveFrom: params.effectiveFrom ?? "2000-01-01",
+    kind: "monthly_variable",
+    settlementPeriod: "monthly",
+    core: null,
+    standardDayMinutes: 480,
+    createdAt: 0,
+  });
+}
+
+/**
+ * `setupTestDb()` 済みのテナントの variablePeriodStartDay を設定する(新しい
+ * tenant_setting_versions を追記する、setBreakRule と同じ形)。
+ */
+export async function setVariablePeriodStartDay(
+  db: Database,
+  params: { tenantId: string; variablePeriodStartDay: number; effectiveFrom?: string },
+): Promise<void> {
+  await db.insert(tenantSettingVersions).values({
+    id: uuidv7(),
+    tenantId: params.tenantId,
+    effectiveFrom: params.effectiveFrom ?? "2000-01-01",
+    dayBoundaryMinutes: 0,
+    legalHolidayRule: JSON.stringify({ kind: "weekday", weekday: 0 }),
+    breakRule: JSON.stringify({ mode: "punch" }),
+    gpsEnabled: false,
+    gpsRetentionDays: null,
+    variablePeriodStartDay: params.variablePeriodStartDay,
+    createdAt: 0,
+  });
+}
+
+/**
  * `setupTestDb()` 済みのテナントの breakRule を切り替える(新しい tenant_setting_versions を
  * 追記する、switchToFixedWorkPolicy と同じ「原則6どおり追記専用」の形)。
  *

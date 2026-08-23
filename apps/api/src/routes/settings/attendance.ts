@@ -92,6 +92,7 @@ function serializeTenantSettingVersion(v: TenantSettingVersion) {
     effectiveFrom: v.effectiveFrom,
     dayBoundaryMinutes: v.dayBoundaryMinutes,
     weekStartWeekday: v.weekStartWeekday,
+    variablePeriodStartDay: v.variablePeriodStartDay,
     legalHolidayRule: JSON.parse(v.legalHolidayRule) as LegalHolidayRule,
     breakRule: JSON.parse(v.breakRule) as BreakRule,
     gpsEnabled: v.gpsEnabled,
@@ -175,6 +176,20 @@ export function registerAttendanceRoutes(app: Hono<AppEnv>, db: Database, _deps:
     }
     const weekStartWeekday = body.weekStartWeekday;
 
+    // monthly_variable(シフト制)の変形期間の起点日(docs/design/shift-work.md 決定事項3)。
+    // 他のフィールドと同じ「POSTのたびに新しい版の全項目を必須で受け取る」流儀に揃え、
+    // monthly_variable を使わないテナントでも明示的に指定させる(省略時に暗黙の1を引き継ぐと、
+    // 将来 monthly_variable へ切り替えたときに気づかれにくい既定値が使われてしまうため)。
+    if (
+      typeof body.variablePeriodStartDay !== "number" ||
+      !Number.isInteger(body.variablePeriodStartDay) ||
+      body.variablePeriodStartDay < 1 ||
+      body.variablePeriodStartDay > 28
+    ) {
+      return c.json({ error: "invalid_variable_period_start_day" }, 400);
+    }
+    const variablePeriodStartDay = body.variablePeriodStartDay;
+
     if (typeof body.gpsEnabled !== "boolean") return c.json({ error: "invalid_gps_enabled" }, 400);
     const gpsEnabled = body.gpsEnabled;
 
@@ -215,6 +230,7 @@ export function registerAttendanceRoutes(app: Hono<AppEnv>, db: Database, _deps:
       gpsEnabled,
       gpsRetentionDays,
       weekStartWeekday,
+      variablePeriodStartDay,
       createdAt: now,
     });
 

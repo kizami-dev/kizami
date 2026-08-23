@@ -15,6 +15,7 @@ const VALID_BODY = {
   effectiveFrom: "2026-05-01",
   dayBoundaryMinutes: 300, // 05:00
   weekStartWeekday: 0,
+  variablePeriodStartDay: 1,
   legalHolidayRule: { kind: "weekday", weekday: 6 },
   breakRule: { mode: "punch" },
   gpsEnabled: false,
@@ -270,6 +271,7 @@ describe("GET/POST /settings/attendance", () => {
         effectiveFrom: "2026-05-01",
         dayBoundaryMinutes: 300,
         weekStartWeekday: 0,
+        variablePeriodStartDay: 1,
         legalHolidayRule: { kind: "weekday", weekday: 6 },
         breakRule: { mode: "punch" },
         gpsEnabled: true,
@@ -282,8 +284,8 @@ describe("GET/POST /settings/attendance", () => {
     expect(after.status).toBe(200);
     const afterBody = await after.json();
 
-    expect(afterBody.totals).toEqual(beforeBody.totals);
-    expect(afterBody.flexBalance).toEqual(beforeBody.flexBalance);
+    expect(afterBody.figures.totals).toEqual(beforeBody.figures.totals);
+    expect(afterBody.figures.flexBalance).toEqual(beforeBody.figures.flexBalance);
     expect(afterBody.days).toEqual(beforeBody.days);
     expect(afterBody.warnings).toEqual(beforeBody.warnings);
   });

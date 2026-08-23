@@ -906,7 +906,9 @@ export function createMembersRoutes(db: Database) {
     const body = await parseJsonBody(c);
     if (body === null) return c.json({ error: "invalid_body" }, 400);
 
-    if (body.kind !== "flex" && body.kind !== "fixed") {
+    // 2026-08-23 shift-work.md 決定事項5: "monthly_variable"(1ヶ月単位の変形労働時間制)も
+    // 受け付ける。routes/settings/work-policy.ts の POST /work-policy と同じ3値。
+    if (body.kind !== "flex" && body.kind !== "fixed" && body.kind !== "monthly_variable") {
       return c.json({ error: "invalid_work_system_kind" }, 400);
     }
     const kind = body.kind;
@@ -959,12 +961,16 @@ export function createMembersRoutes(db: Database) {
       kind,
       // 名前は表示専用(kind による検索には影響しない、getOrCreateTenantWorkPolicyByKind の
       // コメント参照)。flex は既存の GET/POST /settings/work-policy と同じ "標準" に揃える
-      // (実際、通常運用ではその既存ポリシーがそのまま見つかって再利用される)。fixed は
-      // 区別できる名前にする。
-      name: kind === "flex" ? "標準" : "標準(固定時間制)",
+      // (実際、通常運用ではその既存ポリシーがそのまま見つかって再利用される)。fixed・
+      // monthly_variable は区別できる名前にする。
+      name: kind === "flex" ? "標準" : kind === "fixed" ? "標準(固定時間制)" : "標準(シフト制)",
       createdAt: now,
       defaultVersion: {
         settlementPeriod: kind === "flex" ? "monthly" : FIXED_SETTLEMENT_PERIOD_PLACEHOLDER,
+        // standardDayMinutes は monthly_variable では無意味(routes/settings/work-policy.ts の
+        // VARIABLE_STANDARD_DAY_MINUTES_PLACEHOLDER と同じ理由)。専用の定数を持つほどでもない
+        // ため、テナント既定ポリシーから引いた値をそのまま使い回す(未参照であることが重要で、
+        // 具体的な数値そのものに意味は無い)。
         standardDayMinutes,
       },
     });

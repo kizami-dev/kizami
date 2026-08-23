@@ -23,6 +23,7 @@ import "../styles/privacy-settings.css";
 import "../styles/attendance-settings.css";
 import "../styles/allowance-settings.css";
 import "../styles/api-keys-settings.css";
+import "../styles/audit-logs.css";
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
   return (

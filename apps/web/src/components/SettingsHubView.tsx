@@ -24,7 +24,8 @@ type SettingsRoute =
   | "/settings/allowances"
   | "/settings/api-keys"
   | "/settings/slack"
-  | "/settings/slack-link";
+  | "/settings/slack-link"
+  | "/settings/audit-logs";
 
 export function SettingsHubView() {
   const guard = useAuthGuard();
@@ -133,6 +134,13 @@ export function SettingsHubView() {
       to: "/settings/slack" as const,
       title: messages.settingsHub.slackTitle,
       desc: messages.settingsHub.slackDesc,
+    },
+    {
+      key: "auditLogs",
+      enabled: access.auditLogs,
+      to: "/settings/audit-logs" as const,
+      title: messages.settingsHub.auditLogsTitle,
+      desc: messages.settingsHub.auditLogsDesc,
     },
   ].filter((c) => c.enabled);
 

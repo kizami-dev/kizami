@@ -13,7 +13,7 @@ import { messages } from "../../lib/messages";
 export interface CsvExportProps {
   monthParam: string;
   /**
-   * 月次本体データ。CSV ダウンロードの compareOriginal 判定(data?.amended)と、
+   * 月次本体データ。CSV ダウンロードの compareOriginal 判定(data?.closing.amended)と、
    * パネルの表示条件(元実装の data ? (…) : null)の両方に使う。
    */
   data: MonthlyAttendance | null;
@@ -48,7 +48,7 @@ export function CsvExport({ monthParam, data }: CsvExportProps) {
     setCsvDownloading(true);
     setCsvError(null);
     try {
-      const { blob, filename } = await downloadAttendanceCsv(monthParam, data?.amended === true && compareOriginal);
+      const { blob, filename } = await downloadAttendanceCsv(monthParam, data?.closing.amended === true && compareOriginal);
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
@@ -73,7 +73,7 @@ export function CsvExport({ monthParam, data }: CsvExportProps) {
 
   return csvAllowed ? (
     <div className="csv-export">
-      {data.amended ? (
+      {data.closing.amended ? (
         <label className="csv-export__checkbox">
           <input type="checkbox" checked={compareOriginal} onChange={(e) => setCompareOriginal(e.target.checked)} />
           {messages.closing.csvCompareOriginalLabel}

@@ -64,7 +64,12 @@ export function calculateFixedTotals(
     formatDateString({ year: period.year, month: period.month, day: 1 }),
     settingsTimeline,
   );
-  const fallbackStandardDayMinutes = periodStartSettings.workSystem.standardDayMinutes;
+  // index.ts はこの関数を期間開始日の workSystem.kind === "fixed" のときにしか呼ばないため、
+  // periodStartSettings.workSystem は実際には常に fixed(standardDayMinutes を持つ)。
+  // ただし WorkSystem は flex/fixed/monthly_variable の3分岐で、monthly_variable は
+  // standardDayMinutes を持たないため、型上は絞り込みが要る(到達しないフォールバック)。
+  const fallbackStandardDayMinutes =
+    periodStartSettings.workSystem.kind === "monthly_variable" ? 0 : periodStartSettings.workSystem.standardDayMinutes;
 
   // --- 第1パス: 日次法定時間外(§32条2項、1日8時間) -------------------------------------
   for (const day of days) {

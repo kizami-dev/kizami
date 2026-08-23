@@ -76,8 +76,8 @@ describe("GET /attendance/monthly", () => {
       paidLeave: [],
     } satisfies EngineInput);
 
-    expect(body.totals).toEqual(expected.totals);
-    expect(body.flexBalance).toEqual(expected.flexBalance);
+    expect(body.figures.totals).toEqual(expected.totals);
+    expect(body.figures.flexBalance).toEqual(expected.flexBalance);
     expect(body.warnings).toEqual(expected.warnings);
     expect(body.days).toEqual(expected.days);
   });
@@ -99,8 +99,8 @@ describe("GET /attendance/monthly", () => {
       paidLeave: [],
     } satisfies EngineInput);
 
-    expect(body.totals).toEqual(expected.totals);
-    expect(body.flexBalance).toEqual(expected.flexBalance);
+    expect(body.figures.totals).toEqual(expected.totals);
+    expect(body.figures.flexBalance).toEqual(expected.flexBalance);
   });
 
   it("固定時間制: workSystem: fixed / flexBalance: null / 日別の statutoryOvertimeMinutes を返す", async () => {
@@ -129,14 +129,21 @@ describe("GET /attendance/monthly", () => {
     const body = await res.json();
 
     expect(body.workSystem).toBe("fixed");
-    expect(body.flexBalance).toBeNull();
-    expect(body.closed).toBe(false);
+    expect(body.figures.flexBalance).toBeNull();
+    expect(body.closing.closed).toBe(false);
+    expect(body.figures.source).toBe("live");
 
     const day = body.days.find((d: { date: string }) => d.date === "2026-04-01");
     expect(day.statutoryOvertimeMinutes).toBe(150);
     expect(day.withinScheduledMinutes).toBe(480); // 所定8h分
     expect(day.extraWithinStatutoryMinutes).toBe(0); // 所定を超えた分はすべて法定時間外(8h超)
-    expect(body.totals.overtime).toBe(150);
+    expect(body.figures.totals.overtime).toBe(150);
+    // 依頼2: fixedBreakdown(所定内・法定内残業の月合計)。固定時間制の live 計算で
+    // sumFixedBreakdown(output.days) と一致するはず(4/1のみ働いた月なのでこの1日分)。
+    expect(body.figures.fixedBreakdown).toEqual({
+      withinScheduledMinutes: day.withinScheduledMinutes,
+      extraWithinStatutoryMinutes: day.extraWithinStatutoryMinutes,
+    });
   });
 
   it("rejects a malformed month query with 400", async () => {

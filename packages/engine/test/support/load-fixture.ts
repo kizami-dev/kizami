@@ -128,6 +128,12 @@ function parsePeriod(period: string): { year: number; month: number } {
 export function loadGoldenCase(yamlText: string): GoldenCase {
   const raw = parse(yamlText) as RawFixture;
 
+  // flex の所定(分)。settings.workSystem.standardDayMinutes として後段でも使うが、
+  // WorkSystem が flex/fixed/monthly_variable の3分岐になり monthly_variable が
+  // standardDayMinutes を持たないため、`CalcSettings` 型に代入した後の `settings.workSystem`
+  // はプロパティアクセス時に絞り込まれず union のまま扱われる。ここで値を変数に取っておき、
+  // 後段はこちらを直接参照する(絞り込みが不要になり、かつ二重に情報源を持たずに済む)。
+  const flexStandardDayMinutes = parseHm(raw.settings.flex.standard_day);
   const settings: CalcSettings = {
     tzOffsetMinutes: raw.settings.tz_offset,
     dayBoundaryMinutes: parseHm(raw.settings.day_boundary),
@@ -139,7 +145,7 @@ export function loadGoldenCase(yamlText: string): GoldenCase {
       kind: "flex",
       settlement: raw.settings.flex.settlement,
       core: raw.settings.flex.core,
-      standardDayMinutes: parseHm(raw.settings.flex.standard_day),
+      standardDayMinutes: flexStandardDayMinutes,
     },
     breakRule: { mode: raw.settings.break_rule.mode },
   };
@@ -162,7 +168,7 @@ export function loadGoldenCase(yamlText: string): GoldenCase {
   // (同日エントリの合算はエンジン側 buildDailyBreakdown/calculateFlexBalance が行う)。
   const legacyPaidLeave: PaidLeaveEntry[] = (raw.paid_leave_days ?? []).map((date) => ({
     date,
-    minutes: settings.workSystem.standardDayMinutes,
+    minutes: flexStandardDayMinutes,
   }));
   const explicitPaidLeave: PaidLeaveEntry[] = (raw.paid_leave ?? []).map((entry) => ({
     date: entry.date,

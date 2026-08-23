@@ -112,7 +112,13 @@ function dayHasActivity(day: DailyBreakdown): boolean {
 export interface MonthlyAttendanceTableProps {
   data: MonthlyAttendance;
   leaveByDate: Map<string, LeaveRequestDto[]>;
-  onCorrect: (date: string) => void;
+  /**
+   * 省略時(他人の勤怠閲覧、2026-08-23 追加)は「操作」列自体を出さない — 修正申請は
+   * 対象本人の打刻に対する操作であり、他人の月次を見ているだけの閲覧者には出さない
+   * (依頼: 修正ボタン・打ち消し申請などの本人操作は出さない。打ち消し申請は修正フォーム
+   * 内にあるため、この列を消すだけで両方まとめて閉じる)。
+   */
+  onCorrect?: (date: string) => void;
 }
 
 /**
@@ -172,7 +178,7 @@ export function MonthlyAttendanceTable({ data, leaveByDate, onCorrect }: Monthly
                 {messages.monthly.columnWarning}
                 <HelpTip helpKey="attendance.warnings" />
               </th>
-              <th>{messages.monthly.columnActions}</th>
+              {onCorrect ? <th>{messages.monthly.columnActions}</th> : null}
             </tr>
           </thead>
           <tbody>
@@ -322,15 +328,17 @@ export function MonthlyAttendanceTable({ data, leaveByDate, onCorrect }: Monthly
                         ))
                       : null}
                   </td>
-                  <td className="monthly-table__actions" data-label={messages.monthly.columnActions}>
-                    <button
-                      type="button"
-                      className={`monthly-table__correct-btn${hasWarning ? " monthly-table__correct-btn--warn" : ""}`}
-                      onClick={() => onCorrect(day.date)}
-                    >
-                      {messages.monthly.correctionAction}
-                    </button>
-                  </td>
+                  {onCorrect ? (
+                    <td className="monthly-table__actions" data-label={messages.monthly.columnActions}>
+                      <button
+                        type="button"
+                        className={`monthly-table__correct-btn${hasWarning ? " monthly-table__correct-btn--warn" : ""}`}
+                        onClick={() => onCorrect(day.date)}
+                      >
+                        {messages.monthly.correctionAction}
+                      </button>
+                    </td>
+                  ) : null}
                 </tr>
               );
             })}

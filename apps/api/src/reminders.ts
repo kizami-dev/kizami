@@ -69,7 +69,7 @@ export interface RunReminderScanResult {
   created: CreatedReminder[];
 }
 
-interface TargetMonth {
+export interface TargetMonth {
   year: number;
   month: number;
 }
@@ -78,7 +78,7 @@ interface TargetMonth {
  * スキャン対象月を決める: 当月 + (月初 PREVIOUS_MONTH_LOOKBACK_DAYS 日以内なら)前月。
  * 「当月」の判定は他の月次集計と同じ固定 JST オフセットで行う(テナント別 TZ は v1.0 以降)。
  */
-function resolveTargetMonths(nowMinutes: number): TargetMonth[] {
+export function resolveTargetMonths(nowMinutes: number): TargetMonth[] {
   const localMinutes = nowMinutes + TZ_OFFSET_MINUTES_JST;
   const todayEpochDay = Math.floor(localMinutes / MINUTES_PER_DAY);
   const today = dateFromEpochDay(todayEpochDay);
@@ -103,7 +103,7 @@ function resolveTargetMonths(nowMinutes: number): TargetMonth[] {
  * engine の内部モジュールはパッケージの公開 API(exports の ".")に含まれず import できないため
  * (apps/api/src/routes/attendance.ts の resolveTodayWindow と同じ事情)、ここに最小限で複製する。
  */
-function settingsForDate(date: string, timeline: SettingsSpan[]): CalcSettings {
+export function settingsForDate(date: string, timeline: SettingsSpan[]): CalcSettings {
   let chosen: SettingsSpan | undefined;
   for (const span of timeline) {
     if (span.from <= date && (chosen === undefined || span.from > chosen.from)) {
@@ -117,7 +117,7 @@ function settingsForDate(date: string, timeline: SettingsSpan[]): CalcSettings {
 }
 
 /** 勤怠日 `date` の終端(翌日の日界, 排他)を UTC エポック分で返す。 */
-function attendanceDayEndUtcMinutes(date: string, settings: CalcSettings): number {
+export function attendanceDayEndUtcMinutes(date: string, settings: CalcSettings): number {
   const epochDay = epochDayFromDate(date);
   return localMidnightUtcMinutes(epochDay + 1, settings.tzOffsetMinutes) + settings.dayBoundaryMinutes;
 }

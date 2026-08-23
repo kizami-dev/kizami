@@ -23,6 +23,7 @@ import { registerAttendanceRoutes } from "./attendance.js";
 import { registerLeaveRoutes } from "./leave.js";
 import { registerNotificationsRoutes } from "./notifications.js";
 import { registerPrivacyRoutes } from "./privacy.js";
+import { registerShiftPatternsRoutes } from "./shift-patterns.js";
 import { registerSlackRoutes } from "./slack.js";
 import { registerTenantProfileRoutes } from "./tenant-profile.js";
 import { registerWorkPolicyRoutes } from "./work-policy.js";
@@ -39,6 +40,7 @@ export function createSettingsRoutes(db: Database, deps: SettingsRoutesDeps = {}
   registerPrivacyRoutes(app, db, deps);
   registerAttendanceRoutes(app, db, deps);
   registerWorkPolicyRoutes(app, db, deps);
+  registerShiftPatternsRoutes(app, db, deps);
   registerSlackRoutes(app, db, deps);
   registerAllowancesRoutes(app, db, deps);
 

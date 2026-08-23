@@ -123,11 +123,12 @@ describe("handleGetMonthlySummary", () => {
   it("formats totals, flex balance, and passes the requested month through", async () => {
     const getMonthlySummary = vi.fn().mockResolvedValue({
       days: [],
-      totals: { statutory: 9600, overtime: 120, overtime60h: 0, lateNight: 30, statutoryHoliday: 0 },
-      flexBalance: { frameMinutes: 9600, actualMinutes: 9720, diffMinutes: 120 },
       warnings: [],
-      closed: false,
-      amended: false,
+      figures: {
+        totals: { statutory: 9600, overtime: 120, overtime60h: 0, lateNight: 30, statutoryHoliday: 0 },
+        flexBalance: { frameMinutes: 9600, actualMinutes: 9720, diffMinutes: 120 },
+      },
+      closing: { closed: false, amended: false },
     });
     const client = fakeClient({ getMonthlySummary });
 
@@ -143,11 +144,12 @@ describe("handleGetMonthlySummary", () => {
   it("defaults to the current JST month when month is omitted (server has no default)", async () => {
     const getMonthlySummary = vi.fn().mockResolvedValue({
       days: [],
-      totals: { statutory: 0, overtime: 0, overtime60h: 0, lateNight: 0, statutoryHoliday: 0 },
-      flexBalance: { frameMinutes: 0, actualMinutes: 0, diffMinutes: 0 },
       warnings: [],
-      closed: false,
-      amended: false,
+      figures: {
+        totals: { statutory: 0, overtime: 0, overtime60h: 0, lateNight: 0, statutoryHoliday: 0 },
+        flexBalance: { frameMinutes: 0, actualMinutes: 0, diffMinutes: 0 },
+      },
+      closing: { closed: false, amended: false },
     });
     const client = fakeClient({ getMonthlySummary });
 
@@ -160,11 +162,12 @@ describe("handleGetMonthlySummary", () => {
   it("shows warnings with human-readable labels", async () => {
     const getMonthlySummary = vi.fn().mockResolvedValue({
       days: [],
-      totals: { statutory: 0, overtime: 0, overtime60h: 0, lateNight: 0, statutoryHoliday: 0 },
-      flexBalance: { frameMinutes: 0, actualMinutes: 0, diffMinutes: 0 },
       warnings: [{ kind: "missing_clock_out", date: "2026-07-05" }],
-      closed: false,
-      amended: false,
+      figures: {
+        totals: { statutory: 0, overtime: 0, overtime60h: 0, lateNight: 0, statutoryHoliday: 0 },
+        flexBalance: { frameMinutes: 0, actualMinutes: 0, diffMinutes: 0 },
+      },
+      closing: { closed: false, amended: false },
     });
     const client = fakeClient({ getMonthlySummary });
 
@@ -176,13 +179,16 @@ describe("handleGetMonthlySummary", () => {
   it("marks the summary as closed / amended and shows the before-after diff", async () => {
     const getMonthlySummary = vi.fn().mockResolvedValue({
       days: [],
-      totals: { statutory: 9600, overtime: 0, overtime60h: 0, lateNight: 0, statutoryHoliday: 0 },
-      flexBalance: { frameMinutes: 9600, actualMinutes: 9600, diffMinutes: 0 },
       warnings: [],
-      closed: true,
-      amended: true,
-      originalTotals: { statutory: 9500, overtime: 0, overtime60h: 0, lateNight: 0, statutoryHoliday: 0 },
-      originalFlexBalance: { frameMinutes: 9600, actualMinutes: 9500, diffMinutes: -100 },
+      figures: {
+        totals: { statutory: 9600, overtime: 0, overtime60h: 0, lateNight: 0, statutoryHoliday: 0 },
+        flexBalance: { frameMinutes: 9600, actualMinutes: 9600, diffMinutes: 0 },
+        original: {
+          totals: { statutory: 9500, overtime: 0, overtime60h: 0, lateNight: 0, statutoryHoliday: 0 },
+          flexBalance: { frameMinutes: 9600, actualMinutes: 9500, diffMinutes: -100 },
+        },
+      },
+      closing: { closed: true, amended: true },
     });
     const client = fakeClient({ getMonthlySummary });
 

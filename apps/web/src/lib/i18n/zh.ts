@@ -417,6 +417,17 @@ export const zh = {
     allowanceTotalsLabel: "津贴对象时间",
     /** 结算后修改的差异表中,加在津贴行名称前以便识别。 */
     allowanceDiffPrefix: "津贴: ",
+
+    fixedBreakdownLabel: "所定内・法定内加班(月合计)",
+    fixedBreakdownWithinScheduledLabel: "所定内工作时间",
+    fixedBreakdownExtraLabel: "法定内加班",
+
+    memberSwitcherLabel: "查看对象",
+    memberSwitcherSelfOption: (name: string) => `${name}(本人)`,
+    memberSwitcherOthersGroup: "成员",
+    memberSwitcherNoDepartment: "无部门",
+    memberSwitcherUnknownDepartment: "未知部门",
+    viewingOthersLabel: (name: string) => `${name}的月度考勤(仅查看)`,
   },
 
   totalsCategoryLabel: {
@@ -863,6 +874,7 @@ export const zh = {
     allowances: "津贴对象时间",
     apiKeys: "API密钥",
     slack: "Slack集成",
+    auditLogs: "审计日志",
   },
 
   settingsHub: {
@@ -900,12 +912,15 @@ export const zh = {
     slackDesc: "设置通过Slack斜杠命令(/punch)进行打卡的功能。",
     slackLinkTitle: "输入Slack关联令牌",
     slackLinkDesc: "输入在Slack中执行 `/punch link` 后获得的令牌,关联你的Slack账号。",
+    auditLogsTitle: "审计日志",
+    auditLogsDesc: "查看打卡、修正、审批、结算、权限变更等不可篡改的操作记录(仅供查看)。",
   },
 
   /** 月度结算与CSV导出(/monthly 页面)。 */
   closing: {
     closedBadge: "已确定",
     amendedBadge: "结算后有修改",
+    snapshotBadge: "确定值",
 
     closeAction: "结算本月",
     reopenAction: "解除确定状态",
@@ -1859,5 +1874,37 @@ export const zh = {
       forbidden: "没有执行此操作的权限",
       default: "处理失败,请重试",
     },
+  },
+
+  /** 审计日志的只读查看页面(/settings/audit-logs)。 */
+  settingsAuditLogs: {
+    title: "审计日志",
+    tagline: "打卡、修正、审批、结算、权限变更等操作的记录。",
+    immutableNote: "审计日志为仅追加记录,事后不会被修改或删除(仅供查看)。",
+    loadFailed: "信息获取失败,请重试",
+    forbidden: "没有执行此操作的权限",
+
+    filterActionLabel: "操作类型",
+    filterActionAll: "全部",
+    filterActorLabel: "操作者(用户ID)",
+    filterActorPlaceholder: "留空则显示全员",
+    filterFromLabel: "期间(开始日期)",
+    filterToLabel: "期间(结束日期)",
+    filterApply: "筛选",
+    filterClear: "清除条件",
+    filterInvalidRange: "结束日期须晚于或等于开始日期",
+
+    columnOccurredAt: "日期时间",
+    columnActor: "操作者",
+    columnAction: "操作类型",
+    columnTarget: "对象",
+    columnDetail: "详情",
+    detailToggle: "显示详情",
+    detailUnavailable: "暂无详细信息",
+
+    empty: "没有符合条件的审计日志。",
+    loadMore: "加载更多",
+    loadingMore: "加载中…",
+    loadMoreFailed: "加载更多失败,请重试",
   },
 } satisfies Messages;

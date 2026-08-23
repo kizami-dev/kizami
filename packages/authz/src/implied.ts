@@ -17,6 +17,7 @@ import type { PermissionKey } from "./types.js";
 
 export const IMPLIED_VIEW_PERMISSIONS: Readonly<Record<PermissionKey, readonly PermissionKey[]>> = {
   "attendance.punch.proxy": ["attendance.record.view"],
+  "shift.manage": ["attendance.record.view"],
   "attendance.correction.request_for_others": ["attendance.record.view", "attendance.correction.view_all"],
   "attendance.correction.approve": ["attendance.correction.view_all", "attendance.record.view"],
   "leave.request.approve": ["leave.request.view_all", "attendance.record.view"],

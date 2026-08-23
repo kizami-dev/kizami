@@ -201,7 +201,7 @@ describe("GET/POST /settings/work-policy", () => {
     const after = await app.request("/attendance/monthly?month=2026-04", { headers: { cookie } });
     const afterBody = await after.json();
 
-    expect(afterBody.flexBalance).toEqual(beforeBody.flexBalance);
-    expect(afterBody.totals).toEqual(beforeBody.totals);
+    expect(afterBody.figures.flexBalance).toEqual(beforeBody.figures.flexBalance);
+    expect(afterBody.figures.totals).toEqual(beforeBody.figures.totals);
   });
 });

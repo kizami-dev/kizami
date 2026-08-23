@@ -17,7 +17,7 @@ import {
   type Transaction,
   type TenantSettingVersion,
 } from "@kizami/db";
-import type { BreakRule, CalcSettings, LawTimelineSpan, LegalHolidayRule, SettingsSpan } from "@kizami/engine";
+import type { BreakRule, CalcSettings, LawTimelineSpan, LegalHolidayRule, SettingsSpan, WorkSystem } from "@kizami/engine";
 import { buildLawTimeline } from "@kizami/law";
 
 /** Asia/Tokyo 固定(分)。テナントTZが設定可能になるのは v1.0 以降の想定。 */
@@ -179,10 +179,16 @@ export async function buildSettingsTimeline(
       dayBoundaryMinutes: tenantVersion.dayBoundaryMinutes,
       weekStartWeekday: toWeekday(tenantVersion.weekStartWeekday),
       legalHoliday: JSON.parse(tenantVersion.legalHolidayRule) as LegalHolidayRule,
+      // monthly_variable(docs/design/shift-work.md 決定事項5): periodStartDay は
+      // work_policy_versions ではなく tenant_setting_versions.variable_period_start_day から
+      // 供給する(依頼「work_policy_versions.kind が monthly_variable のとき
+      // { kind, periodStartDay } — periodStartDay はテナント設定から」)。
       workSystem:
         version.kind === "fixed"
           ? { kind: "fixed", standardDayMinutes: version.standardDayMinutes }
-          : { kind: "flex", settlement: version.settlementPeriod as "monthly", core: null, standardDayMinutes: version.standardDayMinutes },
+          : version.kind === "monthly_variable"
+            ? { kind: "monthly_variable", periodStartDay: tenantVersion.variablePeriodStartDay }
+            : { kind: "flex", settlement: version.settlementPeriod as "monthly", core: null, standardDayMinutes: version.standardDayMinutes },
       breakRule: JSON.parse(tenantVersion.breakRule) as BreakRule,
     };
 
@@ -268,5 +274,37 @@ export function standardDayMinutesForDate(settingsTimeline: SettingsSpan[], date
   if (!chosen) {
     throw new Error(`no settings resolvable for ${date}`);
   }
+  // monthly_variable(シフト制)は `standardDayMinutes` という定数を持たない —
+  // 所定は ShiftDay が日ごとに決める(types.ts の WorkSystem コメント参照)。この関数は
+  // 有給の全休・半休の分数換算(routes/leave.ts)専用であり、シフト制ユーザーの有給を
+  // 「その日のシフト所定」で換算する配線は本タスク(v0.7 フェーズ2: シフトのDB/API)の
+  // スコープ外(有給付与フローとの統合は shift-work.md 実装フェーズ4「有給付与の3段フロー」)。
+  // ここでは値を偽装せず、明確に失敗させる(呼び出し側は 500 になるが、原因はログから
+  // 追える — 根拠のない標準時間を返して有給の枠算入を静かに誤らせる方が有害と判断した)。
+  if (chosen.settings.workSystem.kind === "monthly_variable") {
+    throw new Error(
+      `standardDayMinutesForDate: monthly_variable has no constant standardDayMinutes (date=${date}); ` +
+        "leave usage-minutes resolution for shift-based users is not yet implemented (see docs/design/shift-work.md phase 4)",
+    );
+  }
   return chosen.settings.workSystem.standardDayMinutes;
+}
+
+/**
+ * 指定日に有効な `WorkSystem` を settingsTimeline から解決する(standardDayMinutesForDate と
+ * 同じ「date 以下で最大の from」の解決規則)。monthly_variable の変形期間の範囲計算
+ * (apps/api/src/lib/monthly-shifts.ts)が、まず暦月だけをカバーする timeline から
+ * 期間開始日での実効 workSystem(periodStartDay を含む)を読むために使う。
+ */
+export function resolveWorkSystemForDate(settingsTimeline: SettingsSpan[], date: string): WorkSystem {
+  let chosen: SettingsSpan | null = null;
+  for (const span of settingsTimeline) {
+    if (span.from <= date && (chosen === null || span.from > chosen.from)) {
+      chosen = span;
+    }
+  }
+  if (!chosen) {
+    throw new Error(`no settings resolvable for ${date}`);
+  }
+  return chosen.settings.workSystem;
 }

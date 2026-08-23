@@ -33,9 +33,8 @@ interface WaiverJson {
 }
 
 interface MonthlyJson {
-  closed: boolean;
-  amended: boolean;
-  totals: { statutory: number; overtime: number };
+  closing: { closed: boolean; amended: boolean };
+  figures: { totals: { statutory: number; overtime: number } };
   warnings: Array<{ kind: string; date: string; punchAt?: number; break?: { requiredMinutes: number; actualMinutes: number } }>;
   days: Array<{ date: string; autoDeductedBreakMinutes: number; breakMinutes: number; workedMinutes: number }>;
 }
@@ -191,8 +190,8 @@ describe("auto break waivers", () => {
     await closePeriod(app, cookie, "2026-04");
 
     const before = await getMonthly(app, cookie, "2026-04");
-    expect(before.closed).toBe(true);
-    expect(before.amended).toBe(false);
+    expect(before.closing.closed).toBe(true);
+    expect(before.closing.amended).toBe(false);
 
     // 判断点(このテストのためのメモ): closing_events の並び順は (occurred_at, id) で決める
     // (packages/db/src/queries/closings.ts)。id は uuidv7 だが乱数部で終端の順序が決まるため、
@@ -214,10 +213,10 @@ describe("auto break waivers", () => {
     expect(approved.amended).toBe(true);
 
     const after = await getMonthly(app, cookie, "2026-04");
-    expect(after.closed).toBe(true);
-    expect(after.amended).toBe(true);
+    expect(after.closing.closed).toBe(true);
+    expect(after.closing.amended).toBe(true);
     // 控除60分が消えた分、実働(statutory)が60分増える
-    expect(after.totals.statutory - before.totals.statutory).toBe(60);
+    expect(after.figures.totals.statutory - before.figures.totals.statutory).toBe(60);
 
     const closingRes = await app.request("/closings/2026-04", { headers: { cookie } });
     const closing = (await closingRes.json()) as { closing: { history: Array<{ event: string }> } };
@@ -350,6 +349,7 @@ describe("POST /settings/attendance breakRule validation (auto/both)", () => {
       effectiveFrom: "2026-05-01",
       dayBoundaryMinutes: 0,
       weekStartWeekday: 0,
+      variablePeriodStartDay: 1,
       legalHolidayRule: { kind: "weekday", weekday: 0 },
       breakRule,
       gpsEnabled: false,

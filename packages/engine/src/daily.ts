@@ -136,7 +136,9 @@ export function buildDailyBreakdown(
       isPaidLeave: paidLeaveMinutes > 0,
       paidLeaveMinutes,
       stretches: stretchesByDate.get(date) ?? [],
-      // 固定時間制の内訳は fixed.ts が埋める。フレックスでは 0 のまま。
+      // シフトの所定は variable.ts(monthly_variable)が埋める。flex/fixed では 0 のまま。
+      scheduledMinutes: 0,
+      // 固定時間制・monthly_variable の内訳は fixed.ts/variable.ts が埋める。フレックスでは 0 のまま。
       withinScheduledMinutes: 0,
       extraWithinStatutoryMinutes: 0,
       statutoryOvertimeMinutes: 0,

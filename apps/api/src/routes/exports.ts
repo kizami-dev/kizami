@@ -128,11 +128,16 @@ function buildCsvRow(fields: Array<string | number | boolean>): string {
  * も同じ理由で固定時間制以外なら null(closing-snapshot.ts の FixedBreakdownTotals と同じ設計)。
  * `workSystem` は列の出し分け自体には使わない(flexBalance/fixed* の null 判定だけで足りる)が、
  * 読み手が「なぜ空欄か」を判断できるようそのまま1列として出力する。
+ *
+ * monthly_variable(シフト制、docs/design/shift-work.md)は flexBalance も
+ * fixedWithinScheduledMinutes/fixedExtraWithinStatutoryMinutes も持たない(期間時間外は
+ * totals.overtime に既に含まれる — 依頼「締めスナップショットは既存の totals 経由でそのまま」)。
+ * CSV上は flex/fixed 系の列がすべて空欄になり、totals(区分別時間数)だけが埋まる形で表現される。
  */
 interface MonthlyFigures {
   totals: CategorizedMinutes;
   flexBalance: FlexBalance | null;
-  workSystem: "flex" | "fixed";
+  workSystem: "flex" | "fixed" | "monthly_variable";
   fixedWithinScheduledMinutes: number | null;
   fixedExtraWithinStatutoryMinutes: number | null;
   /** 手当定義ごとの月合計(分)。docs/design/allowances.md「CSVエクスポート」 */
@@ -233,8 +238,12 @@ function monthlyFiguresFromSnapshot(snapshot: SnapshotTotals): MonthlyFigures {
     totals: snapshot.totals,
     flexBalance: snapshot.flexBalance,
     // flex 系の行があれば flex。無ければ fixed とみなす(対象ユーザーの行が締め時点で皆無
-    // だったケースも含む — engineOutputFromSnapshots の JSDoc 参照。この場合 fixedBreakdown も
-    // null になり、下記2列は結局空文字になるため実害は無い)。
+    // だったケース、または monthly_variable だったケースも含む — engineOutputFromSnapshots の
+    // JSDoc 参照。closing_snapshots は monthly_variable 専用のマーカー行を持たない〔依頼
+    // 「締めスナップショットは既存の totals 経由でそのまま」〕ため、フレックス以外を
+    // 一律「fixed」と表示するこの既存の判定はここでは正確ではなくなる — 実害は
+    // 表示上の workSystem 列のみで、fixedBreakdown が無ければ下記2列は結局空文字になるため
+    // 数値の正しさには影響しない。既知の限界として明記する。
     workSystem: snapshot.flexBalance === null ? "fixed" : "flex",
     fixedWithinScheduledMinutes: snapshot.fixedBreakdown?.withinScheduledMinutes ?? null,
     fixedExtraWithinStatutoryMinutes: snapshot.fixedBreakdown?.extraWithinStatutoryMinutes ?? null,

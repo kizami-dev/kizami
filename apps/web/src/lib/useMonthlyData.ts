@@ -26,8 +26,11 @@ export interface UseMonthlyDataResult {
  * MonthlyView から状態・fetch effect を切り出したもの(挙動不変、第3波分割)。
  * reloadKey は締め/解除・打刻修正の反映トリガとして呼び出し元(ClosingPanel・CorrectionForm)
  * からも参照/更新される。
+ *
+ * userId(2026-08-23 追加、他人の勤怠閲覧): 省略時は自分自身。指定時は API 側で
+ * attendance.record.view のスコープ判定が入る(apps/api/src/routes/attendance.ts)。
  */
-export function useMonthlyData(guardStatus: AuthGuardStatus, monthParam: string): UseMonthlyDataResult {
+export function useMonthlyData(guardStatus: AuthGuardStatus, monthParam: string, userId?: string): UseMonthlyDataResult {
   const router = useRouter();
 
   const [data, setData] = useState<MonthlyAttendance | null>(null);
@@ -42,7 +45,7 @@ export function useMonthlyData(guardStatus: AuthGuardStatus, monthParam: string)
     setLoading(true);
     setError(null);
     api
-      .monthly(monthParam)
+      .monthly(monthParam, userId)
       .then((res) => {
         if (!cancelled) setData(res);
       })
@@ -61,15 +64,16 @@ export function useMonthlyData(guardStatus: AuthGuardStatus, monthParam: string)
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [guardStatus, monthParam, reloadKey]);
+  }, [guardStatus, monthParam, userId, reloadKey]);
 
   // 承認済み休暇の取得は月次本体と独立に行い、失敗しても月次表示を妨げない
-  // (マーカーが出ないだけに留める)。
+  // (マーカーが出ないだけに留める。他人閲覧時、閲覧側が leave.request の他人分参照権限を
+  // 持たなければ403になるが、同じく静かに諦める — マーカーが出ないだけで月次表示自体は継続する)。
   useEffect(() => {
     if (guardStatus !== "authed") return;
     let cancelled = false;
     api
-      .listLeaveRequests("all")
+      .listLeaveRequests("all", userId)
       .then((res) => {
         if (cancelled) return;
         const map = new Map<string, LeaveRequestDto[]>();
@@ -88,7 +92,7 @@ export function useMonthlyData(guardStatus: AuthGuardStatus, monthParam: string)
     return () => {
       cancelled = true;
     };
-  }, [guardStatus, monthParam, reloadKey]);
+  }, [guardStatus, monthParam, userId, reloadKey]);
 
   return {
     data,

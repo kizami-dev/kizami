@@ -446,6 +446,19 @@ export const en = {
     allowanceTotalsLabel: "Allowance-eligible time",
     /** Prefixed to allowance rows in the post-close amendment diff table so they read as allowances. */
     allowanceDiffPrefix: "Allowance: ",
+
+    /** Monthly total breakdown for fixed-hour work system (within-schedule hours, in-statute overtime). Shown below the category chips, in the same chip style as the allowance totals block (GET /attendance/monthly figures.fixedBreakdown, added 2026-08-23). */
+    fixedBreakdownLabel: "Within-schedule / in-statute overtime (monthly total)",
+    fixedBreakdownWithinScheduledLabel: "Within-schedule hours",
+    fixedBreakdownExtraLabel: "In-statute overtime",
+
+    /** Viewing another member's attendance (added 2026-08-23, Tier 1). */
+    memberSwitcherLabel: "Viewing",
+    memberSwitcherSelfOption: (name: string) => `${name} (you)`,
+    memberSwitcherOthersGroup: "Members",
+    memberSwitcherNoDepartment: "No department",
+    memberSwitcherUnknownDepartment: "Unknown department",
+    viewingOthersLabel: (name: string) => `${name}'s monthly attendance (view only)`,
   },
 
   totalsCategoryLabel: {
@@ -898,6 +911,7 @@ export const en = {
     allowances: "Allowance-eligible time",
     apiKeys: "API keys",
     slack: "Slack integration",
+    auditLogs: "Audit log",
   },
 
   settingsHub: {
@@ -935,12 +949,16 @@ export const en = {
     slackDesc: "Configure punching in from Slack via the slash command (/punch).",
     slackLinkTitle: "Enter Slack linking token",
     slackLinkDesc: "Enter the token issued by running `/punch link` in Slack to link your Slack account.",
+    auditLogsTitle: "Audit log",
+    auditLogsDesc: "View the immutable record of operations such as punches, corrections, approvals, closing, and permission changes (read-only).",
   },
 
   /** Monthly close & CSV export (/monthly screen, v0.3). Requirement §6 (closing & data export) & §10 (contextual help). */
   closing: {
     closedBadge: "Closed",
     amendedBadge: "Amended after closing",
+    /** Shown small, near the "closed" badge, when figures.source === "snapshot" (added 2026-08-23). */
+    snapshotBadge: "Finalized",
 
     closeAction: "Close this month",
     reopenAction: "Reopen",
@@ -1908,5 +1926,40 @@ export const en = {
       forbidden: "You don't have permission to perform this action",
       default: "Something went wrong. Please try again",
     },
+  },
+
+  /**
+   * Audit log (/settings/audit-logs, added 2026-08-23). Read-only, append-only record of
+   * operations such as punches, corrections, approvals, closing, and permission changes.
+   */
+  settingsAuditLogs: {
+    title: "Audit log",
+    tagline: "A record of operations such as punches, corrections, approvals, closing, and permission changes.",
+    immutableNote: "The audit log is append-only: entries can never be modified or deleted after the fact (read-only).",
+    loadFailed: "Failed to load information. Please try again",
+    forbidden: "You don't have permission to perform this action",
+
+    filterActionLabel: "Action",
+    filterActionAll: "All",
+    filterActorLabel: "Actor (user ID)",
+    filterActorPlaceholder: "Leave blank for everyone",
+    filterFromLabel: "Period (from)",
+    filterToLabel: "Period (to)",
+    filterApply: "Apply filters",
+    filterClear: "Clear filters",
+    filterInvalidRange: "The end date must be on or after the start date",
+
+    columnOccurredAt: "Date/time",
+    columnActor: "Actor",
+    columnAction: "Action",
+    columnTarget: "Target",
+    columnDetail: "Details",
+    detailToggle: "Show details",
+    detailUnavailable: "No details available",
+
+    empty: "No audit log entries match the current filters.",
+    loadMore: "Load more",
+    loadingMore: "Loading…",
+    loadMoreFailed: "Failed to load more. Please try again",
   },
 } satisfies Messages;

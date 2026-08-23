@@ -47,6 +47,17 @@ export const tenantSettingVersions = sqliteTable(
      * クエリ層で決め打ちしない)。
      */
     weekStartWeekday: integer("week_start_weekday").notNull().default(0),
+    /**
+     * 1ヶ月単位の変形労働時間制(monthly_variable)の変形期間の起点日(1〜28、
+     * docs/design/shift-work.md 決定事項3)。work_policy_versions.kind が "monthly_variable" の
+     * テナントでのみ意味を持つ(engine の WorkSystem["monthly_variable"].periodStartDay の
+     * 供給元。apps/api/src/lib/settings.ts の buildSettingsTimeline 参照)。
+     * `.default(1)` は ALTER TABLE ... NOT NULL 追加に必要な SQLite 上の都合であり(既存の
+     * weekStartWeekday と同じ理由)、新規作成時は insertTenantSettingVersion の呼び出し側が
+     * 明示的に指定する。1〜28 に制限する理由は WorkSystem 型のコメント参照(29〜31日は
+     * 月によって存在しないため起点が一意に決まらない)。
+     */
+    variablePeriodStartDay: integer("variable_period_start_day").notNull().default(1),
     /** UTC エポック分(この版が記録された時刻) */
     createdAt: integer("created_at").notNull(),
   },

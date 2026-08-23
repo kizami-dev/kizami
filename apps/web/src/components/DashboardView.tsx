@@ -200,7 +200,7 @@ export function DashboardView() {
   const breakLabel = state === "onBreak" ? messages.punchButtons.breakEnd : messages.punchButtons.breakStart;
 
   const todayWorkedMinutes = monthly?.days.find((d) => d.date === todayDate)?.workedMinutes ?? 0;
-  const flex = monthly?.flexBalance;
+  const flex = monthly?.figures.flexBalance;
   const flexPercent = flex && flex.frameMinutes > 0 ? Math.min(100, Math.max(0, (flex.actualMinutes / flex.frameMinutes) * 100)) : 0;
 
   const warningDates = monthly ? Array.from(new Set(monthly.warnings.map((w) => w.date))).sort() : [];

@@ -69,14 +69,14 @@ describe("leave -> monthly flex integration (E2E)", () => {
     const cookie = await loginAndGetCookie(app, email, password);
 
     const before = await app.request("/attendance/monthly?month=2026-04", { headers: { cookie } });
-    const beforeBody = (await before.json()) as { flexBalance: { actualMinutes: number } };
-    expect(beforeBody.flexBalance.actualMinutes).toBe(0);
+    const beforeBody = (await before.json()) as { figures: { flexBalance: { actualMinutes: number } } };
+    expect(beforeBody.figures.flexBalance.actualMinutes).toBe(0);
 
     await createAndApprove(app, cookie, { leaveDate: "2026-04-10", reason: "私用のため" }, db, { tenantId, userId });
 
     const after = await app.request("/attendance/monthly?month=2026-04", { headers: { cookie } });
-    const afterBody = (await after.json()) as { flexBalance: { actualMinutes: number }; days: { date: string; isPaidLeave: boolean }[] };
-    expect(afterBody.flexBalance.actualMinutes).toBe(480);
+    const afterBody = (await after.json()) as { figures: { flexBalance: { actualMinutes: number } }; days: { date: string; isPaidLeave: boolean }[] };
+    expect(afterBody.figures.flexBalance.actualMinutes).toBe(480);
     const day = afterBody.days.find((d) => d.date === "2026-04-10");
     expect(day?.isPaidLeave).toBe(true);
   });
@@ -90,8 +90,8 @@ describe("leave -> monthly flex integration (E2E)", () => {
     await createAndApprove(app, cookie, { leaveDate: "2026-04-11", reason: "午前休", unit: "half_day_am" }, db, { tenantId, userId });
 
     const res = await app.request("/attendance/monthly?month=2026-04", { headers: { cookie } });
-    const body = (await res.json()) as { flexBalance: { actualMinutes: number } };
-    expect(body.flexBalance.actualMinutes).toBe(240);
+    const body = (await res.json()) as { figures: { flexBalance: { actualMinutes: number } } };
+    expect(body.figures.flexBalance.actualMinutes).toBe(240);
   });
 
   it("an approved hourly leave (3 hours) adds 180 minutes to the month's flex actual", async () => {
@@ -119,8 +119,8 @@ describe("leave -> monthly flex integration (E2E)", () => {
     await createAndApprove(app, cookie, { leaveDate: "2026-04-12", reason: "通院のため", unit: "hourly", minutes: 180 }, db, { tenantId, userId });
 
     const res = await app.request("/attendance/monthly?month=2026-04", { headers: { cookie } });
-    const body = (await res.json()) as { flexBalance: { actualMinutes: number } };
-    expect(body.flexBalance.actualMinutes).toBe(180);
+    const body = (await res.json()) as { figures: { flexBalance: { actualMinutes: number } } };
+    expect(body.figures.flexBalance.actualMinutes).toBe(180);
   });
 
   it("a full worked day plus a half-day leave in the same month sum correctly in the flex actual", async () => {
@@ -146,7 +146,7 @@ describe("leave -> monthly flex integration (E2E)", () => {
     await createAndApprove(app, cookie, { leaveDate: "2026-04-13", reason: "午後休", unit: "half_day_pm" }, db, { tenantId, userId });
 
     const res = await app.request("/attendance/monthly?month=2026-04", { headers: { cookie } });
-    const body = (await res.json()) as { flexBalance: { actualMinutes: number } };
-    expect(body.flexBalance.actualMinutes).toBe(540 + 240);
+    const body = (await res.json()) as { figures: { flexBalance: { actualMinutes: number } } };
+    expect(body.figures.flexBalance.actualMinutes).toBe(540 + 240);
   });
 });

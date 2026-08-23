@@ -8,6 +8,7 @@ import { ForbiddenError } from "./authz.js";
 import { MonthClosedError, MonthClosedRequiresUnlockError } from "./lib/closing-guard.js";
 import { createApiKeysRoutes } from "./routes/api-keys.js";
 import { createAttendanceRoutes } from "./routes/attendance.js";
+import { createAuditLogsRoutes } from "./routes/audit-logs.js";
 import { createAuthRoutes } from "./routes/auth.js";
 import { createAutoBreakWaiversRoutes } from "./routes/auto-break-waivers.js";
 import { createClosingsRoutes } from "./routes/closings.js";
@@ -24,6 +25,7 @@ import { createPasswordResetsRoutes } from "./routes/password-resets.js";
 import { createPresetsRoutes } from "./routes/presets.js";
 import { createPunchesRoutes } from "./routes/punches.js";
 import { createSettingsRoutes, type SettingsRoutesDeps } from "./routes/settings/index.js";
+import { createShiftsRoutes } from "./routes/shifts.js";
 import { createSlackRoutes } from "./routes/slack.js";
 import { createLeaveRoutes } from "./routes/leave.js";
 
@@ -96,6 +98,7 @@ export function createApp(deps: CreateAppDeps) {
   authed.route("/api-keys", createApiKeysRoutes(db));
   authed.route("/punches", createPunchesRoutes(db));
   authed.route("/attendance", createAttendanceRoutes(db));
+  authed.route("/shifts", createShiftsRoutes(db));
   // 承認・却下の本人通知を外部チャネル(メール/個人Webhook)へも流すための deps(2026-08-23 承認モデル統一の配線)
   authed.route("/corrections", createCorrectionsRoutes(db, { ...(notify ?? {}), encryptor: encryptor ?? null }));
   // 休憩自動控除の打ち消し申請(docs/design/breaks.md)。承認通知の送信に settings.ts と同じ
@@ -118,6 +121,7 @@ export function createApp(deps: CreateAppDeps) {
   authed.route("/closings", createClosingsRoutes(db));
   authed.route("/exports", createExportsRoutes(db));
   authed.route("/leave", createLeaveRoutes(db, { ...(notify ?? {}), encryptor: encryptor ?? null }));
+  authed.route("/audit-logs", createAuditLogsRoutes(db));
   app.route("/", authed);
 
   app.onError((err, c) => {

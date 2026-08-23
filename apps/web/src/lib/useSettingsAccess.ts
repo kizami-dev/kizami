@@ -27,6 +27,8 @@ export interface SettingsAccess {
   slack: boolean;
   /** /settings/slack-link。apiKeys と同じく自分用なので権限不要、常に true。 */
   slackLink: boolean;
+  /** /settings/audit-logs(Tier 1 新設)。audit_log.view(department スコープ以上)。 */
+  auditLogs: boolean;
 }
 
 /**
@@ -57,6 +59,8 @@ export interface SettingsAccess {
  *   持っていれば画面自体は表示する(画面側は各セクションを個別に出し分ける、従来と同じ方針)
  * - allowances: ALLOWANCE_SETTINGS_PERMISSION = ATTENDANCE_CALENDAR_PERMISSION と同一
  *   ("tenant_settings.calendar.manage"、tenant)
+ * - auditLogs: apps/api/src/routes/audit-logs.ts の VIEW_PERMISSION = "audit_log.view"
+ *   (department スコープ以上、docs/design/permission-catalog.md §1.13。危険フラグあり)
  */
 export function useSettingsAccess(): SettingsAccess {
   const { loading, permissions } = useEffectivePermissions();
@@ -81,5 +85,6 @@ export function useSettingsAccess(): SettingsAccess {
     attendance: has("tenant_settings.calendar.manage", "tenant") || has("tenant_settings.flex.manage", "tenant"),
     allowances: has("tenant_settings.calendar.manage", "tenant"),
     slack: has("notification.settings.manage", "tenant"),
+    auditLogs: has("audit_log.view", "department"),
   };
 }

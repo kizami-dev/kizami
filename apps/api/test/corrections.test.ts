@@ -84,9 +84,9 @@ describe("correction request flow", () => {
     // 9:00〜18:00 休憩なしの勤務になるため insufficient_break(労基法34条)は正しく残る —
     // これはこのテストの関心(修正申請の反映)とは別の、意図された検知(2026-08-23 追加)。
     const afterRes = await app.request("/attendance/monthly?month=2026-04", { headers: { cookie } });
-    const after = (await afterRes.json()) as { warnings: Array<{ kind: string }>; totals: { statutory: number } };
+    const after = (await afterRes.json()) as { warnings: Array<{ kind: string }>; figures: { totals: { statutory: number } } };
     expect(after.warnings.map((w) => w.kind)).toEqual(["insufficient_break"]);
-    expect(after.totals.statutory).toBeGreaterThan(0);
+    expect(after.figures.totals.statutory).toBeGreaterThan(0);
   });
 
   it("case 2: correction request -> approve -> original event superseded, new event valid", async () => {

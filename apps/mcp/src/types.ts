@@ -55,15 +55,29 @@ export interface DailyBreakdownDto {
   paidLeaveMinutes: number;
 }
 
+/**
+ * 2026-08-23(Tier 1、破壊的変更・apps/api/src/routes/attendance.ts 冒頭コメント参照):
+ * GET /attendance/monthly のレスポンス契約が再編された。旧形(フラットな totals/flexBalance/
+ * closed/amended/originalTotals/originalFlexBalance)は廃止され、集計値は figures に、
+ * 締め状態は closing にまとまった。apps/mcp はこの月次要約ツール1つだけがこのエンドポイントを
+ * 叩くため、新形をそのままこのDTOへ反映する(旧形との互換は取らない)。
+ */
 export interface MonthlySummaryDto {
   days: DailyBreakdownDto[];
-  totals: CategorizedMinutesDto;
-  flexBalance: FlexBalanceDto;
   warnings: CalcWarningDto[];
-  closed: boolean;
-  amended: boolean;
-  originalTotals?: CategorizedMinutesDto;
-  originalFlexBalance?: FlexBalanceDto;
+  figures: {
+    totals: CategorizedMinutesDto;
+    /** 固定時間制の月は null。 */
+    flexBalance: FlexBalanceDto | null;
+    original?: {
+      totals: CategorizedMinutesDto;
+      flexBalance: FlexBalanceDto | null;
+    };
+  };
+  closing: {
+    closed: boolean;
+    amended: boolean;
+  };
 }
 
 export interface LeaveTypeSummaryDto {

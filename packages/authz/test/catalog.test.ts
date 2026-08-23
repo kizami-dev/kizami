@@ -57,8 +57,8 @@ const MANAGER_GRANT_KEYS = [
 ];
 
 describe("PERMISSION_CATALOG", () => {
-  it("has exactly the 30 items from permission-catalog.md §1, all with unique keys", () => {
-    expect(PERMISSION_CATALOG.length).toBe(30);
+  it("has exactly the 31 items from permission-catalog.md §1, all with unique keys", () => {
+    expect(PERMISSION_CATALOG.length).toBe(31);
     const keys = PERMISSION_CATALOG.map((e) => e.key);
     expect(new Set(keys).size).toBe(keys.length);
   });

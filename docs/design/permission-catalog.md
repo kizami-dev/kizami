@@ -11,7 +11,7 @@
   - スコープの機械可読キー(2026-08-21確定、DB の grants JSON で使用): `self`(本人のみ)/ `department`(自部署)/ `department_and_descendants`(自部署+配下部署)/ `tenant`(テナント全体)。
   - 「危険フラグ」は §4 が言う「編集UI上で影響範囲の説明を添えて表示すべき権限」を指す。§10の文脈ヒント(操作時の都度のツールチップ)とは対象が重なるが別軸であり、ここでは**権限プリセット編集画面での重点表示対象**という意味で付与している。
 
-## 1. 業務タスク単位の権限カタログ(30項目)
+## 1. 業務タスク単位の権限カタログ(31項目。2026-08-23 に shift.manage を追加)
 
 ### 1.1 打刻(代理操作)
 
@@ -32,6 +32,7 @@
 | キー | 日本語ラベル | 説明 | 適用スコープ | 含意される閲覧権限 | 危険 |
 |---|---|---|---|---|---|
 | `attendance.record.view` | 他者の勤怠記録(日次・月次)を閲覧できる | 自分以外のメンバーの日次・月次の勤怠記録・集計結果を確認できる | 自部署 / 自部署+配下部署 / テナント全体 | ― | いいえ |
+| `shift.manage` | シフト表を作成・確定できる | メンバーのシフト表(勤務日・勤務時間・休日)を作成し、確定後の変更履歴を残しながら修正できる(変形労働時間制の「事前特定」に相当。2026-08-23 v0.7 追加) | 自部署 / 自部署+配下部署 / テナント全体 | 対象範囲の勤怠記録閲覧 | いいえ |
 
 ### 1.4 休暇(申請・承認・付与管理)
 
@@ -166,6 +167,7 @@
 | `attendance.correction.approve` | `correction_request:approve`, `correction_request:read`, `attendance_day:read`, `punch:read` |
 | `attendance.correction.view_all` | `correction_request:read` |
 | `attendance.record.view` | `attendance_day:read`, `punch:read` |
+| `shift.manage` | `shift_plan:create/update/publish`(対象範囲), `attendance_day:read` |
 | `leave.request.approve` | `leave_request:approve`, `leave_request:read`, `attendance_day:read` |
 | `leave.request.view_all` | `leave_request:read` |
 | `leave.grant.manage` | `leave_grant:create`, `leave_grant:update`, `leave_grant:read` |

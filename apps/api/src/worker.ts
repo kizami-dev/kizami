@@ -43,6 +43,7 @@ import { runLeaveAlertScan } from "./leave-alerts.js";
 import { runOvertimeAlertScan } from "./overtime-alerts.js";
 import { nodemailerSendFn } from "./lib/smtp.js";
 import { runReminderScan } from "./reminders.js";
+import { runShiftVarianceAlertScan } from "./shift-variance-alerts.js";
 
 const QUEUE_NAME = "kizami-reminders";
 // このジョブは打刻忘れリマインドと36協定アラートの両方のスキャンを担う(周期は共通)。
@@ -141,6 +142,23 @@ async function main(): Promise<void> {
         console.error("[kizami-reminders] leave-alert scan failed:", err);
       }
 
+      // シフト予実乖離の日次通知(docs/design/shift-work.md 決定事項4)。他の3スキャンと違い
+      // 宛先は本人ではなく承認権限者+テナント共有 Webhook のみ(個人チャネル配信は次フェーズ)
+      // のため、上の resolveChannels ではなく notifyDeps(テナント共有チャネルの組み立てに使う
+      // smtpSendFn/encryptor)を渡す。
+      let shiftVarianceScanned = 0;
+      let shiftVarianceCreated = 0;
+      try {
+        const result = await runShiftVarianceAlertScan(db, { nowMinutes, notifyDeps: { smtpSendFn: nodemailerSendFn, encryptor } });
+        shiftVarianceScanned = result.scannedUserCount;
+        shiftVarianceCreated = result.created.length;
+        console.log(
+          `[kizami-reminders] shift-variance-alert scan: scanned ${result.scannedUserCount} active users, created ${result.created.length} notification(s)`,
+        );
+      } catch (err) {
+        console.error("[kizami-reminders] shift-variance-alert scan failed:", err);
+      }
+
       return {
         scannedUserCount: reminderScanned,
         createdCount: reminderCreated,
@@ -148,6 +166,8 @@ async function main(): Promise<void> {
         overtimeCreatedCount: overtimeCreated,
         leaveAlertScannedUserCount: leaveAlertScanned,
         leaveAlertCreatedCount: leaveAlertCreated,
+        shiftVarianceScannedUserCount: shiftVarianceScanned,
+        shiftVarianceCreatedCount: shiftVarianceCreated,
       };
     },
     { connection },

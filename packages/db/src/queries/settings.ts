@@ -94,6 +94,13 @@ export interface InsertTenantSettingVersionParams {
   gpsRetentionDays: number | null;
   /** 週の起算曜日(0=日曜)。固定時間制で「週40時間超」を判定する起点。呼び出し側が明示する */
   weekStartWeekday: number;
+  /**
+   * monthly_variable の変形期間の起点日(1〜28)。呼び出し側が明示する
+   * (weekStartWeekday と同じ理由でクエリ層は既定値を決め打ちしない。
+   * monthly_variable を使わないテナントでも列自体は NOT NULL のため常に値を渡すこと —
+   * 未使用なら 1 を渡せばよい)。
+   */
+  variablePeriodStartDay: number;
   /** UTC エポック分 */
   createdAt: number;
 }
@@ -119,6 +126,7 @@ export async function insertTenantSettingVersion(
       gpsEnabled: params.gpsEnabled,
       gpsRetentionDays: params.gpsRetentionDays,
       weekStartWeekday: params.weekStartWeekday,
+      variablePeriodStartDay: params.variablePeriodStartDay,
       createdAt: params.createdAt,
     })
     .returning();

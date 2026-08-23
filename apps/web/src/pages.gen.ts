@@ -28,6 +28,8 @@ import type { getConfig as File_SettingsApiKeys_getConfig } from './pages/settin
 // prettier-ignore
 import type { getConfig as File_SettingsAttendance_getConfig } from './pages/settings/attendance';
 // prettier-ignore
+import type { getConfig as File_SettingsAuditLogs_getConfig } from './pages/settings/audit-logs';
+// prettier-ignore
 import type { getConfig as File_SettingsDepartments_getConfig } from './pages/settings/departments';
 // prettier-ignore
 import type { getConfig as File_SettingsHelp_getConfig } from './pages/settings/help';
@@ -67,6 +69,7 @@ type Page =
 | ({ path: '/settings/allowances' } & GetConfigResponse<typeof File_SettingsAllowances_getConfig>)
 | ({ path: '/settings/api-keys' } & GetConfigResponse<typeof File_SettingsApiKeys_getConfig>)
 | ({ path: '/settings/attendance' } & GetConfigResponse<typeof File_SettingsAttendance_getConfig>)
+| ({ path: '/settings/audit-logs' } & GetConfigResponse<typeof File_SettingsAuditLogs_getConfig>)
 | ({ path: '/settings/departments' } & GetConfigResponse<typeof File_SettingsDepartments_getConfig>)
 | ({ path: '/settings/help' } & GetConfigResponse<typeof File_SettingsHelp_getConfig>)
 | ({ path: '/settings' } & GetConfigResponse<typeof File_SettingsIndex_getConfig>)

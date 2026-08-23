@@ -75,6 +75,18 @@ export const ATTENDANCE_GPS_PERMISSION = "tenant_settings.gps.manage";
 export const WORK_POLICY_PERMISSION = "tenant_settings.flex.manage";
 
 /**
+ * シフト管理(routes/shifts.ts・routes/settings/shift-patterns.ts、v0.7)が要求する権限。
+ *
+ * 判断点(2026-08-23): 当初は既存の attendance.correction.approve を転用していたが、権限カタログは
+ * 「非エンジニアが業務タスク単位で理解できる」ことを設計原則にしており(要件 §4)、
+ * 「修正申請を承認できる」のチェックボックスに「シフト表の作成・確定」が隠れるのはその原則に
+ * 反する。シフトは「予定」の作成・確定という独立した業務タスクのため、カタログに `shift.manage`
+ * を追加した(packages/authz/src/catalog.ts)。attendance.record.view を含意する。
+ * 本人のシフト閲覧(GET /shifts/me)はセルフサービスとしてこの権限を要求しない。
+ */
+export const SHIFT_MANAGE_PERMISSION = "shift.manage";
+
+/**
  * GET/POST /settings/allowances(手当定義の版管理。docs/design/allowances.md、2026-08-23 追加)が
  * 要求する権限。依頼どおり「権限は勤怠設定と同じもの」— ATTENDANCE_CALENDAR_PERMISSION
  * (tenant_settings.calendar.manage)をそのまま再利用する(手当専用の新規キーは増やさない)。

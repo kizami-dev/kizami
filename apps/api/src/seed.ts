@@ -45,6 +45,7 @@ const ADMIN_GRANTS: Grant[] = (
     "attendance.correction.request_for_others",
     "attendance.correction.approve",
     "attendance.record.view",
+    "shift.manage",
     "leave.request.approve",
     "leave.grant.manage",
     "leave.mandatory_five_days.view",
@@ -72,6 +73,7 @@ const MANAGER_GRANTS: Grant[] = (
   [
     "attendance.correction.approve",
     "attendance.record.view",
+    "shift.manage",
     "leave.request.approve",
     "leave.balance.view",
     "leave.mandatory_five_days.view",

@@ -23,6 +23,7 @@ function fakeDay(overrides: Partial<DailyBreakdown> & { date: string }): DailyBr
     paidLeaveMinutes: 0,
     autoDeductedBreakMinutes: 0,
     stretches: [],
+    scheduledMinutes: 0,
     withinScheduledMinutes: 0,
     extraWithinStatutoryMinutes: 0,
     statutoryOvertimeMinutes: 0,

@@ -21,6 +21,8 @@ import { buildDailyBreakdown } from "./daily.js";
 import { deriveSegments } from "./derive.js";
 import { calculateFixedTotals } from "./fixed.js";
 import { calculateFlexBalance } from "./flex.js";
+import { computeShiftVarianceWarnings } from "./shift-variance.js";
+import { calculateVariableTotals } from "./variable.js";
 import type { CalcWarning, DailyBreakdown, EngineInput, EngineOutput } from "./types.js";
 
 export type * from "./types.js";
@@ -140,6 +142,33 @@ export function calculate(input: EngineInput): EngineOutput {
       workSystem: "fixed",
       warnings: [...warnings, ...breakWarnings, ...mixedWarning],
       allowanceTotals,
+    };
+  }
+
+  if (workSystemKind === "monthly_variable") {
+    // workedSegments(打刻由来、休憩・自動控除の控除後)は buildDailyBreakdown と違って
+    // period の月に絞り込まれていない生のセグメント列 — variable.ts の③期間段は変形期間
+    // 全体(前後の月にまたがりうる)の実労働が要るため、この絞り込み前の値を渡す
+    // (types.ts の EngineInput.shifts コメント「呼び出し側は期間全体分の punches/shifts を
+    // 渡す」契約と対応する)。
+    const { totals, days: variableDays, variablePeriod } = calculateVariableTotals(
+      days,
+      workedSegments,
+      input.shifts ?? [],
+      input.settingsTimeline,
+      input.lawTimeline,
+      input.period,
+    );
+    // シフト予実の乖離警告(docs/design/shift-work.md「予実の突合」)。totals には反映しない。
+    const shiftVarianceWarnings = computeShiftVarianceWarnings(input.shifts ?? [], variableDays, input.settingsTimeline);
+    return {
+      days: variableDays,
+      totals,
+      flexBalance: null,
+      workSystem: "monthly_variable",
+      warnings: [...warnings, ...breakWarnings, ...shiftVarianceWarnings, ...mixedWarning],
+      allowanceTotals,
+      variablePeriod,
     };
   }
 

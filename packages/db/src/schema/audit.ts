@@ -26,5 +26,11 @@ export const auditLogs = sqliteTable(
     afterDigest: text("after_digest"),
     occurredAt: integer("occurred_at").notNull(),
   },
-  (table) => [index("audit_logs_tenant_occurred_idx").on(table.tenantId, table.occurredAt)],
+  (table) => [
+    index("audit_logs_tenant_occurred_idx").on(table.tenantId, table.occurredAt),
+    // 監査ログ閲覧API(GET /audit-logs、Tier 1)のカーソルページング用。id は UUIDv7 で
+    // 時系列ソート可能なため、`WHERE tenant_id = ? [AND id < cursor] ORDER BY id DESC` を
+    // この複合インデックスだけで(追加のソートステップ無しに)処理できる。
+    index("audit_logs_tenant_id_idx").on(table.tenantId, table.id),
+  ],
 );

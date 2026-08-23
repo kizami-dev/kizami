@@ -22,12 +22,12 @@ export interface WorkloadBarProps {
  * (固定時間制の場合)。MonthlyView から切り出したもの(挙動不変、第3波分割)。
  */
 export function WorkloadBar({ data }: WorkloadBarProps) {
-  const flex = data.flexBalance;
+  const flex = data.figures.flexBalance;
   const flexPercent = flex && flex.frameMinutes > 0 ? Math.min(100, Math.max(0, (flex.actualMinutes / flex.frameMinutes) * 100)) : 0;
 
   // 固定時間制: フレックス収支バーと同じ見た目で「36協定 月45時間に対する時間外の位置」を出す
   // (ui-direction.md「月次」節「フレックス収支バーの置き換え」)。
-  const overtimeMinutes = data.totals.overtime;
+  const overtimeMinutes = data.figures.totals.overtime;
   const overtimeOverLimit = Math.max(0, overtimeMinutes - AGREEMENT36_MONTHLY_LIMIT_MINUTES);
   const overtimePercent = Math.min(100, Math.max(0, (overtimeMinutes / AGREEMENT36_MONTHLY_LIMIT_MINUTES) * 100));
 

@@ -1,6 +1,6 @@
-# シフト制と1ヶ月単位の変形労働時間制(設計ドラフト)
+# シフト制と1ヶ月単位の変形労働時間制
 
-- 状態: **ドラフト**(2026-08-23 起案。実装は Tier 0 完了後の v0.7 マイルストーン)
+- 状態: **決定済み**(2026-08-23 起案、同日ユーザー決定で確定。v0.7 マイルストーン)
 - 併走: 有給付与の予告→承認→通知フロー(requirements §11)
 
 ## なぜシフト制は「制度を1つ足す」では済まないか
@@ -45,16 +45,11 @@
 (打刻・設定・法令と同じ「入力は全部呼び出し側が集めて渡す」原則を維持。エンジンは
 DB を知らない)。
 
-## データモデル(案)
+## データモデル
 
-```
-shift_plans            — 変形期間の器(tenant, user?, period_start, period_days)※要検討: user単位かグループ単位か
-shift_days             — user × date の所定(start_minutes, end_minutes, break_minutes,
-                         day_type: work | legal_holiday | non_working)
-                         追記専用+supersedes(打刻と同じ訂正モデル)にするか、
-                         版管理(effective-dated)にするかは要検討 — シフトの「確定」概念
-                         (確定後の変更を目立たせる)が必要な点は decided
-```
+決定版は下記「決定事項 1」の3テーブル(shift_patterns / shift_plans / shift_days、supersedes 型)。
+shift_plans は **user 単位**(グループ単位は将来。同じパターン列を複数人に適用する操作は UI 側の
+一括割当で表現し、データは人ごとに持つ — 変形制の「各人の所定の事前特定」に一致する)。
 
 ### 法定休日の扱い
 
@@ -83,10 +78,56 @@ shift_days             — user × date の所定(start_minutes, end_minutes, br
 シフト制では出勤率の分母(全労働日)がシフトから正確に出せるようになる —
 固定時間制・フレックスより精度が上がる(これがシフト制と同時期にやる理由)。
 
-## 未決事項(実装前に決める)
+## 決定事項(2026-08-23、ユーザー決定)
 
-1. shift_days の訂正モデル: supersedes 型 vs 版管理型(シフト確定の表現を含む)
-2. シフト作成 UI の粒度: 週単位のグリッド入力か、パターン(早番/遅番)の割当か
-3. 変形期間の起点: 暦月固定か、テナント設定(締め期間と揃える)か
-4. 予定外労働の通知先・重大度
-5. エンジンのシフトタイムライン入力の型(EngineInput 拡張の形)
+### 1. shift_days の訂正モデル = 確定+追記型の変更履歴
+
+打刻と同じ **supersedes 型**。シフト表(期間単位)を「確定」し、確定後の変更は新しい行が旧行を
+supersede する形で積む。「誰がいつ何を変えたか」が構造で残り、変形制の「事前特定」要件と
+恣意的変更の可視化に適う。版管理(effective-dated)は「この日のシフトを誰が変えたか」が
+追いにくいため不採用。
+
+```
+shift_plans   — 変形期間の器(tenant, user, period_start, period_end, published_at)
+shift_days    — user × date の所定(start_minutes, end_minutes, break_minutes,
+                day_type: work | legal_holiday | non_working, pattern_id?, supersedes_id UNIQUE)
+shift_patterns — 早番/遅番/休み等の定義(tenant, name, start/end/break, day_type)
+```
+
+### 2. UI 粒度 = パターン割当+個別編集
+
+パターン(早番/遅番/休み)を定義し、週グリッドに置いていく。例外日だけ個別編集。
+実務のシフト表作成に一致し入力コストが低い。CSV インポートは将来の補助手段。
+
+### 3. 変形期間の起点 = テナント設定(開始日可変)
+
+`tenant_setting_versions` に変形期間の開始日(1〜28)を持つ(effective-dated)。締めは暦月の
+ままなので変形期間は月をまたぐ。**期間段(③)の時間外は、期間の終了日が属する月の締めに
+帰属させる** — 期間の総枠超過は期間末に初めて確定する事実であり、「判断される事実が
+発生した日」の原則(v01-data-model.md)の適用。①日次・②週次は従来どおり発生日の月。
+締め期間そのものを変形期間に揃える設定は将来の選択肢(二重管理の複雑さと引き換え)。
+
+### 4. 予実乖離 = 警告表示+管理者へ日次通知
+
+月次に警告行(既存の型)、打刻忘れリマインドと同じ日次スキャンで管理者(スコープ内の
+承認権限者)へまとめ通知。集計には自動反映しない(遅刻控除等は給与側 — 金額を計算しない
+原則)。申請フロー化は「承認されないと集計から除外」が過少申告リスクになるため不採用。
+
+### 5. エンジン入力の型(技術判断)
+
+```ts
+// EngineInput に追加(他のタイムラインと同じ「呼び出し側が集めて渡す」契約)
+shifts?: ShiftDay[];   // { date, dayType, startMinutes, endMinutes, breakMinutes } 期間内+前後の日跨ぎ分
+// WorkSystem の第3派生
+| { kind: "monthly_variable"; periodStartDay: number /* 1-28 */ }
+```
+シフトが無い日(monthly_variable なのに ShiftDay が無い)は警告 `missing_shift` を出し、
+その日は所定0として①②の判定を行う(実労働があれば全量が判定対象 — 保守的)。
+
+## 実装フェーズ(v0.7)
+
+1. **エンジン**: `monthly_variable` の3段判定+シフト入力+予実乖離の警告(純関数・フィクスチャ)
+2. **DB/API**: shift_patterns / shift_plans / shift_days、確定・supersede、集計への配線、
+   日次スキャンの乖離通知
+3. **UI**: パターン管理・週グリッドでの割当・確定・本人のシフト閲覧・月次の乖離警告
+4. **有給付与の3段フロー**(予告→承認→通知、出勤率参考値 — シフトが分母を与える)

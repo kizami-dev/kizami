@@ -150,7 +150,7 @@ describe("closings API", () => {
     expect((await postPunch(app, cookie, "clock_out", jstMinutes(2026, 4, 1, 18, 0))).status).toBe(201);
 
     const beforeClose = await getMonthly(app, cookie, "2026-04");
-    expect(beforeClose.body.closed).toBe(false);
+    expect(beforeClose.body.closing.closed).toBe(false);
 
     await grantPermission(db, { tenantId, userId, permission: "closing.execute", scope: "tenant" });
     await grantPermission(db, { tenantId, userId, permission: "closing.view", scope: "tenant" });
@@ -165,9 +165,9 @@ describe("closings API", () => {
 
     const afterClose = await getMonthly(app, cookie, "2026-04");
     expect(afterClose.status).toBe(200);
-    expect(afterClose.body.closed).toBe(true);
-    expect(afterClose.body.totals).toEqual(beforeClose.body.totals);
-    expect(afterClose.body.flexBalance).toEqual(beforeClose.body.flexBalance);
+    expect(afterClose.body.closing.closed).toBe(true);
+    expect(afterClose.body.figures.totals).toEqual(beforeClose.body.figures.totals);
+    expect(afterClose.body.figures.flexBalance).toEqual(beforeClose.body.figures.flexBalance);
   });
 
   // レビュー指摘(締めのサイレントスキップ可視化): テナント設定・制度割当が揃っていない
@@ -287,16 +287,16 @@ describe("closings API", () => {
     expect((await postPunch(app, cookie, "clock_out", jstMinutes(2026, 4, 10, 23, 30))).status).toBe(201);
 
     const beforeClose = await getMonthly(app, cookie, "2026-04");
-    expect(beforeClose.body.closed).toBe(false);
+    expect(beforeClose.body.closing.closed).toBe(false);
 
     await grantPermission(db, { tenantId, userId, permission: "closing.execute", scope: "tenant" });
     const closeRes = await closePeriod(app, cookie, "2026-04");
     expect(closeRes.status).toBe(200);
 
     const snapshotTotals = (await getMonthly(app, cookie, "2026-04")).body;
-    expect(snapshotTotals.closed).toBe(true);
-    expect(snapshotTotals.totals).toEqual(beforeClose.body.totals);
-    expect(snapshotTotals.flexBalance).toEqual(beforeClose.body.flexBalance);
+    expect(snapshotTotals.closing.closed).toBe(true);
+    expect(snapshotTotals.figures.totals).toEqual(beforeClose.body.figures.totals);
+    expect(snapshotTotals.figures.flexBalance).toEqual(beforeClose.body.figures.flexBalance);
 
     // 制度変更: 日界を9時間ずらし、法定休日を土曜日に変更する(4/5 の法定休日判定・日別配賦が
     // 変わるはずの、意図的に「結果が動く」変更)。effective_from を締め月より前に置くことで
@@ -339,13 +339,13 @@ describe("closings API", () => {
       period: { year: 2026, month: 4 },
       paidLeave: [],
     } satisfies EngineInput);
-    expect(directRecalc.totals).not.toEqual(beforeClose.body.totals);
+    expect(directRecalc.totals).not.toEqual(beforeClose.body.figures.totals);
 
     // 本題: 締め済み月の /attendance/monthly は、制度変更後もスナップショットのままである。
     const afterSettingsChange = await getMonthly(app, cookie, "2026-04");
-    expect(afterSettingsChange.body.closed).toBe(true);
-    expect(afterSettingsChange.body.totals).toEqual(beforeClose.body.totals);
-    expect(afterSettingsChange.body.flexBalance).toEqual(beforeClose.body.flexBalance);
+    expect(afterSettingsChange.body.closing.closed).toBe(true);
+    expect(afterSettingsChange.body.figures.totals).toEqual(beforeClose.body.figures.totals);
+    expect(afterSettingsChange.body.figures.flexBalance).toEqual(beforeClose.body.figures.flexBalance);
   });
 
   it("固定時間制: close -> snapshot -> 読み戻しで flexBalance が null のまま復元される(0埋めに戻らない)", async () => {
@@ -360,18 +360,18 @@ describe("closings API", () => {
     expect((await postPunch(app, cookie, "clock_out", jstMinutes(2026, 4, 1, 19, 0))).status).toBe(201);
 
     const beforeClose = await getMonthly(app, cookie, "2026-04");
-    expect(beforeClose.body.closed).toBe(false);
+    expect(beforeClose.body.closing.closed).toBe(false);
     expect(beforeClose.body.workSystem).toBe("fixed");
-    expect(beforeClose.body.flexBalance).toBeNull();
-    expect(beforeClose.body.totals.overtime).toBe(120); // 2h
+    expect(beforeClose.body.figures.flexBalance).toBeNull();
+    expect(beforeClose.body.figures.totals.overtime).toBe(120); // 2h
 
     const closeRes = await closePeriod(app, cookie, "2026-04");
     expect(closeRes.status).toBe(200);
 
     const afterClose = await getMonthly(app, cookie, "2026-04");
-    expect(afterClose.body.closed).toBe(true);
+    expect(afterClose.body.closing.closed).toBe(true);
     // 0埋めのデフォルト({frameMinutes:0,...})に戻っていないことが本題。
-    expect(afterClose.body.flexBalance).toBeNull();
-    expect(afterClose.body.totals).toEqual(beforeClose.body.totals);
+    expect(afterClose.body.figures.flexBalance).toBeNull();
+    expect(afterClose.body.figures.totals).toEqual(beforeClose.body.figures.totals);
   });
 });

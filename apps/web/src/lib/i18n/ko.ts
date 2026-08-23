@@ -425,6 +425,17 @@ export const ko = {
     allowanceTotalsLabel: "수당 대상 시간",
     /** 마감 후 수정 차이 표에서 수당 행임을 알 수 있도록 이름 앞에 붙인다. */
     allowanceDiffPrefix: "수당: ",
+
+    fixedBreakdownLabel: "소정 내·법정 내 연장근로(월 합계)",
+    fixedBreakdownWithinScheduledLabel: "소정 내 근로시간",
+    fixedBreakdownExtraLabel: "법정 내 연장근로",
+
+    memberSwitcherLabel: "열람 대상",
+    memberSwitcherSelfOption: (name: string) => `${name}(본인)`,
+    memberSwitcherOthersGroup: "멤버",
+    memberSwitcherNoDepartment: "부서 없음",
+    memberSwitcherUnknownDepartment: "알 수 없는 부서",
+    viewingOthersLabel: (name: string) => `${name}님의 월간 근태(열람 전용)`,
   },
 
   totalsCategoryLabel: {
@@ -874,6 +885,7 @@ export const ko = {
     allowances: "수당 대상 시간",
     apiKeys: "API 키",
     slack: "Slack 연동",
+    auditLogs: "감사 로그",
   },
 
   settingsHub: {
@@ -911,12 +923,16 @@ export const ko = {
     slackDesc: "Slack 슬래시 커맨드(/punch)로 출퇴근을 기록할 수 있도록 설정합니다.",
     slackLinkTitle: "Slack 연동용 토큰 입력",
     slackLinkDesc: "Slack에서 `/punch link` 를 실행해 발급받은 토큰을 입력해, 본인의 Slack 계정과 연동합니다.",
+    auditLogsTitle: "감사 로그",
+    auditLogsDesc:
+      "출퇴근·수정·승인·마감·권한 변경 등 조작 기록을 불변 로그로 열람합니다(읽기 전용).",
   },
 
   /** 월간 마감·CSV 내보내기(/monthly 화면, v0.3). 요건 §6(마감과 출구)·§10(컨텍스트 도움말). */
   closing: {
     closedBadge: "마감 완료",
     amendedBadge: "마감 후 수정 있음",
+    snapshotBadge: "확정값",
 
     closeAction: "이번 달 마감",
     reopenAction: "마감 해제",
@@ -1876,5 +1892,36 @@ export const ko = {
       forbidden: "이 작업을 수행할 권한이 없습니다",
       default: "처리에 실패했습니다. 다시 시도해 주세요",
     },
+  },
+
+  settingsAuditLogs: {
+    title: "감사 로그",
+    tagline: "출퇴근·수정·승인·마감·권한 변경 등 조작 기록입니다.",
+    immutableNote: "감사 로그는 추가 전용 기록으로, 이후에 변경·삭제되지 않습니다(읽기 전용).",
+    loadFailed: "정보를 가져오지 못했습니다. 다시 시도해 주세요",
+    forbidden: "이 작업을 수행할 권한이 없습니다",
+
+    filterActionLabel: "액션",
+    filterActionAll: "전체",
+    filterActorLabel: "조작자(사용자 ID)",
+    filterActorPlaceholder: "비워두면 전원 대상",
+    filterFromLabel: "기간(시작일)",
+    filterToLabel: "기간(종료일)",
+    filterApply: "필터 적용",
+    filterClear: "조건 초기화",
+    filterInvalidRange: "종료일은 시작일 이후로 설정해 주세요",
+
+    columnOccurredAt: "일시",
+    columnActor: "조작자",
+    columnAction: "액션",
+    columnTarget: "대상",
+    columnDetail: "상세",
+    detailToggle: "상세 보기",
+    detailUnavailable: "상세 정보가 없습니다",
+
+    empty: "조건에 일치하는 감사 로그가 없습니다.",
+    loadMore: "더 불러오기",
+    loadingMore: "불러오는 중…",
+    loadMoreFailed: "추가 데이터를 가져오지 못했습니다. 다시 시도해 주세요",
   },
 } satisfies Messages;

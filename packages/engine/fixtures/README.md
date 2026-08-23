@@ -11,3 +11,13 @@
 必須ケース群(要件 §9): フレックス月枠の過不足 / 日界跨ぎ / 深夜帯 /
 休憩の打刻・自動控除 / 法定休日判定 / 有給日の枠算入 / 36協定の各閾値 /
 月境界・うるう年 / 期間中の制度・設定切替(effective-dated 適用)
+
+## shift/ サブディレクトリ
+
+`shift/` 配下は monthly_variable(1ヶ月単位の変形労働時間制、docs/design/shift-work.md)の
+フィクスチャ置き場。トップレベルのフィクスチャ(`golden.test.ts` が読む、flex 専用の
+`RawFixture` スキーマ)とは入力の形が違う(shifts・period_start_day 等)ため、
+`test/shift-golden.test.ts` が別ローダーで読む。サブディレクトリに置いているのは、
+`golden.test.ts` の `readdirSync(fixturesDir)` がトップレベルの `.yaml` しか拾わない
+(ディレクトリはフィルタで自然に除外される)ことを利用して、既存ローダーでの
+誤パースを避けるため。

@@ -78,6 +78,45 @@
 
 打刻以外の変更(テナント設定・プリセット編集・割当・締め操作・認証イベント)を記録: actor_id / action / target / before・after のダイジェスト / occurred_at。打刻の監査は punch_events 自体が担うため二重記録しない。
 
+## GET /attendance/monthly レスポンス契約(2026-08-23、破壊的変更・承認済み)
+
+Tier 1(他人の勤怠閲覧)実装にあたり、`GET /attendance/monthly` のレスポンス形を再編した。互換層は無い(旧形は一切残さない。apps/web・apps/mcp が同時に新形へ追従する前提)。
+
+旧形(廃止): `days`/`totals`/`flexBalance`/`workSystem`/`warnings`/`allowanceTotals`/`allowanceDefinitions`/`closed`/`amended`/`originalTotals`/`originalFlexBalance`/`originalAllowanceTotals` の12キーがフラットに並ぶ形。
+
+新形:
+
+```ts
+{
+  user: { id: string; name: string };            // 誰の月次か(他人の勤怠閲覧のために追加)
+  workSystem: "flex" | "fixed";
+  days: DailyBreakdown[];
+  warnings: CalcWarning[];
+  figures: {
+    source: "live" | "snapshot";                 // 締め済み月は "snapshot"
+    totals: CategorizedMinutes;
+    flexBalance: FlexBalance | null;              // 固定時間制は null
+    fixedBreakdown: { withinScheduledMinutes: number; extraWithinStatutoryMinutes: number } | null; // フレックスは null
+    allowanceTotals: Array<{ definitionId: string; minutes: number }>;
+    original?: {                                  // amend 済みの締め月のみ(当初世代の値)
+      totals: CategorizedMinutes;
+      flexBalance: FlexBalance | null;
+      fixedBreakdown: { withinScheduledMinutes: number; extraWithinStatutoryMinutes: number } | null;
+      allowanceTotals: Array<{ definitionId: string; minutes: number }>;
+    };
+  };
+  allowanceDefinitions: Record<string, string>;   // definitionId → 表示名。締め保護の対象外(表示専用)
+  closing: { closed: boolean; amended: boolean };
+}
+```
+
+判断点:
+
+- `figures` に区分別時間数・フレックス収支・固定時間制内訳・手当合計をまとめたのは、この4つがいずれも「締め済み月はスナップショットに固定される」という同じ保護規則(原則6)を共有するため。`source` フィールドでその由来(live/snapshot)を明示する
+- `figures.fixedBreakdown`(所定内・法定内残業の月合計)は新規追加フィールド。旧形は CSV エクスポートと締めスナップショットにしか持たせていなかったが、月次画面(給与前確認等)でも所定内/法定内残業の区別が要るため figures に含めた。値の組み立ては `apps/api/src/lib/closing-snapshot.ts` の `sumFixedBreakdown`(live)/`engineOutputFromSnapshots`(snapshot)を共用する
+- `days`/`workSystem`/`warnings` は「不変なコア」として `figures` の外に残した。締め保護の対象は集計値(figures)のみで、日別内訳・warnings は再計算のままでよい(依頼の指示どおり)
+- `user` はこのレスポンスが常に「誰の月次か」を明示する。`?userId=` 省略時も自分自身の `{ id, name }` を返す(呼び出し側が対象を取り違えないため)
+
 ## 集計エンジンの入出力(packages/engine)
 
 ```

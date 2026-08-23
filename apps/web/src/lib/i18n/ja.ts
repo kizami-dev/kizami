@@ -440,10 +440,22 @@ export const ja = {
     overtimeBarOverLabel: "上限を超過",
 
     totalsLabel: "区分別合計",
+    /** 固定時間制の月合計内訳(所定内・法定内残業)の見出し(GET /attendance/monthly の figures.fixedBreakdown、2026-08-23 追加)。 */
+    fixedBreakdownLabel: "所定内・法定内残業(月合計)",
+    fixedBreakdownWithinScheduledLabel: "所定内労働時間",
+    fixedBreakdownExtraLabel: "法定内残業",
     /** 手当対象時間の月合計の見出し(docs/design/allowances.md「UI」節、2026-08-23 追加)。 */
     allowanceTotalsLabel: "手当対象時間",
     /** 締め後修正の差分テーブルで、手当の行だと分かるよう名前の前に付ける。 */
     allowanceDiffPrefix: "手当: ",
+
+    /** 他人の勤怠閲覧(2026-08-23 追加、Tier 1)。 */
+    memberSwitcherLabel: "閲覧対象",
+    memberSwitcherSelfOption: (name: string) => `${name}(自分)`,
+    memberSwitcherOthersGroup: "メンバー",
+    memberSwitcherNoDepartment: "部署なし",
+    memberSwitcherUnknownDepartment: "不明な部署",
+    viewingOthersLabel: (name: string) => `${name}さんの月次(閲覧のみ)`,
   },
 
   totalsCategoryLabel: {
@@ -898,6 +910,7 @@ export const ja = {
     allowances: "手当対象時間",
     apiKeys: "APIキー",
     slack: "Slack連携",
+    auditLogs: "監査ログ",
   },
 
   settingsHub: {
@@ -935,12 +948,16 @@ export const ja = {
     slackDesc: "Slackのスラッシュコマンド(/punch)から打刻できるようにする設定を行います。",
     slackLinkTitle: "Slack連携用トークンの入力",
     slackLinkDesc: "Slackで `/punch link` を実行して発行したトークンを入力し、自分のSlackアカウントと連携します。",
+    auditLogsTitle: "監査ログ",
+    auditLogsDesc: "打刻・修正・承認・締め・権限変更などの不可変な操作記録を閲覧します(読み取り専用)。",
   },
 
   /** 月次締め・CSVエクスポート(/monthly 画面、v0.3)。要件 §6(締めと出口)・§10(コンテキストヘルプ)。 */
   closing: {
     closedBadge: "確定済み",
     amendedBadge: "締め後に修正あり",
+    /** figures.source === "snapshot" のとき、確定済みバッジの近くに小さく示す(2026-08-23 追加)。 */
+    snapshotBadge: "確定値",
 
     closeAction: "この月を締める",
     reopenAction: "確定を解除する",
@@ -1901,5 +1918,41 @@ export const ja = {
       forbidden: "この操作を行う権限がありません",
       default: "処理に失敗しました。もう一度お試しください",
     },
+  },
+
+  /**
+   * 監査ログ閲覧(/settings/audit-logs、Tier 1 新設)。apps/api/src/routes/audit-logs.ts。
+   * 読み取り専用(編集・削除UIは無い、不可変性の説明を1行添える依頼)。
+   */
+  settingsAuditLogs: {
+    title: "監査ログ",
+    tagline: "打刻・修正・承認・締め・権限変更などの操作記録です。",
+    /** 依頼: 不可変性の説明を1行添える。 */
+    immutableNote: "監査ログは追記専用の記録で、後から書き換え・削除されることはありません(読み取り専用)。",
+    loadFailed: "情報の取得に失敗しました。もう一度お試しください",
+    forbidden: "この操作を行う権限がありません",
+
+    filterActionLabel: "アクション",
+    filterActionAll: "すべて",
+    filterActorLabel: "操作者(ユーザーID)",
+    filterActorPlaceholder: "省略で全員",
+    filterFromLabel: "期間(開始日)",
+    filterToLabel: "期間(終了日)",
+    filterApply: "絞り込む",
+    filterClear: "条件をクリア",
+    filterInvalidRange: "終了日は開始日以降にしてください",
+
+    columnOccurredAt: "日時",
+    columnActor: "操作者",
+    columnAction: "アクション",
+    columnTarget: "対象",
+    columnDetail: "詳細",
+    detailToggle: "詳細を表示",
+    detailUnavailable: "詳細情報はありません",
+
+    empty: "条件に一致する監査ログはありません。",
+    loadMore: "さらに読み込む",
+    loadingMore: "読み込んでいます…",
+    loadMoreFailed: "続きの読み込みに失敗しました。もう一度お試しください",
   },
 };

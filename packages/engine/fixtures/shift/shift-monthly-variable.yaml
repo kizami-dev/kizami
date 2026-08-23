@@ -1,0 +1,65 @@
+# monthly_variable(1ヶ月単位の変形労働時間制)の統合フィクスチャ。
+# docs/design/shift-work.md の3段判定(①日 ②週 ③期間)のうち①と、予実乖離の警告
+# (shift-variance.ts)を calculate() 経由(打刻列の解釈〜集計まで通し)で検証する。
+# ②週・③期間の細かい境界条件・日跨ぎシフトの遅刻判定は test/variable.test.ts /
+# test/shift-variance.test.ts の単体テストで検証する(このフィクスチャは
+# 「配線が壊れていないか」の統合確認が主目的のため、週次・期間次の閾値には
+# 意図的に届かない規模に抑えている)。
+#
+# period_start_day: 1 なので変形期間はカレンダー月と一致する(2026-04-01〜2026-04-30)。
+name: "monthly_variable 統合ケース(①日次判定+予実乖離4種)"
+period: "2026-04"
+period_start_day: 1
+week_start_weekday: sunday
+tz_offset: 540
+day_boundary: "00:00"
+
+shifts:
+  # 所定8h(=法定と同じ)の日に9h勤務 → 日次法定時間外1h
+  - { date: "2026-04-06", day_type: work, start: "09:00", end: "18:00", break: 60 }
+  # 所定9h(法定超)の日に10h勤務 → 閾値は所定(9h)。時間外1h
+  - { date: "2026-04-07", day_type: work, start: "09:00", end: "19:00", break: 60 }
+  # 非勤務日。この日に4h働くと shift_unplanned_work
+  - { date: "2026-04-08", day_type: non_working, start: "00:00", end: "00:00", break: 0 }
+  # 勤務日だが打刻なし、有給もなし → shift_absence
+  - { date: "2026-04-09", day_type: work, start: "09:00", end: "18:00", break: 60 }
+  # 開始(09:00)より30分遅れて出勤 → shift_late_arrival
+  - { date: "2026-04-10", day_type: work, start: "09:00", end: "18:00", break: 60 }
+  # 2026-04-13 はあえてシフトを設定しない(missing_shift のケース)
+
+punches:
+  - { kind: clock_in, at: "2026-04-06T09:00" }
+  - { kind: clock_out, at: "2026-04-06T18:00" }
+  - { kind: clock_in, at: "2026-04-07T09:00" }
+  - { kind: clock_out, at: "2026-04-07T19:00" }
+  - { kind: clock_in, at: "2026-04-08T09:00" }
+  - { kind: clock_out, at: "2026-04-08T13:00" }
+  # 2026-04-09 は打刻なし(欠勤)
+  - { kind: clock_in, at: "2026-04-10T09:30" }
+  - { kind: clock_out, at: "2026-04-10T18:00" }
+  # 2026-04-13 はシフト無しだが実際に働く(missing_shift)
+  - { kind: clock_in, at: "2026-04-13T09:00" }
+  - { kind: clock_out, at: "2026-04-13T12:00" }
+
+expected:
+  totals:
+    statutory: 1920
+    overtime: 150
+    overtime60h: 0
+    lateNight: 0
+    statutoryHoliday: 0
+  # totals には反映されない乖離警告。insufficient_break(労基法34条1項)も別途発生しうるが、
+  # このフィクスチャの主眼である shift-variance 側の4種のみを「含まれること」として検証する
+  # (test/shift-golden.test.ts 参照)。
+  contains_warning_kinds:
+    - shift_unplanned_work
+    - shift_absence
+    - shift_late_arrival
+    - missing_shift
+  variable_period:
+    period_start: "2026-04-01"
+    period_end: "2026-04-30"
+    scheduled_total_minutes: 1980
+    worked_total_minutes: 2070
+    period_overtime_minutes: 0
+    attributed_to_this_month: true
