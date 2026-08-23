@@ -3,7 +3,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "waku";
 import { api, ApiError, MultipleTenantsError, type LoginTenantOption } from "../lib/api";
-import { messages } from "../lib/messages";
+import { mapLoginErrorMessage, messages } from "../lib/messages";
 import { KizamiMark } from "./KizamiMark";
 
 export function LoginForm() {
@@ -43,10 +43,13 @@ export function LoginForm() {
     } catch (err) {
       if (err instanceof MultipleTenantsError) {
         setTenantOptions(err.tenants);
-      } else if (err instanceof ApiError && err.status === 401) {
-        setError(messages.login.invalidCredentials);
+      } else if (err instanceof ApiError) {
+        // 2026-08-24: HTTP ステータスでの分岐(401 のみ特別扱い)から、サーバーが返す
+        // エラーコードでの分岐へ移した。総当たり対策のレート制限(429 rate_limited)を
+        // 「ログインに失敗しました」で潰さず、待てば直ると分かる文言で出すため。
+        setError(mapLoginErrorMessage(err.body));
       } else {
-        setError(messages.login.genericError);
+        setError(messages.login.errors.default);
       }
     } finally {
       setSubmitting(false);
@@ -59,9 +62,11 @@ export function LoginForm() {
     try {
       await api.login(email, password, tenantId);
       router.push("/");
-    } catch {
-      // ここでの失敗は基本的に通信エラーのみ(email/password は直前に検証済み)。
-      setError(messages.login.genericError);
+    } catch (err) {
+      // ここでの失敗は基本的に通信エラーのみ(email/password は直前に検証済み)だが、
+      // テナント選択に手間取っている間にレート制限へ掛かることはありうるので、
+      // 選択後の再送でも同じマッパーを通す。
+      setError(err instanceof ApiError ? mapLoginErrorMessage(err.body) : messages.login.errors.default);
     } finally {
       setSubmitting(false);
     }

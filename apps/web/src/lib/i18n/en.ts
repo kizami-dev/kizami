@@ -243,8 +243,11 @@ export const en = {
     passwordLabel: "Password",
     submit: "Log in",
     submitting: "Logging in…",
-    invalidCredentials: "Incorrect email address or password",
-    genericError: "Login failed. Please wait a moment and try again",
+    errors: {
+      invalid_credentials: "Incorrect email address or password",
+      rate_limited: "Too many attempts. Please wait a while before trying again",
+      default: "Login failed. Please wait a moment and try again",
+    },
 
     /** Tenant picker for when the same email + password matches multiple tenants (added 2026-08-23).
      * Modeled on Slack's workspace picker; does not ask for the password again
@@ -286,6 +289,7 @@ export const en = {
 
     errors: {
       invalid_password: "Password must be at least 12 characters",
+      rate_limited: "Too many attempts. Please wait a while before trying again",
       default: "Something went wrong. Please try again",
     },
   },
@@ -320,6 +324,7 @@ export const en = {
 
     errors: {
       invalid_password: "Password must be at least 12 characters",
+      rate_limited: "Too many attempts. Please wait a while before trying again",
       default: "Something went wrong. Please try again",
     },
   },

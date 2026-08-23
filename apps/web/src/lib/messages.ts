@@ -58,6 +58,20 @@ function makeErrorMapper<E extends Record<string, string> & { default: string }>
   };
 }
 
+/**
+ * ログイン(POST /auth/login)のエラーマッピング(2026-08-24 追加)。
+ * 401 invalid_credentials に加え、レート制限の 429 rate_limited を扱う
+ * (どのアカウントが実在するかは示さない文言 — API 側も 429 の本文で実在有無を漏らさない)。
+ * 409 multiple_tenants は文言ではなくテナント選択 UI に分岐するため、LoginForm 側で先に処理する。
+ */
+export const mapLoginErrorMessage = makeErrorMapper(() => messages.login.errors);
+/**
+ * 招待受諾(POST /invitations/:token/accept)のエラーマッピング(2026-08-24 追加)。
+ * 404/410 は画面全体の状態(無効・期限切れ)へ分岐するため、呼び出し側で先に処理する。
+ */
+export const mapInviteAcceptErrorMessage = makeErrorMapper(() => messages.inviteAccept.errors);
+/** パスワードリセット受諾(POST /password-resets/:token/use)のエラーマッピング(2026-08-24 追加)。 */
+export const mapPasswordResetAcceptErrorMessage = makeErrorMapper(() => messages.passwordResetAccept.errors);
 /** 打刻修正申請(POST /corrections・:id/approve・reject・withdraw)のエラーマッピング。 */
 export const mapCorrectionErrorMessage = makeErrorMapper(() => messages.corrections.errors);
 /** 通知設定(会社全体、GET/PUT /settings/notifications・POST /settings/notifications/test)のエラーマッピング。 */

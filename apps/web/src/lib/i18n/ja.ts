@@ -236,8 +236,18 @@ export const ja = {
     passwordLabel: "パスワード",
     submit: "ログイン",
     submitting: "ログイン中…",
-    invalidCredentials: "メールアドレスまたはパスワードが違います",
-    genericError: "ログインに失敗しました。時間をおいて再度お試しください",
+    /**
+     * ログイン(POST /auth/login)のエラーマッピング(lib/messages.ts の mapLoginErrorMessage)。
+     * 2026-08-24: 総当たり対策のレート制限(429 rate_limited)を API 側に入れたのに合わせ、
+     * それまで平坦だった invalidCredentials / genericError をこの errors 配下へ移した
+     * (他画面と同じ「サーバーのエラーコード → 文言」の流儀に揃えるため)。
+     */
+    errors: {
+      invalid_credentials: "メールアドレスまたはパスワードが違います",
+      /** レート制限(429)。どのアカウントが実在するかを示唆しない文言にすること。 */
+      rate_limited: "試行回数が多すぎます。しばらく待ってからやり直してください",
+      default: "ログインに失敗しました。時間をおいて再度お試しください",
+    },
 
     /** 同一メール+パスワードが複数テナントに一致した場合のテナント選択(2026-08-23 追加)。
      * Slack のワークスペース選択に近い体験を意図し、パスワードの再入力は求めない
@@ -283,6 +293,8 @@ export const ja = {
 
     errors: {
       invalid_password: "パスワードは12文字以上で入力してください",
+      /** トークン推測の総当たり対策(429 rate_limited、2026-08-24 API 側に追加)。 */
+      rate_limited: "試行回数が多すぎます。しばらく待ってからやり直してください",
       default: "処理に失敗しました。もう一度お試しください",
     },
   },
@@ -322,6 +334,8 @@ export const ja = {
 
     errors: {
       invalid_password: "パスワードは12文字以上で入力してください",
+      /** トークン推測の総当たり対策(429 rate_limited、2026-08-24 API 側に追加)。 */
+      rate_limited: "試行回数が多すぎます。しばらく待ってからやり直してください",
       default: "処理に失敗しました。もう一度お試しください",
     },
   },

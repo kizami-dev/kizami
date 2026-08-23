@@ -39,6 +39,10 @@ spec:
               value: file:/data/kizami.db
             # COOKIE_SECURE は未設定=既定 true(Secure Cookie)のまま。
             # Cloudflare Tunnel 経由(HTTPS)前提のため既定を維持する。
+            # TRUST_PROXY も未設定=既定 true。認証系のレート制限が CF-Connecting-IP /
+            # X-Forwarded-For をクライアント IP として信用する(この配備は Cloudflare Tunnel
+            # 経由が前提なので信用してよい)。API を直接インターネットへ晒す配備では
+            # TRUST_PROXY=false にすること(本 README「認証系のレート制限」節)。
             # 秘密情報(tenant_notification_settings の webhookUrl・smtpPassword)の暗号化に
             # 必須の鍵(32バイトを base64 で表現)。optional: false — 鍵は必須運用にする
             # (未設定だと settings.ts の PUT が秘密情報の保存を 503 で拒否する。生成手順は

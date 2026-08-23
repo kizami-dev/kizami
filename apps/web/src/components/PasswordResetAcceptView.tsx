@@ -3,7 +3,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "waku";
 import { api, ApiError } from "../lib/api";
-import { messages } from "../lib/messages";
+import { mapPasswordResetAcceptErrorMessage, messages } from "../lib/messages";
 import { KizamiMark } from "./KizamiMark";
 
 type ViewState =
@@ -81,9 +81,11 @@ export function PasswordResetAcceptView({ token }: { token: string }) {
         setState({ kind: "invalid" });
         return;
       }
+      // 2026-08-24: ステータス分岐(400 のみ特別扱い)からエラーコード分岐へ
+      // (InviteAcceptView と同じ変更。429 rate_limited を専用の文言で出すため)。
       setError(
-        err instanceof ApiError && err.status === 400
-          ? messages.passwordResetAccept.errors.invalid_password
+        err instanceof ApiError
+          ? mapPasswordResetAcceptErrorMessage(err.body)
           : messages.passwordResetAccept.errors.default,
       );
     } finally {

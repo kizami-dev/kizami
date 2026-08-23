@@ -221,8 +221,11 @@ export const zh = {
     passwordLabel: "密码",
     submit: "登录",
     submitting: "登录中…",
-    invalidCredentials: "邮箱地址或密码错误",
-    genericError: "登录失败,请稍后重试",
+    errors: {
+      invalid_credentials: "邮箱地址或密码错误",
+      rate_limited: "尝试次数过多,请稍后再试",
+      default: "登录失败,请稍后重试",
+    },
 
     /** 同一邮箱+密码匹配多个租户时的租户选择。类似 Slack 的工作区选择,不再要求重新输入密码
      * (沿用刚才的验证结果,仅向所选租户重新发送即可)。 */
@@ -262,6 +265,7 @@ export const zh = {
 
     errors: {
       invalid_password: "密码至少需要12位",
+      rate_limited: "尝试次数过多,请稍后再试",
       default: "处理失败,请重试",
     },
   },
@@ -296,6 +300,7 @@ export const zh = {
 
     errors: {
       invalid_password: "密码至少需要12位",
+      rate_limited: "尝试次数过多,请稍后再试",
       default: "处理失败,请重试",
     },
   },

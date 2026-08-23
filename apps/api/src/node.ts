@@ -19,8 +19,22 @@ const corsOrigin = process.env.CORS_ORIGIN ?? "http://localhost:3000";
 // (settings.ts の PUT が秘密情報の保存を 503 で拒否する — 平文フォールバックはしない)。
 const encryptor = buildEncryptorFromEnv();
 
+// レート制限のクライアント IP 判定に CF-Connecting-IP / X-Forwarded-For を使ってよいか。
+// 既定 ON(本番は Cloudflare Tunnel → Caddy → api の経路が保証されており、エッジが
+// CF-Connecting-IP を必ず上書きするため信頼できる)。api を直接インターネットへ晒す配備では
+// TRUST_PROXY=false にすること(ヘッダを偽装するだけでレート制限を回避できてしまうため)。
+// 判断の背景は apps/api/src/lib/client-ip.ts 冒頭のコメント。
+const trustProxy = process.env.TRUST_PROXY !== "false";
+
 const { db } = await migrateDb({ url: databaseUrl });
-const app = createApp({ db, secureCookies, corsOrigin, notify: { smtpSendFn: nodemailerSendFn }, encryptor });
+const app = createApp({
+  db,
+  secureCookies,
+  corsOrigin,
+  notify: { smtpSendFn: nodemailerSendFn },
+  encryptor,
+  trustProxy,
+});
 
 // リバースプロキシ/トンネルのパス振り分け(kizami.example.com/api/* → ここ)を
 // パス書き換えなしで受けられるよう、/api プレフィクス付きでも同じアプリを提供する

@@ -153,6 +153,39 @@ kubectl -n kizami rollout restart deployment/kizami
 - `apps/web` の本番ビルドは `WAKU_PUBLIC_API_URL=/api` を焼き込んでいる(`docker/web.Dockerfile` 参照)ため、ブラウザからは常に同一オリジンの `/api/*` を叩く。API を別オリジンで公開する場合はこの前提が崩れるので web イメージの再ビルドが必要。
 - `localhost:3009x` は cloudflared が動く samurai-watch ホストから見た宛先である想定(NodePort はクラスタの全ノードで待受けるため、samurai-watch がクラスタのいずれかのノードに到達できればよい。到達できない場合は cloudflared 側のトンネル先ホスト/IP を該当ノードの IP に置き換えること)。
 
+## 認証系のレート制限(TRUST_PROXY)
+
+ログイン総当たり・招待/リセットトークンの推測対策として、認証系エンドポイントに
+レート制限を入れている(`apps/api/src/lib/rate-limit.ts`、2026-08-24 追加)。上限は:
+
+| 対象 | キー | 上限 |
+| --- | --- | --- |
+| `POST /auth/login` | クライアント IP + メールアドレス(小文字化) | 10回 / 15分 |
+| `POST /auth/login` | クライアント IP のみ | 30回 / 15分 |
+| `/invitations/*`, `/password-resets/*`(GET の検証を含む) | クライアント IP のみ | 20回 / 15分 |
+| 公開打刻 API(`Authorization: Bearer kzm_...` 付きのリクエストのみ) | クライアント IP のみ | 120回 / 分 |
+
+超過すると `429 {"error":"rate_limited","retryAfterSeconds":N}` と `Retry-After` ヘッダを返す。
+セッション Cookie 認証の通常リクエスト(Web UI からの打刻など)は打刻 API の制限の対象外なので、
+オフィスの共有グローバル IP から多数の従業員が打刻しても巻き添えにならない。
+
+**カウンタは API プロセスのメモリ上にしか無い**(外部ストア不要=依存を増やさない判断)。
+この配備は SQLite ファイル DB を RWO PVC に置く都合で **replicas=1 固定**なので現状は正しく効くが、
+**レプリカを増やす・水平スケールする・Cloudflare Workers へ載せる場合は実効の上限がプロセス数倍に
+なる**(そのときは共有ストア実装への差し替えが必要。`RateLimiter` インタフェースを差し替え口として
+用意してある)。API を再起動するとカウンタは消える。
+
+クライアント IP の判定は `CF-Connecting-IP` →(無ければ)`X-Forwarded-For` の先頭ホップ →
+TCP のソースアドレス、の順(`apps/api/src/lib/client-ip.ts`)。**これらのヘッダを信用できるのは、
+到達経路が Cloudflare Tunnel に限られているという前提があるからに過ぎない**(Cloudflare の
+エッジが `CF-Connecting-IP` を必ず上書きする)。API を直接インターネットへ晒す配備では
+環境変数 `TRUST_PROXY=false` を `api` コンテナに設定すること — ヘッダを一切見ず、
+TCP のソースアドレスのみでレート制限をかけるようになる(設定しないと、攻撃者が
+`CF-Connecting-IP` を毎回変えて送るだけで制限を回避できてしまう)。
+
+この k8s 配備は上表の Cloudflare Tunnel 経由が前提なので、`TRUST_PROXY` は未設定
+(=既定 true)のままでよい。
+
 ## 社内規定ドキュメント(docs-local/)
 
 VitePress サイト(`docs/`、`pnpm docs:build`)は、この `deploy/k8s/` 一式には**現時点で

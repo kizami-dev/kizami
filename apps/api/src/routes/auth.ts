@@ -13,6 +13,8 @@ import {
   sessionIdFromToken,
   setSessionCookie,
 } from "../auth/session.js";
+import { getClientIp } from "../lib/client-ip.js";
+import { rateLimitedResponse, type RateLimiter } from "../lib/rate-limit.js";
 import { nowMinutes } from "../lib/time.js";
 
 interface LoginBody {
@@ -29,7 +31,23 @@ interface LoginBody {
  */
 const DUMMY_HASH = "pbkdf2-sha256$600000$AAAAAAAAAAAAAAAAAAAAAA==$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
 
-export function createAuthRoutes(db: Database, options: { secureCookies: boolean }) {
+export interface AuthRoutesOptions {
+  secureCookies: boolean;
+  /**
+   * ログイン総当たり対策のレート制限(2026-08-24 追加、lib/rate-limit.ts)。
+   * 省略時は制限なし(このルータを単体で組み立てるテスト用)。実アプリの配線は app.ts。
+   */
+  rateLimit?: {
+    /** `ip|email`(メールは小文字化)ごとの制限。特定アカウントへの総当たりを止める。 */
+    perIpEmail: RateLimiter;
+    /** IP ごとの制限。多数のメールを横断的に試す総当たりを止める。 */
+    perIp: RateLimiter;
+    /** 前段プロキシ(Cloudflare Tunnel)のヘッダを信頼するか。lib/client-ip.ts 参照。 */
+    trustProxy: boolean;
+  };
+}
+
+export function createAuthRoutes(db: Database, options: AuthRoutesOptions) {
   const app = new Hono();
 
   app.post("/login", async (c) => {
@@ -48,6 +66,26 @@ export function createAuthRoutes(db: Database, options: { secureCookies: boolean
     }
     if (tenantId !== undefined && (typeof tenantId !== "string" || tenantId === "")) {
       return c.json({ error: "invalid_body" }, 400);
+    }
+
+    // レート制限(2026-08-24、公開デモインスタンス公開に伴う前倒し実装)。
+    // パスワード検証(pbkdf2 600k回)より前に判定することで、総当たりの CPU コストも遮断する。
+    // 形式不正(400)は制限の対象外にしてある — 総当たりの手数にならない上、
+    // 実装ミスのクライアントを締め出しても得が無いため。
+    if (options.rateLimit) {
+      const { perIpEmail, perIp, trustProxy } = options.rateLimit;
+      const ip = getClientIp(c, trustProxy);
+
+      // 先に広い方(IP のみ)を見る。ここで弾かれた場合は IP+メール側のカウントを消費しない。
+      const ipResult = perIp.check(ip);
+      if (!ipResult.allowed) return rateLimitedResponse(c, ipResult.retryAfterSeconds);
+
+      // メールは小文字化してキーにする。DB 側の照合は大文字小文字を区別する(users.email の
+      // 完全一致)ため、"A@x" と "a@x" は別アカウント扱いになりうるが、レート制限のキーとしては
+      // まとめる方が安全側(大文字小文字を変えるだけで制限を回避されない)。仮にすり抜けても
+      // 上の IP のみの制限(30回/15分)が最終的な蓋になる。
+      const emailResult = perIpEmail.check(`${ip}|${email.toLowerCase()}`);
+      if (!emailResult.allowed) return rateLimitedResponse(c, emailResult.retryAfterSeconds);
     }
 
     // email のユニーク制約は (tenant_id, email) であり、同じメールアドレスが複数テナントに

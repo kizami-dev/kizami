@@ -3,7 +3,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "waku";
 import { api, ApiError } from "../lib/api";
-import { messages } from "../lib/messages";
+import { mapInviteAcceptErrorMessage, messages } from "../lib/messages";
 import { KizamiMark } from "./KizamiMark";
 
 type ViewState =
@@ -85,7 +85,9 @@ export function InviteAcceptView({ token }: { token: string }) {
         setState({ kind: "invalid" });
         return;
       }
-      setError(err instanceof ApiError && err.status === 400 ? messages.inviteAccept.errors.invalid_password : messages.inviteAccept.errors.default);
+      // 2026-08-24: ステータス分岐(400 のみ特別扱い)からエラーコード分岐へ。
+      // トークン推測対策のレート制限(429 rate_limited)を専用の文言で出すため。
+      setError(err instanceof ApiError ? mapInviteAcceptErrorMessage(err.body) : messages.inviteAccept.errors.default);
     } finally {
       setSubmitting(false);
     }

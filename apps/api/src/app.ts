@@ -28,6 +28,7 @@ import { createSettingsRoutes, type SettingsRoutesDeps } from "./routes/settings
 import { createShiftsRoutes } from "./routes/shifts.js";
 import { createSlackRoutes } from "./routes/slack.js";
 import { createLeaveRoutes } from "./routes/leave.js";
+import { createRateLimiter, ipRateLimitMiddleware, RATE_LIMITS } from "./lib/rate-limit.js";
 
 export interface CreateAppDeps {
   db: Database;
@@ -53,6 +54,20 @@ export interface CreateAppDeps {
    * apps/api/src/lib/encryption.ts の buildEncryptorFromEnv() で組み立てて渡す。
    */
   encryptor?: Encryptor | null;
+  /**
+   * 前段プロキシ(Cloudflare Tunnel → Caddy)が付ける CF-Connecting-IP / X-Forwarded-For を
+   * レート制限のクライアント IP 判定に使ってよいか(既定 true)。
+   *
+   * api を直接インターネットへ晒す配備では **必ず false にすること**
+   * (false ならヘッダを一切見ず TCP のソースアドレスのみを使う)。node.ts は環境変数
+   * `TRUST_PROXY=false` でこれを渡す。判断の背景は lib/client-ip.ts 冒頭のコメント。
+   */
+  trustProxy?: boolean;
+  /**
+   * レート制限の時刻源(ミリ秒)。既定は `Date.now`。テストが窓の経過を実時間を待たずに
+   * 再現するための注入点(lib/rate-limit.ts の RateLimiterOptions.now)。
+   */
+  rateLimitNow?: () => number;
 }
 
 /**
@@ -63,16 +78,46 @@ export interface CreateAppDeps {
  * テストは :memory: DB を、Node ランタイムは env から作った DB をそれぞれ渡せるようにする。
  */
 export function createApp(deps: CreateAppDeps) {
-  const { db, secureCookies = false, corsOrigin, notify, encryptor } = deps;
+  const { db, secureCookies = false, corsOrigin, notify, encryptor, trustProxy = true, rateLimitNow } = deps;
   const app = new Hono<AppEnv>();
 
   if (corsOrigin) {
     app.use("*", cors({ origin: corsOrigin, credentials: true }));
   }
 
+  // 認証系のレート制限(2026-08-24、公開デモインスタンス公開に伴い Tier 2 から前倒し)。
+  // カウンタはこの createApp 呼び出しに閉じたプロセス内メモリ(lib/rate-limit.ts 冒頭の
+  // 「replicas=1 前提」の判断点を参照)。テストは createApp ごとに独立したカウンタを得る。
+  const now = rateLimitNow ?? (() => Date.now());
+  const rateLimiters = {
+    loginPerIpEmail: createRateLimiter({ ...RATE_LIMITS.loginPerIpEmail, now }),
+    loginPerIp: createRateLimiter({ ...RATE_LIMITS.loginPerIp, now }),
+    tokenPerIp: createRateLimiter({ ...RATE_LIMITS.tokenPerIp, now }),
+    apiKeyPerIp: createRateLimiter({ ...RATE_LIMITS.apiKeyPerIp, now }),
+  };
+
   app.get("/healthz", (c) => c.json({ ok: true, name: "kizami" }));
 
-  app.route("/auth", createAuthRoutes(db, { secureCookies }));
+  app.route(
+    "/auth",
+    createAuthRoutes(db, {
+      secureCookies,
+      rateLimit: { perIpEmail: rateLimiters.loginPerIpEmail, perIp: rateLimiters.loginPerIp, trustProxy },
+    }),
+  );
+
+  // 招待受諾・パスワードリセットのトークン経路は未認証で開放されている(下記)ぶん、
+  // トークン推測の総当たりに晒される。IP ごとに 20回/15分で頭を押さえる(検証用の GET も
+  // 同じバケツに入れる — 総当たりは GET の方が安上がりなので、POST だけ絞っても意味がない)。
+  //
+  // 判断点(NAT の巻き添え): オフィスの共有グローバル IP から大量の従業員が一斉に招待を
+  // 受諾すると、正規利用でもこの上限に触れうる。上限は lib/rate-limit.ts の RATE_LIMITS に
+  // 集約してあるので、運用でそういう事象が出たら緩める。まずは安全側の値で入れる。
+  //
+  // Hono は登録順にハンドラを評価するため、この use() は対応する route() より前に置く必要がある。
+  const tokenRateLimit = ipRateLimitMiddleware(rateLimiters.tokenPerIp, { trustProxy });
+  app.use("/invitations/*", tokenRateLimit);
+  app.use("/password-resets/*", tokenRateLimit);
 
   // GET /invitations/:token, POST /invitations/:token/accept(招待受諾)も認証ミドルウェアの
   // 外側に置く。受諾前のユーザーはまだ auth_credentials を持たずセッションも張れないため
@@ -90,6 +135,21 @@ export function createApp(deps: CreateAppDeps) {
   app.route("/slack", createSlackRoutes(db, { encryptor: encryptor ?? null }));
 
   const authed = new Hono<AppEnv>();
+  // 公開打刻API(`Authorization: Bearer kzm_...`)のキー推測対策(2026-08-24)。
+  // 認証ミドルウェアより前に置く — 無効なキーは 401 で弾かれてルートまで到達しないため、
+  // 認証の後ろに置いても総当たりを止められない。
+  //
+  // 判断点(セッション Cookie 認証は対象外): appliesTo で Authorization ヘッダ付きの
+  // リクエストだけに限定する。Web UI(Cookie 認証)はこの制限を一切通らないので、
+  // オフィスの共有 IP から多数の従業員が打刻しても巻き添えにならない。
+  // 上限 120回/分は IC カードリーダー等の常時接続クライアントを想定した大きめの値。
+  authed.use(
+    "*",
+    ipRateLimitMiddleware(rateLimiters.apiKeyPerIp, {
+      trustProxy,
+      appliesTo: (c) => c.req.header("authorization")?.startsWith("Bearer ") ?? false,
+    }),
+  );
   // セッションCookie / 公開打刻APIキーの両方を受け付ける(v0.4)。認証後、APIキー認証のみ
   // エンドポイント許可表(apiKeyScopeGuardMiddleware)でさらに絞り込む。
   authed.use("*", authOrApiKeyMiddleware(db, { secureCookies }));

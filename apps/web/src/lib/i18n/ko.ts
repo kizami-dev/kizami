@@ -227,8 +227,11 @@ export const ko = {
     passwordLabel: "비밀번호",
     submit: "로그인",
     submitting: "로그인 중…",
-    invalidCredentials: "이메일 주소 또는 비밀번호가 올바르지 않습니다",
-    genericError: "로그인에 실패했습니다. 잠시 후 다시 시도해 주세요",
+    errors: {
+      invalid_credentials: "이메일 주소 또는 비밀번호가 올바르지 않습니다",
+      rate_limited: "시도 횟수가 너무 많습니다. 잠시 기다린 후 다시 시도해 주세요",
+      default: "로그인에 실패했습니다. 잠시 후 다시 시도해 주세요",
+    },
 
     /** 동일한 이메일+비밀번호가 여러 테넌트에 일치할 경우의 테넌트 선택(2026-08-23 추가).
      * Slack 의 워크스페이스 선택과 유사한 경험을 의도했으며, 비밀번호 재입력은 요구하지 않는다
@@ -269,6 +272,7 @@ export const ko = {
 
     errors: {
       invalid_password: "비밀번호는 12자 이상 입력해 주세요",
+      rate_limited: "시도 횟수가 너무 많습니다. 잠시 기다린 후 다시 시도해 주세요",
       default: "처리에 실패했습니다. 다시 시도해 주세요",
     },
   },
@@ -303,6 +307,7 @@ export const ko = {
 
     errors: {
       invalid_password: "비밀번호는 12자 이상 입력해 주세요",
+      rate_limited: "시도 횟수가 너무 많습니다. 잠시 기다린 후 다시 시도해 주세요",
       default: "처리에 실패했습니다. 다시 시도해 주세요",
     },
   },
