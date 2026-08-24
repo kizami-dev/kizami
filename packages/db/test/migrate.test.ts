@@ -39,6 +39,7 @@ describe("migrate", () => {
         "slack_user_links",
         "tenant_leave_settings",
         "tenant_notification_settings",
+        "tenant_oidc_settings",
         "tenant_setting_versions",
         "tenant_slack_settings",
         "tenants",

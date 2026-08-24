@@ -222,6 +222,21 @@ export const PERMISSION_CATALOG: readonly PermissionCatalogEntry[] = [
     true,
   ),
 
+  // 1.10 テナント設定(認証)。2026-08-24 追加、OIDC(SSO)ログインの設定用。
+  // 判断点: 既存の `notification.settings.manage`(通知チャネル設定)は「外部サービスとの
+  // 連携チャネル設定」という点で近いが、SSO の設定は**誰がログインできるかを決める**操作であり、
+  // 通知先を間違える事故とは影響の桁が違う(issuer を差し替えれば別の IdP の利用者が
+  // そのテナントのメールアドレスを名乗ってログインできてしまう)。カタログの設計原則
+  // 「非エンジニアが業務タスク単位で理解できる」に照らしても、「通知チャネルを設定できる」の
+  // チェックボックスに SSO 設定が隠れるのは誤解を招く。よって専用キーを新設し、危険フラグを立てる。
+  entry(
+    "tenant_settings.auth.manage",
+    "SSO(OIDC)を設定できる",
+    "IdP(Google Workspace / Entra ID 等)との OIDC 連携を設定し、SSO ログインの有効・無効を切り替えられる",
+    TENANT_ONLY,
+    true,
+  ),
+
   // 1.11 通知設定
   entry(
     "notification.settings.manage",

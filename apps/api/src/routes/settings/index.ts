@@ -25,6 +25,7 @@ import { registerNotificationsRoutes } from "./notifications.js";
 import { registerPrivacyRoutes } from "./privacy.js";
 import { registerShiftPatternsRoutes } from "./shift-patterns.js";
 import { registerSlackRoutes } from "./slack.js";
+import { registerSsoRoutes } from "./sso.js";
 import { registerTenantProfileRoutes } from "./tenant-profile.js";
 import { registerWorkPolicyRoutes } from "./work-policy.js";
 import type { SettingsRoutesDeps } from "./shared.js";
@@ -42,6 +43,8 @@ export function createSettingsRoutes(db: Database, deps: SettingsRoutesDeps = {}
   registerWorkPolicyRoutes(app, db, deps);
   registerShiftPatternsRoutes(app, db, deps);
   registerSlackRoutes(app, db, deps);
+  // SSO(OIDC)設定。2026-08-24 追加(Tier 2)。登録順は末尾でよい(パスの衝突が無いため)。
+  registerSsoRoutes(app, db, deps);
   registerAllowancesRoutes(app, db, deps);
 
   return app;

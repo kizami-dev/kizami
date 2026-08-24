@@ -11,6 +11,7 @@ export * from "./member-lifecycle.js";
 export * from "./members.js";
 export * from "./notification-settings.js";
 export * from "./notifications.js";
+export * from "./oidc.js";
 export * from "./password-resets.js";
 export * from "./permissions.js";
 export * from "./punches.js";

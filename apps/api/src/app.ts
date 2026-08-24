@@ -10,6 +10,7 @@ import { createApiKeysRoutes } from "./routes/api-keys.js";
 import { createAttendanceRoutes } from "./routes/attendance.js";
 import { createAuditLogsRoutes } from "./routes/audit-logs.js";
 import { createAuthRoutes } from "./routes/auth.js";
+import { createOidcRoutes, type OidcRoutesOptions } from "./routes/auth-oidc.js";
 import { createAutoBreakWaiversRoutes } from "./routes/auto-break-waivers.js";
 import { createClosingsRoutes } from "./routes/closings.js";
 import { createCorrectionsRoutes } from "./routes/corrections.js";
@@ -68,6 +69,12 @@ export interface CreateAppDeps {
    * 再現するための注入点(lib/rate-limit.ts の RateLimiterOptions.now)。
    */
   rateLimitNow?: () => number;
+  /**
+   * OIDC(SSO)ログインの配線(docs/design/sso-oidc.md、2026-08-24 追加)。
+   * `secureCookies` と `encryptor` は createApp の同名オプションから引き継ぐため、ここでは
+   * それ以外(redirect_uri・Web のベース URL・テストの偽 IdP 用 fetch)だけを渡す。
+   */
+  oidc?: Omit<OidcRoutesOptions, "secureCookies" | "encryptor">;
 }
 
 /**
@@ -78,7 +85,7 @@ export interface CreateAppDeps {
  * テストは :memory: DB を、Node ランタイムは env から作った DB をそれぞれ渡せるようにする。
  */
 export function createApp(deps: CreateAppDeps) {
-  const { db, secureCookies = false, corsOrigin, notify, encryptor, trustProxy = true, rateLimitNow } = deps;
+  const { db, secureCookies = false, corsOrigin, notify, encryptor, trustProxy = true, rateLimitNow, oidc } = deps;
   const app = new Hono<AppEnv>();
 
   if (corsOrigin) {
@@ -94,9 +101,18 @@ export function createApp(deps: CreateAppDeps) {
     loginPerIp: createRateLimiter({ ...RATE_LIMITS.loginPerIp, now }),
     tokenPerIp: createRateLimiter({ ...RATE_LIMITS.tokenPerIp, now }),
     apiKeyPerIp: createRateLimiter({ ...RATE_LIMITS.apiKeyPerIp, now }),
+    oidcPerIp: createRateLimiter({ ...RATE_LIMITS.oidcPerIp, now }),
   };
 
   app.get("/healthz", (c) => c.json({ ok: true, name: "kizami" }));
+
+  // OIDC(SSO)ログインの3経路は未認証で開放される(セッションを張る前の経路のため)。
+  // start は「任意の issuer へ HTTP を出させる」入口、callback は「ID トークンを持ち込ませる」入口、
+  // available は「メールアドレスの在籍照会」なので、いずれも IP ごとに 20回/15分で頭を押さえる
+  // (招待・パスワードリセットのトークン経路と同じ上限。RATE_LIMITS.oidcPerIp)。
+  // Hono は登録順に評価するため、この use() は対応する route() より前に置く必要がある。
+  app.use("/auth/oidc/*", ipRateLimitMiddleware(rateLimiters.oidcPerIp, { trustProxy }));
+  app.route("/auth/oidc", createOidcRoutes(db, { ...(oidc ?? {}), secureCookies, encryptor: encryptor ?? null }));
 
   app.route(
     "/auth",

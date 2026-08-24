@@ -35,6 +35,7 @@ export const IMPLIED_VIEW_PERMISSIONS: Readonly<Record<PermissionKey, readonly P
   "tenant_settings.flex.manage": ["tenant_settings.view"],
   "tenant_settings.gps.manage": ["tenant_settings.view"],
   "tenant_settings.auto_deduction.manage": ["tenant_settings.view"],
+  "tenant_settings.auth.manage": ["tenant_settings.view"],
   "notification.settings.manage": ["tenant_settings.view"],
   "permission.preset.manage": ["permission_preset.view"],
   "permission.assignment.manage": ["permission_preset.view", "permission_assignment.effective_view"],

@@ -15,6 +15,7 @@ export * from "./corrections.js";
 export * from "./help-overrides.js";
 export * from "./invitations.js";
 export * from "./notification-settings.js";
+export * from "./oidc.js";
 export * from "./notifications.js";
 export * from "./org.js";
 export * from "./permissions.js";

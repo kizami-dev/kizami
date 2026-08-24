@@ -11,7 +11,7 @@
   - スコープの機械可読キー(2026-08-21確定、DB の grants JSON で使用): `self`(本人のみ)/ `department`(自部署)/ `department_and_descendants`(自部署+配下部署)/ `tenant`(テナント全体)。
   - 「危険フラグ」は §4 が言う「編集UI上で影響範囲の説明を添えて表示すべき権限」を指す。§10の文脈ヒント(操作時の都度のツールチップ)とは対象が重なるが別軸であり、ここでは**権限プリセット編集画面での重点表示対象**という意味で付与している。
 
-## 1. 業務タスク単位の権限カタログ(31項目。2026-08-23 に shift.manage を追加)
+## 1. 業務タスク単位の権限カタログ(32項目。2026-08-23 に shift.manage、2026-08-24 に tenant_settings.auth.manage を追加)
 
 ### 1.1 打刻(代理操作)
 
@@ -88,6 +88,7 @@
 | `tenant_settings.flex.manage` | フレックスタイム設定を管理できる | 清算期間などフレックス勤務設定を管理できる | テナント全体のみ | テナント設定閲覧 | いいえ |
 | `tenant_settings.gps.manage` | GPS打刻の設定を管理できる | GPS座標取得のopt-in有効化や保持期間を設定できる | テナント全体のみ | テナント設定閲覧 | **はい**(従業員のプライバシーに影響。有効化は従業員への明示が必須) |
 | `tenant_settings.auto_deduction.manage` | 休憩自動控除ルールを設定できる | 6時間超45分・8時間超1時間等の休憩自動控除ルールを設定できる | テナント全体のみ | テナント設定閲覧 | **はい**(§10で「影響が画面の外に及ぶ操作」として明記) |
+| `tenant_settings.auth.manage` | SSO(OIDC)を設定できる | IdP(Google Workspace / Entra ID 等)との OIDC 連携を設定し、SSO ログインの有効・無効を切り替えられる | テナント全体のみ | テナント設定閲覧 | **はい**(「誰がログインできるか」を決める設定。issuer の差し替えは実質的な認証基盤の乗っ取りにあたる — [design/sso-oidc.md](./sso-oidc.md)) |
 
 ### 1.11 通知設定
 
@@ -225,6 +226,7 @@
 | `tenant_settings.flex.manage` | テナント全体 | ― | ― |
 | `tenant_settings.gps.manage` | テナント全体 | ― | ― |
 | `tenant_settings.auto_deduction.manage` | テナント全体 | ― | ― |
+| `tenant_settings.auth.manage` | テナント全体 | ― | ― |
 | `notification.settings.manage` | テナント全体 | ― | ― |
 | `permission.preset.manage` | テナント全体 | ― | ― |
 | `permission.assignment.manage` | テナント全体 | ― | ― |

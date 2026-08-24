@@ -111,3 +111,18 @@ export const ALLOWANCE_SETTINGS_PERMISSION = ATTENDANCE_CALENDAR_PERMISSION;
  * 同じ NOTIFICATION_SETTINGS_PERMISSION 定数をそのまま再利用する。
  */
 export const SLACK_SETTINGS_PERMISSION = NOTIFICATION_SETTINGS_PERMISSION;
+
+/**
+ * GET/PUT /settings/sso(OIDC による SSO ログインの連携設定。docs/design/sso-oidc.md)が
+ * 要求する権限(2026-08-24 追加)。
+ *
+ * 判断点(完了報告に明記): Slack 連携(SLACK_SETTINGS_PERMISSION)と同様に
+ * `notification.settings.manage` を転用する案もあったが、採らなかった。SSO の設定は
+ * **「誰がこのテナントにログインできるか」を決める操作**であり、通知の宛先設定とは影響の
+ * 桁が違う(issuer を差し替えれば、別の IdP の利用者が自社メールアドレスを名乗って
+ * ログインできてしまう)。権限カタログは「非エンジニアが業務タスク単位で理解できる」ことを
+ * 設計原則にしている(要件 §4)ため、「通知チャネルを設定できる」のチェックボックスに
+ * SSO 設定が隠れるのは原則に反する。よってカタログへ専用キー `tenant_settings.auth.manage`
+ * (テナント全体のみ・危険フラグあり)を新設した(packages/authz/src/catalog.ts §1.10)。
+ */
+export const SSO_SETTINGS_PERMISSION = "tenant_settings.auth.manage";

@@ -68,6 +68,7 @@ export const ADMIN_GRANTS: Grant[] = (
     "tenant_settings.flex.manage",
     "tenant_settings.gps.manage",
     "tenant_settings.auto_deduction.manage",
+    "tenant_settings.auth.manage",
     "notification.settings.manage",
     "permission.preset.manage",
     "permission.assignment.manage",

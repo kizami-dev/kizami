@@ -25,6 +25,7 @@ type SettingsRoute =
   | "/settings/shift-patterns"
   | "/settings/api-keys"
   | "/settings/slack"
+  | "/settings/sso"
   | "/settings/slack-link"
   | "/settings/audit-logs";
 
@@ -142,6 +143,13 @@ export function SettingsHubView() {
       to: "/settings/slack" as const,
       title: messages.settingsHub.slackTitle,
       desc: messages.settingsHub.slackDesc,
+    },
+    {
+      key: "sso",
+      enabled: access.sso,
+      to: "/settings/sso" as const,
+      title: messages.settingsHub.ssoTitle,
+      desc: messages.settingsHub.ssoDesc,
     },
     {
       key: "auditLogs",

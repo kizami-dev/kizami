@@ -25,6 +25,8 @@ export interface SettingsAccess {
   /** /settings/api-keys。自分のキーの発行・一覧・失効は全認証済みユーザーが行えるため、常に true。 */
   apiKeys: boolean;
   slack: boolean;
+  /** /settings/sso(SSO(OIDC)設定、2026-08-24 追加)。tenant_settings.auth.manage(tenant スコープ)。 */
+  sso: boolean;
   /** /settings/slack-link。apiKeys と同じく自分用なので権限不要、常に true。 */
   slackLink: boolean;
   /** /settings/audit-logs(Tier 1 新設)。audit_log.view(department スコープ以上)。 */
@@ -87,6 +89,10 @@ export function useSettingsAccess(): SettingsAccess {
     attendance: has("tenant_settings.calendar.manage", "tenant") || has("tenant_settings.flex.manage", "tenant"),
     allowances: has("tenant_settings.calendar.manage", "tenant"),
     slack: has("notification.settings.manage", "tenant"),
+    // routes/settings/sso.ts が GET/PUT とも SSO_SETTINGS_PERMISSION
+    // (= "tenant_settings.auth.manage")を tenant スコープで要求する。通知設定とは別キー
+    // (理由は routes/settings/permissions.ts の定数コメント参照)。
+    sso: has("tenant_settings.auth.manage", "tenant"),
     auditLogs: has("audit_log.view", "department"),
     // shift-patterns.ts が GET/POST/:id/archive すべてで SHIFT_MANAGE_PERMISSION を tenant
     // スコープで要求する(routes/settings/shift-patterns.ts 冒頭コメント参照)ため、それに揃える。

@@ -230,6 +230,19 @@ export const ko = {
     errors: {
       invalid_credentials: "이메일 주소 또는 비밀번호가 올바르지 않습니다",
       rate_limited: "시도 횟수가 너무 많습니다. 잠시 기다린 후 다시 시도해 주세요",
+    /** SSO(OIDC) 로그인 실패 사유(2026-08-24 추가). 코드는 apps/api/src/lib/oidc.ts 의
+     * OidcErrorCode 와 1:1 로 대응한다(콜백은 /login?error=<code> 로 302 리다이렉트). */
+      sso_not_enabled: "이 회사에서는 SSO 로그인이 활성화되어 있지 않습니다",
+      sso_config_incomplete: "SSO 설정이 완료되지 않았습니다. 관리자에게 문의해 주세요",
+      sso_discovery_failed: "IdP(SSO 인증 기반)에 연결하지 못했습니다. 관리자에게 문의해 주세요",
+      sso_token_failed: "SSO 인증에 실패했습니다. 다시 시도해 주세요",
+      sso_invalid_token: "SSO 인증 정보를 검증하지 못했습니다. 다시 시도해 주세요",
+      sso_state_mismatch: "SSO 로그인 절차가 중단되었습니다. 다시 시도해 주세요",
+      sso_email_missing: "IdP에서 이메일 주소를 가져오지 못했습니다. 관리자에게 문의해 주세요",
+      sso_email_unverified: "IdP에서 이메일 주소가 확인됨으로 표시되어 있지 않습니다. 관리자에게 문의해 주세요",
+      sso_user_not_found: "이 이메일 주소의 사용자를 찾을 수 없습니다. 관리자에게 초대를 요청해 주세요",
+      sso_failed: "SSO 로그인에 실패했습니다. 다시 시도해 주세요",
+      encryption_unavailable: "현재 SSO 로그인을 이용할 수 없습니다. 관리자에게 문의해 주세요",
       default: "로그인에 실패했습니다. 잠시 후 다시 시도해 주세요",
     },
 
@@ -240,6 +253,14 @@ export const ko = {
     tenantSelectDescription: "같은 이메일 주소로 여러 회사에 계정이 있습니다.",
     tenantUnnamed: "(이름 미설정)",
     backToEmail: "다른 계정으로 로그인",
+
+    /** SSO(OIDC) 로그인(2026-08-24 추가). 이메일 주소를 입력하면 그 사람이 소속된 회사 중
+     * SSO 가 활성화된 곳을 GET /auth/oidc/available 로 조회하여, 해당하면 버튼을 표시한다.
+     * 비밀번호 로그인은 계속 사용할 수 있다. */
+    ssoDivider: "또는",
+    ssoButton: "SSO로 로그인",
+    ssoButtonForTenant: (tenantName: string) => `${tenantName}에 SSO로 로그인`,
+    ssoStarting: "SSO로 이동 중…",
   },
 
   /**
@@ -897,6 +918,57 @@ export const ko = {
     },
   },
 
+  /** SSO(OIDC) 설정 화면(/settings/sso, 2026-08-24 추가). docs/design/sso-oidc.md 가 사양의 정본. */
+  settingsSso: {
+    title: "SSO(OIDC)",
+    tagline: "Google Workspace·Entra ID 등의 IdP 와 OIDC 로 연동하여 SSO 로그인을 사용할 수 있게 합니다.",
+    noPermission: "이 설정을 변경할 권한이 없습니다",
+    setupGuideHint: "IdP 측 앱 등록 절차와 이 화면 각 항목의 의미는 docs/design/sso-oidc.md 를 참조해 주세요.",
+
+    noAutoProvisioningNote: "SSO 는 기존 멤버의 로그인 수단입니다. IdP 에 계정이 있어도 KIZAMI 에 초대되지 않은 사람은 로그인할 수 없습니다(멤버가 자동으로 생성되지 않습니다).",
+
+    redirectUriLabel: "IdP 에 등록할 리디렉션 URI",
+    redirectUriHint: "IdP 측 앱 설정에서 이 URL 을 「승인된 리디렉션 URI」로 등록해 주세요.",
+
+    issuerLabel: "issuer(발급자 URL)",
+    issuerPlaceholder: "https://accounts.google.com",
+    issuerHint: "https 로 시작하는 URL 만 지정할 수 있습니다. 설정 정보는 {issuer}/.well-known/openid-configuration 에서 자동으로 가져옵니다.",
+
+    clientIdLabel: "클라이언트 ID",
+    clientIdHint: "IdP 에서 앱을 등록하면 발급됩니다. 비밀 정보가 아니므로 이 화면에 그대로 표시됩니다.",
+
+    clientSecretLabel: "클라이언트 시크릿",
+    clientSecretConfigured: "설정됨",
+    clientSecretNotConfigured: "미설정",
+    keepIfBlankHint: "변경하지 않으려면 빈칸으로 두세요",
+
+    allowUnverifiedLabel: "이메일 주소가 미확인이어도 로그인 허용",
+    allowUnverifiedHint: "기본값은 비활성화입니다. 활성화하면 IdP 가 email_verified 를 반환하지 않는 구성에서도 로그인할 수 있지만, 임의의 이메일 주소를 주장할 수 있는 IdP 에서는 사칭이 성립할 수 있으므로 자체 IdP 등 특별한 사정이 있을 때만 활성화해 주세요.",
+
+    enabledLabel: "SSO 로그인 활성화",
+    enabledHint: "활성화하려면 issuer·클라이언트 ID·클라이언트 시크릿 3가지가 모두 설정되어 있어야 합니다.",
+
+    save: "저장",
+    saving: "저장 중…",
+    saveSuccess: "설정을 저장했습니다.",
+    saveNote: "이 설정은 테넌트 전체에 적용됩니다. 변경 사항은 감사 로그에 기록됩니다.",
+
+    loading: "불러오는 중…",
+    loadFailed: "설정을 가져오지 못했습니다. 다시 시도해 주세요",
+
+    errors: {
+      invalid_enabled: "입력 내용을 확인해 주세요",
+      invalid_issuer: "issuer 는 https 로 시작하는 URL 이어야 합니다(쿼리·프래그먼트는 붙일 수 없습니다)",
+      invalid_client_id: "클라이언트 ID 를 확인해 주세요",
+      invalid_client_secret: "클라이언트 시크릿을 확인해 주세요",
+      invalid_allow_unverified_email: "입력 내용을 확인해 주세요",
+      invalid_sso_config: "활성화하려면 issuer·클라이언트 ID·클라이언트 시크릿을 모두 입력해 주세요",
+      invalid_body: "입력 내용을 확인해 주세요",
+      encryption_unavailable: "현재 이 항목을 저장할 수 없습니다. 관리자에게 문의해 주세요",
+      default: "처리에 실패했습니다. 다시 시도해 주세요",
+    },
+  },
+
   /**
    * Slack 연동용 토큰 입력(/settings/slack-link, 2026-08-22 추가, 권한 불필요·전 직원 대상).
    * Slack에서 `/punch link` 를 실행하면 발급되는, 15분간 유효한 일회용 토큰을 여기서 입력한다.
@@ -945,6 +1017,7 @@ export const ko = {
     shiftPatterns: "시프트 패턴",
     apiKeys: "API 키",
     slack: "Slack 연동",
+    sso: "SSO(OIDC)",
     auditLogs: "감사 로그",
   },
 
@@ -983,6 +1056,8 @@ export const ko = {
     apiKeysDesc: "IC카드 리더·Slack bot·MCP 서버 등 외부 클라이언트에서 출퇴근을 기록하기 위한 API 키를 발급·폐기합니다.",
     slackTitle: "Slack 연동",
     slackDesc: "Slack 슬래시 커맨드(/punch)로 출퇴근을 기록할 수 있도록 설정합니다.",
+    ssoTitle: "SSO(OIDC)",
+    ssoDesc: "Google Workspace·Entra ID 등의 IdP 와 OIDC 로 연동하여, 초대된 멤버가 SSO 로 로그인할 수 있게 합니다.",
     slackLinkTitle: "Slack 연동용 토큰 입력",
     slackLinkDesc: "Slack에서 `/punch link` 를 실행해 발급받은 토큰을 입력해, 본인의 Slack 계정과 연동합니다.",
     auditLogsTitle: "감사 로그",

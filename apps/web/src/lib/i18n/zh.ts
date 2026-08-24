@@ -224,6 +224,19 @@ export const zh = {
     errors: {
       invalid_credentials: "邮箱地址或密码错误",
       rate_limited: "尝试次数过多,请稍后再试",
+    /** SSO(OIDC)登录失败原因(2026-08-24 添加)。这些代码与 apps/api/src/lib/oidc.ts 的
+     * OidcErrorCode 一一对应(回调会 302 重定向到 /login?error=<code>)。 */
+      sso_not_enabled: "本公司未启用 SSO 登录",
+      sso_config_incomplete: "SSO 尚未配置完成,请联系管理员",
+      sso_discovery_failed: "无法连接到身份提供方(IdP),请联系管理员",
+      sso_token_failed: "SSO 认证失败,请重试",
+      sso_invalid_token: "无法验证 SSO 凭据,请重试",
+      sso_state_mismatch: "SSO 登录流程已中断,请重试",
+      sso_email_missing: "未能从 IdP 获取邮箱地址,请联系管理员",
+      sso_email_unverified: "IdP 未将该邮箱地址标记为已验证,请联系管理员",
+      sso_user_not_found: "未找到使用该邮箱地址的用户,请向管理员申请邀请",
+      sso_failed: "SSO 登录失败,请重试",
+      encryption_unavailable: "当前无法使用 SSO 登录,请联系管理员",
       default: "登录失败,请稍后重试",
     },
 
@@ -233,6 +246,13 @@ export const zh = {
     tenantSelectDescription: "该邮箱地址在多家公司拥有账号。",
     tenantUnnamed: "(未命名)",
     backToEmail: "使用其他账号登录",
+
+    /** SSO(OIDC)登录(2026-08-24 添加)。输入邮箱地址后,通过 GET /auth/oidc/available
+     * 查询该用户所属公司中已启用 SSO 的公司,若有匹配则显示按钮。密码登录仍然可用。 */
+    ssoDivider: "或",
+    ssoButton: "使用 SSO 登录",
+    ssoButtonForTenant: (tenantName: string) => `使用 SSO 登录 ${tenantName}`,
+    ssoStarting: "正在跳转到 SSO…",
   },
 
   /**
@@ -886,6 +906,57 @@ export const zh = {
     },
   },
 
+  /** SSO(OIDC)设置界面(/settings/sso,2026-08-24 添加)。docs/design/sso-oidc.md 为规格正本。 */
+  settingsSso: {
+    title: "SSO(OIDC)",
+    tagline: "通过 OIDC 与 Google Workspace、Entra ID 等身份提供方对接,启用 SSO 登录。",
+    noPermission: "没有权限更改此设置",
+    setupGuideHint: "身份提供方一侧的应用注册步骤,以及本界面各项的含义,请参见 docs/design/sso-oidc.md。",
+
+    noAutoProvisioningNote: "SSO 是现有成员的登录方式。即使在身份提供方拥有账号,未被邀请加入 KIZAMI 的人也无法登录(不会自动创建成员)。",
+
+    redirectUriLabel: "需在身份提供方登记的重定向 URI",
+    redirectUriHint: "请在身份提供方的应用设置中,将此 URL 登记为「已授权的重定向 URI」。",
+
+    issuerLabel: "issuer(颁发者 URL)",
+    issuerPlaceholder: "https://accounts.google.com",
+    issuerHint: "只能填写以 https 开头的 URL。配置信息会自动从 {issuer}/.well-known/openid-configuration 获取。",
+
+    clientIdLabel: "客户端 ID",
+    clientIdHint: "在身份提供方注册应用后签发。它不属于机密信息,因此在此界面原样显示。",
+
+    clientSecretLabel: "客户端密钥",
+    clientSecretConfigured: "已设置",
+    clientSecretNotConfigured: "未设置",
+    keepIfBlankHint: "如不更改,请保留为空",
+
+    allowUnverifiedLabel: "邮箱地址未验证时也允许登录",
+    allowUnverifiedHint: "默认关闭。开启后,即使身份提供方不返回 email_verified 也能登录;但在允许用户自称任意邮箱地址的身份提供方下可能被冒充,因此请仅在自建身份提供方等特殊情况下开启。",
+
+    enabledLabel: "启用 SSO 登录",
+    enabledHint: "启用前需要同时设置 issuer、客户端 ID 和客户端密钥。",
+
+    save: "保存",
+    saving: "保存中…",
+    saveSuccess: "设置已保存。",
+    saveNote: "此设置适用于整个租户,更改将被记录到审计日志中。",
+
+    loading: "加载中…",
+    loadFailed: "设置获取失败,请重试",
+
+    errors: {
+      invalid_enabled: "请确认输入内容",
+      invalid_issuer: "issuer 必须是以 https 开头的 URL(不能带查询参数或片段)",
+      invalid_client_id: "请确认客户端 ID",
+      invalid_client_secret: "请确认客户端密钥",
+      invalid_allow_unverified_email: "请确认输入内容",
+      invalid_sso_config: "启用时请同时输入 issuer、客户端 ID 和客户端密钥",
+      invalid_body: "请确认输入内容",
+      encryption_unavailable: "当前无法保存此项,请联系管理员",
+      default: "处理失败,请重试",
+    },
+  },
+
   /**
    * 输入Slack关联令牌(/settings/slack-link,无需权限,全员可用)。
    * 在Slack中执行 `/punch link` 后会生成一个15分钟内有效的一次性令牌,在此输入即可完成关联。
@@ -934,6 +1005,7 @@ export const zh = {
     shiftPatterns: "排班模板",
     apiKeys: "API密钥",
     slack: "Slack集成",
+    sso: "SSO(OIDC)",
     auditLogs: "审计日志",
   },
 
@@ -972,6 +1044,8 @@ export const zh = {
     apiKeysDesc: "签发和吊销供IC卡读卡器、Slack bot、MCP服务器等外部客户端打卡使用的API密钥。",
     slackTitle: "Slack集成",
     slackDesc: "设置通过Slack斜杠命令(/punch)进行打卡的功能。",
+    ssoTitle: "SSO(OIDC)",
+    ssoDesc: "通过 OIDC 与 Google Workspace、Entra ID 等身份提供方对接,让已受邀成员可以使用 SSO 登录。",
     slackLinkTitle: "输入Slack关联令牌",
     slackLinkDesc: "输入在Slack中执行 `/punch link` 后获得的令牌,关联你的Slack账号。",
     auditLogsTitle: "审计日志",

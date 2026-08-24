@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "waku";
-import { api, ApiError, MultipleTenantsError, type LoginTenantOption } from "../lib/api";
+import { api, ApiError, MultipleTenantsError, type LoginTenantOption, type SsoAvailableTenant } from "../lib/api";
 import { mapLoginErrorMessage, messages } from "../lib/messages";
 import { KizamiMark } from "./KizamiMark";
 
@@ -15,6 +15,27 @@ export function LoginForm() {
   /** 複数テナント一致時のテナント選択(2026-08-23 追加)。email/password は検証済みのまま
    * 保持し、選択後の再送でパスワード再入力を求めない(Slack のワークスペース選択と同じ体験)。 */
   const [tenantOptions, setTenantOptions] = useState<LoginTenantOption[] | null>(null);
+  /**
+   * SSO(OIDC)が使えるテナント(2026-08-24 追加)。GET /auth/oidc/available の結果。
+   *
+   * 照会のタイミングは **メール欄からフォーカスが外れたとき(onBlur)** だけにしてある。
+   * 入力のたびにデバウンスで叩く案もあったが、この経路は未認証で開放されており IP ごとに
+   * 20回/15分のレート制限が掛かっている(apps/api/src/lib/rate-limit.ts の oidcPerIp)ため、
+   * 打鍵に比例して呼ぶと正規利用者が自分で上限に触れる。パスワード欄へ移る操作が
+   * 自然に blur を起こすので、実用上これで足りる。
+   */
+  const [ssoTenants, setSsoTenants] = useState<SsoAvailableTenant[]>([]);
+  /** 直近に照会したメールアドレス(同じ値で二重に叩かないため)。 */
+  const [ssoLookedUpEmail, setSsoLookedUpEmail] = useState<string | null>(null);
+  const [ssoStarting, setSsoStarting] = useState(false);
+
+  // SSO のコールバックが失敗すると /login?error=<code> へ戻ってくる(apps/api/src/routes/auth-oidc.ts)。
+  // 初回マウント時に一度だけ読み、messages.login.errors の対応する文言を出す。
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const code = new URLSearchParams(window.location.search).get("error");
+    if (code) setError(mapLoginErrorMessage({ error: code }));
+  }, []);
 
   // 既にログイン済みならホームへ誘導する(判断点: v0.1 では静かに素通りさせる)
   useEffect(() => {
@@ -32,6 +53,38 @@ export function LoginForm() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  /** メール欄の blur で「この人が SSO を使える会社」を照会する(失敗しても黙って諦める)。 */
+  async function handleEmailBlur() {
+    const trimmed = email.trim();
+    if (trimmed === "" || !trimmed.includes("@")) {
+      setSsoTenants([]);
+      setSsoLookedUpEmail(null);
+      return;
+    }
+    if (trimmed === ssoLookedUpEmail) return;
+    setSsoLookedUpEmail(trimmed);
+    try {
+      const res = await api.ssoAvailable(trimmed);
+      setSsoTenants(res.tenants.filter((t) => t.ssoEnabled));
+    } catch {
+      // レート制限・通信エラー等。SSO ボタンが出ないだけで、パスワードログインは通常どおり使える。
+      setSsoTenants([]);
+    }
+  }
+
+  /** SSO 開始。認可 URL を受け取ってそこへ遷移する(状態は httpOnly Cookie 側に入る)。 */
+  async function handleSso(tenantId: string) {
+    setSsoStarting(true);
+    setError(null);
+    try {
+      const { redirectUrl } = await api.startSso(tenantId);
+      window.location.assign(redirectUrl);
+    } catch (err) {
+      setError(err instanceof ApiError ? mapLoginErrorMessage(err.body) : messages.login.errors.default);
+      setSsoStarting(false);
+    }
+  }
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -115,6 +168,17 @@ export function LoginForm() {
                   >
                     {t.name ?? messages.login.tenantUnnamed}
                   </button>
+                  {/* その会社が SSO を有効にしていれば、パスワードでの続行と並べて SSO も選べる */}
+                  {ssoTenants.some((s) => s.id === t.id) ? (
+                    <button
+                      type="button"
+                      className="login-sso__button login-sso__button--inline"
+                      disabled={ssoStarting || submitting}
+                      onClick={() => void handleSso(t.id)}
+                    >
+                      {ssoStarting ? messages.login.ssoStarting : messages.login.ssoButton}
+                    </button>
+                  ) : null}
                 </li>
               ))}
             </ul>
@@ -135,6 +199,7 @@ export function LoginForm() {
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
+                onBlur={() => void handleEmailBlur()}
               />
             </div>
 
@@ -154,6 +219,27 @@ export function LoginForm() {
             <button type="submit" className="login-submit" disabled={submitting}>
               {submitting ? messages.login.submitting : messages.login.submit}
             </button>
+
+            {ssoTenants.length > 0 ? (
+              <div className="login-sso">
+                <p className="login-sso__divider">{messages.login.ssoDivider}</p>
+                {ssoTenants.map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    className="login-sso__button"
+                    disabled={ssoStarting || submitting}
+                    onClick={() => void handleSso(t.id)}
+                  >
+                    {ssoStarting
+                      ? messages.login.ssoStarting
+                      : ssoTenants.length === 1
+                        ? messages.login.ssoButton
+                        : messages.login.ssoButtonForTenant(t.name ?? messages.login.tenantUnnamed)}
+                  </button>
+                ))}
+              </div>
+            ) : null}
           </form>
         )}
       </div>

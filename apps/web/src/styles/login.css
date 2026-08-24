@@ -198,3 +198,58 @@
   opacity: 0.6;
   cursor: not-allowed;
 }
+
+/*
+ * SSO(OIDC)ログイン(2026-08-24 追加)。
+ * パスワードログインと併存する副次的な導線なので、主ボタン(.login-submit)より一段弱い
+ * 「枠線ボタン」にして、どちらが既定の操作かを見た目で示す。
+ */
+.login-sso {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.login-sso__divider {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.8rem;
+  color: var(--k-ink-soft);
+}
+
+.login-sso__divider::before,
+.login-sso__divider::after {
+  content: "";
+  flex: 1;
+  border-top: var(--border-hair);
+}
+
+.login-sso__button {
+  width: 100%;
+  border: var(--border-hair);
+  border-color: var(--k-key);
+  border-radius: var(--radius-m);
+  padding: var(--space-3) var(--space-4);
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--k-key);
+  background: var(--k-surface);
+}
+
+.login-sso__button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--k-key) 6%, transparent);
+}
+
+.login-sso__button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* テナント選択リストの行内に置く場合は、選択ボタンの直下に小さく添える。 */
+.login-sso__button--inline {
+  margin-top: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  font-size: 0.85rem;
+}

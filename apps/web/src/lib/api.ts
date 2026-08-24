@@ -8,6 +8,12 @@
 
 const BASE_URL: string = import.meta.env.WAKU_PUBLIC_API_URL ?? "http://localhost:3001";
 
+/**
+ * apps/api のベース URL。SSO 設定画面が「IdP に登録するリダイレクト URI」を組み立てるために
+ * 参照する(それ以外の用途では `request()` を通すこと)。
+ */
+export const API_BASE_URL = BASE_URL;
+
 export class ApiError extends Error {
   readonly status: number;
   readonly body: unknown;
@@ -461,6 +467,46 @@ export interface UpdateSlackSettingsInput {
 export interface SlackLinkResultDto {
   linked: true;
   slackUserId: string;
+}
+
+/**
+ * SSO(OIDC)のテナント設定(2026-08-24 追加、docs/design/sso-oidc.md)。
+ * apps/api/src/routes/settings/sso.ts の GET/PUT /settings/sso と一致させる。
+ * clientSecret は秘密情報のため全文もプレビューも返らない(clientSecretSet のみ)。
+ */
+export interface SsoSettingsDto {
+  issuer: string | null;
+  clientId: string | null;
+  enabled: boolean;
+  allowUnverifiedEmail: boolean;
+  clientSecretSet: boolean;
+  updatedAt: number | null;
+  updatedBy: string | null;
+}
+
+/**
+ * PUT /settings/sso の入力(3値ルール、Slack 設定と同じ):
+ * フィールド省略=既存値維持、null/""=クリア、それ以外の文字列=置換。
+ * clientSecret はマスクされて返るため、Web 側は「空欄なら省略(維持)・入力があれば新しい値」
+ * という規約でこの3値ルールの一部だけを使う。
+ */
+export interface UpdateSsoSettingsInput {
+  enabled: boolean;
+  issuer?: string;
+  clientId?: string;
+  clientSecret?: string;
+  allowUnverifiedEmail?: boolean;
+}
+
+/**
+ * GET /auth/oidc/available のレスポンス要素(未認証で叩ける)。
+ * **SSO が有効なテナントしか返らない**(在籍の有無を無闇に漏らさないための設計 —
+ * apps/api/src/routes/auth-oidc.ts のコメント参照)ため、ssoEnabled は常に true になる。
+ */
+export interface SsoAvailableTenant {
+  id: string;
+  name: string | null;
+  ssoEnabled: boolean;
 }
 
 /** 権限のスコープ(狭い→広い: self < department < department_and_descendants < tenant)。packages/authz/src/types.ts と一致。 */
@@ -1406,6 +1452,30 @@ export const api = {
   /** Slackの `/punch link` が発行したワンタイムトークンを、自分のKIZAMIアカウントに連携する。 */
   async redeemSlackLinkToken(token: string): Promise<SlackLinkResultDto> {
     return request("/settings/slack-link", { method: "POST", body: JSON.stringify({ token }) });
+  },
+
+  async getSsoSettings(): Promise<SsoSettingsDto> {
+    return request("/settings/sso");
+  },
+
+  async updateSsoSettings(input: UpdateSsoSettingsInput): Promise<SsoSettingsDto> {
+    return request("/settings/sso", { method: "PUT", body: JSON.stringify(input) });
+  },
+
+  /**
+   * ログイン画面で「SSO でログイン」ボタンを出すかどうかの照会(未認証・レート制限あり)。
+   * 該当が無い場合も空配列で 200 が返る(存在しないメールアドレスと区別できない)。
+   */
+  async ssoAvailable(email: string): Promise<{ tenants: SsoAvailableTenant[] }> {
+    return request(`/auth/oidc/available?email=${encodeURIComponent(email)}`);
+  },
+
+  /**
+   * SSO ログインの開始。IdP の認可エンドポイントへの URL を返すので、呼び出し側は
+   * `window.location.assign()` でそこへ遷移する(状態は httpOnly Cookie 側に入る)。
+   */
+  async startSso(tenantId: string): Promise<{ redirectUrl: string }> {
+    return request("/auth/oidc/start", { method: "POST", body: JSON.stringify({ tenantId }) });
   },
 
   async testNotificationSettings(): Promise<{ results: NotificationTestResult[] }> {

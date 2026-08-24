@@ -26,6 +26,7 @@
     "drizzle-orm": "0.45.2",
     "hono": "^4.13.3",
     "ioredis": "^6.0.0",
+    "jose": "^6.2.10",
     "nodemailer": "^9.0.5",
     "temporal-polyfill": "^1.0.4",
     "tsx": "^4.23.12"

@@ -80,6 +80,8 @@ export const mapNotificationSettingsErrorMessage = makeErrorMapper(() => message
 export const mapPersonalNotificationSettingsErrorMessage = makeErrorMapper(() => messages.settingsPersonalNotifications.errors);
 /** Slack連携設定(GET/PUT /settings/slack)のエラーマッピング。 */
 export const mapSlackSettingsErrorMessage = makeErrorMapper(() => messages.settingsSlack.errors);
+/** SSO(OIDC)設定(GET/PUT /settings/sso)のエラーマッピング(2026-08-24 追加)。 */
+export const mapSsoSettingsErrorMessage = makeErrorMapper(() => messages.settingsSso.errors);
 /** Slack連携用トークン確定(POST /settings/slack-link)のエラーマッピング。 */
 export const mapSlackLinkErrorMessage = makeErrorMapper(() => messages.settingsSlackLink.errors);
 /** 部署管理(POST/PATCH/DELETE /departments*)のエラーマッピング。 */

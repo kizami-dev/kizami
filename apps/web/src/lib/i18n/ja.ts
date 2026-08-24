@@ -246,6 +246,19 @@ export const ja = {
       invalid_credentials: "メールアドレスまたはパスワードが違います",
       /** レート制限(429)。どのアカウントが実在するかを示唆しない文言にすること。 */
       rate_limited: "試行回数が多すぎます。しばらく待ってからやり直してください",
+    /** SSO(OIDC)ログインの失敗理由(2026-08-24 追加)。コードは apps/api/src/lib/oidc.ts の
+     * OidcErrorCode と 1:1 で対応する(コールバックは /login?error=<code> へ 302 で戻す)。 */
+      sso_not_enabled: "この会社では SSO ログインが有効になっていません",
+      sso_config_incomplete: "SSO の設定が完了していません。管理者にお問い合わせください",
+      sso_discovery_failed: "IdP(SSO の認証基盤)に接続できませんでした。管理者にお問い合わせください",
+      sso_token_failed: "SSO の認証に失敗しました。もう一度お試しください",
+      sso_invalid_token: "SSO の認証情報を検証できませんでした。もう一度お試しください",
+      sso_state_mismatch: "SSO のログイン手続きが中断されました。もう一度お試しください",
+      sso_email_missing: "IdP からメールアドレスを取得できませんでした。管理者にお問い合わせください",
+      sso_email_unverified: "IdP 側でメールアドレスが確認済みになっていません。管理者にお問い合わせください",
+      sso_user_not_found: "このメールアドレスのユーザーが見つかりません。管理者に招待を依頼してください",
+      sso_failed: "SSO ログインに失敗しました。もう一度お試しください",
+      encryption_unavailable: "現在 SSO ログインを利用できません。管理者にお問い合わせください",
       default: "ログインに失敗しました。時間をおいて再度お試しください",
     },
 
@@ -256,6 +269,14 @@ export const ja = {
     tenantSelectDescription: "同じメールアドレスで複数の会社にアカウントがあります。",
     tenantUnnamed: "(名称未設定)",
     backToEmail: "別のアカウントでログイン",
+
+    /** SSO(OIDC)ログイン(2026-08-24 追加)。メールアドレスを入力すると、その人が在籍する
+     * 会社のうち SSO が有効なものを GET /auth/oidc/available で照会し、該当があればボタンを出す。
+     * パスワードログインは併存させる(SSO を必須にする切り替えは今後の課題)。 */
+    ssoDivider: "または",
+    ssoButton: "SSO でログイン",
+    ssoButtonForTenant: (tenantName: string) => `${tenantName} に SSO でログイン`,
+    ssoStarting: "SSO へ移動中…",
   },
 
   /**
@@ -932,6 +953,57 @@ export const ja = {
     },
   },
 
+  /** SSO(OIDC)設定画面(/settings/sso、2026-08-24 追加)。docs/design/sso-oidc.md が仕様の正。 */
+  settingsSso: {
+    title: "SSO(OIDC)",
+    tagline: "Google Workspace・Entra ID などの IdP と OIDC で連携し、SSO でログインできるようにします。",
+    noPermission: "この設定を変更する権限がありません",
+    setupGuideHint: "IdP 側のアプリ登録手順と、この画面の各項目の意味は docs/design/sso-oidc.md を参照してください。",
+
+    noAutoProvisioningNote: "SSO は既存メンバーのログイン手段です。IdP にアカウントがあっても、KIZAMI に招待されていない人はログインできません(自動的にメンバーは作られません)。",
+
+    redirectUriLabel: "IdP に登録するリダイレクト URI",
+    redirectUriHint: "IdP 側のアプリ設定で、この URL を「承認済みリダイレクト URI」として登録してください。",
+
+    issuerLabel: "issuer(発行者 URL)",
+    issuerPlaceholder: "https://accounts.google.com",
+    issuerHint: "https で始まる URL のみ指定できます。設定情報は {issuer}/.well-known/openid-configuration から自動取得します。",
+
+    clientIdLabel: "クライアントID",
+    clientIdHint: "IdP でアプリを登録すると発行されます。秘密情報ではないため、この画面にそのまま表示されます。",
+
+    clientSecretLabel: "クライアントシークレット",
+    clientSecretConfigured: "設定済み",
+    clientSecretNotConfigured: "未設定",
+    keepIfBlankHint: "変更しない場合は空のままにしてください",
+
+    allowUnverifiedLabel: "メールアドレスが未確認でもログインを許可する",
+    allowUnverifiedHint: "既定は無効です。有効にすると、IdP が email_verified を返さない構成でもログインできますが、他人のメールアドレスを名乗れる IdP ではなりすましが成立しうるため、自前 IdP など事情がある場合にのみ有効にしてください。",
+
+    enabledLabel: "SSO ログインを有効にする",
+    enabledHint: "有効にするには issuer・クライアントID・クライアントシークレットの3つがすべて設定されている必要があります。",
+
+    save: "保存",
+    saving: "保存中…",
+    saveSuccess: "設定を保存しました。",
+    saveNote: "この設定はテナント全体に適用されます。変更は監査ログに記録されます。",
+
+    loading: "読み込み中…",
+    loadFailed: "設定の取得に失敗しました。もう一度お試しください",
+
+    errors: {
+      invalid_enabled: "入力内容を確認してください",
+      invalid_issuer: "issuer は https で始まる URL を指定してください(クエリ・フラグメントは付けられません)",
+      invalid_client_id: "クライアントIDを確認してください",
+      invalid_client_secret: "クライアントシークレットを確認してください",
+      invalid_allow_unverified_email: "入力内容を確認してください",
+      invalid_sso_config: "有効にする場合は issuer・クライアントID・クライアントシークレットをすべて入力してください",
+      invalid_body: "入力内容を確認してください",
+      encryption_unavailable: "現在この項目を保存できません。管理者にお問い合わせください",
+      default: "処理に失敗しました。もう一度お試しください",
+    },
+  },
+
   /**
    * Slack連携用トークンの入力(/settings/slack-link、2026-08-22 追加、権限不要・全従業員向け)。
    * Slackで `/punch link` を実行すると発行される、15分間有効なワンタイムトークンをここで入力する。
@@ -980,6 +1052,7 @@ export const ja = {
     shiftPatterns: "シフトパターン",
     apiKeys: "APIキー",
     slack: "Slack連携",
+    sso: "SSO(OIDC)",
     auditLogs: "監査ログ",
   },
 
@@ -1018,6 +1091,8 @@ export const ja = {
     apiKeysDesc: "ICカードリーダー・Slack bot・MCPサーバーなど外部クライアントから打刻するためのAPIキーを発行・失効します。",
     slackTitle: "Slack連携",
     slackDesc: "Slackのスラッシュコマンド(/punch)から打刻できるようにする設定を行います。",
+    ssoTitle: "SSO(OIDC)",
+    ssoDesc: "Google Workspace・Entra ID などの IdP と OIDC で連携し、招待済みメンバーが SSO でログインできるようにします。",
     slackLinkTitle: "Slack連携用トークンの入力",
     slackLinkDesc: "Slackで `/punch link` を実行して発行したトークンを入力し、自分のSlackアカウントと連携します。",
     auditLogsTitle: "監査ログ",

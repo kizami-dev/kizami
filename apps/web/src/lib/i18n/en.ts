@@ -246,6 +246,19 @@ export const en = {
     errors: {
       invalid_credentials: "Incorrect email address or password",
       rate_limited: "Too many attempts. Please wait a while before trying again",
+    /** SSO (OIDC) login failure reasons (added 2026-08-24). The codes map 1:1 to OidcErrorCode
+     * in apps/api/src/lib/oidc.ts (the callback redirects to /login?error=<code>). */
+      sso_not_enabled: "SSO login is not enabled for this company",
+      sso_config_incomplete: "SSO is not fully configured. Please contact your administrator",
+      sso_discovery_failed: "Could not reach the identity provider. Please contact your administrator",
+      sso_token_failed: "SSO sign-in failed. Please try again",
+      sso_invalid_token: "The SSO credentials could not be verified. Please try again",
+      sso_state_mismatch: "The SSO sign-in was interrupted. Please try again",
+      sso_email_missing: "The identity provider did not return an email address. Please contact your administrator",
+      sso_email_unverified: "Your email address is not marked as verified by the identity provider. Please contact your administrator",
+      sso_user_not_found: "No user was found for this email address. Please ask your administrator for an invitation",
+      sso_failed: "SSO login failed. Please try again",
+      encryption_unavailable: "SSO login is unavailable right now. Please contact your administrator",
       default: "Login failed. Please wait a moment and try again",
     },
 
@@ -256,6 +269,14 @@ export const en = {
     tenantSelectDescription: "This email address has accounts at more than one company.",
     tenantUnnamed: "(Unnamed)",
     backToEmail: "Log in with a different account",
+
+    /** SSO (OIDC) login (added 2026-08-24). Once an email address is entered, the companies the
+     * person belongs to that have SSO enabled are looked up via GET /auth/oidc/available, and a
+     * button is shown for any match. Password login remains available alongside it. */
+    ssoDivider: "or",
+    ssoButton: "Log in with SSO",
+    ssoButtonForTenant: (tenantName: string) => `Log in to ${tenantName} with SSO`,
+    ssoStarting: "Redirecting to SSO…",
   },
 
   /**
@@ -925,6 +946,57 @@ export const en = {
     },
   },
 
+  /** SSO (OIDC) settings screen (/settings/sso, added 2026-08-24). docs/design/sso-oidc.md is the spec of record. */
+  settingsSso: {
+    title: "SSO (OIDC)",
+    tagline: "Connect an identity provider such as Google Workspace or Entra ID over OIDC to enable SSO login.",
+    noPermission: "You don't have permission to change this setting",
+    setupGuideHint: "For how to register the app on the identity provider side and what each field here means, see docs/design/sso-oidc.md.",
+
+    noAutoProvisioningNote: "SSO is a login method for existing members. Even with an account at the identity provider, anyone who has not been invited to KIZAMI cannot log in (members are never created automatically).",
+
+    redirectUriLabel: "Redirect URI to register with the identity provider",
+    redirectUriHint: "Register this URL as an authorized redirect URI in the app settings on the identity provider side.",
+
+    issuerLabel: "Issuer URL",
+    issuerPlaceholder: "https://accounts.google.com",
+    issuerHint: "Only https URLs are accepted. Configuration is discovered automatically from {issuer}/.well-known/openid-configuration.",
+
+    clientIdLabel: "Client ID",
+    clientIdHint: "Issued when you register the app at the identity provider. It is not a secret, so it is shown here as-is.",
+
+    clientSecretLabel: "Client secret",
+    clientSecretConfigured: "Configured",
+    clientSecretNotConfigured: "Not configured",
+    keepIfBlankHint: "Leave blank to keep it unchanged",
+
+    allowUnverifiedLabel: "Allow login even when the email address is unverified",
+    allowUnverifiedHint: "Disabled by default. Enabling it allows login even when the identity provider does not return email_verified, but an identity provider that lets users claim any email address makes impersonation possible — only enable it when you have a specific reason, such as a self-hosted identity provider.",
+
+    enabledLabel: "Enable SSO login",
+    enabledHint: "The issuer, client ID and client secret must all be configured before this can be enabled.",
+
+    save: "Save",
+    saving: "Saving…",
+    saveSuccess: "Settings saved.",
+    saveNote: "This setting applies to the entire tenant. Changes are recorded in the audit log.",
+
+    loading: "Loading…",
+    loadFailed: "Failed to load settings. Please try again",
+
+    errors: {
+      invalid_enabled: "Please check the entered content",
+      invalid_issuer: "The issuer must be an https URL with no query string or fragment",
+      invalid_client_id: "Please check the client ID",
+      invalid_client_secret: "Please check the client secret",
+      invalid_allow_unverified_email: "Please check the entered content",
+      invalid_sso_config: "To enable this, please enter the issuer, client ID and client secret",
+      invalid_body: "Please check the entered content",
+      encryption_unavailable: "This item can't be saved right now. Please contact your administrator",
+      default: "Something went wrong. Please try again",
+    },
+  },
+
   /**
    * Slack linking token entry (/settings/slack-link, added 2026-08-22, no permission required, all employees).
    * Enter the one-time token (valid for 15 minutes) issued by running `/punch link` in Slack.
@@ -973,6 +1045,7 @@ export const en = {
     shiftPatterns: "Shift patterns",
     apiKeys: "API keys",
     slack: "Slack integration",
+    sso: "SSO (OIDC)",
     auditLogs: "Audit log",
   },
 
@@ -1011,6 +1084,8 @@ export const en = {
     apiKeysDesc: "Issue and revoke API keys for punching in from external clients such as IC card readers, Slack bots, and MCP servers.",
     slackTitle: "Slack integration",
     slackDesc: "Configure punching in from Slack via the slash command (/punch).",
+    ssoTitle: "SSO (OIDC)",
+    ssoDesc: "Connect an identity provider such as Google Workspace or Entra ID over OIDC so invited members can log in with SSO.",
     slackLinkTitle: "Enter Slack linking token",
     slackLinkDesc: "Enter the token issued by running `/punch link` in Slack to link your Slack account.",
     auditLogsTitle: "Audit log",

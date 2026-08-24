@@ -126,12 +126,17 @@ export const AUTH_WINDOW_MS = 15 * 60_000;
  *   決定的に上げる安価な保険。
  * - `apiKeyPerIp`: 公開打刻 API(`Authorization: Bearer kzm_...`)のキー推測対策。
  *   IC カードリーダー等の常時接続クライアントを想定して 120回/分と大きめに取る。
+ * - `oidcPerIp`: OIDC(SSO)ログインの未認証3経路(start / callback / available)。
+ *   start は任意の issuer への HTTP 送出、callback は ID トークンの持ち込み、available は
+ *   メールアドレスの在籍照会の入口であり、いずれも総当たり・偵察の的になる。
+ *   トークン経路と同じ 20回/15分に揃える(SSO ログインは1人あたり1日数回の操作のため十分)。
  */
 export const RATE_LIMITS = {
   loginPerIpEmail: { windowMs: AUTH_WINDOW_MS, max: 10 },
   loginPerIp: { windowMs: AUTH_WINDOW_MS, max: 30 },
   tokenPerIp: { windowMs: AUTH_WINDOW_MS, max: 20 },
   apiKeyPerIp: { windowMs: 60_000, max: 120 },
+  oidcPerIp: { windowMs: AUTH_WINDOW_MS, max: 20 },
 } as const;
 
 /**

@@ -35,6 +35,7 @@ const ADMIN_GRANT_KEYS = [
   "tenant_settings.flex.manage",
   "tenant_settings.gps.manage",
   "tenant_settings.auto_deduction.manage",
+  "tenant_settings.auth.manage",
   "notification.settings.manage",
   "permission.preset.manage",
   "permission.assignment.manage",
@@ -57,8 +58,8 @@ const MANAGER_GRANT_KEYS = [
 ];
 
 describe("PERMISSION_CATALOG", () => {
-  it("has exactly the 31 items from permission-catalog.md §1, all with unique keys", () => {
-    expect(PERMISSION_CATALOG.length).toBe(31);
+  it("has exactly the 32 items from permission-catalog.md §1, all with unique keys", () => {
+    expect(PERMISSION_CATALOG.length).toBe(32);
     const keys = PERMISSION_CATALOG.map((e) => e.key);
     expect(new Set(keys).size).toBe(keys.length);
   });

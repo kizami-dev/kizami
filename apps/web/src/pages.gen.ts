@@ -54,6 +54,8 @@ import type { getConfig as File_SettingsSlackLink_getConfig } from './pages/sett
 // prettier-ignore
 import type { getConfig as File_SettingsSlack_getConfig } from './pages/settings/slack';
 // prettier-ignore
+import type { getConfig as File_SettingsSso_getConfig } from './pages/settings/sso';
+// prettier-ignore
 import type { getConfig as File_SettingsTenantProfile_getConfig } from './pages/settings/tenant-profile';
 // prettier-ignore
 import type { getConfig as File_Shifts_getConfig } from './pages/shifts';
@@ -88,6 +90,7 @@ type Page =
 | ({ path: '/settings/shift-patterns' } & GetConfigResponse<typeof File_SettingsShiftPatterns_getConfig>)
 | ({ path: '/settings/slack-link' } & GetConfigResponse<typeof File_SettingsSlackLink_getConfig>)
 | ({ path: '/settings/slack' } & GetConfigResponse<typeof File_SettingsSlack_getConfig>)
+| ({ path: '/settings/sso' } & GetConfigResponse<typeof File_SettingsSso_getConfig>)
 | ({ path: '/settings/tenant-profile' } & GetConfigResponse<typeof File_SettingsTenantProfile_getConfig>)
 | ({ path: '/shifts' } & GetConfigResponse<typeof File_Shifts_getConfig>)
 | ({ path: '/shifts/me' } & GetConfigResponse<typeof File_ShiftsMe_getConfig>);

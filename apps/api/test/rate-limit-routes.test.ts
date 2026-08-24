@@ -202,6 +202,50 @@ describe("招待/パスワードリセットのトークン経路のレート制
   });
 });
 
+describe("OIDC(SSO)経路のレート制限", () => {
+  it(`GET /auth/oidc/available は IP ごとに ${RATE_LIMITS.oidcPerIp.max}回まで(超過で 429)`, async () => {
+    const { db } = await setupTestDb();
+    const app = createApp({ db });
+
+    for (let i = 0; i < RATE_LIMITS.oidcPerIp.max; i += 1) {
+      const res = await app.request("/auth/oidc/available?email=someone@example.com", {
+        headers: { "cf-connecting-ip": "203.0.113.30" },
+      });
+      expect(res.status).toBe(200);
+    }
+
+    const blocked = await app.request("/auth/oidc/available?email=someone@example.com", {
+      headers: { "cf-connecting-ip": "203.0.113.30" },
+    });
+    expect(blocked.status).toBe(429);
+    expect(await blocked.json()).toMatchObject({ error: "rate_limited" });
+  });
+
+  it("start / callback / available は同じ IP バケツを共有する", async () => {
+    const { db, tenantId } = await setupTestDb();
+    const app = createApp({ db });
+
+    // available を上限いっぱいまで使い切る
+    for (let i = 0; i < RATE_LIMITS.oidcPerIp.max; i += 1) {
+      await app.request("/auth/oidc/available?email=someone@example.com", {
+        headers: { "cf-connecting-ip": "203.0.113.31" },
+      });
+    }
+
+    const start = await app.request("/auth/oidc/start", {
+      method: "POST",
+      headers: { "content-type": "application/json", "cf-connecting-ip": "203.0.113.31" },
+      body: JSON.stringify({ tenantId }),
+    });
+    expect(start.status).toBe(429);
+
+    const callback = await app.request("/auth/oidc/callback?code=x&state=y", {
+      headers: { "cf-connecting-ip": "203.0.113.31" },
+    });
+    expect(callback.status).toBe(429);
+  });
+});
+
 describe("公開打刻 API キーのレート制限", () => {
   it(`Bearer 付きリクエストは IP ごとに ${RATE_LIMITS.apiKeyPerIp.max}回/分まで(超過で 429)`, async () => {
     const { db } = await setupTestDb();

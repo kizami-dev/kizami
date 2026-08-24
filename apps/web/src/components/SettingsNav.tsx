@@ -18,6 +18,7 @@ export type SettingsSection =
   | "shiftPatterns"
   | "apiKeys"
   | "slack"
+  | "sso"
   | "auditLogs";
 
 type SettingsRoute =
@@ -34,6 +35,7 @@ type SettingsRoute =
   | "/settings/shift-patterns"
   | "/settings/api-keys"
   | "/settings/slack"
+  | "/settings/sso"
   | "/settings/audit-logs";
 
 /**
@@ -78,6 +80,7 @@ export function SettingsNav({ active }: { active: SettingsSection }) {
     { key: "privacy", to: "/settings/privacy", label: messages.settingsNav.privacy, enabled: access.privacy },
     { key: "apiKeys", to: "/settings/api-keys", label: messages.settingsNav.apiKeys, enabled: access.apiKeys },
     { key: "slack", to: "/settings/slack", label: messages.settingsNav.slack, enabled: access.slack },
+    { key: "sso", to: "/settings/sso", label: messages.settingsNav.sso, enabled: access.sso },
     { key: "auditLogs", to: "/settings/audit-logs", label: messages.settingsNav.auditLogs, enabled: access.auditLogs },
   ];
   const visible = items.filter((i) => i.enabled);
