@@ -14,6 +14,9 @@
  */
 
 import { randomUUID } from "node:crypto";
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { migrateDb, resolveDialect } from "@kizami/db";
 import { createApp } from "../src/app.js";
@@ -49,11 +52,21 @@ describe.skipIf(pgUrl === undefined)("apps/api boots against PostgreSQL", () => 
     expect(dialect).toBe("postgres");
 
     try {
-      // マイグレーションで 38 テーブルが出来ていること
+      // マイグレーションで全テーブルが出来ていること。期待数は migrations-pg/*.sql の
+      // CREATE TABLE 数から導出する(固定数だとスキーマ追加のたびにここが落ちる —
+      // しかもローカルは TEST_PG_URL 無しで PG レグがスキップされるため CI でしか発覚しない、
+      // という形で 2026-08-24 に実際に踏んだ。動的導出なら drift は packages/db の
+      // schema-drift テストと migrate.test.ts のテーブル一覧が守る)
+      const migrationsPgDir = fileURLToPath(new URL("../../../packages/db/migrations-pg/", import.meta.url));
+      const expectedTableCount = readdirSync(migrationsPgDir)
+        .filter((f) => f.endsWith(".sql"))
+        .map((f) => readFileSync(join(migrationsPgDir, f), "utf8"))
+        .join("\n")
+        .match(/CREATE TABLE /g)!.length;
       const tables = await client.execute(
         "SELECT tablename FROM pg_tables WHERE schemaname = current_schema() AND tablename != '__drizzle_migrations'",
       );
-      expect(tables.rows.length).toBe(38);
+      expect(tables.rows.length).toBe(expectedTableCount);
 
       const { email, password } = await setupTestDb(db);
       const app = createApp({ db });
