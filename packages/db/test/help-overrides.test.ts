@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { migrateDb, type Database } from "../src/migrate.js";
+import { migrateDb, type Database } from "./support/db.js";
 import { deleteHelpOverride, getHelpOverride, getHelpOverrides, upsertHelpOverride } from "../src/queries/help-overrides.js";
 import { helpOverrides, tenants, users } from "../src/schema/index.js";
 import { uuidv7 } from "../src/uuid.js";

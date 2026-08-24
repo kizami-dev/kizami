@@ -12,6 +12,7 @@
 #   振り分ける。API を別オリジンにしたい場合は web イメージの再ビルドが必要。
 # - DB は SQLite ファイル(named volume)。バックアップは `sqlite3 ... ".backup"` の整合コピーを
 #   推奨(WAL があるため生 cp は不可)。k8s 構成や運用の詳細は ../k8s/README.md を参照。
+#   PostgreSQL を使いたい場合はファイル末尾の「PostgreSQL 構成」を参照(既定は SQLite のまま)。
 # - worker は api と同じイメージで src/worker.ts を実行(リマインダー・乖離通知・有給予告の
 #   日次スキャン)。キューは Valkey(永続化なし — ジョブは毎日再スケジュールされるため)。
 name: kizami
@@ -94,3 +95,33 @@ configs:
       }
 volumes:
   data:
+
+# ---------------------------------------------------------------------------
+# PostgreSQL 構成(任意 / 既定は上記の SQLite のまま)
+# ---------------------------------------------------------------------------
+# KIZAMI は DATABASE_URL のスキームだけでダイアレクトを切り替える
+# (docs/design/db-dialects.md)。PostgreSQL にする場合:
+#
+#  1. 下の db サービスのコメントを外す
+#  2. api / worker / seed / create-tenant の DATABASE_URL を
+#       postgres://kizami:${KIZAMI_DB_PASSWORD}@db:5432/kizami
+#     に置き換える(4箇所すべて)
+#  3. 同じ4サービスの `volumes: - data:/data` を削除する(SQLite ファイル用なので不要)
+#  4. api / worker / seed / create-tenant に `depends_on: [db]` を足す
+#  5. 末尾の `volumes:` に `pgdata:` を足す
+#
+# マイグレーションは起動時に自動適用される(migrations-pg/)。追加設定は不要。
+#
+#   db:
+#     image: postgres:17-alpine
+#     environment:
+#       POSTGRES_DB: kizami
+#       POSTGRES_USER: kizami
+#       POSTGRES_PASSWORD: ${KIZAMI_DB_PASSWORD:?PostgreSQL 構成では .env に設定してください}
+#     volumes:
+#       - pgdata:/var/lib/postgresql/data
+#     healthcheck:
+#       test: ["CMD-SHELL", "pg_isready -U kizami -d kizami"]
+#       interval: 5s
+#       retries: 10
+#     restart: unless-stopped

@@ -6,7 +6,7 @@ import {
   listAllowanceDefinitions,
   listAllowanceDefinitionVersions,
 } from "../src/queries/allowances.js";
-import { migrateDb, type Database } from "../src/migrate.js";
+import { migrateDb, type Database } from "./support/db.js";
 import { tenants } from "../src/schema/index.js";
 import { uuidv7 } from "../src/uuid.js";
 

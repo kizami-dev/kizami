@@ -3,21 +3,24 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "DB レイヤ — Drizzle ORM(SQLite) スキーマ・マイグレーション・クエリ",
+  "description": "DB レイヤ — Drizzle ORM(SQLite 既定 / PostgreSQL 選択式) スキーマ・マイグレーション・クエリ",
   "exports": {
     ".": "./src/index.ts"
   },
   "scripts": {
     "generate": "drizzle-kit generate",
+    "generate:pg": "node scripts/generate-pg.mjs",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@libsql/client": "^0.17.4",
-    "drizzle-orm": "^0.45.2"
+    "drizzle-orm": "^0.45.2",
+    "pg": "^8.23.0"
   },
   "devDependencies": {
     "@types/node": "^26.2.0",
+    "@types/pg": "^8.23.1",
     "drizzle-kit": "^0.31.10"
   }
 }

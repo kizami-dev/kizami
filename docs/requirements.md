@@ -140,7 +140,7 @@
 | ビルド/テスト | Vite / Vitest | WakuはVite基盤。ツールチェーンをViteエコシステムに統一 |
 | ドキュメント | VitePress | OSSドキュメントサイト(日/英) |
 | ORM | Drizzle | SQLite/PostgreSQL両ダイアレクトを抽象 |
-| DB | SQLiteベース+PostgreSQL選択式 | 既定はSQLite。Cloudflare D1にも対応(動作保証、§9)。大規模はPostgreSQL |
+| DB | SQLiteベース+PostgreSQL選択式 | 既定はSQLite。大規模はPostgreSQL(2026-08-24 実装 — `DATABASE_URL` が `postgres://` なら自動で切り替え、[design/db-dialects.md](./design/db-dialects.md))。Cloudflare D1にも対応(動作保証、§9) |
 | キュー/キャッシュ | Valkey + BullMQ | リマインドスケジューラ・ジョブキュー用(確定) |
 | 配布 | Docker Compose+Helm chart | 1社1インスタンスでもマルチテナントでも可 |
 | リファレンス環境 | 既存k3sクラスタ | 開発者自身のドッグフーディング環境 |
@@ -162,13 +162,13 @@ Workers動作保証(§8)と SQLite/PostgreSQL/D1 の3ダイアレクト対応を
 | レイヤ | 手法 | 実行環境 |
 | --- | --- | --- |
 | 集計エンジン(unit) | Vitest+ゴールデンケース。不変条件(区分合計=総実労働 等)は fast-check の property-based で補強 | Node と workerd(@cloudflare/vitest-pool-workers)の両方で同一スイート |
-| リポジトリ層(integration) | Drizzle経由の実DBテスト。同一スイートを3ダイアレクトで実行 | SQLite(libSQL) / PostgreSQL(Testcontainers) / D1(Miniflare) |
+| リポジトリ層(integration) | Drizzle経由の実DBテスト。同一スイートを3ダイアレクトで実行 | SQLite(libSQL) / PostgreSQL(2026-08-24 実装 — `TEST_PG_URL` を渡すと packages/db の全テストが両ダイアレクトで走る) / D1(Miniflare、未着手) |
 | API(integration) | hono/testing でリクエストレベル検証。権限マトリクス(permission×scope)網羅と監査ログ不可変性テストを含む | Node と workerd の両方 |
 | E2E | Playwright。主要業務フロー(打刻→集計→修正申請→承認→締め→CSV) | SQLite構成のフルスタック |
 
 ### CIマトリクス
 
-- 毎PR: unit(Node+workerd)、integration(SQLite/PostgreSQL/D1)、E2E主要フロー
+- 毎PR: unit(Node+workerd)、integration(SQLite/PostgreSQL — CI の `test-postgres` ジョブ/D1)、E2E主要フロー
 - nightly: E2E全量、PostgreSQL複数バージョン
 - Workers動作保証の実体はこのマトリクスの workerd/D1 列。緑でないPRはマージ不可
 
@@ -207,7 +207,7 @@ Workers動作保証(§8)と SQLite/PostgreSQL/D1 の3ダイアレクト対応を
 | v0.4 | 入口の拡張 | Slackコマンド打刻、Webhook通知、PWA+GPS打刻、公開打刻API(APIキー)、MCPサーバー(打刻・照会・申請) |
 | v0.5 | 制度の拡張 | 固定時間制(1日8h・週40hの二段判定、法定内残業の区分)、月次一覧への打刻時刻表示(広い画面では出勤・退勤の独立列)、制度に応じた表示の出し分け、休憩不足の検知(労基法34条・勤怠日チェーン単位 — 中抜けの空白を休憩相当に算入)、休憩の自動控除(auto/both、本人が打ち消し申請できる形 — [design/breaks.md](./design/breaks.md))、招待式メンバー登録、手当対象時間の算出([design/allowances.md](./design/allowances.md))、多言語UI(日・英・韓・中〔簡体〕) |
 | v0.7 | シフト制と有給付与フロー | シフト制/1ヶ月単位の変形労働時間制(3段の時間外判定・シフト表・予実乖離の警告 — [design/shift-work.md](./design/shift-work.md))、**有給付与の予告→承認→通知フロー**(下記)、シフト制ユーザーの有給1日分の分数換算(シフトのある日はその所定、無い日は基準所定)<br>実装状況(2026-08-24): フェーズ1〜4 完了 |
-| v1.0 | 企業利用可能・OSS公開 | マルチテナント有効化(2026-08-24 完了: テナント作成CLI + テナント間分離の監査テスト — [design/multi-tenancy.md](./design/multi-tenancy.md))、OIDC(2026-08-24 完了: 認可コード+PKCE、自動プロビジョニングなし — [design/sso-oidc.md](./design/sso-oidc.md))、**Workers+D1動作保証**(キュー層のCloudflare Queues実装込み)、Compose/Helm配布、ドキュメント整備 |
+| v1.0 | 企業利用可能・OSS公開 | マルチテナント有効化(2026-08-24 完了: テナント作成CLI + テナント間分離の監査テスト — [design/multi-tenancy.md](./design/multi-tenancy.md))、OIDC(2026-08-24 完了: 認可コード+PKCE、自動プロビジョニングなし — [design/sso-oidc.md](./design/sso-oidc.md))、PostgreSQL選択式(2026-08-24 完了: `DATABASE_URL` のスキームで切替、全DBテストを両ダイアレクトで実行 — [design/db-dialects.md](./design/db-dialects.md))、**Workers+D1動作保証**(キュー層のCloudflare Queues実装込み)、Compose/Helm配布、ドキュメント整備 |
 | 以降 | ロードマップ | コアタイム、3ヶ月清算、freee/MF連携、Web Push、多段承認、権限denyルール、オンボーディングツアー |
 
 > 有給付与の3段フロー(v0.7 で実装、2026-08-23 決定 / 2026-08-24 実装): (1) 付与基準日の**30日前**に管理者へ予告通知 — 対象者・算定日数に加え、打刻・シフトから計算した**出勤率の参考値**(労基法39条1項の8割出勤要件の検算材料)を添える。(2) 管理者が確認のうえ承認すると、そこで初めて付与(`leave_grants`)が作られる。(3) 承認時に本人へ「◯日付与されました」を leave_alert カテゴリ・個人チャネルで通知。機械が無条件に付与を確定させない — 出勤率要件の最終判断は人が行う。設計・決定の詳細は [design/shift-work.md](./design/shift-work.md) の「フェーズ4の決定事項」を参照。

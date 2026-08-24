@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { migrateDb, type Database } from "../src/migrate.js";
+import { migrateDb, type Database } from "./support/db.js";
 import { createInvitation, deactivateUser, reactivateUser, revokePendingInvitationForUser } from "../src/queries/index.js";
 import { tenants, users } from "../src/schema/index.js";
 import { uuidv7 } from "../src/uuid.js";

@@ -5,7 +5,7 @@ import {
   listCurrentWorkPolicyKindsForTenant,
   listUserPolicyAssignments,
 } from "../src/queries/work-policies.js";
-import { migrateDb, type Database } from "../src/migrate.js";
+import { migrateDb, type Database } from "./support/db.js";
 import { tenants, users, workPolicies, workPolicyVersions } from "../src/schema/index.js";
 import { uuidv7 } from "../src/uuid.js";
 

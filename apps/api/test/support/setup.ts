@@ -60,8 +60,12 @@ export async function createTestDatabase(): Promise<Database> {
   return db;
 }
 
-export async function setupTestDb(): Promise<SeededTenant> {
-  const db = await createTestDatabase();
+/**
+ * @param existingDb 既にマイグレーション済みの DB を使う場合に渡す(PostgreSQL 疎通の
+ *   スモークテスト用。省略時は従来どおり一時ファイルの SQLite を作る)
+ */
+export async function setupTestDb(existingDb?: Database): Promise<SeededTenant> {
+  const db = existingDb ?? (await createTestDatabase());
   const now = 0;
   const tenantId = uuidv7();
   const userId = uuidv7();

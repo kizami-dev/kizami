@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { getEffectiveSettingsVersion, getSettingsTimeline } from "../src/queries/settings.js";
-import { migrateDb, type Database } from "../src/migrate.js";
+import { migrateDb, type Database } from "./support/db.js";
 import { tenantSettingVersions, tenants } from "../src/schema/index.js";
 import { uuidv7 } from "../src/uuid.js";
 

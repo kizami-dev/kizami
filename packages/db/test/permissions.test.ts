@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { migrateDb, type Database } from "../src/migrate.js";
+import { migrateDb, type Database } from "./support/db.js";
 import { listAssignedPresetGrants } from "../src/queries/permissions.js";
 import { permissionPresets, presetAssignments, tenants, users } from "../src/schema/index.js";
 import { uuidv7 } from "../src/uuid.js";

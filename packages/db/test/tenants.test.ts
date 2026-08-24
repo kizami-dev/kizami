@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { migrateDb, type Database } from "../src/migrate.js";
+import { migrateDb, type Database } from "./support/db.js";
 import { getTenantById, updateTenantWorkRulesUrl } from "../src/queries/tenants.js";
 import { tenants } from "../src/schema/index.js";
 import { uuidv7 } from "../src/uuid.js";

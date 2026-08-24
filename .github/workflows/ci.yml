@@ -29,5 +29,46 @@ jobs:
       # (設計の綻び)。docs:build は typedoc 生成物を含めた VitePress のフルビルドまで検証する。
       - run: pnpm docs:build
 
-      # Future: Add matrix tests across Node versions and runtimes
-      # e.g. Node/workerd × SQLite/PostgreSQL/D1 combinations
+  # DB は SQLite 既定 + PostgreSQL 選択式(要件 §9)。上の test ジョブは SQLite だけを
+  # 見ているので、PostgreSQL 側はサービスコンテナを立てて別ジョブで回す。
+  # - @kizami/db: 全テストが SQLite / PostgreSQL の2レグで走る(TEST_PG_URL があると
+  #   vitest の projects に postgres レグが増える。設計は docs/design/db-dialects.md)
+  # - @kizami/api: PostgreSQL 起動経路のスモークテスト1本が追加で走る
+  test-postgres:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: kizami
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      TEST_PG_URL: postgres://postgres:test@localhost:5432/kizami
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm --filter @kizami/db test
+
+      - run: pnpm --filter @kizami/api test
+
+  # Future: Add matrix tests across Node versions and runtimes
+  # e.g. Node/workerd × D1 combinations(PostgreSQL は上の test-postgres で対応済み)

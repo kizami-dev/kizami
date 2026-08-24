@@ -8,7 +8,7 @@
  */
 
 import { and, asc, eq, gte, isNull, lte, notExists } from "drizzle-orm";
-import { alias } from "drizzle-orm/sqlite-core";
+import { alias } from "../alias.js";
 import type { Database, Transaction } from "../migrate.js";
 import { shiftDays, shiftPatterns, shiftPlans } from "../schema/index.js";
 import { uuidv7 } from "../uuid.js";

@@ -1,12 +1,25 @@
 import { describe, expect, it } from "vitest";
-import { migrateDb } from "../src/migrate.js";
 import { tenants } from "../src/schema/index.js";
+import { migrateDb } from "./support/db.js";
 
+/**
+ * 「マイグレーションを流すと 38 テーブルが揃い、クエリできる」ことの確認。
+ * ダイアレクトごとに `migrations/`(SQLite)/ `migrations-pg/`(PostgreSQL)と別系統の DDL が
+ * 流れるが、**出来上がるテーブル集合と1行 INSERT/SELECT の結果は同一**であることを見る。
+ * テーブル一覧の取得だけはカタログが違うのでここで分岐する(sqlite_master / information_schema)。
+ */
 describe("migrate", () => {
   it("applies the migration and the schema is queryable", async () => {
-    const { db, client } = await migrateDb();
+    const { db, client, dialect } = await migrateDb();
 
-    const tableNames = await client.execute("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name != '__drizzle_migrations'");
+    const tableNames =
+      dialect === "postgres"
+        ? await client.execute(
+            "SELECT tablename AS name FROM pg_tables WHERE schemaname = current_schema() AND tablename != '__drizzle_migrations'",
+          )
+        : await client.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name != '__drizzle_migrations'",
+          );
     const names = tableNames.rows.map((row) => row.name).sort();
     expect(names).toEqual(
       [

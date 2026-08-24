@@ -193,6 +193,7 @@ export default defineConfig({
           { text: "権限カタログ", link: "/design/permission-catalog" },
           { text: "マルチテナントとテナント分離", link: "/design/multi-tenancy" },
           { text: "SSO(OIDC)ログイン", link: "/design/sso-oidc" },
+          { text: "DBダイアレクト(SQLite/PostgreSQL)", link: "/design/db-dialects" },
         ],
       },
       {

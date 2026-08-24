@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import { isUniqueConstraintError } from "../src/errors.js";
-import { migrateDb, type Database } from "../src/migrate.js";
+import { migrateDb, type Database } from "./support/db.js";
 import { insertAuditLog } from "../src/queries/audit.js";
 import {
   createCorrectionRequest,

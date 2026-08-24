@@ -6,7 +6,7 @@
 
 - StorageClass `local-path` が既定で使えること(k3s 同梱の Local Path Provisioner)
 - イメージは `.github/workflows/images.yml` で `ghcr.io/sasagar/kizami-api` / `kizami-web` に `linux/amd64,linux/arm64` マルチアーチ push 済みであること
-- SQLite ファイル DB を PVC(RWO)に置くため **replicas は 1 固定**。水平スケールは不可
+- SQLite ファイル DB を PVC(RWO)に置くため **replicas は 1 固定**。水平スケールは不可(PostgreSQL 構成にすればこの制約は外れる — 下記「PostgreSQL を使う」節)
 
 ## 適用手順
 
@@ -268,7 +268,50 @@ containers:
 `docs-local` の中身を更新したら、Pod を再作成(`kubectl rollout restart`)して
 initContainer を再実行すれば反映される。
 
+## PostgreSQL を使う(任意 / 既定は SQLite)
+
+KIZAMI は `DATABASE_URL` のスキームだけでダイアレクトを切り替える
+(設計は [docs/design/db-dialects.md](../../docs/design/db-dialects.md))。
+`postgres://` を渡せば PostgreSQL に、それ以外なら従来どおり SQLite になる。
+マイグレーション(`migrations-pg/`)は Pod 起動時に自動適用されるので追加の Job は要らない。
+
+**SQLite のままでよい場合はこの節を読み飛ばしてよい**(既定は変わっていない)。
+
+移行/切り替えの手順:
+
+1. PostgreSQL を用意する(クラスタ内に立てる、あるいはマネージドを使う)。
+   バージョンは 15 以降を推奨(CI は 17 で検証している)
+2. 接続文字列を Secret に入れる:
+
+   ```sh
+   kubectl -n kizami create secret generic kizami-database \
+     --from-literal=url='postgres://kizami:<password>@postgres.kizami.svc:5432/kizami'
+   ```
+
+3. `deployment.yaml` の `api` / `worker` 両コンテナの `DATABASE_URL` を、
+   固定値(`file:/data/kizami.db`)から Secret 参照に差し替える:
+
+   ```yaml
+   - name: DATABASE_URL
+     valueFrom:
+       secretKeyRef: { name: kizami-database, key: url }
+   ```
+
+   `seed-job.yaml`(初期管理者作成)とテナント作成 Job も同様に差し替えること。
+   差し替え漏れがあると、その Job だけ空の SQLite を作ってしまう
+
+4. SQLite 用の PVC マウント(`data` volume と `volumeMounts`)を外す。
+   `pvc.yaml` 自体も不要になる
+
+5. **replicas 1 固定の制約が外れる**のはこのときだけ。SQLite + RWO PVC のときは
+   1 固定だが、PostgreSQL なら api を水平スケールできる
+   (worker は日次スキャンの二重実行を避けるため 1 のままにすること)
+
+既存の SQLite からのデータ移行ツールは用意していない(スキーマは両ダイアレクトで一致するが、
+ダンプ変換は運用側の作業)。
+
 ## 既知の制約 / 将来課題
 
 - API コンテナは `tsx` でソース(TypeScript)を直接実行している(ビルド済み JS を実行する本来のパイプラインは未整備)。`tsx` は `apps/api/package.json` の `dependencies` に含めてある(詳細は `docker/api.Dockerfile` 冒頭コメント参照)
 - Helm chart 化、HPA/PDB、Ingress 化(NodePort → ClusterIP + Ingress Controller)は v1.0 以降の検討事項
+- SQLite → PostgreSQL のデータ移行ツールは未提供(スキーマは一致するのでダンプ変換で移せる)

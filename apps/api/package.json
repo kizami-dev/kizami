@@ -28,6 +28,7 @@
     "ioredis": "^6.0.0",
     "jose": "^6.2.10",
     "nodemailer": "^9.0.5",
+    "pg": "^8.23.0",
     "temporal-polyfill": "^1.0.4",
     "tsx": "^4.23.12"
   },
