@@ -41,6 +41,7 @@ const ADMIN_GRANT_KEYS = [
   "permission.assignment.manage",
   "audit_log.view",
   "api_key.manage",
+  "approval_flow.manage",
 ];
 
 /** docs/design/permission-catalog.md §4「マネージャー」列の明示ON分(apps/api/src/seed.ts の MANAGER_GRANTS と同じ)。 */
@@ -58,8 +59,8 @@ const MANAGER_GRANT_KEYS = [
 ];
 
 describe("PERMISSION_CATALOG", () => {
-  it("has exactly the 32 items from permission-catalog.md §1, all with unique keys", () => {
-    expect(PERMISSION_CATALOG.length).toBe(32);
+  it("has exactly the 33 items from permission-catalog.md §1, all with unique keys", () => {
+    expect(PERMISSION_CATALOG.length).toBe(33);
     const keys = PERMISSION_CATALOG.map((e) => e.key);
     expect(new Set(keys).size).toBe(keys.length);
   });

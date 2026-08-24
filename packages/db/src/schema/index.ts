@@ -7,6 +7,7 @@
  */
 
 export * from "./allowances.js";
+export * from "./approval-flows.js";
 export * from "./api-keys.js";
 export * from "./audit.js";
 export * from "./auto-break-waivers.js";

@@ -9,6 +9,7 @@ export type SettingsSection =
   | "departments"
   | "members"
   | "presets"
+  | "approvalFlow"
   | "tenantProfile"
   | "leave"
   | "help"
@@ -26,6 +27,7 @@ type SettingsRoute =
   | "/settings/departments"
   | "/settings/members"
   | "/settings/presets"
+  | "/settings/approval-flow"
   | "/settings/tenant-profile"
   | "/settings/leave"
   | "/settings/help"
@@ -51,6 +53,13 @@ export function SettingsNav({ active }: { active: SettingsSection }) {
     { key: "departments", to: "/settings/departments", label: messages.settingsNav.departments, enabled: access.departments },
     { key: "members", to: "/settings/members", label: messages.settingsNav.members, enabled: access.members },
     { key: "presets", to: "/settings/presets", label: messages.settingsNav.presets, enabled: access.presets },
+    // 承認体制の設定なので、権限プリセット(誰が承認できるか)の隣に置く。
+    {
+      key: "approvalFlow",
+      to: "/settings/approval-flow",
+      label: messages.settingsNav.approvalFlow,
+      enabled: access.approvalFlow,
+    },
     {
       key: "attendance",
       to: "/settings/attendance",

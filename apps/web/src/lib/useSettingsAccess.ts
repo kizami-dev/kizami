@@ -27,6 +27,8 @@ export interface SettingsAccess {
   slack: boolean;
   /** /settings/sso(SSO(OIDC)設定、2026-08-24 追加)。tenant_settings.auth.manage(tenant スコープ)。 */
   sso: boolean;
+  /** /settings/approval-flow(多段承認の設定、2026-08-24 追加)。approval_flow.manage(tenant スコープ)。 */
+  approvalFlow: boolean;
   /** /settings/slack-link。apiKeys と同じく自分用なので権限不要、常に true。 */
   slackLink: boolean;
   /** /settings/audit-logs(Tier 1 新設)。audit_log.view(department スコープ以上)。 */
@@ -93,6 +95,11 @@ export function useSettingsAccess(): SettingsAccess {
     // (= "tenant_settings.auth.manage")を tenant スコープで要求する。通知設定とは別キー
     // (理由は routes/settings/permissions.ts の定数コメント参照)。
     sso: has("tenant_settings.auth.manage", "tenant"),
+    // routes/settings/approval-flow.ts が GET/PUT とも APPROVAL_FLOW_PERMISSION
+    // (= "approval_flow.manage")を tenant スコープで要求する。承認フロー自体の設計を
+    // 変える設定であり、個々の申請の承認権限(attendance.correction.approve など)とは
+    // 別キーで管理する(docs/design/approval-flows.md)。
+    approvalFlow: has("approval_flow.manage", "tenant"),
     auditLogs: has("audit_log.view", "department"),
     // shift-patterns.ts が GET/POST/:id/archive すべてで SHIFT_MANAGE_PERMISSION を tenant
     // スコープで要求する(routes/settings/shift-patterns.ts 冒頭コメント参照)ため、それに揃える。

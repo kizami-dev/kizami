@@ -3,7 +3,8 @@
  *
  * punch_events と異なり correction_requests は「ワークフローの現在状態」を持つ通常テーブルなので、
  * status の UPDATE を行う(設計上許される遷移は pending → approved/rejected/withdrawn のみ。
- * §correction_requests 参照)。
+ * §correction_requests 参照)。二段承認(required_steps = 2)では pending → approved_step1 →
+ * approved/rejected の中間状態を1つ挟む(docs/design/approval-flows.md)。
  */
 
 import { and, desc, eq } from "drizzle-orm";
@@ -12,7 +13,7 @@ import { correctionRequests } from "../schema/index.js";
 import { uuidv7 } from "../uuid.js";
 
 export type CorrectionRequest = typeof correctionRequests.$inferSelect;
-export type CorrectionStatus = "pending" | "approved" | "rejected" | "withdrawn";
+export type CorrectionStatus = "pending" | "approved_step1" | "approved" | "rejected" | "withdrawn";
 
 export interface NewCorrectionRequestInput {
   tenantId: string;
@@ -22,6 +23,11 @@ export interface NewCorrectionRequestInput {
   proposedKind?: string | null;
   proposedOccurredAt?: number | null;
   reason: string;
+  /**
+   * 承認に必要な段数(1 = 単段 / 2 = 二段)。省略時は 1。作成時点のテナント設定を
+   * 凍結して保存する(グランドファザリング。schema/corrections.ts のコメント参照)。
+   */
+  requiredSteps?: number;
   /** UTC エポック分 */
   createdAt: number;
 }
@@ -36,6 +42,7 @@ export async function createCorrectionRequest(db: Database, input: NewCorrection
       userId: input.userId,
       requestedBy: input.requestedBy,
       status: "pending",
+      requiredSteps: input.requiredSteps ?? 1,
       targetEventId: input.targetEventId ?? null,
       proposedKind: input.proposedKind ?? null,
       proposedOccurredAt: input.proposedOccurredAt ?? null,
@@ -88,6 +95,13 @@ export interface UpdateCorrectionStatusParams {
   /** UTC エポック分 */
   decidedAt?: number | null;
   decisionNote?: string | null;
+  /**
+   * 二段承認の一次承認者・一次承認時刻。**渡したときだけ書き込む**(省略時は既存値を保つ)。
+   * 二次承認・却下では省略することで、一次承認者の記録が消えないようにしている。
+   */
+  step1DecidedBy?: string;
+  /** UTC エポック分 */
+  step1DecidedAt?: number;
 }
 
 /**
@@ -111,6 +125,8 @@ export async function updateCorrectionStatus(
       decidedBy: params.decidedBy ?? null,
       decidedAt: params.decidedAt ?? null,
       decisionNote: params.decisionNote ?? null,
+      ...(params.step1DecidedBy !== undefined ? { step1DecidedBy: params.step1DecidedBy } : {}),
+      ...(params.step1DecidedAt !== undefined ? { step1DecidedAt: params.step1DecidedAt } : {}),
     })
     .where(and(...conditions))
     .returning();

@@ -6,7 +6,9 @@ import {
   api,
   ApiError,
   UnauthorizedError,
+  type ApprovalFlowStateDto,
   type AutoBreakWaiverDto,
+  type AutoBreakWaiverStatus,
   type CorrectionRequestDto,
   type CorrectionStatus,
   type PunchKind,
@@ -30,6 +32,31 @@ import { HelpTip } from "./HelpTip";
 const APPROVE_PERMISSION = "attendance.correction.approve";
 
 /** 対象打刻の解決に使う参照範囲。過去分は widely だが、SQLite ローカル運用の規模を前提に許容する。 */
+
+/**
+ * 「未決裁」= まだ最終決裁に至っていない状態(2026-08-24 多段承認対応)。
+ * pending は一次承認待ち、approved_step1 は一次承認済み・二次承認待ちで、どちらも
+ * 取下げ可能・承認キューに出すべき行。apps/api の GET ...?status=pending もこの2つを返す
+ * (docs/design/approval-flows.md)。
+ */
+function isOpenStatus(status: CorrectionStatus | AutoBreakWaiverStatus): boolean {
+  return status === "pending" || status === "approved_step1";
+}
+
+/**
+ * この行の「今の段」を、今ログインしている人が承認できるか(2026-08-24 多段承認対応)。
+ *
+ * 判断点: 二次承認(currentStep === 2)は、同じ承認権限を **tenant スコープ** で持つ人しか
+ * 行えない(apps/api は department スコープの承認者に 403 を返す)。押しても必ず失敗する
+ * ボタンは出さず、状態チップだけを見せる。一次承認(currentStep === 1)の条件は従来どおり。
+ *
+ * なお「一次承認した本人は二次承認できない」(409 same_approver_as_step1)はここでは判定せず、
+ * サーバーのエラー文言に委ねる(キューの表示が古いままでも正しく弾けるのはサーバー側だけのため)。
+ */
+function canApproveCurrentStep(state: ApprovalFlowStateDto, canApprove: boolean, canApproveTenantWide: boolean): boolean {
+  if (state.currentStep === 2) return canApproveTenantWide;
+  return canApprove;
+}
 
 type Action = "approve" | "reject" | "withdraw";
 
@@ -292,10 +319,17 @@ export function CorrectionsView() {
    * GET /me/effective-permissions の追加により、この推定は不要になった。
    */
   const hasApprovePermission = hasEffectivePermission(effectivePermissions, APPROVE_PERMISSION, "department");
+  /**
+   * 二次承認(多段承認の2段目)を行えるか。同じ承認権限を **tenant スコープ** で持つ人だけが
+   * 二次承認でき、部署スコープの承認者は apps/api 側で 403 になる
+   * (2026-08-24 追加、docs/design/approval-flows.md)。
+   */
+  const hasTenantApprovePermission = hasEffectivePermission(effectivePermissions, APPROVE_PERMISSION, "tenant");
 
   const selfUserId = guard.user.id;
   const ownWaivers = waivers?.filter((w) => w.userId === selfUserId) ?? [];
-  const queueWaivers = hasApprovePermission ? (waivers ?? []).filter((w) => w.status === "pending") : [];
+  // 承認キューは「未決裁」= pending(一次承認待ち)+ approved_step1(二次承認待ち)を対象にする。
+  const queueWaivers = hasApprovePermission ? (waivers ?? []).filter((w) => isOpenStatus(w.status)) : [];
 
   /**
    * 打刻修正申請の own/queue 分割(2026-08-23、waiver と同じ二段構成に統一)。GET /corrections は
@@ -305,7 +339,49 @@ export function CorrectionsView() {
    * ConfirmDialog の selfApproved 表示で示す — 既存 UI を維持)。
    */
   const ownCorrections = requests?.filter((r) => r.requestedBy === selfUserId) ?? [];
-  const queueCorrections = hasApprovePermission ? (requests ?? []).filter((r) => r.status === "pending") : [];
+  const queueCorrections = hasApprovePermission ? (requests ?? []).filter((r) => isOpenStatus(r.status)) : [];
+
+  /**
+   * 多段承認の状態表示(2026-08-24 追加)。打刻修正申請・休憩自動控除の打ち消し申請で
+   * 完全に同じ形なので、DTO ではなく ApprovalFlowStateDto を受け取る共通関数にする。
+   * - 承認キューの行には「一次/二次のどちらの承認待ちか」を出す
+   * - 二段承認の申請には「二次承認まで終わらないと反映されない」注記を出す(申請者向け)
+   * - 二次承認待ちだが自分は二次承認できない場合は、承認ボタンの代わりに理由を出す
+   */
+  function renderApprovalStepChip(state: ApprovalFlowStateDto) {
+    if (state.requiredSteps < 2 || state.currentStep === null) return null;
+    return (
+      <span className="correction-card__step">
+        {state.currentStep === 2 ? messages.approvalSteps.awaitingStep2 : messages.approvalSteps.awaitingStep1}
+      </span>
+    );
+  }
+
+  function renderStep1DecidedRow(state: ApprovalFlowStateDto) {
+    if (state.step1DecidedBy === null) return null;
+    const bySelf = state.step1DecidedBy === selfUserId;
+    return (
+      <div className="correction-card__row">
+        <dt>{messages.approvalSteps.step1DecidedLabel}</dt>
+        <dd>
+          {bySelf ? messages.approvalSteps.step1DecidedBySelf : state.step1DecidedBy}
+          {state.step1DecidedAt !== null ? ` / ${formatDateTimeJst(state.step1DecidedAt)}` : ""}
+        </dd>
+      </div>
+    );
+  }
+
+  function renderApprovalStepNotes(state: ApprovalFlowStateDto, options: { showApproveReject: boolean }) {
+    if (state.requiredSteps < 2) return null;
+    // 二次承認待ちなのに自分は二次承認できない場合だけ、その理由を添える。
+    const blockedFromStep2 = options.showApproveReject && state.currentStep === 2 && !hasTenantApprovePermission;
+    return (
+      <>
+        <p className="correction-card__note">{messages.approvalSteps.twoStepNote}</p>
+        {blockedFromStep2 ? <p className="correction-card__note">{messages.approvalSteps.step2NotYours}</p> : null}
+      </>
+    );
+  }
 
   function waiverDecisionText(w: AutoBreakWaiverDto): string {
     const decidedByLabel = w.decidedBy ? (w.decidedBy === guard.user?.id ? messages.autoBreakWaiver.decidedBySelf : w.decidedBy) : "-";
@@ -315,13 +391,89 @@ export function CorrectionsView() {
   }
 
   /**
+   * 1件分の休憩自動控除の打ち消し申請カード。2026-08-24 の多段承認対応で own/queue に
+   * ほぼ同じ JSX が二重にあった状態を解消し、renderCorrectionCard と同じ
+   * 「options でボタンだけ出し分ける」形に揃えた(own: 取下げのみ、queue: 承認/却下のみ)。
+   */
+  function renderWaiverCard(w: AutoBreakWaiverDto, options: { showApproveReject: boolean; showWithdraw: boolean }) {
+    const isOpen = isOpenStatus(w.status);
+    const showApproveReject = options.showApproveReject && canApproveCurrentStep(w, hasApprovePermission, hasTenantApprovePermission);
+    return (
+      <li key={w.id} className="correction-card">
+        <div className="correction-card__header">
+          <span className={`correction-badge correction-badge--${w.status as AutoBreakWaiverStatus}`}>
+            {messages.autoBreakWaiver.statusLabel[w.status]}
+          </span>
+          <span className="correction-card__type">{messages.autoBreakWaiver.typeLabel}</span>
+          {renderApprovalStepChip(w)}
+        </div>
+
+        <dl className="correction-card__body">
+          <div className="correction-card__row">
+            <dt>{messages.autoBreakWaiver.columnDate}</dt>
+            <dd className="tabular-nums">{w.waiveDate}</dd>
+          </div>
+          <div className="correction-card__row">
+            <dt>{messages.autoBreakWaiver.columnReason}</dt>
+            <dd>{w.reason}</dd>
+          </div>
+          {renderStep1DecidedRow(w)}
+          {!isOpen ? (
+            <div className="correction-card__row">
+              <dt>{messages.autoBreakWaiver.columnDecision}</dt>
+              <dd>{waiverDecisionText(w)}</dd>
+            </div>
+          ) : null}
+        </dl>
+
+        {isOpen ? renderApprovalStepNotes(w, { showApproveReject: options.showApproveReject }) : null}
+
+        {isOpen && (showApproveReject || options.showWithdraw) ? (
+          <div className="correction-card__actions">
+            {showApproveReject ? (
+              <>
+                <button
+                  type="button"
+                  className="correction-card__btn correction-card__btn--approve"
+                  onClick={() => openWaiverConfirm(w.id, "approve")}
+                >
+                  {messages.autoBreakWaiver.approve}
+                </button>
+                <button
+                  type="button"
+                  className="correction-card__btn correction-card__btn--reject"
+                  onClick={() => openWaiverConfirm(w.id, "reject")}
+                >
+                  {messages.autoBreakWaiver.reject}
+                </button>
+              </>
+            ) : null}
+            {options.showWithdraw ? (
+              <button
+                type="button"
+                className="correction-card__btn correction-card__btn--withdraw"
+                onClick={() => openWaiverConfirm(w.id, "withdraw")}
+              >
+                {messages.autoBreakWaiver.withdraw}
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+      </li>
+    );
+  }
+
+  /**
    * 1件分の修正申請カード。own/queue の両セクションで共通の見た目を使い、ボタンの出し分けだけを
    * 引数で切り替える(own: 承認権限があれば自己承認として承認/却下ボタンも出し、常に取下げボタンも
    * 出す。queue: 承認/却下ボタンのみ・取下げは出さない — 自分の申請ではない可能性があるため)。
    */
   function renderCorrectionCard(req: CorrectionRequestDto, options: { showApproveReject: boolean; showWithdraw: boolean }) {
-    const isPending = req.status === "pending";
+    // 「未決裁」(一次承認待ち・二次承認待ち)の間は決裁欄を出さず、操作ボタンを出す。
+    const isOpen = isOpenStatus(req.status);
     const selfDecided = req.decidedBy !== null && guard.user && req.decidedBy === guard.user.id;
+    // 二次承認待ちの行は、tenant スコープの承認権限を持つ人にだけ承認/却下ボタンを出す。
+    const showApproveReject = options.showApproveReject && canApproveCurrentStep(req, hasApprovePermission, hasTenantApprovePermission);
     return (
       <li key={req.id} className="correction-card">
         <div className="correction-card__header">
@@ -329,6 +481,7 @@ export function CorrectionsView() {
             {messages.corrections.statusLabel[req.status]}
           </span>
           <span className="correction-card__type">{describeType(req)}</span>
+          {renderApprovalStepChip(req)}
         </div>
 
         <dl className="correction-card__body">
@@ -356,7 +509,8 @@ export function CorrectionsView() {
             <dt>{messages.corrections.columnReason}</dt>
             <dd>{req.reason}</dd>
           </div>
-          {!isPending ? (
+          {renderStep1DecidedRow(req)}
+          {!isOpen ? (
             <div className="correction-card__row">
               <dt>{messages.corrections.columnDecision}</dt>
               <dd>
@@ -368,9 +522,11 @@ export function CorrectionsView() {
           ) : null}
         </dl>
 
-        {isPending && (options.showApproveReject || options.showWithdraw) ? (
+        {isOpen ? renderApprovalStepNotes(req, { showApproveReject: options.showApproveReject }) : null}
+
+        {isOpen && (showApproveReject || options.showWithdraw) ? (
           <div className="correction-card__actions">
-            {options.showApproveReject ? (
+            {showApproveReject ? (
               <>
                 <button
                   type="button"
@@ -452,45 +608,7 @@ export function CorrectionsView() {
 
           {ownWaivers.length > 0 ? (
             <ul className="corrections__list">
-              {ownWaivers.map((w) => (
-                <li key={w.id} className="correction-card">
-                  <div className="correction-card__header">
-                    <span className={`correction-badge correction-badge--${w.status}`}>
-                      {messages.autoBreakWaiver.statusLabel[w.status]}
-                    </span>
-                    <span className="correction-card__type">{messages.autoBreakWaiver.typeLabel}</span>
-                  </div>
-
-                  <dl className="correction-card__body">
-                    <div className="correction-card__row">
-                      <dt>{messages.autoBreakWaiver.columnDate}</dt>
-                      <dd className="tabular-nums">{w.waiveDate}</dd>
-                    </div>
-                    <div className="correction-card__row">
-                      <dt>{messages.autoBreakWaiver.columnReason}</dt>
-                      <dd>{w.reason}</dd>
-                    </div>
-                    {w.status !== "pending" ? (
-                      <div className="correction-card__row">
-                        <dt>{messages.autoBreakWaiver.columnDecision}</dt>
-                        <dd>{waiverDecisionText(w)}</dd>
-                      </div>
-                    ) : null}
-                  </dl>
-
-                  {w.status === "pending" ? (
-                    <div className="correction-card__actions">
-                      <button
-                        type="button"
-                        className="correction-card__btn correction-card__btn--withdraw"
-                        onClick={() => openWaiverConfirm(w.id, "withdraw")}
-                      >
-                        {messages.autoBreakWaiver.withdraw}
-                      </button>
-                    </div>
-                  ) : null}
-                </li>
-              ))}
+              {ownWaivers.map((w) => renderWaiverCard(w, { showApproveReject: false, showWithdraw: true }))}
             </ul>
           ) : null}
         </section>
@@ -504,44 +622,7 @@ export function CorrectionsView() {
 
             {queueWaivers.length > 0 ? (
               <ul className="corrections__list">
-                {queueWaivers.map((w) => (
-                  <li key={w.id} className="correction-card">
-                    <div className="correction-card__header">
-                      <span className={`correction-badge correction-badge--${w.status}`}>
-                        {messages.autoBreakWaiver.statusLabel[w.status]}
-                      </span>
-                      <span className="correction-card__type">{messages.autoBreakWaiver.typeLabel}</span>
-                    </div>
-
-                    <dl className="correction-card__body">
-                      <div className="correction-card__row">
-                        <dt>{messages.autoBreakWaiver.columnDate}</dt>
-                        <dd className="tabular-nums">{w.waiveDate}</dd>
-                      </div>
-                      <div className="correction-card__row">
-                        <dt>{messages.autoBreakWaiver.columnReason}</dt>
-                        <dd>{w.reason}</dd>
-                      </div>
-                    </dl>
-
-                    <div className="correction-card__actions">
-                      <button
-                        type="button"
-                        className="correction-card__btn correction-card__btn--approve"
-                        onClick={() => openWaiverConfirm(w.id, "approve")}
-                      >
-                        {messages.autoBreakWaiver.approve}
-                      </button>
-                      <button
-                        type="button"
-                        className="correction-card__btn correction-card__btn--reject"
-                        onClick={() => openWaiverConfirm(w.id, "reject")}
-                      >
-                        {messages.autoBreakWaiver.reject}
-                      </button>
-                    </div>
-                  </li>
-                ))}
+                {queueWaivers.map((w) => renderWaiverCard(w, { showApproveReject: true, showWithdraw: false }))}
               </ul>
             ) : null}
           </section>

@@ -191,6 +191,7 @@ export default defineConfig({
           { text: "シフト制と変形労働", link: "/design/shift-work" },
           { text: "年次有給休暇の比例付与", link: "/design/leave-proportional-grant" },
           { text: "権限カタログ", link: "/design/permission-catalog" },
+          { text: "多段承認(承認フロー)", link: "/design/approval-flows" },
           { text: "マルチテナントとテナント分離", link: "/design/multi-tenancy" },
           { text: "SSO(OIDC)ログイン", link: "/design/sso-oidc" },
           { text: "DBダイアレクト(SQLite/PostgreSQL)", link: "/design/db-dialects" },

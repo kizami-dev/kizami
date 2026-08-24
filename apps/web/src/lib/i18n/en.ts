@@ -581,6 +581,28 @@ export const en = {
     string
   >,
 
+  /**
+   * Shared wording for multi-step (two-step) approval (added 2026-08-24, see docs/design/approval-flows.md).
+   *
+   * Judgement call: the three request kinds (punch corrections, leave requests, auto-break waivers)
+   * use exactly the same wording here, so it lives in one place instead of being repeated in each
+   * section (corrections / autoBreakWaiver / leave) — that would be 3 kinds x 4 languages = 12 copies
+   * to keep in sync. Only the status label itself (approved_step1) stays next to each statusLabel.
+   */
+  approvalSteps: {
+    /** Shown on cards with requiredSteps >= 2, so people understand why an approved request is not applied yet. */
+    twoStepNote: "This request uses two-step approval. After the first approval, someone with tenant-wide approval permission must approve it again before it takes effect.",
+    /** Shown on each row of the approval queue: which step is it waiting for right now. */
+    awaitingStep1: "Awaiting first approval",
+    awaitingStep2: "Awaiting second approval",
+    /** Shown to a first-step approver who cannot perform the second approval (no button in that case). */
+    step2NotYours: "The second approval is handled by someone who holds this approval permission at tenant-wide scope.",
+    /** Heading for who gave the first approval, and when. */
+    step1DecidedLabel: "First approval",
+    /** Matches decidedBySelf in each section. */
+    step1DecidedBySelf: "You",
+  },
+
   corrections: {
     title: "Punch correction requests",
     tagline: "Request additions, corrections, or cancellations of punches. Approved requests are reflected in the attendance record.",
@@ -617,10 +639,12 @@ export const en = {
 
     statusLabel: {
       pending: "Pending",
+      /** The intermediate state that only appears with two-step approval; not applied to attendance yet. */
+      approved_step1: "1st approved (awaiting 2nd)",
       approved: "Approved",
       rejected: "Rejected",
       withdrawn: "Withdrawn",
-    } satisfies Record<"pending" | "approved" | "rejected" | "withdrawn", string>,
+    } satisfies Record<"pending" | "approved_step1" | "approved" | "rejected" | "withdrawn", string>,
 
     columnTarget: "Target date/time",
     columnContent: "Details",
@@ -665,6 +689,10 @@ export const en = {
       invalid_request_shape: "Please check the entered content",
       invalid_body: "Please check the entered content",
       invalid_status: "An unsupported status was specified",
+      /** 409. Two-step approval: the person who gave the first approval tried to give the second one. */
+      /** 403. e.g. an approver without tenant-wide scope trying to perform the second approval. */
+      forbidden: "You do not have permission to perform this operation",
+      same_approver_as_step1: "The person who gave the first approval cannot give the second one. Please ask another approver",
       default: "Something went wrong. Please try again",
     },
   },
@@ -700,10 +728,12 @@ export const en = {
 
     statusLabel: {
       pending: "Pending",
+      /** The intermediate state that only appears with two-step approval; not applied to attendance yet. */
+      approved_step1: "1st approved (awaiting 2nd)",
       approved: "Approved",
       rejected: "Rejected",
       withdrawn: "Withdrawn",
-    } satisfies Record<"pending" | "approved" | "rejected" | "withdrawn", string>,
+    } satisfies Record<"pending" | "approved_step1" | "approved" | "rejected" | "withdrawn", string>,
 
     approve: "Approve",
     reject: "Reject",
@@ -730,6 +760,8 @@ export const en = {
       already_approved: "The waiver for this day has already been approved",
       not_found: "The request could not be found",
       forbidden: "You don't have permission to perform this action",
+      /** 409. Two-step approval: the person who gave the first approval tried to give the second one. */
+      same_approver_as_step1: "The person who gave the first approval cannot give the second one. Please ask another approver",
       month_closed_requires_unlock: "This month is already closed. Approving requires permission to reopen it",
       default: "Something went wrong. Please try again",
     },
@@ -1007,6 +1039,49 @@ export const en = {
   },
 
   /**
+   * Multi-step approval settings (/settings/approval-flow, added 2026-08-24). docs/design/approval-flows.md is the spec.
+   * The screen is just three selects, but it changes how approvals work company-wide, so the two things
+   * people get wrong (it does not affect requests already in flight; the second approver needs
+   * tenant-wide scope) are always spelled out on the page.
+   */
+  settingsApprovalFlow: {
+    title: "Multi-step approval",
+    tagline: "Decide, per request type, whether approval takes one step or two (first approval plus a second approval).",
+    noPermission: "You do not have permission to change this setting",
+    loadFailed: "Could not load the settings. Please try again",
+
+    defaultSingleHint: "Everything is single-step by default. Left as is, one approval applies the request just like before.",
+    twoStepHint: "With two steps, the first approval is still given by whoever holds the approval permission for that request type, and the second approval is given by someone holding the same permission at tenant-wide scope (HR, head office, and so on). The request is not applied until the second approval is done.",
+    sameApproverHint: "The same person cannot give both the first and the second approval.",
+    frozenAtCreationHint: "Changing this setting does not change requests that are already open. Each request keeps the number of steps it had when it was created.",
+    tenantApproverRequiredHint: "Before switching to two steps, make sure at least one person holds that approval permission at tenant-wide scope. Otherwise requests will pile up waiting for a second approval.",
+
+    correctionLabel: "Punch correction requests",
+    correctionHint: "Requests to add, fix or cancel a punch. The approval permission is \"Approve punch corrections\".",
+    leaveLabel: "Leave requests",
+    leaveHint: "Requests to take paid leave and similar. The approval permission is \"Approve leave requests\".",
+    autoBreakWaiverLabel: "Auto-break waiver requests",
+    autoBreakWaiverHint: "Requests to cancel the automatic break deduction on a day when no break could actually be taken. Uses the same approval permission as punch corrections.",
+
+    optionOneStep: "1 step (single)",
+    optionTwoSteps: "2 steps (first + second approval)",
+
+    save: "Save",
+    saving: "Saving…",
+    saveSuccess: "Settings saved.",
+    saveNote: "This setting applies to the whole tenant and only affects requests created from now on. Changes are recorded in the audit log.",
+
+    errors: {
+      invalid_correction_steps: "Choose 1 or 2 steps for punch correction requests",
+      invalid_leave_steps: "Choose 1 or 2 steps for leave requests",
+      invalid_auto_break_waiver_steps: "Choose 1 or 2 steps for auto-break waiver requests",
+      invalid_body: "Please check the entered content",
+      forbidden: "You do not have permission to perform this operation",
+      default: "The operation failed. Please try again",
+    },
+  },
+
+  /**
    * Slack linking token entry (/settings/slack-link, added 2026-08-22, no permission required, all employees).
    * Enter the one-time token (valid for 15 minutes) issued by running `/punch link` in Slack.
    */
@@ -1045,6 +1120,7 @@ export const en = {
     departments: "Departments",
     members: "Members",
     presets: "Permission presets",
+    approvalFlow: "Multi-step approval",
     tenantProfile: "Tenant profile",
     leave: "Annual paid leave",
     help: "Company policy",
@@ -1075,6 +1151,8 @@ export const en = {
     membersDesc: "Change members' department, assign permission presets, and review effective permissions.",
     presetsTitle: "Permission presets",
     presetsDesc: "Create and edit presets combining permission toggles and scopes.",
+    approvalFlowTitle: "Multi-step approval",
+    approvalFlowDesc: "Choose whether punch correction, leave and auto-break waiver requests need one approval or two (first plus second approval).",
     attendanceTitle: "Attendance rules",
     attendanceDesc: "Change the day boundary, statutory holiday, break rules, GPS, and flextime settings by adding a new version.",
     allowancesTitle: "Allowance-eligible time",
@@ -1975,10 +2053,12 @@ export const en = {
 
     statusLabel: {
       pending: "Pending",
+      /** The intermediate state that only appears with two-step approval; not applied to attendance yet. */
+      approved_step1: "1st approved (awaiting 2nd)",
       approved: "Approved",
       rejected: "Rejected",
       withdrawn: "Withdrawn",
-    } satisfies Record<"pending" | "approved" | "rejected" | "withdrawn", string>,
+    } satisfies Record<"pending" | "approved_step1" | "approved" | "rejected" | "withdrawn", string>,
 
     unitLabelShort: {
       full_day: "Full day",
@@ -2029,6 +2109,8 @@ export const en = {
       not_pending: "This request has already been processed",
       not_found: "The request could not be found",
       forbidden: "You don't have permission to perform this action",
+      /** 409. Two-step approval: the person who gave the first approval tried to give the second one. */
+      same_approver_as_step1: "The person who gave the first approval cannot give the second one. Please ask another approver",
       month_closed_requires_unlock: "This month is already closed. Approving requires permission to reopen it",
       default: "Something went wrong. Please try again",
     },

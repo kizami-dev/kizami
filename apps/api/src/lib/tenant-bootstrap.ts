@@ -74,6 +74,9 @@ export const ADMIN_GRANTS: Grant[] = (
     "permission.assignment.manage",
     "audit_log.view",
     "api_key.manage",
+    // 承認フロー(多段承認)の設定。2026-08-24 追加(docs/design/approval-flows.md)。
+    // 管理者のみ — マネージャーには渡さない(自部署の承認を自分で1段に緩められないようにする)。
+    "approval_flow.manage",
   ] as const
 ).map((key) => ({ key, scope: "tenant" }));
 

@@ -556,6 +556,28 @@ export const ko = {
     string
   >,
 
+  /**
+   * 다단계(2단계) 승인의 공통 표시 문구(2026-08-24 추가, docs/design/approval-flows.md).
+   *
+   * 판단 포인트: 출퇴근 수정 신청·휴가 신청·휴게 자동 공제 취소 신청 3종의 문구가 완전히 같으므로,
+   * 종류별 section(corrections / autoBreakWaiver / leave)에 3번 쓰지 않고 한곳에 모은다
+   * (3종 × 4개 언어 = 12곳의 중복과 거기서 생기는 문구 어긋남을 구조적으로 막는다).
+   * 상태 라벨 자체(approved_step1)만 기존 statusLabel 옆에 둔다.
+   */
+  approvalSteps: {
+    /** requiredSteps >= 2 인 신청 카드에 표시. 「승인됐는데 아직 반영되지 않는」 이유를 알려준다. */
+    twoStepNote: "이 신청은 2단계 승인입니다. 1차 승인 후, 테넌트 전체 승인 권한을 가진 사람의 2차 승인으로 반영됩니다.",
+    /** 승인 대기열의 각 행에 표시하는 「지금 어느 단계를 기다리는가」. */
+    awaitingStep1: "1차 승인 대기",
+    awaitingStep2: "2차 승인 대기",
+    /** 1차 승인은 했지만 2차 승인 권한(테넌트 전체 스코프)이 없는 사람에게 표시. */
+    step2NotYours: "2차 승인은 테넌트 전체 승인 권한을 가진 사람이 수행합니다.",
+    /** 1차 승인의 실행자·일시에 붙이는 제목. */
+    step1DecidedLabel: "1차 승인",
+    /** 각 종류의 decidedBySelf와 맞춘다. */
+    step1DecidedBySelf: "본인",
+  },
+
   corrections: {
     title: "출퇴근 수정 신청",
     tagline: "출퇴근 기록의 추가·정정·취소를 신청합니다. 승인되면 근태 기록에 반영됩니다.",
@@ -592,10 +614,12 @@ export const ko = {
 
     statusLabel: {
       pending: "신청 중",
+      /** 2단계 승인일 때만 나타나는 중간 상태. 아직 출퇴근 기록에는 반영되지 않았다. */
+      approved_step1: "1차 승인됨(2차 대기)",
       approved: "승인됨",
       rejected: "반려",
       withdrawn: "철회",
-    } satisfies Record<"pending" | "approved" | "rejected" | "withdrawn", string>,
+    } satisfies Record<"pending" | "approved_step1" | "approved" | "rejected" | "withdrawn", string>,
 
     columnTarget: "대상 일시",
     columnContent: "내용",
@@ -640,6 +664,10 @@ export const ko = {
       invalid_request_shape: "입력 내용을 확인해 주세요",
       invalid_body: "입력 내용을 확인해 주세요",
       invalid_status: "표시할 수 없는 상태가 지정되었습니다",
+      /** 409. 2단계 승인에서 1차 승인을 한 본인이 2차 승인을 하려고 한 경우. */
+      /** 403. 테넌트 전체 스코프가 없는 승인자가 2차 승인을 시도한 경우 등. */
+      forbidden: "이 작업을 수행할 권한이 없습니다",
+      same_approver_as_step1: "1차 승인을 한 본인은 2차 승인을 할 수 없습니다. 다른 승인자에게 요청해 주세요",
       default: "처리에 실패했습니다. 다시 시도해 주세요",
     },
   },
@@ -674,10 +702,12 @@ export const ko = {
 
     statusLabel: {
       pending: "신청 중",
+      /** 2단계 승인일 때만 나타나는 중간 상태. 아직 출퇴근 기록에는 반영되지 않았다. */
+      approved_step1: "1차 승인됨(2차 대기)",
       approved: "승인됨",
       rejected: "반려",
       withdrawn: "철회",
-    } satisfies Record<"pending" | "approved" | "rejected" | "withdrawn", string>,
+    } satisfies Record<"pending" | "approved_step1" | "approved" | "rejected" | "withdrawn", string>,
 
     approve: "승인",
     reject: "반려",
@@ -704,6 +734,8 @@ export const ko = {
       already_approved: "이날의 취소는 이미 승인되었습니다",
       not_found: "대상 신청을 찾을 수 없습니다",
       forbidden: "이 작업을 수행할 권한이 없습니다",
+      /** 409. 2단계 승인에서 1차 승인을 한 본인이 2차 승인을 하려고 한 경우. */
+      same_approver_as_step1: "1차 승인을 한 본인은 2차 승인을 할 수 없습니다. 다른 승인자에게 요청해 주세요",
       month_closed_requires_unlock: "이번 달은 마감이 완료되었습니다. 승인하려면 마감 해제 권한이 필요합니다",
       default: "처리에 실패했습니다. 다시 시도해 주세요",
     },
@@ -979,6 +1011,49 @@ export const ko = {
   },
 
   /**
+   * 다단계 승인 설정(/settings/approval-flow, 2026-08-24 추가). docs/design/approval-flows.md가 사양의 기준.
+   * 종류별로 「1단계」「2단계(1차+2차 승인)」를 고르는 화면이지만 승인 체계 자체를 바꾸는 설정이므로,
+   * 오해하기 쉬운 점(이미 올라간 신청에는 적용되지 않음·2차 승인자는 테넌트 전체 스코프)을
+   * 화면에 반드시 표시한다.
+   */
+  settingsApprovalFlow: {
+    title: "다단계 승인",
+    tagline: "신청 종류별로 승인을 1단계로 할지, 2단계(1차 승인+2차 승인)로 할지 정합니다.",
+    noPermission: "이 설정을 변경할 권한이 없습니다",
+    loadFailed: "설정을 불러오지 못했습니다. 다시 시도해 주세요",
+
+    defaultSingleHint: "기본값은 모두 1단계입니다. 그대로 두면 지금까지처럼 승인 1회로 신청이 반영됩니다.",
+    twoStepHint: "2단계로 하면 1차 승인은 지금까지처럼 해당 종류의 승인 권한을 가진 사람이 하고, 2차 승인은 같은 권한을 「테넌트 전체」 스코프로 가진 사람(인사·본부 등)이 합니다. 2차 승인이 끝나기 전에는 신청이 반영되지 않습니다.",
+    sameApproverHint: "1차 승인과 2차 승인을 같은 사람이 할 수는 없습니다.",
+    frozenAtCreationHint: "이 설정을 바꿔도 이미 올라간 신청의 단계 수는 바뀌지 않습니다. 신청은 작성 시점의 단계 수 그대로 끝까지 진행됩니다.",
+    tenantApproverRequiredHint: "2단계로 바꾸기 전에, 해당 승인 권한을 「테넌트 전체」 스코프로 가진 사람이 최소 1명 있는지 확인해 주세요. 없으면 신청이 2차 승인 대기 상태로 쌓입니다.",
+
+    correctionLabel: "출퇴근 수정 신청",
+    correctionHint: "출퇴근 기록의 추가·수정·취소 신청. 승인 권한은 「출퇴근 수정 승인」입니다.",
+    leaveLabel: "휴가 신청",
+    leaveHint: "연차 등의 사용 신청. 승인 권한은 「휴가 신청 승인」입니다.",
+    autoBreakWaiverLabel: "휴게 자동 공제 취소 신청",
+    autoBreakWaiverHint: "실제로는 휴게를 쓰지 못한 날의 자동 공제를 취소하는 신청. 승인 권한은 출퇴근 수정 신청과 같습니다.",
+
+    optionOneStep: "1단계(단일)",
+    optionTwoSteps: "2단계(1차+2차 승인)",
+
+    save: "저장",
+    saving: "저장 중…",
+    saveSuccess: "설정을 저장했습니다.",
+    saveNote: "이 설정은 테넌트 전체에 적용되며, 앞으로 올라오는 신청에만 적용됩니다. 변경은 감사 로그에 기록됩니다.",
+
+    errors: {
+      invalid_correction_steps: "출퇴근 수정 신청의 단계 수는 1단계 또는 2단계로 선택해 주세요",
+      invalid_leave_steps: "휴가 신청의 단계 수는 1단계 또는 2단계로 선택해 주세요",
+      invalid_auto_break_waiver_steps: "휴게 자동 공제 취소 신청의 단계 수는 1단계 또는 2단계로 선택해 주세요",
+      invalid_body: "입력 내용을 확인해 주세요",
+      forbidden: "이 작업을 수행할 권한이 없습니다",
+      default: "처리에 실패했습니다. 다시 시도해 주세요",
+    },
+  },
+
+  /**
    * Slack 연동용 토큰 입력(/settings/slack-link, 2026-08-22 추가, 권한 불필요·전 직원 대상).
    * Slack에서 `/punch link` 를 실행하면 발급되는, 15분간 유효한 일회용 토큰을 여기서 입력한다.
    */
@@ -1017,6 +1092,7 @@ export const ko = {
     departments: "부서",
     members: "멤버",
     presets: "권한 프리셋",
+    approvalFlow: "다단계 승인",
     tenantProfile: "테넌트 프로필",
     leave: "연차유급휴가",
     help: "사내 규정",
@@ -1047,6 +1123,8 @@ export const ko = {
     membersDesc: "멤버의 소속 변경, 권한 프리셋 할당, 실효 권한 확인을 수행합니다.",
     presetsTitle: "권한 프리셋",
     presetsDesc: "권한 ON/OFF와 스코프를 조합한 프리셋을 생성·편집합니다.",
+    approvalFlowTitle: "다단계 승인",
+    approvalFlowDesc: "출퇴근 수정·휴가·휴게 자동 공제 취소 신청을 1단계 승인으로 할지 2단계(1차+2차 승인)로 할지 설정합니다.",
     attendanceTitle: "근태 규칙",
     attendanceDesc: "일계·법정휴일·휴게 규칙·GPS·플렉스타임 설정을, 새 버전을 추가하는 방식으로 변경합니다.",
     allowancesTitle: "수당 대상 시간",
@@ -1939,10 +2017,12 @@ export const ko = {
 
     statusLabel: {
       pending: "신청 중",
+      /** 2단계 승인일 때만 나타나는 중간 상태. 아직 출퇴근 기록에는 반영되지 않았다. */
+      approved_step1: "1차 승인됨(2차 대기)",
       approved: "승인됨",
       rejected: "반려",
       withdrawn: "철회",
-    } satisfies Record<"pending" | "approved" | "rejected" | "withdrawn", string>,
+    } satisfies Record<"pending" | "approved_step1" | "approved" | "rejected" | "withdrawn", string>,
 
     unitLabelShort: {
       full_day: "종일",
@@ -1993,6 +2073,8 @@ export const ko = {
       not_pending: "이 신청은 이미 처리되었습니다",
       not_found: "대상 신청을 찾을 수 없습니다",
       forbidden: "이 작업을 수행할 권한이 없습니다",
+      /** 409. 2단계 승인에서 1차 승인을 한 본인이 2차 승인을 하려고 한 경우. */
+      same_approver_as_step1: "1차 승인을 한 본인은 2차 승인을 할 수 없습니다. 다른 승인자에게 요청해 주세요",
       month_closed_requires_unlock: "이번 달은 마감이 완료되었습니다. 승인하려면 마감 해제 권한이 필요합니다",
       default: "처리에 실패했습니다. 다시 시도해 주세요",
     },

@@ -8,7 +8,9 @@
  *   - target_event_id があり proposed_kind / proposed_occurred_at もある → 訂正
  *   - target_event_id のみで proposed_kind / proposed_occurred_at が両方 null → 取消
  * - 状態遷移は pending → approved / rejected / withdrawn のみ。approved 後の変更は不可
- *   (取り消したい場合は新たな申請)
+ *   (取り消したい場合は新たな申請)。二段承認(required_steps = 2)の場合のみ
+ *   pending → approved_step1 → approved / rejected という中間状態を1つ挟む
+ *   (docs/design/approval-flows.md)
  * - 承認時、punch_events への反映イベント追記とこの行の status 更新を1トランザクションで行う
  *   (apps/api/src/routes/corrections.ts が実装する)
  *
@@ -35,8 +37,23 @@ export const correctionRequests = sqliteTable(
     requestedBy: text("requested_by")
       .notNull()
       .references(() => users.id),
-    /** pending / approved / rejected / withdrawn */
+    /** pending / approved_step1 / approved / rejected / withdrawn */
     status: text("status").notNull(),
+    /**
+     * この申請に必要な承認の段数(1 = 単段 / 2 = 二段)。**作成時点のテナント設定
+     * (approval_flow_settings.correction_steps)を凍結して保存する**。
+     *
+     * 判断点(グランドファザリング, docs/design/approval-flows.md): 承認のたびに設定を
+     * 読み直す実装にすると、仕掛かり中の申請が設定変更で取り残される(1→2 に変えた瞬間、
+     * 既に一次承認だけ済んでいた申請が「二次承認待ち」に化けて誰も気づかない)か、
+     * 逆に飛ばされる(2→1 に変えた瞬間、二次承認を経ずに反映できてしまう)。
+     * 申請は「その時点のルールで出したもの」なので、作成時の段数を行に固定する。
+     */
+    requiredSteps: integer("required_steps").notNull().default(1),
+    /** 二段承認の一次承認者。単段では常に null(二次承認者と同一人物を禁じる判定に使う) */
+    step1DecidedBy: text("step1_decided_by").references(() => users.id),
+    /** 一次承認の時刻(UTC エポック分)。単段では常に null */
+    step1DecidedAt: integer("step1_decided_at"),
     /** 訂正・取消の対象。新規追加申請なら null */
     targetEventId: text("target_event_id").references(() => punchEvents.id),
     /** 申請内容(kind)。追加・訂正のみ持つ(取消は null) */

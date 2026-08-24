@@ -1,7 +1,14 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { api, ApiError, UnauthorizedError, type LeaveRequestDto, type LeaveRequestStatus } from "../lib/api";
+import {
+  api,
+  ApiError,
+  UnauthorizedError,
+  type ApprovalFlowStateDto,
+  type LeaveRequestDto,
+  type LeaveRequestStatus,
+} from "../lib/api";
 import { mapLeaveRequestErrorMessage, messages } from "../lib/messages";
 import { hasEffectivePermission } from "../lib/permissions";
 import { formatDateLabel, formatDateTimeJst } from "../lib/time";
@@ -13,6 +20,28 @@ import { ConfirmDialog } from "./ConfirmDialog";
  * (apps/api/src/routes/leave.ts の APPROVE_PERMISSION)。
  */
 const APPROVE_PERMISSION = "leave.request.approve";
+
+/**
+ * 「未決裁」= まだ最終決裁に至っていない状態(2026-08-24 多段承認対応)。
+ * pending は一次承認待ち、approved_step1 は一次承認済み・二次承認待ちで、どちらも
+ * 取下げ可能・承認キューに出すべき行(docs/design/approval-flows.md)。
+ */
+function isOpenStatus(status: LeaveRequestStatus): boolean {
+  return status === "pending" || status === "approved_step1";
+}
+
+/**
+ * この行の「今の段」を、今ログインしている人が承認できるか(2026-08-24 多段承認対応)。
+ *
+ * 判断点: 二次承認(currentStep === 2)は leave.request.approve を **tenant スコープ** で
+ * 持つ人しか行えない(apps/api は部署スコープの承認者に 403 を返す)。押しても必ず失敗する
+ * ボタンは出さず、状態チップだけを見せる。「一次承認した本人は二次承認できない」
+ * (409 same_approver_as_step1)はサーバーのエラー文言に委ねる。
+ */
+function canApproveCurrentStep(state: ApprovalFlowStateDto, canApprove: boolean, canApproveTenantWide: boolean): boolean {
+  if (state.currentStep === 2) return canApproveTenantWide;
+  return canApprove;
+}
 
 type Action = "approve" | "reject" | "withdraw";
 
@@ -119,12 +148,61 @@ export function LeaveRequestsList({ requests, currentUserId, closedMonthRequestI
    * (自己承認は queue 側の ConfirmDialog の selfApproved 表示で示す — 既存 UI を維持)。
    */
   const hasApprovePermission = hasEffectivePermission(effectivePermissions, APPROVE_PERMISSION, "department");
+  /**
+   * 二次承認(多段承認の2段目)を行えるか。同じ承認権限を **tenant スコープ** で持つ人だけが
+   * 二次承認でき、部署スコープの承認者は apps/api 側で 403 になる(2026-08-24 追加)。
+   */
+  const hasTenantApprovePermission = hasEffectivePermission(effectivePermissions, APPROVE_PERMISSION, "tenant");
   const ownRequests = requests.filter((r) => r.requestedBy === currentUserId);
-  const queueRequests = hasApprovePermission ? requests.filter((r) => r.status === "pending") : [];
+  // 承認キューは「未決裁」= pending(一次承認待ち)+ approved_step1(二次承認待ち)を対象にする。
+  const queueRequests = hasApprovePermission ? requests.filter((r) => isOpenStatus(r.status)) : [];
+
+  /**
+   * 多段承認の状態表示(2026-08-24 追加、CorrectionsView と同じ作法)。
+   * - 承認キューの行には「一次/二次のどちらの承認待ちか」を出す
+   * - 二段承認の申請には「二次承認まで終わらないと反映されない」注記を出す(申請者向け)
+   * - 二次承認待ちだが自分は二次承認できない場合は、承認ボタンの代わりに理由を出す
+   */
+  function renderApprovalStepChip(state: ApprovalFlowStateDto) {
+    if (state.requiredSteps < 2 || state.currentStep === null) return null;
+    return (
+      <span className="correction-card__step">
+        {state.currentStep === 2 ? messages.approvalSteps.awaitingStep2 : messages.approvalSteps.awaitingStep1}
+      </span>
+    );
+  }
+
+  function renderStep1DecidedRow(state: ApprovalFlowStateDto) {
+    if (state.step1DecidedBy === null) return null;
+    const bySelf = state.step1DecidedBy === currentUserId;
+    return (
+      <div className="correction-card__row">
+        <dt>{messages.approvalSteps.step1DecidedLabel}</dt>
+        <dd>
+          {bySelf ? messages.approvalSteps.step1DecidedBySelf : state.step1DecidedBy}
+          {state.step1DecidedAt !== null ? ` / ${formatDateTimeJst(state.step1DecidedAt)}` : ""}
+        </dd>
+      </div>
+    );
+  }
+
+  function renderApprovalStepNotes(state: ApprovalFlowStateDto, options: { showApproveReject: boolean }) {
+    if (state.requiredSteps < 2) return null;
+    const blockedFromStep2 = options.showApproveReject && state.currentStep === 2 && !hasTenantApprovePermission;
+    return (
+      <>
+        <p className="correction-card__note">{messages.approvalSteps.twoStepNote}</p>
+        {blockedFromStep2 ? <p className="correction-card__note">{messages.approvalSteps.step2NotYours}</p> : null}
+      </>
+    );
+  }
 
   function renderRequestCard(req: LeaveRequestDto, options: { showApproveReject: boolean; showWithdraw: boolean }) {
-    const isPending = req.status === "pending";
+    // 「未決裁」(一次承認待ち・二次承認待ち)の間は決裁欄を出さず、操作ボタンを出す。
+    const isOpen = isOpenStatus(req.status);
     const selfDecided = req.decidedBy !== null && req.decidedBy === currentUserId;
+    // 二次承認待ちの行は、tenant スコープの承認権限を持つ人にだけ承認/却下ボタンを出す。
+    const showApproveReject = options.showApproveReject && canApproveCurrentStep(req, hasApprovePermission, hasTenantApprovePermission);
     return (
       <li key={req.id} className="correction-card">
         <div className="correction-card__header">
@@ -132,6 +210,7 @@ export function LeaveRequestsList({ requests, currentUserId, closedMonthRequestI
             {messages.leave.statusLabel[req.status]}
           </span>
           <span className="correction-card__type">{formatDateLabel(req.leaveDate)}</span>
+          {renderApprovalStepChip(req)}
         </div>
 
         <dl className="correction-card__body">
@@ -147,7 +226,8 @@ export function LeaveRequestsList({ requests, currentUserId, closedMonthRequestI
             <dt>{messages.leave.columnReason}</dt>
             <dd>{req.reason}</dd>
           </div>
-          {!isPending ? (
+          {renderStep1DecidedRow(req)}
+          {!isOpen ? (
             <div className="correction-card__row">
               <dt>{messages.leave.columnDecision}</dt>
               <dd>
@@ -161,9 +241,11 @@ export function LeaveRequestsList({ requests, currentUserId, closedMonthRequestI
 
         {closedMonthRequestId === req.id ? <p className="leave-target-month-closed">{messages.leave.targetMonthClosedNote}</p> : null}
 
-        {isPending && (options.showApproveReject || options.showWithdraw) ? (
+        {isOpen ? renderApprovalStepNotes(req, { showApproveReject: options.showApproveReject }) : null}
+
+        {isOpen && (showApproveReject || options.showWithdraw) ? (
           <div className="correction-card__actions">
-            {options.showApproveReject ? (
+            {showApproveReject ? (
               <>
                 <button
                   type="button"

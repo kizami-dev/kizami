@@ -16,6 +16,7 @@ type SettingsRoute =
   | "/settings/departments"
   | "/settings/members"
   | "/settings/presets"
+  | "/settings/approval-flow"
   | "/settings/tenant-profile"
   | "/settings/leave"
   | "/settings/help"
@@ -87,6 +88,14 @@ export function SettingsHubView() {
       to: "/settings/presets" as const,
       title: messages.settingsHub.presetsTitle,
       desc: messages.settingsHub.presetsDesc,
+    },
+    // 承認体制の設定なので、権限プリセット(誰が承認できるか)の隣に置く。
+    {
+      key: "approvalFlow",
+      enabled: access.approvalFlow,
+      to: "/settings/approval-flow" as const,
+      title: messages.settingsHub.approvalFlowTitle,
+      desc: messages.settingsHub.approvalFlowDesc,
     },
     {
       key: "attendance",

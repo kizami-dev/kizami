@@ -315,7 +315,29 @@ export interface MonthlyAttendance {
   closing: { closed: boolean; amended: boolean };
 }
 
-export type CorrectionStatus = "pending" | "approved" | "rejected" | "withdrawn";
+/**
+ * 多段承認(二段承認)の進行状態。打刻修正申請・休暇申請・休憩自動控除の打ち消し申請の
+ * 3種別が完全に同じ形で持つ(docs/design/approval-flows.md)。単段(既定)の申請でも
+ * API は必ずこの4フィールドを返すため、省略可能にはしない。
+ *
+ * 判断点: 3種別で形が一致するため、DTO ごとに4フィールドを書き写さずこの interface を
+ * `extends` して共有する(将来この設計に段数以外の情報が増えたときの追随漏れを防ぐ)。
+ * requiredSteps は**申請作成時に凍結される**ため、あとからテナント設定を1段⇔2段へ変えても
+ * 既存申請の段数は変わらない。UI もこの値を正として「あと何段必要か」を表示する。
+ */
+export interface ApprovalFlowStateDto {
+  /** 凍結済みの必要承認段数。1 = 単段、2 = 一次承認 + 二次承認。 */
+  requiredSteps: number;
+  /** 今どの段の承認を待っているか。pending なら 1、approved_step1 なら 2、決裁済み・取下げ済みなら null。 */
+  currentStep: number | null;
+  /** 一次承認した人の userId(未承認・単段なら null)。二次承認は同じ人では行えない判定に使う。 */
+  step1DecidedBy: string | null;
+  /** 一次承認の日時(UTC エポック分。未承認・単段なら null)。 */
+  step1DecidedAt: number | null;
+}
+
+/** approved_step1 = 一次承認済み・二次承認待ち(二段承認のときだけ現れる中間状態)。 */
+export type CorrectionStatus = "pending" | "approved_step1" | "approved" | "rejected" | "withdrawn";
 
 /**
  * 打刻修正申請(v0.2)。target系/proposed系の組み合わせで3ケースを表す
@@ -324,7 +346,7 @@ export type CorrectionStatus = "pending" | "approved" | "rejected" | "withdrawn"
  * - targetEventId あり かつ proposedKind/proposedOccurredAt あり → 訂正
  * - targetEventId のみ → 取消
  */
-export interface CorrectionRequestDto {
+export interface CorrectionRequestDto extends ApprovalFlowStateDto {
   id: string;
   userId: string;
   requestedBy: string;
@@ -520,6 +542,35 @@ export interface SsoAvailableTenant {
   id: string;
   name: string | null;
   ssoEnabled: boolean;
+}
+
+/**
+ * 多段承認のテナント設定(GET/PUT /settings/approval-flow、docs/design/approval-flows.md)。
+ * apps/api/src/routes/settings/approval-flow.ts と一致させる。値は種別ごとの承認段数で、
+ * 1 = 単段(既定)・2 = 一次承認 + 二次承認。既に出ている申請の段数は
+ * 申請作成時に凍結されるため(ApprovalFlowStateDto.requiredSteps)、この設定の変更は
+ * 「これから出る申請」にだけ効く。
+ */
+export interface ApprovalFlowSettingsDto {
+  /** 打刻修正申請(attendance.correction.approve)の承認段数。 */
+  correctionSteps: number;
+  /** 休暇申請(leave.request.approve)の承認段数。 */
+  leaveSteps: number;
+  /** 休憩自動控除の打ち消し申請(attendance.correction.approve)の承認段数。 */
+  autoBreakWaiverSteps: number;
+  updatedAt: number | null;
+  updatedBy: string | null;
+}
+
+/**
+ * PUT /settings/approval-flow の入力。SSO・Slack 設定の「3値ルール」とは異なり、
+ * **3項目すべてが必須**(部分更新は不可 — API 側が invalid_body で弾く)。
+ * 画面は現在値を読み込んでから3項目まとめて送る。
+ */
+export interface UpdateApprovalFlowSettingsInput {
+  correctionSteps: 1 | 2;
+  leaveSteps: 1 | 2;
+  autoBreakWaiverSteps: 1 | 2;
 }
 
 /** 権限のスコープ(狭い→広い: self < department < department_and_descendants < tenant)。packages/authz/src/types.ts と一致。 */
@@ -941,7 +992,8 @@ export type LeaveUnit = "full_day" | "half_day_am" | "half_day_pm" | "hourly";
 /** annual: 通常の年次有給。stocked: 失効年休の積立休暇。 */
 export type LeaveType = "annual" | "stocked";
 
-export type LeaveRequestStatus = "pending" | "approved" | "rejected" | "withdrawn";
+/** approved_step1 = 一次承認済み・二次承認待ち(二段承認のときだけ現れる中間状態)。 */
+export type LeaveRequestStatus = "pending" | "approved_step1" | "approved" | "rejected" | "withdrawn";
 
 /** 1件の付与について、消化・残高を分単位で表した状態(GET /leave/balance の byGrant/expiringSoon 要素)。 */
 export interface LeaveGrantAllocationDto {
@@ -987,7 +1039,7 @@ export interface LeaveBalanceDto {
   mandatoryFiveDays: MandatoryFiveDaysStatusDto[];
 }
 
-export interface LeaveRequestDto {
+export interface LeaveRequestDto extends ApprovalFlowStateDto {
   id: string;
   userId: string;
   requestedBy: string;
@@ -1187,7 +1239,8 @@ export interface CreateApiKeyInput {
   expiresAt?: number | null;
 }
 
-export type AutoBreakWaiverStatus = "pending" | "approved" | "rejected" | "withdrawn";
+/** approved_step1 = 一次承認済み・二次承認待ち(二段承認のときだけ現れる中間状態)。 */
+export type AutoBreakWaiverStatus = "pending" | "approved_step1" | "approved" | "rejected" | "withdrawn";
 
 /**
  * 休憩自動控除の打ち消し申請(auto_break_waivers、2026-08-23 追加、docs/design/breaks.md「採る設計」)。
@@ -1195,7 +1248,7 @@ export type AutoBreakWaiverStatus = "pending" | "approved" | "rejected" | "withd
  * correction_requests とは別テーブル(打刻の存在しない自動控除には correction_requests が
  * 使えないため) — CorrectionRequestDto とは意図的に別の型にする。
  */
-export interface AutoBreakWaiverDto {
+export interface AutoBreakWaiverDto extends ApprovalFlowStateDto {
   id: string;
   userId: string;
   requestedBy: string;
@@ -1406,10 +1459,20 @@ export const api = {
     return request("/corrections", { method: "POST", body: JSON.stringify(input) });
   },
 
+  /**
+   * POST /corrections/:id/approve。二段承認の**一次承認**では申請はまだ打刻に反映されないため、
+   * appliedEvent は null で返る(status は "approved_step1" になる)。単段の承認・二段の二次承認では
+   * 従来どおり反映後の打刻が入る(2026-08-24 多段承認対応、docs/design/approval-flows.md)。
+   */
   async approveCorrection(
     id: string,
     note?: string,
-  ): Promise<{ request: CorrectionRequestDto; appliedEvent: { id: string; kind: PunchKind; occurredAt: number } }> {
+  ): Promise<{
+    request: CorrectionRequestDto;
+    appliedEvent: { id: string; kind: PunchKind; occurredAt: number } | null;
+    amended: boolean;
+    amendedPeriods: string[];
+  }> {
     return request(`/corrections/${id}/approve`, { method: "POST", body: JSON.stringify(note ? { note } : {}) });
   },
 
@@ -1491,6 +1554,14 @@ export const api = {
 
   async updateSsoSettings(input: UpdateSsoSettingsInput): Promise<SsoSettingsDto> {
     return request("/settings/sso", { method: "PUT", body: JSON.stringify(input) });
+  },
+
+  async getApprovalFlowSettings(): Promise<ApprovalFlowSettingsDto> {
+    return request("/settings/approval-flow");
+  },
+
+  async updateApprovalFlowSettings(input: UpdateApprovalFlowSettingsInput): Promise<ApprovalFlowSettingsDto> {
+    return request("/settings/approval-flow", { method: "PUT", body: JSON.stringify(input) });
   },
 
   /**

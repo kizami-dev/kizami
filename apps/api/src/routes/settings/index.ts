@@ -19,6 +19,7 @@ import { Hono } from "hono";
 import type { Database } from "@kizami/db";
 import type { AppEnv } from "../../auth/middleware.js";
 import { registerAllowancesRoutes } from "./allowances.js";
+import { registerApprovalFlowRoutes } from "./approval-flow.js";
 import { registerAttendanceRoutes } from "./attendance.js";
 import { registerLeaveRoutes } from "./leave.js";
 import { registerNotificationsRoutes } from "./notifications.js";
@@ -46,6 +47,8 @@ export function createSettingsRoutes(db: Database, deps: SettingsRoutesDeps = {}
   // SSO(OIDC)設定。2026-08-24 追加(Tier 2)。登録順は末尾でよい(パスの衝突が無いため)。
   registerSsoRoutes(app, db, deps);
   registerAllowancesRoutes(app, db, deps);
+  // 多段承認の段数設定。2026-08-24 追加。deps(通知・暗号化)は不要。
+  registerApprovalFlowRoutes(app, db);
 
   return app;
 }

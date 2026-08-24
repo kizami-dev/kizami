@@ -126,7 +126,7 @@ export async function listConvertedFromGrantIds(db: Database, params: { tenantId
 // ---- leave_requests ----
 
 export type LeaveRequest = typeof leaveRequests.$inferSelect;
-export type LeaveRequestStatus = "pending" | "approved" | "rejected" | "withdrawn";
+export type LeaveRequestStatus = "pending" | "approved_step1" | "approved" | "rejected" | "withdrawn";
 
 export interface NewLeaveRequestInput {
   tenantId: string;
@@ -137,6 +137,11 @@ export interface NewLeaveRequestInput {
   minutes?: number | null;
   leaveType: string;
   reason: string;
+  /**
+   * 承認に必要な段数(1 = 単段 / 2 = 二段)。省略時は 1。作成時点のテナント設定を
+   * 凍結して保存する(グランドファザリング。schema/corrections.ts のコメント参照)。
+   */
+  requiredSteps?: number;
   createdAt: number;
 }
 
@@ -149,6 +154,7 @@ export async function createLeaveRequest(db: Database, input: NewLeaveRequestInp
       userId: input.userId,
       requestedBy: input.requestedBy,
       status: "pending",
+      requiredSteps: input.requiredSteps ?? 1,
       leaveDate: input.leaveDate,
       unit: input.unit,
       minutes: input.minutes ?? null,
@@ -220,7 +226,14 @@ export async function listAllApprovedLeaveRequests(db: Database, params: { tenan
     .orderBy(asc(leaveRequests.leaveDate));
 }
 
-/** 同日の重複申請チェック(pending/approved)に使う。unit ごとの衝突判定は呼び出し側(routes/leave.ts)で行う。 */
+/**
+ * 同日の重複申請チェック(pending / approved_step1 / approved)に使う。unit ごとの衝突判定は
+ * 呼び出し側(routes/leave.ts)で行う。
+ *
+ * approved_step1(二段承認の一次承認済み・二次承認待ち)も「生きている申請」として数える —
+ * まだ反映されていないだけで、これから承認されうるため、同じ日に重ねて申請できてしまうと
+ * 二重取得になる(docs/design/approval-flows.md「中間状態の扱い」)。
+ */
 export async function listActiveLeaveRequestsForDate(
   db: Database,
   params: { tenantId: string; userId: string; leaveDate: string },
@@ -229,7 +242,7 @@ export async function listActiveLeaveRequestsForDate(
     .select()
     .from(leaveRequests)
     .where(and(eq(leaveRequests.tenantId, params.tenantId), eq(leaveRequests.userId, params.userId), eq(leaveRequests.leaveDate, params.leaveDate)));
-  return rows.filter((r) => r.status === "pending" || r.status === "approved");
+  return rows.filter((r) => r.status === "pending" || r.status === "approved_step1" || r.status === "approved");
 }
 
 export interface UpdateLeaveRequestStatusParams {
@@ -240,6 +253,13 @@ export interface UpdateLeaveRequestStatusParams {
   decidedBy?: string | null;
   decidedAt?: number | null;
   decisionNote?: string | null;
+  /**
+   * 二段承認の一次承認者・一次承認時刻。**渡したときだけ書き込む**(省略時は既存値を保つ)。
+   * 二次承認・却下では省略することで、一次承認者の記録が消えないようにしている。
+   */
+  step1DecidedBy?: string;
+  /** UTC エポック分 */
+  step1DecidedAt?: number;
 }
 
 /** status を更新する。fromStatus を渡すと条件付き UPDATE になり、0件更新なら null を返す(楽観ロック)。 */
@@ -258,6 +278,8 @@ export async function updateLeaveRequestStatus(
       status: params.status,
       decidedBy: params.decidedBy ?? null,
       decidedAt: params.decidedAt ?? null,
+      ...(params.step1DecidedBy !== undefined ? { step1DecidedBy: params.step1DecidedBy } : {}),
+      ...(params.step1DecidedAt !== undefined ? { step1DecidedAt: params.step1DecidedAt } : {}),
       decisionNote: params.decisionNote ?? null,
     })
     .where(and(...conditions))

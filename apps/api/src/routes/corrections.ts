@@ -43,6 +43,14 @@
  * (lib/notification-channels.ts の設計原則: テナント共有チャネルに他人の勤怠情報を流さない)。
  * 通知は完全にベストエフォート(失敗しても申請作成自体は成功のまま返す — 承認・却下時の
  * 本人通知と同じ扱いで、ここでも例外を握りつぶす特別な try/catch は追加しない)。
+ *
+ * 多段承認(2026-08-24 追加、docs/design/approval-flows.md): テナント設定
+ * (approval_flow_settings.correction_steps)が 2 のとき、この種別は二段承認になる。
+ * 申請作成時にその段数を `required_steps` へ**凍結して保存**するため、設定を後から変えても
+ * 仕掛かり中の申請の段数は変わらない(グランドファザリング)。二段の場合、一次承認では
+ * 打刻へは一切反映せず status を `approved_step1` にするだけで、二次承認(tenant スコープで
+ * APPROVE_PERMISSION を持つ人)が承認して初めて従来どおりの反映を行う。段の判定・
+ * 「一次と二次は別人」の不変条件は apps/api/src/lib/approval-flow.ts に集約する。
  */
 
 import { Hono } from "hono";
@@ -71,6 +79,14 @@ import { dispatch } from "@kizami/notify";
 import type { PunchKind } from "@kizami/engine";
 import type { AppEnv } from "../auth/middleware.js";
 import { ForbiddenError, requirePermission, requireSelf } from "../authz.js";
+import {
+  approvalFlowState,
+  isOpenForDecision,
+  notifyStep2Approvers,
+  rejectionStep,
+  resolveApprovalStep,
+  resolveRequiredSteps,
+} from "../lib/approval-flow.js";
 import { resolveApproversForUser } from "../lib/approvers.js";
 import { periodFromDate, resolveAttendanceDate } from "../lib/attendance-date.js";
 import { assertAmendAllowed } from "../lib/closing-guard.js";
@@ -127,6 +143,9 @@ function serializeCorrectionRequest(row: CorrectionRequest, target?: TargetPunch
     decidedAt: row.decidedAt,
     decisionNote: row.decisionNote,
     createdAt: row.createdAt,
+    // 多段承認の状態(requiredSteps / currentStep / 一次承認者)。単段でも常に返す —
+    // UI 側が「段数によって分岐する」のではなく「返ってきた状態をそのまま描く」形にするため。
+    ...approvalFlowState(row),
   };
 }
 
@@ -159,15 +178,17 @@ export function createCorrectionsRoutes(db: Database, deps: CorrectionsRoutesDep
   app.get("/", async (c) => {
     const user = c.get("user");
 
+    // status=pending は「まだ決裁が終わっていない申請」を意味する。二段承認の導入
+    // (2026-08-24)により pending だけでなく approved_step1(一次承認済み・二次承認待ち)も
+    // ここに含める — 承認者の画面から「二次承認待ち」が消えてしまうと誰も気づけないため。
+    // DB 側は単一 status での絞り込みしか持たないので、複数状態のときは tenantId(+userId)で
+    // 取得してアプリ層で絞る(このファイルの他の箇所と同じ「テナントあたり小規模」の前提)。
     const statusParam = c.req.query("status") ?? "pending";
-    let status: CorrectionStatus | undefined;
-    if (statusParam === "pending") {
-      status = "pending";
-    } else if (statusParam === "all") {
-      status = undefined;
-    } else {
+    if (statusParam !== "pending" && statusParam !== "all") {
       return c.json({ error: "invalid_status" }, 400);
     }
+    const openOnly = statusParam === "pending";
+    const filterOpen = (rows: CorrectionRequest[]) => (openOnly ? rows.filter((r) => isOpenForDecision(r.status)) : rows);
 
     const permissions = c.get("permissions");
     const queryUserId = c.req.query("userId");
@@ -186,19 +207,11 @@ export function createCorrectionsRoutes(db: Database, deps: CorrectionsRoutesDep
       // 問い合わせがエラーにならない。GET /attendance/monthly?userId= と同じ 404 に揃える。
       const target = await getUserById(db, { tenantId: user.tenantId, id: queryUserId });
       if (!target) return c.json({ error: "not_found" }, 404);
-      requests = await listCorrectionRequests(db, {
-        tenantId: user.tenantId,
-        userId: queryUserId,
-        ...(status !== undefined ? { status } : {}),
-      });
+      requests = filterOpen(await listCorrectionRequests(db, { tenantId: user.tenantId, userId: queryUserId }));
     } else if (permissions.get(VIEW_ALL_PERMISSION) === undefined) {
       // userId 未指定: VIEW_ALL_PERMISSION を持たなければ自分の分だけ(権限が無いのに
       // 「未指定=スコープ全員」を返すと事故になるため)。
-      requests = await listCorrectionRequests(db, {
-        tenantId: user.tenantId,
-        userId: user.id,
-        ...(status !== undefined ? { status } : {}),
-      });
+      requests = filterOpen(await listCorrectionRequests(db, { tenantId: user.tenantId, userId: user.id }));
     } else {
       // queries/corrections.ts の listCorrectionRequests は複数ユーザーIDの一括絞り込みを
       // 持たないため、tenantId のみで取得しアプリ層でスコープ内に絞り込む
@@ -207,10 +220,7 @@ export function createCorrectionsRoutes(db: Database, deps: CorrectionsRoutesDep
         actor: { id: user.id, tenantId: user.tenantId, permissions },
         permission: VIEW_ALL_PERMISSION,
       });
-      const all = await listCorrectionRequests(db, {
-        tenantId: user.tenantId,
-        ...(status !== undefined ? { status } : {}),
-      });
+      const all = filterOpen(await listCorrectionRequests(db, { tenantId: user.tenantId }));
       requests = accessible === "all" ? all : all.filter((r) => accessible.has(r.userId));
     }
 
@@ -306,6 +316,10 @@ export function createCorrectionsRoutes(db: Database, deps: CorrectionsRoutesDep
       }
     }
 
+    // 承認段数は**この瞬間の**テナント設定を凍結して保存する(グランドファザリング。
+    // apps/api/src/lib/approval-flow.ts・docs/design/approval-flows.md 参照)。
+    const requiredSteps = await resolveRequiredSteps(db, user.tenantId, "correction");
+
     const created = await createCorrectionRequest(db, {
       tenantId: user.tenantId,
       userId: user.id,
@@ -314,6 +328,7 @@ export function createCorrectionsRoutes(db: Database, deps: CorrectionsRoutesDep
       proposedKind: validatedKind,
       proposedOccurredAt: validatedOccurredAt,
       reason,
+      requiredSteps,
       createdAt: nowMinutes(),
     });
 
@@ -385,12 +400,65 @@ export function createCorrectionsRoutes(db: Database, deps: CorrectionsRoutesDep
       throw new ForbiddenError(`target user ${existing.userId} is outside actor's scope`);
     }
 
-    if (existing.status !== "pending") {
-      return c.json({ error: "not_pending" }, 409);
+    // 何段目の承認かを決める(単段なら従来どおり「pending からの1回で確定」)。
+    // 二次承認の権限不足は ForbiddenError(403)、業務上の競合は文字列で返る。
+    const plan = resolveApprovalStep({
+      row: existing,
+      actorId: user.id,
+      permissions,
+      permission: APPROVE_PERMISSION,
+    });
+    if (typeof plan === "string") {
+      return c.json({ error: plan }, 409);
     }
 
     const now = nowMinutes();
     const selfApproved = existing.requestedBy === user.id;
+
+    // ---- 一次承認(二段承認の1段目)----
+    // 打刻には一切反映しない(status を進めるだけ)。締め済み月ガード(assertAmendAllowed)も
+    // ここでは通さない — 締めに影響する変更が起きるのは二次承認で実際に反映する時だからで、
+    // 一次承認の時点で closing.unlock を要求すると「まだ何も変えていないのに拒否される」ことになる。
+    if (!plan.isFinal) {
+      const updated = await updateCorrectionStatus(db, {
+        id: existing.id,
+        tenantId: user.tenantId,
+        fromStatus: plan.fromStatus,
+        status: plan.nextStatus,
+        // 最終決裁の欄(decided_by / decided_at / decision_note)は二次承認まで空のまま残す。
+        decidedBy: null,
+        decidedAt: null,
+        decisionNote: null,
+        step1DecidedBy: user.id,
+        step1DecidedAt: now,
+      });
+      if (!updated) {
+        return c.json({ error: "not_pending" }, 409);
+      }
+
+      await insertAuditLog(db, {
+        tenantId: user.tenantId,
+        actorId: user.id,
+        action: "correction.approve_step1",
+        targetType: "correction_request",
+        targetId: existing.id,
+        detail: JSON.stringify({ selfApproved, step: 1, requiredSteps: existing.requiredSteps, note }),
+        occurredAt: now,
+      });
+
+      const subject = await getUserById(db, { tenantId: user.tenantId, id: existing.userId });
+      await notifyStep2Approvers(db, deps, {
+        tenantId: user.tenantId,
+        permission: APPROVE_PERMISSION,
+        notificationType: "approval_request_correction_step2",
+        title: "二次承認をお願いします(打刻修正申請)",
+        body: `${subject?.name ?? "メンバー"}さんの打刻修正申請が一次承認されました。二次承認をお願いします。`,
+        excludeUserIds: [user.id, existing.requestedBy],
+        now,
+      });
+
+      return c.json({ request: serializeCorrectionRequest(updated), appliedEvent: null, amended: false, amendedPeriods: [] }, 200);
+    }
 
     // 対象打刻の occurred_at を読む(取消の場合は void イベントに引き継ぐ必要があるが、
     // 訂正の場合も締め済み月ガードで「対象打刻の元の日」を見るために必要)。
@@ -478,7 +546,8 @@ export function createCorrectionsRoutes(db: Database, deps: CorrectionsRoutesDep
         const updated = await updateCorrectionStatus(tx, {
           id: existing.id,
           tenantId: user.tenantId,
-          fromStatus: "pending",
+          // 単段なら "pending"、二段の二次承認なら "approved_step1"(楽観ロック)。
+          fromStatus: plan.fromStatus,
           status: "approved",
           decidedBy: user.id,
           decidedAt: now,
@@ -499,6 +568,9 @@ export function createCorrectionsRoutes(db: Database, deps: CorrectionsRoutesDep
             targetEventId: existing.targetEventId,
             appliedEventId: newEvent.id,
             amendedPeriods,
+            step: plan.step,
+            requiredSteps: existing.requiredSteps,
+            step1DecidedBy: existing.step1DecidedBy,
           }),
           occurredAt: now,
         });
@@ -644,12 +716,20 @@ export function createCorrectionsRoutes(db: Database, deps: CorrectionsRoutesDep
       throw new ForbiddenError(`target user ${existing.userId} is outside actor's scope`);
     }
 
-    if (existing.status !== "pending") {
+    // 却下はどちらの段からでもできる(二次承認者が内容に問題を見つけたら、一次承認済みでも
+    // 差し戻せるべき — docs/design/approval-flows.md「却下」)。
+    if (!isOpenForDecision(existing.status)) {
       return c.json({ error: "not_pending" }, 409);
+    }
+    // 二段承認の二次段での却下は、承認と同じく tenant スコープの承認権限を要求する
+    // (部署スコープの承認者が、上位の判断を待っている申請を独断で消せてはいけない)。
+    if (existing.status === "approved_step1" && permissions.get(APPROVE_PERMISSION) !== "tenant") {
+      throw new ForbiddenError(`second-step rejection requires ${APPROVE_PERMISSION} at tenant scope`);
     }
 
     const now = nowMinutes();
     const selfApproved = existing.requestedBy === user.id;
+    const step = rejectionStep(existing);
 
     let updated: CorrectionRequest;
     try {
@@ -657,7 +737,7 @@ export function createCorrectionsRoutes(db: Database, deps: CorrectionsRoutesDep
         const result = await updateCorrectionStatus(tx, {
           id: existing.id,
           tenantId: user.tenantId,
-          fromStatus: "pending",
+          fromStatus: existing.status as CorrectionStatus,
           status: "rejected",
           decidedBy: user.id,
           decidedAt: now,
@@ -672,7 +752,8 @@ export function createCorrectionsRoutes(db: Database, deps: CorrectionsRoutesDep
           action: "correction.reject",
           targetType: "correction_request",
           targetId: existing.id,
-          detail: JSON.stringify({ selfApproved }),
+          // どの段で却下されたかを残す(依頼: 「Reject at either step = rejected(record which step)」)。
+          detail: JSON.stringify({ selfApproved, step, requiredSteps: existing.requiredSteps }),
           occurredAt: now,
         });
         return result;
@@ -727,14 +808,16 @@ export function createCorrectionsRoutes(db: Database, deps: CorrectionsRoutesDep
     if (existing.requestedBy !== user.id) {
       throw new ForbiddenError("cannot withdraw another user's correction request");
     }
-    if (existing.status !== "pending") {
+    // 取り下げは**最終承認が下りるまで**可能。二段承認では一次承認済み(approved_step1)でも
+    // まだ何も反映されていないため、本人の意思で取り下げられる(docs/design/approval-flows.md)。
+    if (!isOpenForDecision(existing.status)) {
       return c.json({ error: "not_pending" }, 409);
     }
 
     const updated = await updateCorrectionStatus(db, {
       id: existing.id,
       tenantId: user.tenantId,
-      fromStatus: "pending",
+      fromStatus: existing.status as CorrectionStatus,
       status: "withdrawn",
     });
     if (!updated) {

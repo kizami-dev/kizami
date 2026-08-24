@@ -126,3 +126,18 @@ export const SLACK_SETTINGS_PERMISSION = NOTIFICATION_SETTINGS_PERMISSION;
  * (テナント全体のみ・危険フラグあり)を新設した(packages/authz/src/catalog.ts §1.10)。
  */
 export const SSO_SETTINGS_PERMISSION = "tenant_settings.auth.manage";
+
+/**
+ * GET/PUT /settings/approval-flow(多段承認の段数設定。docs/design/approval-flows.md、
+ * 2026-08-24 追加)が要求する権限。
+ *
+ * 判断点(完了報告に明記): 既存キーの転用先として `permission.preset.manage` と
+ * `tenant_settings.calendar.manage` を検討したが、どちらも採らなかった。前者は
+ * 「誰が何をできるか」の設定であって承認の段数とは対象が違い(段数を変えても誰の権限も
+ * 増減しない)、後者を含む `tenant_settings.*` は**集計の入力になる**テナント設定を指す
+ * グループで、承認フローは集計に一切影響しない。カタログの設計原則「非エンジニアが業務タスク
+ * 単位で理解できる」に照らしても、「日界・法定休日カレンダーを設定できる」のチェックボックスに
+ * 承認フローが隠れるのは誤解を招く。よって専用キー `approval_flow.manage`
+ * (テナント全体のみ・危険フラグなし)を新設した(packages/authz/src/catalog.ts §1.15)。
+ */
+export const APPROVAL_FLOW_PERMISSION = "approval_flow.manage";

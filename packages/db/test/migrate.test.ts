@@ -26,6 +26,7 @@ describe("migrate", () => {
         "allowance_definition_versions",
         "allowance_definitions",
         "api_keys",
+        "approval_flow_settings",
         "audit_logs",
         "auth_credentials",
         "auto_break_waivers",

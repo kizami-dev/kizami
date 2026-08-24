@@ -11,7 +11,7 @@
   - スコープの機械可読キー(2026-08-21確定、DB の grants JSON で使用): `self`(本人のみ)/ `department`(自部署)/ `department_and_descendants`(自部署+配下部署)/ `tenant`(テナント全体)。
   - 「危険フラグ」は §4 が言う「編集UI上で影響範囲の説明を添えて表示すべき権限」を指す。§10の文脈ヒント(操作時の都度のツールチップ)とは対象が重なるが別軸であり、ここでは**権限プリセット編集画面での重点表示対象**という意味で付与している。
 
-## 1. 業務タスク単位の権限カタログ(32項目。2026-08-23 に shift.manage、2026-08-24 に tenant_settings.auth.manage を追加)
+## 1. 業務タスク単位の権限カタログ(33項目。2026-08-23 に shift.manage、2026-08-24 に tenant_settings.auth.manage と approval_flow.manage を追加)
 
 ### 1.1 打刻(代理操作)
 
@@ -114,6 +114,14 @@
 | キー | 日本語ラベル | 説明 | 適用スコープ | 含意される閲覧権限 | 危険 |
 |---|---|---|---|---|---|
 | `api_key.manage` | APIキー/MCP接続を管理できる | 公開打刻API・MCPサーバー接続用のAPIキーの発行・失効を行える | テナント全体のみ | APIキー一覧閲覧 | **はい**(発行された鍵は保有者の権限で操作可能になるためセキュリティ影響大) |
+
+### 1.15 承認フロー設定(多段承認)
+
+| キー | 日本語ラベル | 説明 | 適用スコープ | 含意される閲覧権限 | 危険 |
+|---|---|---|---|---|---|
+| `approval_flow.manage` | 承認フロー(多段承認)を設定できる | 打刻修正・休暇・休憩自動控除打ち消しの各申請について、承認を1段(単段)にするか2段(一次承認+人事等による二次承認)にするかをテナント単位で設定できる | テナント全体のみ | ― | いいえ(承認を厳しく/緩くする運用判断であって、権限付与・個人情報の露出・データの不可逆な変更のいずれにも当たらない。緩める変更も仕掛かり中の申請には影響しない — [design/approval-flows.md](./approval-flows.md)) |
+
+既存キーを転用せず専用キーを新設した理由(`permission.preset.manage` は「誰が何をできるか」の設定であって段数の設定ではない / `tenant_settings.*` は集計の入力になる設定のグループで承認フローは集計に影響しない / 各種の `*.approve` は承認する権限であって承認フローを決める権限ではない)は [design/approval-flows.md §6](./approval-flows.md) を参照。
 
 ---
 
@@ -227,6 +235,7 @@
 | `tenant_settings.gps.manage` | テナント全体 | ― | ― |
 | `tenant_settings.auto_deduction.manage` | テナント全体 | ― | ― |
 | `tenant_settings.auth.manage` | テナント全体 | ― | ― |
+| `approval_flow.manage` | テナント全体 | ― | ― |
 | `notification.settings.manage` | テナント全体 | ― | ― |
 | `permission.preset.manage` | テナント全体 | ― | ― |
 | `permission.assignment.manage` | テナント全体 | ― | ― |

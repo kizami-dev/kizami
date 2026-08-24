@@ -18,6 +18,13 @@
  * 承認依頼の通知(2026-08-23 追加): POST / で申請が作成されたら承認者(申請者をスコープに
  * 含む形で APPROVE_PERMISSION を持つ人)へ通知する。routes/corrections.ts の POST / と同じ
  * 形(詳細な設計理由・テナント共有 Webhook の扱いはそちらのヘッダコメント参照)。
+ *
+ * 多段承認(2026-08-24 追加、docs/design/approval-flows.md): テナント設定
+ * (approval_flow_settings.auto_break_waiver_steps)が 2 のとき二段承認になる。申請作成時に
+ * その段数を `required_steps` へ凍結して保存する(グランドファザリング)。一次承認では
+ * status を approved_step1 にするだけで集計には一切影響せず(listApprovedWaiverDatesInRange は
+ * status='approved' のみを拾う)、二次承認(tenant スコープで APPROVE_PERMISSION を持つ人)で
+ * 初めて自動控除の打ち消しが効く。段の判定は apps/api/src/lib/approval-flow.ts に集約。
  */
 
 import { Hono } from "hono";
@@ -42,6 +49,14 @@ import {
 import { dispatch } from "@kizami/notify";
 import type { AppEnv } from "../auth/middleware.js";
 import { ForbiddenError, requirePermission } from "../authz.js";
+import {
+  approvalFlowState,
+  isOpenForDecision,
+  notifyStep2Approvers,
+  rejectionStep,
+  resolveApprovalStep,
+  resolveRequiredSteps,
+} from "../lib/approval-flow.js";
 import { resolveApproversForUser } from "../lib/approvers.js";
 import { computeMonthlyOutputForUser } from "../lib/closing-amend.js";
 import { assertAmendAllowed } from "../lib/closing-guard.js";
@@ -83,6 +98,8 @@ function serializeWaiver(row: AutoBreakWaiver) {
     decidedAt: row.decidedAt,
     decisionNote: row.decisionNote,
     createdAt: row.createdAt,
+    // 多段承認の状態(requiredSteps / currentStep / 一次承認者)。単段でも常に返す。
+    ...approvalFlowState(row),
   };
 }
 
@@ -115,15 +132,14 @@ export function createAutoBreakWaiversRoutes(db: Database, deps: AutoBreakWaiver
   app.get("/", async (c) => {
     const user = c.get("user");
 
+    // status=pending は「まだ決裁が終わっていない申請」。二段承認の approved_step1
+    // (一次承認済み・二次承認待ち)もここに含める(routes/corrections.ts の GET / と同じ判断)。
     const statusParam = c.req.query("status") ?? "pending";
-    let status: AutoBreakWaiverStatus | undefined;
-    if (statusParam === "pending") {
-      status = "pending";
-    } else if (statusParam === "all") {
-      status = undefined;
-    } else {
+    if (statusParam !== "pending" && statusParam !== "all") {
       return c.json({ error: "invalid_status" }, 400);
     }
+    const openOnly = statusParam === "pending";
+    const filterOpen = (rows: AutoBreakWaiver[]) => (openOnly ? rows.filter((r) => isOpenForDecision(r.status)) : rows);
 
     const permissions = c.get("permissions");
     const queryUserId = c.req.query("userId");
@@ -140,22 +156,14 @@ export function createAutoBreakWaiversRoutes(db: Database, deps: AutoBreakWaiver
       // 他テナントのユーザーIDに 200(空配列)を返さないため。routes/corrections.ts の GET / と同じ。
       const target = await getUserById(db, { tenantId: user.tenantId, id: queryUserId });
       if (!target) return c.json({ error: "not_found" }, 404);
-      const requests = await listAutoBreakWaivers(db, {
-        tenantId: user.tenantId,
-        userId: queryUserId,
-        ...(status !== undefined ? { status } : {}),
-      });
+      const requests = filterOpen(await listAutoBreakWaivers(db, { tenantId: user.tenantId, userId: queryUserId }));
       return c.json({ requests: requests.map(serializeWaiver) });
     }
 
     // userId 未指定: VIEW_ALL_PERMISSION を持たなければ自分の分だけ(権限が無いのに
     // 「未指定=スコープ全員」を返すと事故になるため、明示的な userId 指定が無い限り自分に絞る)。
     if (permissions.get(VIEW_ALL_PERMISSION) === undefined) {
-      const requests = await listAutoBreakWaivers(db, {
-        tenantId: user.tenantId,
-        userId: user.id,
-        ...(status !== undefined ? { status } : {}),
-      });
+      const requests = filterOpen(await listAutoBreakWaivers(db, { tenantId: user.tenantId, userId: user.id }));
       return c.json({ requests: requests.map(serializeWaiver) });
     }
 
@@ -166,10 +174,7 @@ export function createAutoBreakWaiversRoutes(db: Database, deps: AutoBreakWaiver
       actor: { id: user.id, tenantId: user.tenantId, permissions },
       permission: VIEW_ALL_PERMISSION,
     });
-    const requests = await listAutoBreakWaivers(db, {
-      tenantId: user.tenantId,
-      ...(status !== undefined ? { status } : {}),
-    });
+    const requests = filterOpen(await listAutoBreakWaivers(db, { tenantId: user.tenantId }));
     const scoped = accessible === "all" ? requests : requests.filter((r) => accessible.has(r.userId));
     return c.json({ requests: scoped.map(serializeWaiver) });
   });
@@ -200,12 +205,17 @@ export function createAutoBreakWaiversRoutes(db: Database, deps: AutoBreakWaiver
       return c.json({ error: "invalid_reason" }, 400);
     }
 
+    // 承認段数は**この瞬間の**テナント設定を凍結して保存する(グランドファザリング。
+    // apps/api/src/lib/approval-flow.ts・docs/design/approval-flows.md 参照)。
+    const requiredSteps = await resolveRequiredSteps(db, user.tenantId, "auto_break_waiver");
+
     const created = await createAutoBreakWaiver(db, {
       tenantId: user.tenantId,
       userId: user.id,
       requestedBy: user.id,
       waiveDate,
       reason,
+      requiredSteps,
       createdAt: nowMinutes(),
     });
 
@@ -283,12 +293,65 @@ export function createAutoBreakWaiversRoutes(db: Database, deps: AutoBreakWaiver
       throw new ForbiddenError(`target user ${existing.userId} is outside actor's scope`);
     }
 
-    if (existing.status !== "pending") {
-      return c.json({ error: "not_pending" }, 409);
+    // 何段目の承認かを決める(単段なら従来どおり pending からの1回で確定)。
+    const plan = resolveApprovalStep({ row: existing, actorId: user.id, permissions, permission: APPROVE_PERMISSION });
+    if (typeof plan === "string") {
+      return c.json({ error: plan }, 409);
     }
 
     const now = nowMinutes();
     const selfApproved = existing.requestedBy === user.id;
+
+    // ---- 一次承認(二段承認の1段目)----
+    // 集計には一切影響しない(listApprovedWaiverDatesInRange は status='approved' のみを拾う)ため、
+    // 締め済み月ガード(assertAmendAllowed)もスナップショット再計算もここでは行わない
+    // — 実際に自動控除が変わるのは二次承認の時だけ。
+    if (!plan.isFinal) {
+      const updated = await decideAutoBreakWaiver(db, {
+        id: existing.id,
+        tenantId: user.tenantId,
+        fromStatus: plan.fromStatus,
+        status: plan.nextStatus,
+        decidedBy: user.id,
+        decidedAt: now,
+        step1DecidedBy: user.id,
+        step1DecidedAt: now,
+      });
+      if (!updated) {
+        return c.json({ error: "not_pending" }, 409);
+      }
+
+      await insertAuditLog(db, {
+        tenantId: user.tenantId,
+        actorId: user.id,
+        action: "auto_break_waiver.approve_step1",
+        targetType: "auto_break_waiver",
+        targetId: existing.id,
+        detail: JSON.stringify({
+          selfApproved,
+          step: 1,
+          requiredSteps: existing.requiredSteps,
+          userId: existing.userId,
+          waiveDate: existing.waiveDate,
+          note,
+        }),
+        occurredAt: now,
+      });
+
+      const subject = await getUserById(db, { tenantId: user.tenantId, id: existing.userId });
+      await notifyStep2Approvers(db, deps, {
+        tenantId: user.tenantId,
+        permission: APPROVE_PERMISSION,
+        notificationType: "approval_request_waiver_step2",
+        title: "二次承認をお願いします(休憩自動控除の打ち消し申請)",
+        body: `${subject?.name ?? "メンバー"}さんの休憩自動控除の打ち消し申請が一次承認されました。二次承認をお願いします。`,
+        excludeUserIds: [user.id, existing.requestedBy],
+        now,
+      });
+
+      return c.json({ waiver: serializeWaiver(updated), amended: false }, 200);
+    }
+
     const period = existing.waiveDate.slice(0, 7);
     const parsedMonth = parseMonthParam(period);
     if (!parsedMonth) {
@@ -304,6 +367,8 @@ export function createAutoBreakWaiversRoutes(db: Database, deps: AutoBreakWaiver
         const updated = await decideAutoBreakWaiver(tx, {
           id: existing.id,
           tenantId: user.tenantId,
+          // 単段なら "pending"、二段の二次承認なら "approved_step1"(楽観ロック)。
+          fromStatus: plan.fromStatus,
           status: "approved",
           decidedBy: user.id,
           decidedAt: now,
@@ -319,7 +384,15 @@ export function createAutoBreakWaiversRoutes(db: Database, deps: AutoBreakWaiver
           action: "auto_break_waiver.approve",
           targetType: "auto_break_waiver",
           targetId: existing.id,
-          detail: JSON.stringify({ selfApproved, userId: existing.userId, waiveDate: existing.waiveDate, amended: wasClosed }),
+          detail: JSON.stringify({
+            selfApproved,
+            userId: existing.userId,
+            waiveDate: existing.waiveDate,
+            amended: wasClosed,
+            step: plan.step,
+            requiredSteps: existing.requiredSteps,
+            step1DecidedBy: existing.step1DecidedBy,
+          }),
           occurredAt: now,
         });
 
@@ -454,18 +527,25 @@ export function createAutoBreakWaiversRoutes(db: Database, deps: AutoBreakWaiver
       throw new ForbiddenError(`target user ${existing.userId} is outside actor's scope`);
     }
 
-    if (existing.status !== "pending") {
+    // 却下はどちらの段からでもできる(docs/design/approval-flows.md「却下」)。
+    if (!isOpenForDecision(existing.status)) {
       return c.json({ error: "not_pending" }, 409);
+    }
+    // 二次段での却下は承認と同じく tenant スコープの承認権限を要求する。
+    if (existing.status === "approved_step1" && permissions.get(APPROVE_PERMISSION) !== "tenant") {
+      throw new ForbiddenError(`second-step rejection requires ${APPROVE_PERMISSION} at tenant scope`);
     }
 
     const now = nowMinutes();
     const selfApproved = existing.requestedBy === user.id;
+    const step = rejectionStep(existing);
 
     try {
       const updated = await db.transaction(async (tx) => {
         const result = await decideAutoBreakWaiver(tx, {
           id: existing.id,
           tenantId: user.tenantId,
+          fromStatus: existing.status as AutoBreakWaiverStatus,
           status: "rejected",
           decidedBy: user.id,
           decidedAt: now,
@@ -480,7 +560,8 @@ export function createAutoBreakWaiversRoutes(db: Database, deps: AutoBreakWaiver
           action: "auto_break_waiver.reject",
           targetType: "auto_break_waiver",
           targetId: existing.id,
-          detail: JSON.stringify({ selfApproved, userId: existing.userId, waiveDate: existing.waiveDate }),
+          // どの段で却下されたかを残す。
+          detail: JSON.stringify({ selfApproved, userId: existing.userId, waiveDate: existing.waiveDate, step, requiredSteps: existing.requiredSteps }),
           occurredAt: now,
         });
         return result;
@@ -508,7 +589,8 @@ export function createAutoBreakWaiversRoutes(db: Database, deps: AutoBreakWaiver
     if (existing.requestedBy !== user.id) {
       throw new ForbiddenError("cannot withdraw another user's auto break waiver");
     }
-    if (existing.status !== "pending") {
+    // 取り下げは最終承認が下りるまで可能(二段承認では approved_step1 でも取り下げられる)。
+    if (!isOpenForDecision(existing.status)) {
       return c.json({ error: "not_pending" }, 409);
     }
 

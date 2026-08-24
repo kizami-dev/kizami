@@ -586,6 +586,29 @@ export const ja = {
     string
   >,
 
+  /**
+   * 多段承認(二段承認)の共通表示文言(2026-08-24 追加、docs/design/approval-flows.md)。
+   *
+   * 判断点: 打刻修正申請・休暇申請・休憩自動控除の打ち消し申請の3種別で文面が完全に同じため、
+   * 種別ごとの section(corrections / autoBreakWaiver / leave)に3つ書かず1箇所へまとめる
+   * (3種別 × 4言語 = 12箇所の重複と、そこから生まれる文言のズレを構造的に防ぐ)。
+   * 状態そのもののラベル(approved_step1)だけは既存の statusLabel と並べたいので、
+   * 各種別の statusLabel 側に置いている。
+   */
+  approvalSteps: {
+    /** requiredSteps >= 2 の申請カードに出す注記。「承認されたのにまだ反映されない」理由を示す。 */
+    twoStepNote: "この申請は二段承認です。一次承認のあと、テナント全体の承認権限を持つ人の二次承認で反映されます。",
+    /** 承認キューの各行に出す「今どの段の承認を待っているか」。 */
+    awaitingStep1: "一次承認待ち",
+    awaitingStep2: "二次承認待ち",
+    /** 一次承認済みだが、二次承認の権限(テナント全体スコープ)が無い人へ出す注記。 */
+    step2NotYours: "二次承認はテナント全体の承認権限を持つ人が行います。",
+    /** カードの決裁欄に添える一次承認の実施者・日時の見出し。 */
+    step1DecidedLabel: "一次承認",
+    /** 一次承認者が自分だったときの表示(各種別の decidedBySelf と揃える)。 */
+    step1DecidedBySelf: "本人",
+  },
+
   corrections: {
     title: "打刻修正申請",
     tagline: "打刻の追加・訂正・取消を申請します。承認されると勤怠記録に反映されます。",
@@ -622,10 +645,12 @@ export const ja = {
 
     statusLabel: {
       pending: "申請中",
+      /** 二段承認のときだけ現れる中間状態(approved_step1)。まだ勤怠には反映されていない。 */
+      approved_step1: "一次承認済(二次承認待ち)",
       approved: "承認済",
       rejected: "却下",
       withdrawn: "取下げ",
-    } satisfies Record<"pending" | "approved" | "rejected" | "withdrawn", string>,
+    } satisfies Record<"pending" | "approved_step1" | "approved" | "rejected" | "withdrawn", string>,
 
     columnTarget: "対象日時",
     columnContent: "内容",
@@ -675,6 +700,10 @@ export const ja = {
       invalid_request_shape: "入力内容を確認してください",
       invalid_body: "入力内容を確認してください",
       invalid_status: "表示できない状態が指定されました",
+      /** 409。二段承認で、一次承認した本人が二次承認しようとしたとき(docs/design/approval-flows.md)。 */
+      /** 403。二段承認の二次承認をテナント全体スコープを持たない承認者が試みた場合など。 */
+      forbidden: "この操作を行う権限がありません",
+      same_approver_as_step1: "一次承認をした本人は二次承認できません。別の承認者に依頼してください",
       default: "処理に失敗しました。もう一度お試しください",
     },
   },
@@ -709,10 +738,12 @@ export const ja = {
 
     statusLabel: {
       pending: "申請中",
+      /** 二段承認のときだけ現れる中間状態(approved_step1)。まだ勤怠には反映されていない。 */
+      approved_step1: "一次承認済(二次承認待ち)",
       approved: "承認済",
       rejected: "却下",
       withdrawn: "取下げ",
-    } satisfies Record<"pending" | "approved" | "rejected" | "withdrawn", string>,
+    } satisfies Record<"pending" | "approved_step1" | "approved" | "rejected" | "withdrawn", string>,
 
     approve: "承認",
     reject: "却下",
@@ -739,6 +770,8 @@ export const ja = {
       already_approved: "この日の打ち消しは既に承認されています",
       not_found: "対象の申請が見つかりません",
       forbidden: "この操作を行う権限がありません",
+      /** 409。二段承認で、一次承認した本人が二次承認しようとしたとき(docs/design/approval-flows.md)。 */
+      same_approver_as_step1: "一次承認をした本人は二次承認できません。別の承認者に依頼してください",
       month_closed_requires_unlock: "この月は確定済みです。承認するには確定解除の権限が必要です",
       default: "処理に失敗しました。もう一度お試しください",
     },
@@ -1014,6 +1047,50 @@ export const ja = {
   },
 
   /**
+   * 多段承認の設定(/settings/approval-flow、2026-08-24 追加)。docs/design/approval-flows.md が仕様の正。
+   * 種別ごとに「1段(単段)」「2段(一次承認+二次承認)」を選ぶだけの画面だが、
+   * 承認体制そのものを変える設定なので、誤解しやすい点(既存申請には効かない・二次承認者は
+   * テナント全体スコープ)を hint として画面上に必ず出す。
+   */
+  settingsApprovalFlow: {
+    title: "多段承認",
+    tagline: "申請の種別ごとに、承認を1段(単段)にするか2段(一次承認+二次承認)にするかを決めます。",
+    noPermission: "この設定を変更する権限がありません",
+    loadFailed: "設定の取得に失敗しました。もう一度お試しください",
+
+    /** 3つの select に共通で効く説明。画面上部にまとめて出す。 */
+    defaultSingleHint: "既定はすべて単段です。単段のままなら、これまでどおり承認1回で申請が反映されます。",
+    twoStepHint: "2段にすると、一次承認はこれまでどおりその種別の承認権限を持つ人が行い、二次承認は同じ権限を「テナント全体」スコープで持つ人(人事・本部など)が行います。二次承認まで終わるまで申請は反映されません。",
+    sameApproverHint: "一次承認と二次承認を同じ人が行うことはできません。",
+    frozenAtCreationHint: "この設定を変えても、すでに出ている申請の段数は変わりません。申請は作成時点の段数のまま最後まで進みます。",
+    tenantApproverRequiredHint: "2段にする前に、その承認権限を「テナント全体」スコープで持つ人が最低1人いることを確認してください。いないと、申請が二次承認待ちのまま滞留します。",
+
+    correctionLabel: "打刻修正申請",
+    correctionHint: "打刻の追加・訂正・取消の申請。承認権限は「打刻修正の承認」です。",
+    leaveLabel: "休暇申請",
+    leaveHint: "有給休暇などの取得申請。承認権限は「休暇申請の承認」です。",
+    autoBreakWaiverLabel: "休憩自動控除の打ち消し申請",
+    autoBreakWaiverHint: "実際には休憩を取れなかった日の自動控除を取り消す申請。承認権限は打刻修正申請と同じです。",
+
+    optionOneStep: "1段(単段)",
+    optionTwoSteps: "2段(一次承認+二次承認)",
+
+    save: "保存",
+    saving: "保存中…",
+    saveSuccess: "設定を保存しました。",
+    saveNote: "この設定はテナント全体に適用され、これから出る申請にだけ効きます。変更は監査ログに記録されます。",
+
+    errors: {
+      invalid_correction_steps: "打刻修正申請の段数は1段または2段を選んでください",
+      invalid_leave_steps: "休暇申請の段数は1段または2段を選んでください",
+      invalid_auto_break_waiver_steps: "休憩自動控除の打ち消し申請の段数は1段または2段を選んでください",
+      invalid_body: "入力内容を確認してください",
+      forbidden: "この操作を行う権限がありません",
+      default: "処理に失敗しました。もう一度お試しください",
+    },
+  },
+
+  /**
    * Slack連携用トークンの入力(/settings/slack-link、2026-08-22 追加、権限不要・全従業員向け)。
    * Slackで `/punch link` を実行すると発行される、15分間有効なワンタイムトークンをここで入力する。
    */
@@ -1052,6 +1129,7 @@ export const ja = {
     departments: "部署",
     members: "メンバー",
     presets: "権限プリセット",
+    approvalFlow: "多段承認",
     tenantProfile: "テナントプロファイル",
     leave: "有給休暇",
     help: "社内規定",
@@ -1082,6 +1160,8 @@ export const ja = {
     membersDesc: "メンバーの所属変更、権限プリセットの割当、実効権限の確認を行います。",
     presetsTitle: "権限プリセット",
     presetsDesc: "権限のON/OFFとスコープを組み合わせたプリセットを作成・編集します。",
+    approvalFlowTitle: "多段承認",
+    approvalFlowDesc: "打刻修正・休暇・休憩自動控除の打ち消しの各申請を、1段承認にするか2段(一次承認+二次承認)にするかを設定します。",
     attendanceTitle: "勤怠ルール",
     attendanceDesc: "日界・法定休日・休憩ルール・GPS・フレックス設定を、版を追加する形で変更します。",
     allowancesTitle: "手当対象時間",
@@ -1978,10 +2058,12 @@ export const ja = {
 
     statusLabel: {
       pending: "申請中",
+      /** 二段承認のときだけ現れる中間状態(approved_step1)。まだ勤怠には反映されていない。 */
+      approved_step1: "一次承認済(二次承認待ち)",
       approved: "承認済",
       rejected: "却下",
       withdrawn: "取下げ",
-    } satisfies Record<"pending" | "approved" | "rejected" | "withdrawn", string>,
+    } satisfies Record<"pending" | "approved_step1" | "approved" | "rejected" | "withdrawn", string>,
 
     unitLabelShort: {
       full_day: "全休",
@@ -2032,6 +2114,8 @@ export const ja = {
       not_pending: "この申請は既に処理されています",
       not_found: "対象の申請が見つかりません",
       forbidden: "この操作を行う権限がありません",
+      /** 409。二段承認で、一次承認した本人が二次承認しようとしたとき(docs/design/approval-flows.md)。 */
+      same_approver_as_step1: "一次承認をした本人は二次承認できません。別の承認者に依頼してください",
       month_closed_requires_unlock: "この月は確定済みです。承認するには確定解除の権限が必要です",
       default: "処理に失敗しました。もう一度お試しください",
     },

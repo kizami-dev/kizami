@@ -75,3 +75,34 @@ export async function resolveApproversForUser(db: Database, params: ResolveAppro
 
   return approvers;
 }
+
+/**
+ * 二段承認の**二次承認者候補**(= permission を tenant スコープで保持するユーザー)の
+ * ID 一覧を返す(重複なし、順不同)。仕様: docs/design/approval-flows.md
+ *
+ * resolveApproversForUser と分けている理由: 二次承認は「申請対象者がスコープに入っているか」
+ * ではなく「テナント全体を見る立場かどうか」で決まる(人事・本部を想定)。したがって
+ * subjectUser に依存せず、スコープの解決(部署ツリーの読み出し)も不要 —
+ * listTenantPresetGrantsByUser の1クエリと実効権限の合算だけで判定できる。
+ *
+ * 該当者が1人もいなければ空配列(呼び出し元は「通知先が無い」として扱ってよい)。
+ * ただしその状態は「二段承認に設定したのに二次承認できる人がいない」というテナント運用の
+ * 不備であり、申請は approved_step1 のまま滞留する — 設定画面側で注意喚起する
+ * (apps/web/src/components/SettingsApprovalFlowView.tsx)。
+ */
+export async function resolveTenantScopeApprovers(
+  db: Database,
+  params: { tenantId: string; permission: PermissionKey },
+): Promise<string[]> {
+  const { tenantId, permission } = params;
+  const grantsByUser = await listTenantPresetGrantsByUser(db, tenantId);
+
+  const approvers: string[] = [];
+  for (const [candidateUserId, rawGrantSets] of grantsByUser) {
+    const effective = effectivePermissionsFromRawGrantSets(rawGrantSets);
+    if (effective.get(permission) === "tenant") {
+      approvers.push(candidateUserId);
+    }
+  }
+  return approvers;
+}

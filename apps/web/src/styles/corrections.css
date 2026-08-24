@@ -386,6 +386,16 @@
   color: var(--k-cyan-ink);
 }
 
+/*
+ * 一次承認済み・二次承認待ち(多段承認の中間状態、2026-08-24 追加、docs/design/approval-flows.md)。
+ * 承認済(cyan)とも申請中(中立の key 色)とも取り違えないよう、「進行中・待ち」を表す黄
+ * (leave-target-month-closed の注記と同じ系統)を使う。
+ */
+.correction-badge--approved_step1 {
+  border-color: var(--k-yellow-ink);
+  color: var(--k-yellow-ink);
+}
+
 .correction-badge--rejected {
   border-color: var(--k-magenta-ink);
   color: var(--k-magenta-ink);
@@ -394,6 +404,27 @@
 .correction-badge--withdrawn {
   border-color: var(--k-ink-soft);
   color: var(--k-ink-soft);
+}
+
+/* 承認キューの行に出す「一次/二次のどちらの承認待ちか」(2026-08-24 追加)。 */
+.correction-card__step {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--k-yellow-ink);
+}
+
+/*
+ * 二段承認の申請カードに添える注記(「承認されたのにまだ反映されない」理由の説明・
+ * 二次承認は自分では行えない旨)。leave-target-month-closed と同じ見た目に揃える。
+ */
+.correction-card__note {
+  margin: 0;
+  border: 1px solid var(--k-yellow-ink);
+  background: color-mix(in srgb, var(--k-yellow) 10%, transparent);
+  color: var(--k-yellow-ink);
+  border-radius: var(--radius-s);
+  padding: var(--space-3);
+  font-size: 0.8rem;
 }
 
 .correction-card__body {

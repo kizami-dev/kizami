@@ -88,7 +88,8 @@ export const leaveGrants = sqliteTable(
 );
 
 /**
- * 休暇申請。correction_requests と同じ形のワークフロー(pending → approved/rejected/withdrawn)。
+ * 休暇申請。correction_requests と同じ形のワークフロー(pending → approved/rejected/withdrawn。
+ * 二段承認では pending → approved_step1 → approved/rejected — docs/design/approval-flows.md)。
  *
  * unit: 'full_day' | 'half_day_am' | 'half_day_pm' | 'hourly'。
  * minutes: unit='hourly' のときのみ必須(申請された分数)。full_day/half_day_* は
@@ -108,8 +109,18 @@ export const leaveRequests = sqliteTable(
     requestedBy: text("requested_by")
       .notNull()
       .references(() => users.id),
-    /** pending / approved / rejected / withdrawn */
+    /** pending / approved_step1 / approved / rejected / withdrawn */
     status: text("status").notNull(),
+    /**
+     * この申請に必要な承認の段数(1 = 単段 / 2 = 二段)。作成時点のテナント設定
+     * (approval_flow_settings.leave_steps)を凍結して保存する。
+     * グランドファザリングの判断点は schema/corrections.ts の同名カラムのコメント参照。
+     */
+    requiredSteps: integer("required_steps").notNull().default(1),
+    /** 二段承認の一次承認者。単段では常に null */
+    step1DecidedBy: text("step1_decided_by").references(() => users.id),
+    /** 一次承認の時刻(UTC エポック分)。単段では常に null */
+    step1DecidedAt: integer("step1_decided_at"),
     /** ローカル日付 "YYYY-MM-DD" */
     leaveDate: text("leave_date").notNull(),
     /** 'full_day' | 'half_day_am' | 'half_day_pm' | 'hourly' */

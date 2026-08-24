@@ -18,7 +18,8 @@
  *   その区間が「始まる」日に属するものとして扱う(breaks.md の判定単位に合わせる)。
  *   日をまたぐ夜勤でも、区間の開始日1つを指定すればその区間の自動控除を打ち消せる
  * - 状態遷移は pending → approved / rejected / withdrawn のみ。correction_requests /
- *   leave_requests と同じ形
+ *   leave_requests と同じ形(二段承認の場合のみ pending → approved_step1 → approved /
+ *   rejected という中間状態を1つ挟む — docs/design/approval-flows.md)
  * - 承認済みの waive_date は集計エンジンの `autoBreakWaivedDates` 入力に渡り、
  *   その勤務区間には自動控除を適用しない(queries/auto-break-waivers.ts の
  *   listApprovedWaiverDatesInRange が橋渡しする)
@@ -47,8 +48,18 @@ export const autoBreakWaivers = sqliteTable(
     requestedBy: text("requested_by")
       .notNull()
       .references(() => users.id),
-    /** pending / approved / rejected / withdrawn */
+    /** pending / approved_step1 / approved / rejected / withdrawn */
     status: text("status").notNull(),
+    /**
+     * この申請に必要な承認の段数(1 = 単段 / 2 = 二段)。作成時点のテナント設定
+     * (approval_flow_settings.auto_break_waiver_steps)を凍結して保存する。
+     * グランドファザリングの判断点は schema/corrections.ts の同名カラムのコメント参照。
+     */
+    requiredSteps: integer("required_steps").notNull().default(1),
+    /** 二段承認の一次承認者。単段では常に null */
+    step1DecidedBy: text("step1_decided_by").references(() => users.id),
+    /** 一次承認の時刻(UTC エポック分)。単段では常に null */
+    step1DecidedAt: integer("step1_decided_at"),
     /** ローカル日付 "YYYY-MM-DD"。打ち消す日(この日に始まる勤務区間の自動控除を無効化) */
     waiveDate: text("waive_date").notNull(),
     /** 申請理由(必須)。「実際に休憩を取れなかった」の具体的な事情 */

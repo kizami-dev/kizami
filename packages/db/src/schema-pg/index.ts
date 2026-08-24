@@ -22,6 +22,7 @@ export const {
   allowanceDefinitionVersions,
   allowanceDefinitions,
   apiKeys,
+  approvalFlowSettings,
   auditLogs,
   authCredentials,
   autoBreakWaivers,

@@ -82,6 +82,13 @@ export const mapPersonalNotificationSettingsErrorMessage = makeErrorMapper(() =>
 export const mapSlackSettingsErrorMessage = makeErrorMapper(() => messages.settingsSlack.errors);
 /** SSO(OIDC)設定(GET/PUT /settings/sso)のエラーマッピング(2026-08-24 追加)。 */
 export const mapSsoSettingsErrorMessage = makeErrorMapper(() => messages.settingsSso.errors);
+/**
+ * 多段承認の設定(GET/PUT /settings/approval-flow)のエラーマッピング(2026-08-24 追加、
+ * docs/design/approval-flows.md)。PUT は3項目すべてが必須のため、項目ごとの
+ * invalid_correction_steps / invalid_leave_steps / invalid_auto_break_waiver_steps を
+ * どの欄が悪いのか分かる文言へ振り分ける。
+ */
+export const mapApprovalFlowSettingsErrorMessage = makeErrorMapper(() => messages.settingsApprovalFlow.errors);
 /** Slack連携用トークン確定(POST /settings/slack-link)のエラーマッピング。 */
 export const mapSlackLinkErrorMessage = makeErrorMapper(() => messages.settingsSlackLink.errors);
 /** 部署管理(POST/PATCH/DELETE /departments*)のエラーマッピング。 */

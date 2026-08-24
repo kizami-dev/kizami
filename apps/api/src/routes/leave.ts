@@ -52,6 +52,13 @@
  * 形で APPROVE_PERMISSION を持つ人)を解決し、申請者自身を除いて通知する(routes/corrections.ts
  * の POST / と同じ形。詳細な設計理由・テナント共有 Webhook の扱いは routes/corrections.ts の
  * ヘッダコメント参照)。
+ *
+ * 多段承認(2026-08-24 追加、docs/design/approval-flows.md): テナント設定
+ * (approval_flow_settings.leave_steps)が 2 のとき二段承認になる。申請作成時にその段数を
+ * `required_steps` へ凍結して保存する(グランドファザリング)。一次承認では status を
+ * approved_step1 にするだけで、残高の消化にも集計にも影響しない(残高・年5日の計算は
+ * status='approved' の申請だけを数える)。二次承認(tenant スコープで APPROVE_PERMISSION を
+ * 持つ人)で初めて従来どおりの反映を行う。段の判定は apps/api/src/lib/approval-flow.ts に集約。
  */
 
 import { Hono } from "hono";
@@ -107,6 +114,14 @@ import {
 } from "@kizami/leave";
 import type { AppEnv } from "../auth/middleware.js";
 import { ForbiddenError, requirePermission } from "../authz.js";
+import {
+  approvalFlowState,
+  isOpenForDecision,
+  notifyStep2Approvers,
+  rejectionStep,
+  resolveApprovalStep,
+  resolveRequiredSteps,
+} from "../lib/approval-flow.js";
 import { resolveApproversForUser } from "../lib/approvers.js";
 import { assertAmendAllowed } from "../lib/closing-guard.js";
 import { computeMonthlyOutputForUser } from "../lib/closing-amend.js";
@@ -240,6 +255,8 @@ function serializeLeaveRequest(row: LeaveRequest) {
     decidedAt: row.decidedAt,
     decisionNote: row.decisionNote,
     createdAt: row.createdAt,
+    // 多段承認の状態(requiredSteps / currentStep / 一次承認者)。単段でも常に返す。
+    ...approvalFlowState(row),
   };
 }
 
@@ -399,15 +416,14 @@ export function createLeaveRoutes(db: Database, deps: LeaveRoutesDeps = {}) {
   app.get("/requests", async (c) => {
     const user = c.get("user");
 
+    // status=pending は「まだ決裁が終わっていない申請」。二段承認の approved_step1
+    // (一次承認済み・二次承認待ち)もここに含める(routes/corrections.ts の GET / と同じ判断)。
     const statusParam = c.req.query("status") ?? "pending";
-    let status: LeaveRequestStatus | undefined;
-    if (statusParam === "pending") {
-      status = "pending";
-    } else if (statusParam === "all") {
-      status = undefined;
-    } else {
+    if (statusParam !== "pending" && statusParam !== "all") {
       return c.json({ error: "invalid_status" }, 400);
     }
+    const openOnly = statusParam === "pending";
+    const filterOpen = (rows: LeaveRequest[]) => (openOnly ? rows.filter((r) => isOpenForDecision(r.status)) : rows);
 
     const permissions = c.get("permissions");
     const queryUserId = c.req.query("userId");
@@ -425,18 +441,10 @@ export function createLeaveRoutes(db: Database, deps: LeaveRoutesDeps = {}) {
       // 他テナントのユーザーIDに 200(空配列)を返さないため。GET /leave/balance と同じ 404 に揃える。
       const target = await getUserById(db, { tenantId: user.tenantId, id: queryUserId });
       if (!target) return c.json({ error: "not_found" }, 404);
-      requests = await listLeaveRequests(db, {
-        tenantId: user.tenantId,
-        userId: queryUserId,
-        ...(status !== undefined ? { status } : {}),
-      });
+      requests = filterOpen(await listLeaveRequests(db, { tenantId: user.tenantId, userId: queryUserId }));
     } else if (permissions.get(VIEW_ALL_PERMISSION) === undefined) {
       // userId 未指定: VIEW_ALL_PERMISSION を持たなければ自分の分だけ。
-      requests = await listLeaveRequests(db, {
-        tenantId: user.tenantId,
-        userId: user.id,
-        ...(status !== undefined ? { status } : {}),
-      });
+      requests = filterOpen(await listLeaveRequests(db, { tenantId: user.tenantId, userId: user.id }));
     } else {
       // queries/leave.ts の listLeaveRequests は複数ユーザーIDの一括絞り込みを持たないため、
       // tenantId のみで取得しアプリ層でスコープ内に絞り込む(apps/api/src/lib/scope.ts と
@@ -445,10 +453,7 @@ export function createLeaveRoutes(db: Database, deps: LeaveRoutesDeps = {}) {
         actor: { id: user.id, tenantId: user.tenantId, permissions },
         permission: VIEW_ALL_PERMISSION,
       });
-      const all = await listLeaveRequests(db, {
-        tenantId: user.tenantId,
-        ...(status !== undefined ? { status } : {}),
-      });
+      const all = filterOpen(await listLeaveRequests(db, { tenantId: user.tenantId }));
       requests = accessible === "all" ? all : all.filter((r) => accessible.has(r.userId));
     }
 
@@ -518,6 +523,10 @@ export function createLeaveRoutes(db: Database, deps: LeaveRoutesDeps = {}) {
       return c.json({ error: errorCode }, 409);
     }
 
+    // 承認段数は**この瞬間の**テナント設定を凍結して保存する(グランドファザリング。
+    // apps/api/src/lib/approval-flow.ts・docs/design/approval-flows.md 参照)。
+    const requiredSteps = await resolveRequiredSteps(db, user.tenantId, "leave");
+
     const created = await createLeaveRequest(db, {
       tenantId: user.tenantId,
       userId: user.id,
@@ -527,6 +536,7 @@ export function createLeaveRoutes(db: Database, deps: LeaveRoutesDeps = {}) {
       minutes: unit === "hourly" ? (explicitMinutes ?? null) : null,
       leaveType,
       reason,
+      requiredSteps,
       createdAt: nowMinutes(),
     });
 
@@ -605,8 +615,11 @@ export function createLeaveRoutes(db: Database, deps: LeaveRoutesDeps = {}) {
       throw new ForbiddenError(`target user ${existing.userId} is outside actor's scope`);
     }
 
-    if (existing.status !== "pending") {
-      return c.json({ error: "not_pending" }, 409);
+    // 何段目の承認かを決める(単段なら従来どおり pending からの1回で確定)。
+    // 二次承認の権限不足は ForbiddenError(403)、業務上の競合は文字列で返る。
+    const plan = resolveApprovalStep({ row: existing, actorId: user.id, permissions, permission: APPROVE_PERMISSION });
+    if (typeof plan === "string") {
+      return c.json({ error: plan }, 409);
     }
 
     // 承認直前に再度残高を検証する(pending の間に他の申請が承認され残高が変わっている可能性があるため)。
@@ -642,6 +655,62 @@ export function createLeaveRoutes(db: Database, deps: LeaveRoutesDeps = {}) {
       throw new Error(`leave_request ${existing.id} has an unparsable leaveDate: ${existing.leaveDate}`);
     }
 
+    // ---- 一次承認(二段承認の1段目)----
+    // 残高の消化は approved の申請だけを数える(listAllApprovedLeaveRequests /
+    // listApprovedLeaveRequestsInRange)ため、approved_step1 の段階では集計にも残高にも
+    // 影響しない。締め済み月ガード(assertAmendAllowed)もここでは通さない — 締めに影響する
+    // 変更が起きるのは二次承認で実際に反映する時だけだから。
+    // (残高の再検証はこの上で既に済ませてある。一次承認の時点で「残高が足りない申請」を
+    //  通してしまわないよう、単段のときと同じ検証を掛けている。)
+    if (!plan.isFinal) {
+      const updatedRow = await updateLeaveRequestStatus(db, {
+        id: existing.id,
+        tenantId: user.tenantId,
+        fromStatus: plan.fromStatus,
+        status: plan.nextStatus,
+        // 最終決裁の欄(decided_by / decided_at / decision_note)は二次承認まで空のまま残す。
+        decidedBy: null,
+        decidedAt: null,
+        decisionNote: null,
+        step1DecidedBy: user.id,
+        step1DecidedAt: now,
+      });
+      if (!updatedRow) {
+        return c.json({ error: "not_pending" }, 409);
+      }
+
+      await insertAuditLog(db, {
+        tenantId: user.tenantId,
+        actorId: user.id,
+        action: "leave_request.approve_step1",
+        targetType: "leave_request",
+        targetId: existing.id,
+        detail: JSON.stringify({
+          selfApproved,
+          step: 1,
+          requiredSteps: existing.requiredSteps,
+          leaveDate: existing.leaveDate,
+          unit: existing.unit,
+          leaveType: existing.leaveType,
+          note,
+        }),
+        occurredAt: now,
+      });
+
+      const subject = await getUserById(db, { tenantId: user.tenantId, id: existing.userId });
+      await notifyStep2Approvers(db, deps, {
+        tenantId: user.tenantId,
+        permission: APPROVE_PERMISSION,
+        notificationType: "approval_request_leave_step2",
+        title: "二次承認をお願いします(休暇申請)",
+        body: `${subject?.name ?? "メンバー"}さんの休暇申請(${existing.leaveDate})が一次承認されました。二次承認をお願いします。`,
+        excludeUserIds: [user.id, existing.requestedBy],
+        now,
+      });
+
+      return c.json({ request: serializeLeaveRequest(updatedRow), amended: false }, 200);
+    }
+
     // 締め後修正(amend): 対象日が締め済み月なら closing.unlock を持つ場合のみ承認できる。
     // 反映(status 更新)・監査ログ・(必要なら)スナップショット再計算・amend 追記を
     // 同一トランザクションで行う(routes/corrections.ts の POST /:id/approve と同じ形)。
@@ -653,7 +722,8 @@ export function createLeaveRoutes(db: Database, deps: LeaveRoutesDeps = {}) {
         const updatedRow = await updateLeaveRequestStatus(tx, {
           id: existing.id,
           tenantId: user.tenantId,
-          fromStatus: "pending",
+          // 単段なら "pending"、二段の二次承認なら "approved_step1"(楽観ロック)。
+          fromStatus: plan.fromStatus,
           status: "approved",
           decidedBy: user.id,
           decidedAt: now,
@@ -675,6 +745,9 @@ export function createLeaveRoutes(db: Database, deps: LeaveRoutesDeps = {}) {
             unit: existing.unit,
             leaveType: existing.leaveType,
             amended: wasClosed,
+            step: plan.step,
+            requiredSteps: existing.requiredSteps,
+            step1DecidedBy: existing.step1DecidedBy,
           }),
           occurredAt: now,
         });
@@ -802,17 +875,23 @@ export function createLeaveRoutes(db: Database, deps: LeaveRoutesDeps = {}) {
       throw new ForbiddenError(`target user ${existing.userId} is outside actor's scope`);
     }
 
-    if (existing.status !== "pending") {
+    // 却下はどちらの段からでもできる(docs/design/approval-flows.md「却下」)。
+    if (!isOpenForDecision(existing.status)) {
       return c.json({ error: "not_pending" }, 409);
+    }
+    // 二次段での却下は承認と同じく tenant スコープの承認権限を要求する。
+    if (existing.status === "approved_step1" && permissions.get(APPROVE_PERMISSION) !== "tenant") {
+      throw new ForbiddenError(`second-step rejection requires ${APPROVE_PERMISSION} at tenant scope`);
     }
 
     const now = nowMinutes();
     const selfApproved = existing.requestedBy === user.id;
+    const step = rejectionStep(existing);
 
     const updated = await updateLeaveRequestStatus(db, {
       id: existing.id,
       tenantId: user.tenantId,
-      fromStatus: "pending",
+      fromStatus: existing.status as LeaveRequestStatus,
       status: "rejected",
       decidedBy: user.id,
       decidedAt: now,
@@ -826,7 +905,8 @@ export function createLeaveRoutes(db: Database, deps: LeaveRoutesDeps = {}) {
       action: "leave_request.reject",
       targetType: "leave_request",
       targetId: existing.id,
-      detail: JSON.stringify({ selfApproved }),
+      // どの段で却下されたかを残す。
+      detail: JSON.stringify({ selfApproved, step, requiredSteps: existing.requiredSteps }),
       occurredAt: now,
     });
 
@@ -871,14 +951,15 @@ export function createLeaveRoutes(db: Database, deps: LeaveRoutesDeps = {}) {
     if (existing.requestedBy !== user.id) {
       throw new ForbiddenError("cannot withdraw another user's leave request");
     }
-    if (existing.status !== "pending") {
+    // 取り下げは最終承認が下りるまで可能(二段承認では approved_step1 でも取り下げられる)。
+    if (!isOpenForDecision(existing.status)) {
       return c.json({ error: "not_pending" }, 409);
     }
 
     const updated = await updateLeaveRequestStatus(db, {
       id: existing.id,
       tenantId: user.tenantId,
-      fromStatus: "pending",
+      fromStatus: existing.status as LeaveRequestStatus,
       status: "withdrawn",
     });
     if (!updated) return c.json({ error: "not_pending" }, 409);

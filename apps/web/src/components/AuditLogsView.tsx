@@ -20,12 +20,18 @@ const KNOWN_ACTIONS: readonly string[] = [
   "allowance_definition_version.create",
   "api_key.create",
   "api_key.revoke",
+  // 多段承認(2026-08-24 追加、docs/design/approval-flows.md)。二段承認の**一次承認**は
+  // 最終決裁とは別のアクションとして記録する(approve_step1) — 監査で「反映された承認」と
+  // 「まだ反映されていない一次承認」を取り違えないため。
+  "approval_flow_settings.update",
   "auto_break_waiver.approve",
+  "auto_break_waiver.approve_step1",
   "auto_break_waiver.reject",
   "closing.amend",
   "closing.close",
   "closing.reopen",
   "correction.approve",
+  "correction.approve_step1",
   "correction.reject",
   "department.create",
   "department.delete",
@@ -39,6 +45,7 @@ const KNOWN_ACTIONS: readonly string[] = [
   "leave_grant_proposal.approve",
   "leave_grant_proposal.reject",
   "leave_request.approve",
+  "leave_request.approve_step1",
   "leave_request.reject",
   "leave_settings.update",
   "member.deactivate",

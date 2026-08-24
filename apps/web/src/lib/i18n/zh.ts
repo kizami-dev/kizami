@@ -547,6 +547,28 @@ export const zh = {
     string
   >,
 
+  /**
+   * 多级(两级)审批的通用文案(2026-08-24 新增,详见 docs/design/approval-flows.md)。
+   *
+   * 判断点:打卡修正申请、休假申请、休息自动扣除撤销申请这三类的文案完全相同,
+   * 因此不在各自的 section(corrections / autoBreakWaiver / leave)里各写一遍,
+   * 而是集中到一处(3 类 × 4 种语言 = 12 处重复,以及由此产生的措辞不一致)。
+   * 只有状态标签本身(approved_step1)保留在各自的 statusLabel 旁边。
+   */
+  approvalSteps: {
+    /** 显示在 requiredSteps >= 2 的申请卡片上,说明「已批准却仍未生效」的原因。 */
+    twoStepNote: "此申请为两级审批。一级审批之后,还需拥有租户全局审批权限的人完成二级审批才会生效。",
+    /** 显示在审批队列每一行上,表示当前在等待哪一级审批。 */
+    awaitingStep1: "待一级审批",
+    awaitingStep2: "待二级审批",
+    /** 显示给已完成一级审批、但没有二级审批权限(租户全局范围)的人。 */
+    step2NotYours: "二级审批由拥有租户全局审批权限的人执行。",
+    /** 一级审批的执行人与时间的标题。 */
+    step1DecidedLabel: "一级审批",
+    /** 与各 section 的 decidedBySelf 保持一致。 */
+    step1DecidedBySelf: "本人",
+  },
+
   corrections: {
     title: "打卡修正申请",
     tagline: "申请新增、更正或撤销打卡记录。审批通过后将反映到考勤记录中。",
@@ -583,10 +605,12 @@ export const zh = {
 
     statusLabel: {
       pending: "审批中",
+      /** 仅在两级审批时出现的中间状态,此时尚未反映到考勤记录。 */
+      approved_step1: "已一级批准(待二级)",
       approved: "已批准",
       rejected: "已驳回",
       withdrawn: "已撤回",
-    } satisfies Record<"pending" | "approved" | "rejected" | "withdrawn", string>,
+    } satisfies Record<"pending" | "approved_step1" | "approved" | "rejected" | "withdrawn", string>,
 
     columnTarget: "目标日期时间",
     columnContent: "内容",
@@ -630,6 +654,10 @@ export const zh = {
       invalid_request_shape: "请确认输入内容",
       invalid_body: "请确认输入内容",
       invalid_status: "指定了无法显示的状态",
+      /** 409。两级审批中,完成一级审批的本人试图进行二级审批。 */
+      /** 403。例如没有租户全局范围的审批人尝试进行二级审批。 */
+      forbidden: "没有执行此操作的权限",
+      same_approver_as_step1: "完成一级审批的本人无法进行二级审批,请交由其他审批人处理",
       default: "处理失败,请重试",
     },
   },
@@ -663,10 +691,12 @@ export const zh = {
 
     statusLabel: {
       pending: "审批中",
+      /** 仅在两级审批时出现的中间状态,此时尚未反映到考勤记录。 */
+      approved_step1: "已一级批准(待二级)",
       approved: "已批准",
       rejected: "已驳回",
       withdrawn: "已撤回",
-    } satisfies Record<"pending" | "approved" | "rejected" | "withdrawn", string>,
+    } satisfies Record<"pending" | "approved_step1" | "approved" | "rejected" | "withdrawn", string>,
 
     approve: "批准",
     reject: "驳回",
@@ -693,6 +723,8 @@ export const zh = {
       already_approved: "当天的撤销申请已被批准",
       not_found: "未找到目标申请",
       forbidden: "没有执行此操作的权限",
+      /** 409。两级审批中,完成一级审批的本人试图进行二级审批。 */
+      same_approver_as_step1: "完成一级审批的本人无法进行二级审批,请交由其他审批人处理",
       month_closed_requires_unlock: "本月已确定结算。需要解除结算权限才能批准",
       default: "处理失败,请重试",
     },
@@ -967,6 +999,48 @@ export const zh = {
   },
 
   /**
+   * 多级审批设置(/settings/approval-flow,2026-08-24 新增)。以 docs/design/approval-flows.md 为准。
+   * 界面只是按类型选择「1 级」或「2 级(一级+二级审批)」,但它改变的是整个审批体制,
+   * 因此最容易被误解的两点(不影响已提交的申请、二级审批人需要租户全局范围)必须显示在页面上。
+   */
+  settingsApprovalFlow: {
+    title: "多级审批",
+    tagline: "按申请类型决定审批是 1 级,还是 2 级(一级审批+二级审批)。",
+    noPermission: "您没有更改此设置的权限",
+    loadFailed: "获取设置失败,请重试",
+
+    defaultSingleHint: "默认全部为 1 级。保持不变时,与以往一样一次批准即可生效。",
+    twoStepHint: "设为 2 级后,一级审批仍由拥有该类型审批权限的人执行,二级审批则由以「租户全局」范围拥有同一权限的人(人事、总部等)执行。在二级审批完成之前,申请不会生效。",
+    sameApproverHint: "一级审批与二级审批不能由同一人执行。",
+    frozenAtCreationHint: "更改此设置不会改变已经提交的申请的级数。申请会按创建时的级数一直走到最后。",
+    tenantApproverRequiredHint: "改为 2 级之前,请确认至少有 1 人以「租户全局」范围拥有该审批权限。否则申请会一直卡在待二级审批状态。",
+
+    correctionLabel: "打卡修正申请",
+    correctionHint: "打卡记录的补录、修正、撤销申请。审批权限为「批准打卡修正」。",
+    leaveLabel: "休假申请",
+    leaveHint: "带薪年假等的使用申请。审批权限为「批准休假申请」。",
+    autoBreakWaiverLabel: "休息自动扣除撤销申请",
+    autoBreakWaiverHint: "用于撤销实际未能休息当天的自动扣除。审批权限与打卡修正申请相同。",
+
+    optionOneStep: "1 级(单级)",
+    optionTwoSteps: "2 级(一级+二级审批)",
+
+    save: "保存",
+    saving: "保存中…",
+    saveSuccess: "设置已保存。",
+    saveNote: "此设置适用于整个租户,且仅对此后提交的申请生效。更改会记录到审计日志。",
+
+    errors: {
+      invalid_correction_steps: "打卡修正申请的级数请选择 1 级或 2 级",
+      invalid_leave_steps: "休假申请的级数请选择 1 级或 2 级",
+      invalid_auto_break_waiver_steps: "休息自动扣除撤销申请的级数请选择 1 级或 2 级",
+      invalid_body: "请确认输入内容",
+      forbidden: "没有执行此操作的权限",
+      default: "处理失败,请重试",
+    },
+  },
+
+  /**
    * 输入Slack关联令牌(/settings/slack-link,无需权限,全员可用)。
    * 在Slack中执行 `/punch link` 后会生成一个15分钟内有效的一次性令牌,在此输入即可完成关联。
    */
@@ -1005,6 +1079,7 @@ export const zh = {
     departments: "部门",
     members: "成员",
     presets: "权限预设",
+    approvalFlow: "多级审批",
     tenantProfile: "租户配置",
     leave: "带薪年假",
     help: "公司内部规定",
@@ -1035,6 +1110,8 @@ export const zh = {
     membersDesc: "变更成员所属部门、分配权限预设、查看实际生效的权限。",
     presetsTitle: "权限预设",
     presetsDesc: "创建和编辑组合了权限开关与适用范围的预设。",
+    approvalFlowTitle: "多级审批",
+    approvalFlowDesc: "设置打卡修正、休假、休息自动扣除撤销申请需要 1 级审批还是 2 级(一级+二级审批)。",
     attendanceTitle: "考勤规则",
     attendanceDesc: "以新增版本的方式变更日界、法定休息日、休息规则、GPS、弹性工作时间等设置。",
     allowancesTitle: "津贴对象时间",
@@ -1921,10 +1998,12 @@ export const zh = {
 
     statusLabel: {
       pending: "审批中",
+      /** 仅在两级审批时出现的中间状态,此时尚未反映到考勤记录。 */
+      approved_step1: "已一级批准(待二级)",
       approved: "已批准",
       rejected: "已驳回",
       withdrawn: "已撤回",
-    } satisfies Record<"pending" | "approved" | "rejected" | "withdrawn", string>,
+    } satisfies Record<"pending" | "approved_step1" | "approved" | "rejected" | "withdrawn", string>,
 
     unitLabelShort: {
       full_day: "全天",
@@ -1975,6 +2054,8 @@ export const zh = {
       not_pending: "此申请已被处理",
       not_found: "未找到目标申请",
       forbidden: "没有执行此操作的权限",
+      /** 409。两级审批中,完成一级审批的本人试图进行二级审批。 */
+      same_approver_as_step1: "完成一级审批的本人无法进行二级审批,请交由其他审批人处理",
       month_closed_requires_unlock: "本月已确定结算。需要解除结算权限才能批准",
       default: "处理失败,请重试",
     },
