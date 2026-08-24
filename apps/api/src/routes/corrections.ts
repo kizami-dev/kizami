@@ -54,6 +54,7 @@ import {
   getClosingState,
   getCorrectionRequest,
   getPunchEventById,
+  getUserById,
   getValidPunchEvent,
   insertAuditLog,
   insertPunchEvent,
@@ -180,6 +181,11 @@ export function createCorrectionsRoutes(db: Database, deps: CorrectionsRoutesDep
       if (accessible !== "all" && !accessible.has(queryUserId)) {
         throw new ForbiddenError(`target user ${queryUserId} is outside actor's scope`);
       }
+      // 自テナントに実在するユーザーであることを確認する(2026-08-24 マルチテナント有効化)。
+      // 無いと他テナントのユーザーIDでも 200(空配列)を返してしまい、テナント越えの
+      // 問い合わせがエラーにならない。GET /attendance/monthly?userId= と同じ 404 に揃える。
+      const target = await getUserById(db, { tenantId: user.tenantId, id: queryUserId });
+      if (!target) return c.json({ error: "not_found" }, 404);
       requests = await listCorrectionRequests(db, {
         tenantId: user.tenantId,
         userId: queryUserId,

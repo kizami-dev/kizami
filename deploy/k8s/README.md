@@ -129,7 +129,26 @@ kubectl -n kizami delete job kizami-seed
 kubectl apply -f deploy/k8s/seed-job.yaml
 ```
 
-`apps/api/src/seed.ts` は `SEED_EMAIL` のユーザーが既に存在する場合は何もせずスキップする(冪等)ので、誤って複数回流しても安全。
+`apps/api/src/seed.ts` は `SEED_EMAIL` のユーザーが既に存在する場合は新規作成をスキップする(冪等)ので、誤って複数回流しても安全。スキップ時も同梱(システム)プリセットの権限だけは最新のカタログに合わせて追記される。
+
+## 2社目以降のテナントを作る(マルチテナント)
+
+同じインスタンス(同じ DB)に複数のテナント(会社)を同居させられる。**テナントの作成は運用者の作業**で、セルフサインアップ(自由登録)は提供しない(`docs/requirements.md` §7)。2社目以降は Pod の中で `create-tenant` を実行する(初期シードと同じ考え方):
+
+```sh
+kubectl -n kizami exec -it deployment/kizami -c api -- \
+  env TENANT_NAME='株式会社サンプル' ADMIN_EMAIL='admin@sample.example.com' ADMIN_PASSWORD='change-me-please' \
+  node_modules/.bin/tsx src/create-tenant.ts
+```
+
+(`DATABASE_URL` は api コンテナに既に設定されているため指定不要。`command` の書式は `seed-job.yaml` と同じ — イメージの作業ディレクトリが `apps/api` になっている。)
+
+- 作られるもの: テナント / 既定のテナント設定版 / 既定の労働時間制(標準フレックス・月清算) / 同梱プリセット3種(管理者・マネージャー・メンバー) / 管理者ユーザー1名
+- 以降のメンバー追加はその管理者でログインし、Web の招待フロー(`POST /members`)で行う
+- 冪等: `TENANT_NAME` のテナントに `ADMIN_EMAIL` のユーザーが既に居れば何もしない。同名テナントが存在するのに `ADMIN_EMAIL` が居ない場合は取り違え防止のためエラーで止まる(意図的に同名の別テナントを作る場合のみ `ALLOW_DUPLICATE_TENANT_NAME=true`)
+- パスワードをシェル履歴に残したくない場合は Secret 経由の Job(`seed-job.yaml` の `command` を `["node_modules/.bin/tsx", "src/create-tenant.ts"]` に、env を `TENANT_NAME` / `ADMIN_EMAIL` / `ADMIN_PASSWORD` に差し替えた形)にしてもよい
+
+同一メールアドレスが複数テナントに存在してもよい(顧問社労士など)。その場合ログイン時にテナント選択を挟む(`409 multiple_tenants` → `tenantId` を添えて再ログイン)。
 
 ## イメージ更新の反映
 

@@ -46,13 +46,22 @@ export interface SeededTenant {
   displayName: string;
 }
 
-export async function setupTestDb(): Promise<SeededTenant> {
-  // @libsql/client のローカル sqlite3 ドライバは `db.transaction()` 実行後、client 側の
-  // ネイティブ接続を手放し次回アクセス時に遅延再接続する。`:memory:` だとその再接続が
-  // 新規の空DBになりデータが失われる(修正申請の承認処理が db.transaction を使うため、
-  // このテスト DB でそれ以降のリクエストが軒並み失敗する)。ファイルバックエンドにして回避する。
+/**
+ * マイグレーション済みの空の DB を1つ作る(テナントもユーザーも入れない)。
+ *
+ * @libsql/client のローカル sqlite3 ドライバは `db.transaction()` 実行後、client 側の
+ * ネイティブ接続を手放し次回アクセス時に遅延再接続する。`:memory:` だとその再接続が
+ * 新規の空DBになりデータが失われる(修正申請の承認処理が db.transaction を使うため、
+ * このテスト DB でそれ以降のリクエストが軒並み失敗する)。ファイルバックエンドにして回避する。
+ */
+export async function createTestDatabase(): Promise<Database> {
   const dbPath = join(tmpdir(), `kizami-api-test-${randomUUID()}.db`);
   const { db } = await migrateDb({ url: `file:${dbPath}` });
+  return db;
+}
+
+export async function setupTestDb(): Promise<SeededTenant> {
+  const db = await createTestDatabase();
   const now = 0;
   const tenantId = uuidv7();
   const userId = uuidv7();

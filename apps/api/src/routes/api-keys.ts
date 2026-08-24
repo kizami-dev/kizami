@@ -15,6 +15,7 @@
 import { Hono } from "hono";
 import {
   getApiKeyById,
+  getUserById,
   insertApiKey,
   insertAuditLog,
   listApiKeys,
@@ -56,6 +57,10 @@ export function createApiKeysRoutes(db: Database) {
     let targetUserId: string | undefined = user.id;
     if (queryUserId !== undefined && queryUserId !== user.id) {
       requirePermission(c, MANAGE_PERMISSION, "tenant");
+      // 自テナントに実在するユーザーであることを確認する(他テナントのユーザーIDは 404。
+      // 存在しないIDと同じ扱いにして、他テナントのIDの当たり/外れを漏らさない)。
+      const target = await getUserById(db, { tenantId: user.tenantId, id: queryUserId });
+      if (!target) return c.json({ error: "not_found" }, 404);
       targetUserId = queryUserId;
     }
 
@@ -101,6 +106,12 @@ export function createApiKeysRoutes(db: Database) {
     let targetUserId = user.id;
     if (typeof userId === "string" && userId !== "" && userId !== user.id) {
       requirePermission(c, MANAGE_PERMISSION, "tenant");
+      // テナント越えの遮断(2026-08-24 マルチテナント有効化の監査で発見): 以前は宛先ユーザーの
+      // 実在確認が無く、「tenant_id=自テナント / user_id=他テナントのユーザー」というAPIキー行を
+      // 作れてしまっていた(認証時に auth/api-key.ts が tenant_id 不一致で 401 にするため打刻自体は
+      // できないが、他テナントのユーザーIDを指す行が残るのは不正)。
+      const target = await getUserById(db, { tenantId: user.tenantId, id: userId });
+      if (!target) return c.json({ error: "not_found" }, 404);
       targetUserId = userId;
     }
 

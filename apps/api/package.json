@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "tsx watch src/node.ts",
     "seed": "tsx src/seed.ts",
+    "create-tenant": "tsx src/create-tenant.ts",
     "dev:seed-screenshots": "tsx src/dev-screenshot-seed.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"

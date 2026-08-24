@@ -191,6 +191,7 @@ export default defineConfig({
           { text: "シフト制と変形労働", link: "/design/shift-work" },
           { text: "年次有給休暇の比例付与", link: "/design/leave-proportional-grant" },
           { text: "権限カタログ", link: "/design/permission-catalog" },
+          { text: "マルチテナントとテナント分離", link: "/design/multi-tenancy" },
         ],
       },
       {

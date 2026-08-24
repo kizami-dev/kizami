@@ -3,6 +3,7 @@
 #   cp .env.example .env   # KIZAMI_ENCRYPTION_KEY と初期管理者を設定
 #   docker compose up -d
 #   docker compose run --rm seed   # 初回のみ: 初期管理者を作成(冪等)
+#   → 2社目以降のテナントを足す場合は下記 create-tenant サービスを使う
 #   → http://localhost:8080
 #
 # 構成のポイント:
@@ -64,6 +65,20 @@ services:
       SEED_EMAIL: ${KIZAMI_SEED_EMAIL:?初期管理者のメールアドレスを .env に設定してください}
       SEED_PASSWORD: ${KIZAMI_SEED_PASSWORD:?初期管理者のパスワードを .env に設定してください}
       SEED_TENANT_NAME: ${KIZAMI_SEED_TENANT_NAME:-}
+    volumes:
+      - data:/data
+  # 2社目以降のテナント作成(docker compose run --rm create-tenant)。マルチテナント運用の
+  # 唯一の作成経路で、セルフサインアップは提供しない(docs/design/multi-tenancy.md)。
+  # TENANT_NAME のテナントに ADMIN_EMAIL のユーザーが既に居れば何もしない(冪等)。
+  create-tenant:
+    image: ghcr.io/sasagar/kizami-api:${KIZAMI_TAG:-latest}
+    profiles: [setup]
+    command: ["node_modules/.bin/tsx", "src/create-tenant.ts"]
+    environment:
+      DATABASE_URL: file:/data/kizami.db
+      TENANT_NAME: ${KIZAMI_TENANT_NAME:-}
+      ADMIN_EMAIL: ${KIZAMI_TENANT_ADMIN_EMAIL:-}
+      ADMIN_PASSWORD: ${KIZAMI_TENANT_ADMIN_PASSWORD:-}
     volumes:
       - data:/data
 configs:

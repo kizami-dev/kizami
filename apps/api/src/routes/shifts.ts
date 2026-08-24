@@ -23,6 +23,7 @@ import {
   getEffectiveSettingsVersion,
   getShiftPatternById,
   getShiftPlanById,
+  getUserById,
   insertAuditLog,
   insertShiftPlan,
   listShiftDayHistoryForPlan,
@@ -98,6 +99,15 @@ function serializeShiftDay(r: ShiftDayRow) {
 async function isUserInShiftManageScope(c: Context<AppEnv>, db: Database, targetUserId: string): Promise<boolean> {
   requirePermission(c, SHIFT_MANAGE_PERMISSION, "department");
   const user = c.get("user");
+
+  // テナント越えの遮断(2026-08-24 マルチテナント有効化の監査で発見): 下の
+  // resolveAccessibleUserIds は tenant スコープの actor に対して "all" を返すため、
+  // 他テナントのユーザーIDでもそのまま通ってしまい、POST /shifts/plans が
+  // 「tenant_id=自テナント / user_id=他テナントのユーザー」という行を作れてしまっていた。
+  // 対象ユーザーが自テナントに実在することを先に確認する(不在なら呼び出し側が 404)。
+  const target = await getUserById(db, { tenantId: user.tenantId, id: targetUserId });
+  if (!target) return false;
+
   const permissions = c.get("permissions");
   const accessible = await resolveAccessibleUserIds(db, {
     actor: { id: user.id, tenantId: user.tenantId, permissions },

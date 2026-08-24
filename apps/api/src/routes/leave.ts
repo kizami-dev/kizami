@@ -421,6 +421,10 @@ export function createLeaveRoutes(db: Database, deps: LeaveRoutesDeps = {}) {
       if (accessible !== "all" && !accessible.has(queryUserId)) {
         throw new ForbiddenError(`target user ${queryUserId} is outside actor's scope`);
       }
+      // 自テナントに実在するユーザーであることを確認する(2026-08-24 マルチテナント有効化)。
+      // 他テナントのユーザーIDに 200(空配列)を返さないため。GET /leave/balance と同じ 404 に揃える。
+      const target = await getUserById(db, { tenantId: user.tenantId, id: queryUserId });
+      if (!target) return c.json({ error: "not_found" }, 404);
       requests = await listLeaveRequests(db, {
         tenantId: user.tenantId,
         userId: queryUserId,
