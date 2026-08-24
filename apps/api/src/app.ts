@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import type { Database } from "@kizami/db";
+import type { VapidKeys } from "@kizami/notify";
 import type { Encryptor } from "./lib/encryption.js";
 import { apiKeyScopeGuardMiddleware } from "./auth/api-key-scope-guard.js";
 import { authOrApiKeyMiddleware, type AppEnv } from "./auth/middleware.js";
@@ -25,6 +26,7 @@ import { createNotificationPreferencesRoutes } from "./routes/notification-prefe
 import { createPasswordResetsRoutes } from "./routes/password-resets.js";
 import { createPresetsRoutes } from "./routes/presets.js";
 import { createPunchesRoutes } from "./routes/punches.js";
+import { createPushRoutes } from "./routes/push.js";
 import { createSettingsRoutes, type SettingsRoutesDeps } from "./routes/settings/index.js";
 import { createShiftsRoutes } from "./routes/shifts.js";
 import { createSlackRoutes } from "./routes/slack.js";
@@ -75,6 +77,14 @@ export interface CreateAppDeps {
    * それ以外(redirect_uri・Web のベース URL・テストの偽 IdP 用 fetch)だけを渡す。
    */
   oidc?: Omit<OidcRoutesOptions, "secureCookies" | "encryptor">;
+  /**
+   * ブラウザプッシュ通知(Web Push)の VAPID 鍵(docs/design/web-push.md、2026-08-24 追加)。
+   * node.ts / worker.ts は環境変数 VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY / VAPID_SUBJECT から
+   * lib/web-push.ts の buildVapidFromEnv() で組み立てて渡す。未設定/null なら
+   * /push/* は 404 push_unavailable を返し、GET /settings/notifications/me は
+   * pushAvailable: false を返す(= Web UI からプッシュ通知の UI が消える)。
+   */
+  vapid?: VapidKeys | null;
 }
 
 /**
@@ -85,7 +95,7 @@ export interface CreateAppDeps {
  * テストは :memory: DB を、Node ランタイムは env から作った DB をそれぞれ渡せるようにする。
  */
 export function createApp(deps: CreateAppDeps) {
-  const { db, secureCookies = false, corsOrigin, notify, encryptor, trustProxy = true, rateLimitNow, oidc } = deps;
+  const { db, secureCookies = false, corsOrigin, notify, encryptor, trustProxy = true, rateLimitNow, oidc, vapid } = deps;
   const app = new Hono<AppEnv>();
 
   if (corsOrigin) {
@@ -176,10 +186,10 @@ export function createApp(deps: CreateAppDeps) {
   authed.route("/attendance", createAttendanceRoutes(db));
   authed.route("/shifts", createShiftsRoutes(db));
   // 承認・却下の本人通知を外部チャネル(メール/個人Webhook)へも流すための deps(2026-08-23 承認モデル統一の配線)
-  authed.route("/corrections", createCorrectionsRoutes(db, { ...(notify ?? {}), encryptor: encryptor ?? null }));
+  authed.route("/corrections", createCorrectionsRoutes(db, { ...(notify ?? {}), encryptor: encryptor ?? null, vapid: vapid ?? null }));
   // 休憩自動控除の打ち消し申請(docs/design/breaks.md)。承認通知の送信に settings.ts と同じ
   // notify 依存(smtpSendFn 等)+ encryptor を必要とするため、同じ deps をそのまま渡す。
-  authed.route("/auto-break-waivers", createAutoBreakWaiversRoutes(db, { ...(notify ?? {}), encryptor: encryptor ?? null }));
+  authed.route("/auto-break-waivers", createAutoBreakWaiversRoutes(db, { ...(notify ?? {}), encryptor: encryptor ?? null, vapid: vapid ?? null }));
   authed.route("/notifications", createNotificationsRoutes(db));
   authed.route("/settings", createSettingsRoutes(db, { ...(notify ?? {}), encryptor: encryptor ?? null }));
   // 個人の通知受け取り設定(GET/PUT /settings/notifications/me, POST /settings/notifications/me/test)。
@@ -188,15 +198,18 @@ export function createApp(deps: CreateAppDeps) {
   // 別のサブルータとしてマウントできる("/notifications" 完全一致 vs "/notifications/me")。
   authed.route(
     "/settings/notifications",
-    createNotificationPreferencesRoutes(db, { ...(notify ?? {}), encryptor: encryptor ?? null }),
+    createNotificationPreferencesRoutes(db, { ...(notify ?? {}), encryptor: encryptor ?? null, vapid: vapid ?? null }),
   );
+  // ブラウザプッシュ通知の購読管理(GET /push/vapid-public-key, GET/POST/DELETE /push/subscriptions)。
+  // 個人の通知設定と同じく権限チェック無し(認証済み本人のみ — routes/push.ts 冒頭コメント参照)。
+  authed.route("/push", createPushRoutes(db, { vapid: vapid ?? null }));
   authed.route("/help", createHelpRoutes(db));
   authed.route("/departments", createDepartmentsRoutes(db));
   authed.route("/members", createMembersRoutes(db));
   authed.route("/presets", createPresetsRoutes(db));
   authed.route("/closings", createClosingsRoutes(db));
   authed.route("/exports", createExportsRoutes(db));
-  authed.route("/leave", createLeaveRoutes(db, { ...(notify ?? {}), encryptor: encryptor ?? null }));
+  authed.route("/leave", createLeaveRoutes(db, { ...(notify ?? {}), encryptor: encryptor ?? null, vapid: vapid ?? null }));
   authed.route("/audit-logs", createAuditLogsRoutes(db));
   app.route("/", authed);
 

@@ -32,10 +32,21 @@ import {
   getNotificationSettings,
   getUserById,
   getUserNotificationSettings,
+  listActivePushSubscriptions,
+  markPushSubscriptionFailed,
+  touchPushSubscription,
   type Database,
   type TenantNotificationSettings,
 } from "@kizami/db";
-import { createSmtpChannel, webhookChannel, type NotificationChannel, type SmtpSendFn } from "@kizami/notify";
+import {
+  createSmtpChannel,
+  webhookChannel,
+  webPushChannel,
+  WebPushGoneError,
+  type NotificationChannel,
+  type SmtpSendFn,
+  type VapidKeys,
+} from "@kizami/notify";
 import { decryptSecret, type Encryptor } from "./encryption.js";
 import { resolveEmailAddress, resolveNotificationCategory, resolveUserNotificationPrefs } from "./notification-preferences.js";
 
@@ -51,7 +62,19 @@ export interface BuildNotificationChannelsOptions {
 }
 
 /** buildPersonalChannels のオプション(webhookUrlFallback は個人チャネルには存在しないため持たない)。 */
-export type BuildPersonalChannelsOptions = Omit<BuildNotificationChannelsOptions, "webhookUrlFallback">;
+export type BuildPersonalChannelsOptions = Omit<BuildNotificationChannelsOptions, "webhookUrlFallback"> & {
+  /**
+   * ブラウザプッシュ通知(Web Push)の VAPID 鍵(apps/api/src/lib/web-push.ts の
+   * buildVapidFromEnv())。省略/null なら push チャネルは一切組み立てない
+   * (個人設定で push=true でも静かに送らない — 鍵未設定の配備での既定の挙動)。
+   *
+   * テナント共有チャネル(buildTenantChannels)側には意図的に存在しない — 宛先が
+   * 「特定個人のブラウザ」である以上、プッシュ通知は本人宛にしか意味がないため。
+   */
+  vapid?: VapidKeys | null;
+  /** 現在時刻(UTC エポック分)。push_subscriptions の last_used_at / failed_at に記録する。省略時は実時刻から求める */
+  nowMinutes?: number;
+};
 
 /** 「今の保存設定で少なくとも1チャネル送信できるか」を判定する(POST /settings/notifications/test の事前チェックに使う)。 */
 export function isNotificationConfigUsable(
@@ -137,6 +160,9 @@ export async function buildTenantChannels(
  *   (呼び出し元が渡す msg.to.email を上書きする — 呼び出し元は複数チャネルへ同じ
  *   NotificationMessage を dispatch するだけでよく、個人アドレスの解決をここに閉じ込める)。
  * - webhook: **個人の Webhook URL のみ**。テナント共有 Webhook は絶対に使わない。
+ * - push: ブラウザプッシュ通知(Web Push、2026-08-24 追加)。VAPID 鍵(options.vapid)がある場合のみ。
+ *   push_subscriptions の**有効な購読1件につき1チャネル**を返す(1人が複数ブラウザを購読しうる)。
+ *   プッシュサービスが 404/410 を返した購読は failed_at を立てて以後スキップする。
  *
  * アプリ内通知(notifications テーブルへの作成)はこの関数の対象外
  * (呼び出し元が createNotificationIfAbsent で常に作成する — 既定でアプリ内は常時ON)。
@@ -214,6 +240,47 @@ export async function buildPersonalChannels(
       console.warn(
         `[notification-channels] user ${userId}: personal webhookUrl could not be decrypted (missing/rotated key or corrupted value); disabling the webhook channel`,
       );
+    }
+  }
+
+  // ブラウザプッシュ通知(2026-08-24 追加、docs/design/web-push.md)。
+  // 他の2チャネルと違い**購読1件につき1チャネル**を返す(1人が PC・スマホ等 複数ブラウザを
+  // 購読しうるため)。dispatch() は Promise.allSettled なので、1台への送信失敗が他台を止めない。
+  if (categoryPrefs.push && options.vapid) {
+    const subscriptions = await listActivePushSubscriptions(db, { tenantId, userId });
+    for (const subscription of subscriptions) {
+      const channel = webPushChannel(
+        { endpoint: subscription.endpoint, p256dh: subscription.keysP256dh, auth: subscription.keysAuth },
+        options.vapid,
+        options.fetchImpl ? { fetchImpl: options.fetchImpl } : {},
+      );
+      channels.push({
+        name: channel.name,
+        send: async (msg) => {
+          try {
+            await channel.send(msg);
+          } catch (err) {
+            // 404/410 = プッシュサービスが「その購読はもう無い」と言っている(ブラウザの
+            // 購読解除・データ消去・長期未使用)。行は消さず failed_at を立てて以後スキップする
+            // (遅延プルーニング。判断点は packages/db/src/schema/push-subscriptions.ts)。
+            if (err instanceof WebPushGoneError) {
+              await markPushSubscriptionFailed(db, {
+                tenantId,
+                userId,
+                endpoint: subscription.endpoint,
+                failedAt: options.nowMinutes ?? Math.floor(Date.now() / 60_000),
+              });
+            }
+            throw err;
+          }
+          await touchPushSubscription(db, {
+            tenantId,
+            userId,
+            endpoint: subscription.endpoint,
+            lastUsedAt: options.nowMinutes ?? Math.floor(Date.now() / 60_000),
+          });
+        },
+      });
     }
   }
 

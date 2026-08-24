@@ -194,6 +194,7 @@ export default defineConfig({
           { text: "多段承認(承認フロー)", link: "/design/approval-flows" },
           { text: "マルチテナントとテナント分離", link: "/design/multi-tenancy" },
           { text: "SSO(OIDC)ログイン", link: "/design/sso-oidc" },
+          { text: "ブラウザプッシュ通知(Web Push)", link: "/design/web-push" },
           { text: "DBダイアレクト(SQLite/PostgreSQL)", link: "/design/db-dialects" },
         ],
       },

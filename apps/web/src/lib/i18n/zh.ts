@@ -850,6 +850,8 @@ export const zh = {
     categoryColumnInapp: "应用内",
     categoryColumnEmail: "邮件",
     categoryColumnWebhook: "个人Webhook",
+    /** 2026-08-24 新增。仅在已配置 VAPID 密钥的部署(pushAvailable=true)中显示该列。 */
+    categoryColumnPush: "推送通知",
     inappAlwaysOnHint: "应用内通知始终开启(无法更改)。",
     categories: {
       missing_clock_out: "忘记打卡",
@@ -874,6 +876,26 @@ export const zh = {
     webhookUrlConfigured: "已设置",
     webhookUrlNotConfigured: "未设置",
     keepIfBlankHint: "如不更改,请保留为空",
+
+
+    /**
+     * 浏览器推送通知(2026-08-24 新增,docs/design/web-push.md)。
+     * 订阅需要**按浏览器**分别进行(电脑和手机需各自授权)。
+     */
+    pushSectionTitle: "浏览器推送通知",
+    pushHint: "订阅需要按浏览器分别进行。若想在其他设备或浏览器上也接收,请在那里执行相同的操作。",
+    pushEnable: "在此浏览器接收推送通知",
+    pushEnabling: "设置中…",
+    pushDisable: "停止在此浏览器接收",
+    pushDisabling: "解除中…",
+    pushSubscribed: "此浏览器已订阅。",
+    pushNotSubscribed: "此浏览器尚未订阅。",
+    pushUnsupported: "此浏览器不支持推送通知。",
+    pushPermissionDenied:
+      "通知已被阻止。请从浏览器地址栏的锁形(或网站信息)图标打开网站设置,将「通知」改为「允许」后再试一次。",
+    pushPermissionDismissed: "未获得通知权限,请重试。",
+    pushUnavailable: "此 KIZAMI 未启用推送通知,请联系管理员。",
+    pushFailed: "推送通知设置失败,请重试。",
 
     save: "保存",
     saving: "保存中…",

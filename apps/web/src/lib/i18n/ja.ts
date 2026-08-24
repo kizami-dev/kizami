@@ -898,6 +898,8 @@ export const ja = {
     categoryColumnInapp: "アプリ内",
     categoryColumnEmail: "メール",
     categoryColumnWebhook: "個人Webhook",
+    /** 2026-08-24 追加。VAPID 鍵が設定されている配備(pushAvailable=true)でのみ列を出す。 */
+    categoryColumnPush: "プッシュ通知",
     inappAlwaysOnHint: "アプリ内通知は常にONです(変更できません)。",
     categories: {
       missing_clock_out: "打刻忘れ",
@@ -922,6 +924,26 @@ export const ja = {
     webhookUrlConfigured: "設定済み",
     webhookUrlNotConfigured: "未設定",
     keepIfBlankHint: "変更しない場合は空のままにしてください",
+
+
+    /**
+     * ブラウザプッシュ通知(2026-08-24 追加、docs/design/web-push.md)。
+     * 購読は**ブラウザごと**に必要(PC とスマホでは別々に許可する)。
+     */
+    pushSectionTitle: "ブラウザのプッシュ通知",
+    pushHint: "購読はブラウザごとに必要です。別の端末やブラウザでも受け取るには、そちらでも同じ操作をしてください。",
+    pushEnable: "このブラウザでプッシュ通知を受け取る",
+    pushEnabling: "設定中…",
+    pushDisable: "このブラウザでの受け取りをやめる",
+    pushDisabling: "解除中…",
+    pushSubscribed: "このブラウザは購読済みです。",
+    pushNotSubscribed: "このブラウザはまだ購読していません。",
+    pushUnsupported: "このブラウザはプッシュ通知に対応していません。",
+    pushPermissionDenied:
+      "通知がブロックされています。ブラウザのアドレスバーの鍵(またはサイト情報)アイコンからサイトの設定を開き、「通知」を「許可」に変えてから、もう一度お試しください。",
+    pushPermissionDismissed: "通知の許可が得られませんでした。もう一度お試しください。",
+    pushUnavailable: "この KIZAMI ではプッシュ通知が有効になっていません。管理者にお問い合わせください。",
+    pushFailed: "プッシュ通知の設定に失敗しました。もう一度お試しください。",
 
     save: "保存",
     saving: "保存中…",

@@ -12,6 +12,7 @@ import {
   type UpdatePersonalNotificationSettingsInput,
 } from "../lib/api";
 import { mapPersonalNotificationSettingsErrorMessage, messages } from "../lib/messages";
+import { currentPushSubscription, disablePush, enablePush, isPushSupported, notificationPermission } from "../lib/push";
 import { useAuthGuard } from "../lib/useAuthGuard";
 import { useSettingsAccess } from "../lib/useSettingsAccess";
 import { AppHeader } from "./AppHeader";
@@ -29,7 +30,7 @@ const CATEGORIES: PersonalNotificationCategory[] = [
 ];
 
 interface FormState {
-  categories: Record<PersonalNotificationCategory, { email: boolean; webhook: boolean }>;
+  categories: Record<PersonalNotificationCategory, { email: boolean; webhook: boolean; push: boolean }>;
   emailAddress: string;
   /** マスクされて返るため常に空欄始まり。空欄のまま送信すれば既存値を維持する(PUTの3値ルール)。 */
   webhookUrl: string;
@@ -38,7 +39,11 @@ interface FormState {
 function toFormState(settings: PersonalNotificationSettingsDto): FormState {
   const categories = {} as FormState["categories"];
   for (const category of CATEGORIES) {
-    categories[category] = { email: settings.categories[category].email, webhook: settings.categories[category].webhook };
+    categories[category] = {
+      email: settings.categories[category].email,
+      webhook: settings.categories[category].webhook,
+      push: settings.categories[category].push,
+    };
   }
   return { categories, emailAddress: settings.emailAddress.value ?? "", webhookUrl: "" };
 }
@@ -66,6 +71,15 @@ export function PersonalNotificationSettingsView() {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
+
+  // ブラウザプッシュ通知(2026-08-24 追加、docs/design/web-push.md)。
+  // 「この配備で使えるか」(settings.pushAvailable)と「このブラウザが購読済みか」
+  // (pushSubscribed)は別物なので独立して持つ — 前者はサーバー側の VAPID 鍵の有無、
+  // 後者はブラウザ側の PushManager の状態(端末ごとに違う)。
+  const [pushSupported, setPushSupported] = useState(false);
+  const [pushSubscribed, setPushSubscribed] = useState(false);
+  const [pushPending, setPushPending] = useState(false);
+  const [pushMessage, setPushMessage] = useState<string | null>(null);
 
   const [testConfirmOpen, setTestConfirmOpen] = useState(false);
   const [testPending, setTestPending] = useState(false);
@@ -101,7 +115,51 @@ export function PersonalNotificationSettingsView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [guard.status]);
 
-  function updateCategory(category: PersonalNotificationCategory, patch: Partial<{ email: boolean; webhook: boolean }>) {
+  // このブラウザの購読状態を読む。SSR(静的書き出し)では navigator が無いので必ず useEffect で。
+  useEffect(() => {
+    if (guard.status !== "authed") return;
+    let cancelled = false;
+    setPushSupported(isPushSupported());
+    void currentPushSubscription().then((subscription) => {
+      if (!cancelled) setPushSubscribed(subscription !== null);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [guard.status]);
+
+  async function handleEnablePush() {
+    setPushPending(true);
+    setPushMessage(null);
+    const result = await enablePush();
+    setPushPending(false);
+
+    const m = messages.settingsPersonalNotifications;
+    if (result.status === "subscribed") {
+      setPushSubscribed(true);
+      setPushMessage(m.pushSubscribed);
+      return;
+    }
+    if (result.status === "permission_denied") setPushMessage(m.pushPermissionDenied);
+    else if (result.status === "permission_dismissed") setPushMessage(m.pushPermissionDismissed);
+    else if (result.status === "unavailable") setPushMessage(m.pushUnavailable);
+    else setPushMessage(m.pushFailed);
+  }
+
+  async function handleDisablePush() {
+    setPushPending(true);
+    setPushMessage(null);
+    const result = await disablePush();
+    setPushPending(false);
+    if (result.ok) {
+      setPushSubscribed(false);
+      setPushMessage(messages.settingsPersonalNotifications.pushNotSubscribed);
+    } else {
+      setPushMessage(messages.settingsPersonalNotifications.pushFailed);
+    }
+  }
+
+  function updateCategory(category: PersonalNotificationCategory, patch: Partial<{ email: boolean; webhook: boolean; push: boolean }>) {
     setForm((prev) =>
       prev ? { ...prev, categories: { ...prev.categories, [category]: { ...prev.categories[category], ...patch } } } : prev,
     );
@@ -119,12 +177,12 @@ export function PersonalNotificationSettingsView() {
 
     const body: UpdatePersonalNotificationSettingsInput = {
       categories: {
-        missing_clock_out: { email: form.categories.missing_clock_out.email, webhook: form.categories.missing_clock_out.webhook },
-        overtime_alert: { email: form.categories.overtime_alert.email, webhook: form.categories.overtime_alert.webhook },
-        leave_alert: { email: form.categories.leave_alert.email, webhook: form.categories.leave_alert.webhook },
-        correction_alert: { email: form.categories.correction_alert.email, webhook: form.categories.correction_alert.webhook },
-        approval_request: { email: form.categories.approval_request.email, webhook: form.categories.approval_request.webhook },
-        shift_variance: { email: form.categories.shift_variance.email, webhook: form.categories.shift_variance.webhook },
+        missing_clock_out: { email: form.categories.missing_clock_out.email, webhook: form.categories.missing_clock_out.webhook, push: form.categories.missing_clock_out.push },
+        overtime_alert: { email: form.categories.overtime_alert.email, webhook: form.categories.overtime_alert.webhook, push: form.categories.overtime_alert.push },
+        leave_alert: { email: form.categories.leave_alert.email, webhook: form.categories.leave_alert.webhook, push: form.categories.leave_alert.push },
+        correction_alert: { email: form.categories.correction_alert.email, webhook: form.categories.correction_alert.webhook, push: form.categories.correction_alert.push },
+        approval_request: { email: form.categories.approval_request.email, webhook: form.categories.approval_request.webhook, push: form.categories.approval_request.push },
+        shift_variance: { email: form.categories.shift_variance.email, webhook: form.categories.shift_variance.webhook, push: form.categories.shift_variance.push },
       },
       // 空欄のまま送信 = 既存値を維持(3値ルールのうち「省略」に相当)。
       ...(form.emailAddress.trim() !== "" ? { emailAddress: form.emailAddress.trim() } : {}),
@@ -166,6 +224,11 @@ export function PersonalNotificationSettingsView() {
     }
   }
 
+  // プッシュ列/購読 UI は「サーバーに鍵がある」かつ「ブラウザが対応している」ときだけ出す。
+  // 判断点: 購読済みかどうかは列の表示条件に入れない — 購読前でも希望を保存しておけるほうが
+  // (「先に ON にしてから許可する」順序でも動くので)迷いが少ないため。
+  const pushColumnVisible = (settings?.pushAvailable ?? false) && pushSupported;
+
   if (guard.status === "loading" || loading) {
     return <p className="monthly-loading">{messages.loading}</p>;
   }
@@ -203,12 +266,18 @@ export function PersonalNotificationSettingsView() {
               <h2 className="settings-notif__section-title">{messages.settingsPersonalNotifications.categoriesSectionTitle}</h2>
               <p className="settings-notif__field-hint">{messages.settingsPersonalNotifications.inappAlwaysOnHint}</p>
 
-              <div className="settings-personal-notif__category-table" role="table">
+              <div
+                className={`settings-personal-notif__category-table${pushColumnVisible ? " settings-personal-notif__category-table--with-push" : ""}`}
+                role="table"
+              >
                 <div className="settings-personal-notif__category-row settings-personal-notif__category-row--header" role="row">
                   <span role="columnheader" />
                   <span role="columnheader">{messages.settingsPersonalNotifications.categoryColumnInapp}</span>
                   <span role="columnheader">{messages.settingsPersonalNotifications.categoryColumnEmail}</span>
                   <span role="columnheader">{messages.settingsPersonalNotifications.categoryColumnWebhook}</span>
+                  {pushColumnVisible ? (
+                    <span role="columnheader">{messages.settingsPersonalNotifications.categoryColumnPush}</span>
+                  ) : null}
                 </div>
                 {CATEGORIES.map((category) => (
                   <div className="settings-personal-notif__category-row" role="row" key={category}>
@@ -234,6 +303,16 @@ export function PersonalNotificationSettingsView() {
                         aria-label={messages.settingsPersonalNotifications.categoryColumnWebhook}
                       />
                     </span>
+                    {pushColumnVisible ? (
+                      <span role="cell">
+                        <input
+                          type="checkbox"
+                          checked={form.categories[category].push}
+                          onChange={(e) => updateCategory(category, { push: e.target.checked })}
+                          aria-label={messages.settingsPersonalNotifications.categoryColumnPush}
+                        />
+                      </span>
+                    ) : null}
                   </div>
                 ))}
               </div>
@@ -278,6 +357,47 @@ export function PersonalNotificationSettingsView() {
                 </p>
               </div>
             </section>
+
+            {settings.pushAvailable ? (
+              <section className="settings-notif__section">
+                <h2 className="settings-notif__section-title">{messages.settingsPersonalNotifications.pushSectionTitle}</h2>
+                {pushSupported ? (
+                  <>
+                    <p className="settings-notif__field-hint">
+                      {pushSubscribed
+                        ? messages.settingsPersonalNotifications.pushSubscribed
+                        : messages.settingsPersonalNotifications.pushNotSubscribed}
+                      {messages.common.hintSeparator}
+                      {messages.settingsPersonalNotifications.pushHint}
+                    </p>
+                    <div className="settings-notif__actions">
+                      {pushSubscribed ? (
+                        <button type="button" className="k-modal__cancel" disabled={pushPending} onClick={() => void handleDisablePush()}>
+                          {pushPending
+                            ? messages.settingsPersonalNotifications.pushDisabling
+                            : messages.settingsPersonalNotifications.pushDisable}
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          className="k-modal__confirm k-modal__confirm--neutral"
+                          disabled={pushPending}
+                          onClick={() => void handleEnablePush()}
+                        >
+                          {pushPending
+                            ? messages.settingsPersonalNotifications.pushEnabling
+                            : messages.settingsPersonalNotifications.pushEnable}
+                        </button>
+                      )}
+                    </div>
+                    {/* 権限拒否時の案内(ブラウザ設定から許可し直す手順)もここに出る。 */}
+                    {pushMessage ? <p className="settings-notif__field-hint">{pushMessage}</p> : null}
+                  </>
+                ) : (
+                  <p className="settings-notif__field-hint">{messages.settingsPersonalNotifications.pushUnsupported}</p>
+                )}
+              </section>
+            ) : null}
 
             {saveError ? (
               <p className="correction-error" role="alert">

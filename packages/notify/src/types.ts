@@ -15,6 +15,11 @@ export interface NotificationMessage {
   to: NotificationRecipient;
   title: string;
   body: string;
+  /**
+   * 通知をクリックしたときに開く Web アプリ内のパス(webPushChannel が使う。
+   * smtpChannel / webhookChannel は無視する)。省略時は webPushChannel 側の既定("/")。
+   */
+  url?: string;
 }
 
 export interface NotificationChannel {

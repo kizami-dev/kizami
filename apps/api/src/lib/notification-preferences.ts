@@ -59,17 +59,24 @@ export type NotificationCategory = (typeof NOTIFICATION_CATEGORIES)[number];
 export interface CategoryChannelPrefs {
   email: boolean;
   webhook: boolean;
+  /**
+   * ブラウザプッシュ通知(Web Push、2026-08-24 追加。docs/design/web-push.md)。
+   * email/webhook と同じ粒度・同じ既定値(OFF)。宛先は push_subscriptions テーブル
+   * (1ユーザーが複数ブラウザを購読しうるため、user_notification_settings には持たない)。
+   * VAPID 鍵が未設定の配備ではこの値に関わらず送信されない(チャネルが組み立てられない)。
+   */
+  push: boolean;
 }
 
-/** 既定値: アプリ内は常時ON(この定数には含めない=不変)、メールはOFF、個人Webhookは未設定。 */
+/** 既定値: アプリ内は常時ON(この定数には含めない=不変)、メール・プッシュはOFF、個人Webhookは未設定。 */
 export const DEFAULT_USER_NOTIFICATION_PREFS: Readonly<Record<NotificationCategory, Readonly<CategoryChannelPrefs>>> =
   Object.freeze({
-    missing_clock_out: Object.freeze({ email: false, webhook: false }),
-    overtime_alert: Object.freeze({ email: false, webhook: false }),
-    leave_alert: Object.freeze({ email: false, webhook: false }),
-    correction_alert: Object.freeze({ email: false, webhook: false }),
-    approval_request: Object.freeze({ email: false, webhook: false }),
-    shift_variance: Object.freeze({ email: false, webhook: false }),
+    missing_clock_out: Object.freeze({ email: false, webhook: false, push: false }),
+    overtime_alert: Object.freeze({ email: false, webhook: false, push: false }),
+    leave_alert: Object.freeze({ email: false, webhook: false, push: false }),
+    correction_alert: Object.freeze({ email: false, webhook: false, push: false }),
+    approval_request: Object.freeze({ email: false, webhook: false, push: false }),
+    shift_variance: Object.freeze({ email: false, webhook: false, push: false }),
   });
 
 /**
@@ -126,12 +133,12 @@ export function resolveUserNotificationPrefs(
     };
   }
   return {
-    missing_clock_out: { email: row.missingClockOutEmail, webhook: row.missingClockOutWebhook },
-    overtime_alert: { email: row.overtimeAlertEmail, webhook: row.overtimeAlertWebhook },
-    leave_alert: { email: row.leaveAlertEmail, webhook: row.leaveAlertWebhook },
-    correction_alert: { email: row.correctionAlertEmail, webhook: row.correctionAlertWebhook },
-    approval_request: { email: row.approvalRequestEmail, webhook: row.approvalRequestWebhook },
-    shift_variance: { email: row.shiftVarianceEmail, webhook: row.shiftVarianceWebhook },
+    missing_clock_out: { email: row.missingClockOutEmail, webhook: row.missingClockOutWebhook, push: row.missingClockOutPush },
+    overtime_alert: { email: row.overtimeAlertEmail, webhook: row.overtimeAlertWebhook, push: row.overtimeAlertPush },
+    leave_alert: { email: row.leaveAlertEmail, webhook: row.leaveAlertWebhook, push: row.leaveAlertPush },
+    correction_alert: { email: row.correctionAlertEmail, webhook: row.correctionAlertWebhook, push: row.correctionAlertPush },
+    approval_request: { email: row.approvalRequestEmail, webhook: row.approvalRequestWebhook, push: row.approvalRequestPush },
+    shift_variance: { email: row.shiftVarianceEmail, webhook: row.shiftVarianceWebhook, push: row.shiftVariancePush },
   };
 }
 

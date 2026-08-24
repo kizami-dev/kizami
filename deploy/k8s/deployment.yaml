@@ -53,6 +53,28 @@ spec:
                   name: kizami-encryption
                   key: key
                   optional: false
+            # ブラウザプッシュ通知(Web Push、任意。docs/design/web-push.md)。
+            # 3つ揃っている場合だけ有効になり、未設定なら購読 API が 404 を返し Web UI からも
+            # プッシュ通知の項目が消える(optional: true — 使わない配備では Secret ごと不要)。
+            # 生成: `pnpm generate-vapid`(本 README の「ブラウザプッシュ通知」参照)。
+            - name: VAPID_PUBLIC_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: kizami-vapid
+                  key: publicKey
+                  optional: true
+            - name: VAPID_PRIVATE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: kizami-vapid
+                  key: privateKey
+                  optional: true
+            - name: VAPID_SUBJECT
+              valueFrom:
+                secretKeyRef:
+                  name: kizami-vapid
+                  key: subject
+                  optional: true
           volumeMounts:
             - name: data
               mountPath: /data
@@ -117,6 +139,28 @@ spec:
                   name: kizami-encryption
                   key: key
                   optional: false
+            # ブラウザプッシュ通知(Web Push、任意。docs/design/web-push.md)。
+            # api コンテナと同じ値を渡すこと(購読の受付は api、実際の送信はこの worker が行う)。
+            # 未設定なら個人設定で ON になっていてもプッシュは送られない(optional: true)。
+            # 生成: `pnpm generate-vapid`(本 README の「ブラウザプッシュ通知」参照)。
+            - name: VAPID_PUBLIC_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: kizami-vapid
+                  key: publicKey
+                  optional: true
+            - name: VAPID_PRIVATE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: kizami-vapid
+                  key: privateKey
+                  optional: true
+            - name: VAPID_SUBJECT
+              valueFrom:
+                secretKeyRef:
+                  name: kizami-vapid
+                  key: subject
+                  optional: true
           volumeMounts:
             - name: data
               mountPath: /data

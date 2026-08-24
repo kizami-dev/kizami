@@ -27,6 +27,18 @@ notifySecret:
   name: ""
   key: webhookUrl
 
+# 任意: ブラウザプッシュ通知(Web Push)の VAPID 鍵を入れた Secret
+# (docs/design/web-push.md)。name を空のままにすると環境変数が付かず、
+# プッシュ通知が無効なだけの通常運用になる(Web UI からも項目が消える)。
+# 鍵は `pnpm generate-vapid` で生成し、api / worker 両方が同じ Secret を参照する。
+# 鍵を入れ替えると既存の購読はすべて無効になるので、encryptionSecret と同様に
+# チャートは Secret を生成しない(事前に kubectl create secret で作ること)。
+vapidSecret:
+  name: ""
+  publicKeyKey: publicKey
+  privateKeyKey: privateKey
+  subjectKey: subject
+
 persistence:
   storageClassName: ""   # 空ならクラスタ既定(k3s なら local-path)
   size: 1Gi

@@ -862,6 +862,8 @@ export const ko = {
     categoryColumnInapp: "앱 내",
     categoryColumnEmail: "이메일",
     categoryColumnWebhook: "개인 Webhook",
+    /** 2026-08-24 추가. VAPID 키가 설정된 배포(pushAvailable=true)에서만 열을 표시한다. */
+    categoryColumnPush: "푸시 알림",
     inappAlwaysOnHint: "앱 내 알림은 항상 켜져 있습니다(변경할 수 없습니다).",
     categories: {
       missing_clock_out: "출퇴근 누락",
@@ -886,6 +888,26 @@ export const ko = {
     webhookUrlConfigured: "설정됨",
     webhookUrlNotConfigured: "미설정",
     keepIfBlankHint: "변경하지 않으려면 빈칸으로 두세요",
+
+
+    /**
+     * 브라우저 푸시 알림(2026-08-24 추가, docs/design/web-push.md).
+     * 구독은 **브라우저마다** 필요하다(PC와 스마트폰은 각각 허용해야 한다).
+     */
+    pushSectionTitle: "브라우저 푸시 알림",
+    pushHint: "구독은 브라우저마다 필요합니다. 다른 기기나 브라우저에서도 받으려면 그쪽에서도 같은 조작을 해 주세요.",
+    pushEnable: "이 브라우저에서 푸시 알림 받기",
+    pushEnabling: "설정 중…",
+    pushDisable: "이 브라우저에서 받지 않기",
+    pushDisabling: "해제 중…",
+    pushSubscribed: "이 브라우저는 구독되어 있습니다.",
+    pushNotSubscribed: "이 브라우저는 아직 구독하지 않았습니다.",
+    pushUnsupported: "이 브라우저는 푸시 알림을 지원하지 않습니다.",
+    pushPermissionDenied:
+      "알림이 차단되어 있습니다. 브라우저 주소 표시줄의 자물쇠(또는 사이트 정보) 아이콘에서 사이트 설정을 열고 「알림」을 「허용」으로 변경한 뒤 다시 시도해 주세요.",
+    pushPermissionDismissed: "알림 권한을 얻지 못했습니다. 다시 시도해 주세요.",
+    pushUnavailable: "이 KIZAMI에서는 푸시 알림이 활성화되어 있지 않습니다. 관리자에게 문의해 주세요.",
+    pushFailed: "푸시 알림 설정에 실패했습니다. 다시 시도해 주세요.",
 
     save: "저장",
     saving: "저장 중…",

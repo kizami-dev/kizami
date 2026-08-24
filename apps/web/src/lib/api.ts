@@ -451,6 +451,8 @@ export interface PersonalNotificationCategoryPrefsDto {
   inapp: true;
   email: boolean;
   webhook: boolean;
+  /** ブラウザプッシュ通知(2026-08-24 追加。pushAvailable が false の配備では UI に出さない)。 */
+  push: boolean;
 }
 
 export interface PersonalNotificationSettingsDto {
@@ -459,6 +461,11 @@ export interface PersonalNotificationSettingsDto {
   emailAddress: { value: string | null; effective: string };
   /** 秘密情報のためマスクして返る(configured/preview のみ、全文は返らない)。 */
   webhookUrl: { configured: boolean; preview: string | null };
+  /**
+   * この配備でブラウザプッシュ通知が使えるか(サーバー側に VAPID 鍵があるか)。
+   * false ならプッシュ関連の UI(購読ボタン・カテゴリ別のプッシュ列)を一切出さない。
+   */
+  pushAvailable: boolean;
   updatedAt: number | null;
 }
 
@@ -468,9 +475,27 @@ export interface PersonalNotificationSettingsDto {
  * (省略=維持、空文字=クリア、文字列=置換)— このUIからは空文字での明示的なクリアも提供する。
  */
 export interface UpdatePersonalNotificationSettingsInput {
-  categories: Partial<Record<PersonalNotificationCategory, { email?: boolean; webhook?: boolean }>>;
+  categories: Partial<Record<PersonalNotificationCategory, { email?: boolean; webhook?: boolean; push?: boolean }>>;
   emailAddress?: string;
   webhookUrl?: string;
+}
+
+/**
+ * ブラウザプッシュ通知の購読(2026-08-24 追加、docs/design/web-push.md)。
+ * 鍵(p256dh/auth)はサーバーから返らない — UI が必要とするのは「このブラウザの endpoint が
+ * 登録済みか」の判定と、端末を見分けるための表示用情報だけであるため。
+ */
+export interface PushSubscriptionDto {
+  endpoint: string;
+  userAgent: string | null;
+  createdAt: number;
+  lastUsedAt: number | null;
+}
+
+/** ブラウザの `PushSubscription.toJSON()` のうち KIZAMI が使う部分。 */
+export interface PushSubscriptionJson {
+  endpoint: string;
+  keys: { p256dh: string; auth: string };
 }
 
 /**
@@ -1599,6 +1624,29 @@ export const api = {
   /** POST /settings/notifications/me/test(個人 Webhook のみが対象。未設定なら 400 not_configured)。 */
   async testPersonalWebhook(): Promise<{ result: NotificationTestResult | null }> {
     return request("/settings/notifications/me/test", { method: "POST" });
+  },
+
+  /**
+   * GET /push/vapid-public-key(ブラウザプッシュ通知、docs/design/web-push.md)。
+   * VAPID 鍵が未設定の配備では 404 push_unavailable(ApiError)になる。
+   */
+  async getVapidPublicKey(): Promise<{ publicKey: string }> {
+    return request("/push/vapid-public-key");
+  },
+
+  /** GET /push/subscriptions(自分の有効な購読。鍵は返らない)。 */
+  async listPushSubscriptions(): Promise<{ subscriptions: PushSubscriptionDto[] }> {
+    return request("/push/subscriptions");
+  },
+
+  /** POST /push/subscriptions(endpoint 単位の upsert。同じブラウザから何度呼んでも増えない)。 */
+  async createPushSubscription(subscription: PushSubscriptionJson): Promise<{ endpoint: string; createdAt: number }> {
+    return request("/push/subscriptions", { method: "POST", body: JSON.stringify({ subscription }) });
+  },
+
+  /** DELETE /push/subscriptions(自分の購読のみ。他人の endpoint を指定しても 404)。 */
+  async deletePushSubscription(endpoint: string): Promise<{ ok: true }> {
+    return request("/push/subscriptions", { method: "DELETE", body: JSON.stringify({ endpoint }) });
   },
 
   async listDepartments(): Promise<{ departments: DepartmentDto[] }> {

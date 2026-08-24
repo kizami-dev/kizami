@@ -15,6 +15,8 @@
 #   PostgreSQL を使いたい場合はファイル末尾の「PostgreSQL 構成」を参照(既定は SQLite のまま)。
 # - worker は api と同じイメージで src/worker.ts を実行(リマインダー・乖離通知・有給予告の
 #   日次スキャン)。キューは Valkey(永続化なし — ジョブは毎日再スケジュールされるため)。
+# - ブラウザプッシュ通知(Web Push)を使う場合は VAPID_* を api / worker の両方に設定する
+#   (下記)。任意機能で、未設定なら Web UI からプッシュ通知の項目が消えるだけ。
 name: kizami
 services:
   proxy:
@@ -34,6 +36,13 @@ services:
     environment:
       DATABASE_URL: file:/data/kizami.db
       KIZAMI_ENCRYPTION_KEY: ${KIZAMI_ENCRYPTION_KEY:?openssl rand -base64 32 で生成して .env に設定してください}
+      # ブラウザプッシュ通知(Web Push、任意。../../docs/design/web-push.md)。
+      # `pnpm generate-vapid` で3つ生成して .env に置く。api と worker の両方に同じ値が要る
+      # (購読の受付は api、送信は worker)。未設定なら Web UI からプッシュ通知の項目が消えるだけで
+      # 他の機能には影響しない。鍵を入れ替えると既存の購読はすべて無効になる点に注意。
+      VAPID_PUBLIC_KEY: ${KIZAMI_VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${KIZAMI_VAPID_PRIVATE_KEY:-}
+      VAPID_SUBJECT: ${KIZAMI_VAPID_SUBJECT:-}
     volumes:
       - data:/data
     restart: unless-stopped
@@ -46,6 +55,10 @@ services:
       KIZAMI_ENCRYPTION_KEY: ${KIZAMI_ENCRYPTION_KEY:?openssl rand -base64 32 で生成して .env に設定してください}
       # Slack/Discord 互換 Webhook(テナント共有の管理者向け通知)。未設定なら Webhook 送信はスキップされる。
       WEBHOOK_URL: ${KIZAMI_WEBHOOK_URL:-}
+      # ブラウザプッシュ通知の VAPID 鍵。api と同じ値を渡すこと(実際の送信はこの worker が行う)。
+      VAPID_PUBLIC_KEY: ${KIZAMI_VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${KIZAMI_VAPID_PRIVATE_KEY:-}
+      VAPID_SUBJECT: ${KIZAMI_VAPID_SUBJECT:-}
     volumes:
       - data:/data
     depends_on: [valkey, api]

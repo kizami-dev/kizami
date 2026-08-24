@@ -3,6 +3,7 @@
  *
  * 環境変数:
  * - REDIS_URL (既定 "redis://localhost:6379")
+ * - VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY / VAPID_SUBJECT(ブラウザプッシュ通知。未設定なら無効)
  * - REMINDER_INTERVAL_MINUTES (既定 15)
  * - DATABASE_URL (既定 "file:./kizami.db"、apps/api/src/node.ts と同じ既定値)
  *
@@ -47,6 +48,7 @@ import { runOvertimeAlertScan } from "./overtime-alerts.js";
 import { nodemailerSendFn } from "./lib/smtp.js";
 import { runReminderScan } from "./reminders.js";
 import { runShiftVarianceAlertScan } from "./shift-variance-alerts.js";
+import { buildVapidFromEnv } from "./lib/web-push.js";
 
 const QUEUE_NAME = "kizami-reminders";
 // このジョブは打刻忘れリマインドと36協定アラートの両方のスキャンを担う(周期は共通)。
@@ -59,6 +61,9 @@ const databaseUrl = process.env.DATABASE_URL ?? "file:./kizami.db";
 // 秘密情報(webhookUrl・smtpPassword)の復号に使う。未設定/不正なら null
 // (復号できないチャネルは無効化されるだけで、スキャン自体は止めない — notification-channels.ts 参照)。
 const encryptor = buildEncryptorFromEnv();
+// ブラウザプッシュ通知の VAPID 鍵(docs/design/web-push.md)。未設定なら null =
+// 個人設定で push=true でも push チャネルは組み立てられない(静かに送らない)。
+const vapid = buildVapidFromEnv();
 
 if (!Number.isFinite(reminderIntervalMinutes) || reminderIntervalMinutes <= 0) {
   throw new Error(`REMINDER_INTERVAL_MINUTES must be a positive number, got: ${process.env.REMINDER_INTERVAL_MINUTES}`);
@@ -96,7 +101,7 @@ async function main(): Promise<void> {
           cached = buildPersonalChannels(
             db,
             { tenantId, userId, notificationType },
-            { smtpSendFn: nodemailerSendFn, encryptor },
+            { smtpSendFn: nodemailerSendFn, encryptor, vapid, nowMinutes },
           );
           channelCache.set(key, cached);
         }

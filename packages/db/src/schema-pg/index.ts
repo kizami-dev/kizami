@@ -41,6 +41,7 @@ export const {
   permissionPresets,
   presetAssignments,
   punchEvents,
+  pushSubscriptions,
   sessions,
   shiftDays,
   shiftPatterns,

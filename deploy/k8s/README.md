@@ -63,6 +63,46 @@ kubectl -n kizami rollout restart deployment/kizami
 みなす後方互換)。明示的な一括移行バッチは不要で、各テナントが通知設定を次に保存したタイミング
 で自動的に暗号化される。
 
+## ブラウザプッシュ通知(Web Push / VAPID 鍵、任意)
+
+従業員が「打刻忘れ」「承認依頼」などをブラウザのプッシュ通知として受け取れるようにする
+(設計は [design/web-push.md](../../docs/design/web-push.md))。外部サービス(Firebase 等)は
+使わず、VAPID 鍵さえあれば追加のインフラは不要。**設定しなくても KIZAMI は通常どおり動く**
+(その場合、Web UI からプッシュ通知の項目自体が消える)。
+
+鍵を生成する:
+
+```sh
+pnpm generate-vapid
+# `npx web-push generate-vapid-keys` で作った鍵をそのまま使ってもよい
+```
+
+出力の3行を Secret にする(`VAPID_SUBJECT` は運用者の連絡先。`mailto:` か `https://` で始める
+必要がある — プッシュサービスが送信元に問い合わせるための情報):
+
+```sh
+kubectl -n kizami create secret generic kizami-vapid \
+  --from-literal=publicKey='<VAPID_PUBLIC_KEY>' \
+  --from-literal=privateKey='<VAPID_PRIVATE_KEY>' \
+  --from-literal=subject='mailto:admin@example.com'
+kubectl -n kizami rollout restart deployment/kizami
+```
+
+`deployment.yaml` は `api` / `worker` 両コンテナでこの Secret を `optional: true` で参照する
+(購読の受付は api、実際の送信は worker が行うため**両方に同じ値**が要る)。Secret が無ければ
+環境変数が付かず、プッシュ通知が無効なだけの通常運用になる。
+
+注意点:
+
+- **鍵を入れ替えると既存の購読はすべて無効になる。** ブラウザは購読時の公開鍵にエンドポイントを
+  紐づけるため、鍵を替えたら全員に設定画面から購読し直してもらう必要がある(KIZAMI 側は
+  失効を検知して静かに送信を止めるので、エラーが積み上がることはない)。
+- 秘密鍵は `KIZAMI_ENCRYPTION_KEY` と同じ扱い(クラスタ外で安全に保管・リポジトリに置かない)。
+- **HTTPS 必須**(Service Worker の要件)。また iOS/iPadOS では「ホーム画面に追加」した
+  PWA としてのみプッシュを受け取れる。
+- KIZAMI のサーバーからブラウザベンダーのプッシュサービスへ外向きの HTTPS が出られること。
+  閉域網の配備では使えない(メール・個人 Webhook を使うこと)。
+
 Pod が Running/Ready になるまで待つ:
 
 ```sh

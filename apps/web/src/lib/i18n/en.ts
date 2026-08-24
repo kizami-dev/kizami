@@ -890,6 +890,8 @@ export const en = {
     categoryColumnInapp: "In-app",
     categoryColumnEmail: "Email",
     categoryColumnWebhook: "Personal webhook",
+    /** Added 2026-08-24. The column is only shown when the deployment has VAPID keys (pushAvailable=true). */
+    categoryColumnPush: "Push",
     inappAlwaysOnHint: "In-app notifications are always on (cannot be changed).",
     categories: {
       missing_clock_out: "Missed punch",
@@ -914,6 +916,26 @@ export const en = {
     webhookUrlConfigured: "Configured",
     webhookUrlNotConfigured: "Not configured",
     keepIfBlankHint: "Leave blank to keep it unchanged",
+
+
+    /**
+     * Browser push notifications (added 2026-08-24, docs/design/web-push.md).
+     * A subscription is needed **per browser** (a PC and a phone are granted separately).
+     */
+    pushSectionTitle: "Browser push notifications",
+    pushHint: "A subscription is needed per browser. To also receive them on another device or browser, repeat this there.",
+    pushEnable: "Receive push notifications in this browser",
+    pushEnabling: "Setting up…",
+    pushDisable: "Stop receiving them in this browser",
+    pushDisabling: "Removing…",
+    pushSubscribed: "This browser is subscribed.",
+    pushNotSubscribed: "This browser is not subscribed yet.",
+    pushUnsupported: "This browser does not support push notifications.",
+    pushPermissionDenied:
+      "Notifications are blocked. Open the site settings from the lock (or site information) icon in your browser's address bar, change \"Notifications\" to \"Allow\", then try again.",
+    pushPermissionDismissed: "Permission was not granted. Please try again.",
+    pushUnavailable: "Push notifications are not enabled on this KIZAMI instance. Please contact your administrator.",
+    pushFailed: "Could not set up push notifications. Please try again.",
 
     save: "Save",
     saving: "Saving…",

@@ -8,6 +8,8 @@
  *   (apps/web/src/lib/api.ts の request() はすべて fetch() で行われる)
  * - オフライン時の打刻はキューイングしない(実際の打刻時刻と記録時刻がずれるため、
  *   v0.4では明示的にスコープ外。docs/requirements.md §3・依頼の禁止事項)
+ * - ブラウザプッシュ通知(Web Push、2026-08-24 追加。docs/design/web-push.md)の受信と
+ *   クリック時の画面遷移をこの SW が担う(ページが閉じていても動く唯一の場所であるため)
  *
  * 実装上のポイント: Request.destination で仕分ける。
  * - "document"(ページ遷移・リロード) と、script/style/image/font/manifest(静的アセット)
@@ -103,3 +105,64 @@ async function staleWhileRevalidate(event) {
   if (networkResponse) return networkResponse;
   return new Response(null, { status: 504 });
 }
+
+// ---------------------------------------------------------------------------
+// ブラウザプッシュ通知(Web Push、2026-08-24 追加。docs/design/web-push.md)
+// ---------------------------------------------------------------------------
+
+/**
+ * ペイロードの契約: apps/api が送るのは `{"title","body","url"}` の JSON だけ
+ * (packages/notify/src/web-push.ts の webPushChannel)。項目を増やすときは両方を同時に直すこと。
+ *
+ * 判断点: ペイロードが壊れている・空の場合でも「何か届いたこと」は伝わるよう、
+ * 汎用の文言で必ず1件は表示する。プッシュを受け取ったのに通知を出さないと、
+ * ブラウザによっては「サイトが勝手に通知権限を使っている」と判断され購読を切られるため。
+ */
+self.addEventListener("push", (event) => {
+  let payload = {};
+  try {
+    payload = event.data ? event.data.json() : {};
+  } catch {
+    payload = {};
+  }
+
+  const title = typeof payload.title === "string" && payload.title !== "" ? payload.title : "KIZAMI";
+  const body = typeof payload.body === "string" ? payload.body : "";
+  const url = typeof payload.url === "string" && payload.url !== "" ? payload.url : "/";
+
+  event.waitUntil(
+    self.registration.showNotification(title, {
+      body,
+      icon: "/icons/icon-192.png",
+      badge: "/icons/icon-192.png",
+      // 同じ通知が重複して届いた場合に積み上がらないよう、遷移先で束ねる
+      // (アプリ内通知側の重複防止(createNotificationIfAbsent)と役割が重なるが、
+      //  プッシュサービスの再送などここでしか防げない重複もあるため両方で守る)。
+      tag: url,
+      data: { url },
+    }),
+  );
+});
+
+/**
+ * 通知クリック: 既に KIZAMI を開いているタブがあればそれを前面に出して遷移し、
+ * 無ければ新しく開く(通知のたびにタブが増えるのを避ける)。
+ */
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const url = event.notification.data && typeof event.notification.data.url === "string" ? event.notification.data.url : "/";
+
+  event.waitUntil(
+    (async () => {
+      const target = new URL(url, self.location.origin);
+      const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+      for (const client of windows) {
+        if (new URL(client.url).origin !== target.origin) continue;
+        await client.focus();
+        if ("navigate" in client) await client.navigate(target.href);
+        return;
+      }
+      await self.clients.openWindow(target.href);
+    })(),
+  );
+});

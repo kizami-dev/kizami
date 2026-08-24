@@ -45,6 +45,7 @@ describe("migrate", () => {
         "permission_presets",
         "preset_assignments",
         "punch_events",
+        "push_subscriptions",
         "sessions",
         "shift_days",
         "shift_patterns",

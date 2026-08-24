@@ -17,6 +17,12 @@
  * 一緒くたに扱う(2026-08-24 追加の shift_variance は受け手が本人に戻る — 前日の自分の勤務が
  * シフトとずれたことの通知)。
  *
+ * ブラウザプッシュ通知(2026-08-24 追加、docs/design/web-push.md): カテゴリごとの `push` を
+ * email/webhook と同じ形で読み書きする。ただし**宛先**(どのブラウザへ送るか)はこのルータの
+ * 管轄外で、routes/push.ts の /push/subscriptions が push_subscriptions テーブルへ登録する。
+ * レスポンスの `pushAvailable` はこの配備に VAPID 鍵があるかを表し、Web UI は false なら
+ * プッシュ関連の UI を一切出さない。
+ *
  * 秘密情報のマスキング方針(GET のレスポンス。routes/settings.ts の webhookUrl と同じ考え方):
  * - webhookUrl: 全文は返さない。`{ configured: boolean, preview: string | null }`
  * 保存時暗号化(webhookUrl、詳細は apps/api/src/lib/encryption.ts):
@@ -33,7 +39,7 @@ import {
   type Database,
   type UserNotificationSettings,
 } from "@kizami/db";
-import { dispatch, webhookChannel, type SmtpSendFn } from "@kizami/notify";
+import { dispatch, webhookChannel, type SmtpSendFn, type VapidKeys } from "@kizami/notify";
 import type { AppEnv } from "../auth/middleware.js";
 import { decryptSecret, type Encryptor } from "../lib/encryption.js";
 import { isValidHttpUrl, resolveStringField, webhookPreview } from "../lib/field-validation.js";
@@ -56,12 +62,18 @@ export interface NotificationPreferencesRoutesDeps {
   smtpSendFn?: SmtpSendFn;
   /** webhookUrl の暗号化・復号に使う。null/未設定の場合、PUT は webhookUrl を含む更新を 503 で拒否する */
   encryptor?: Encryptor | null;
+  /**
+   * ブラウザプッシュ通知の VAPID 鍵(docs/design/web-push.md)。有無を GET/PUT のレスポンスの
+   * `pushAvailable` としてそのまま返すだけで、このルータ自体は送信を行わない
+   * (購読の登録は routes/push.ts、送信は lib/notification-channels.ts)。
+   */
+  vapid?: VapidKeys | null;
 }
 
 function serializeCategories(prefs: Record<NotificationCategory, CategoryChannelPrefs>) {
-  const result: Record<NotificationCategory, { inapp: true; email: boolean; webhook: boolean }> = {} as never;
+  const result: Record<NotificationCategory, { inapp: true; email: boolean; webhook: boolean; push: boolean }> = {} as never;
   for (const category of NOTIFICATION_CATEGORIES) {
-    result[category] = { inapp: true, email: prefs[category].email, webhook: prefs[category].webhook };
+    result[category] = { inapp: true, email: prefs[category].email, webhook: prefs[category].webhook, push: prefs[category].push };
   }
   return result;
 }
@@ -70,6 +82,7 @@ async function serialize(
   row: UserNotificationSettings | null,
   accountEmail: string,
   encryptor: Encryptor | null | undefined,
+  pushAvailable: boolean,
 ) {
   const prefs = resolveUserNotificationPrefs(row);
 
@@ -89,6 +102,13 @@ async function serialize(
     webhookUrl: row?.webhookUrl
       ? { configured: true, preview: webhookPreviewValue }
       : { configured: false, preview: null as string | null },
+    /**
+     * この配備でブラウザプッシュ通知が使えるか(= VAPID 鍵が設定されているか)。
+     * false のとき Web UI は購読ボタンもカテゴリ別のプッシュ列も出さない。
+     * カテゴリごとの `push` の値自体は false のときもそのまま返す(鍵を設定し直せば
+     * 以前の希望がそのまま復活する — 値を握りつぶさない)。
+     */
+    pushAvailable,
     updatedAt: row?.updatedAt ?? null,
   };
 }
@@ -96,6 +116,7 @@ async function serialize(
 interface PutCategoryBody {
   email?: unknown;
   webhook?: unknown;
+  push?: unknown;
 }
 
 interface PutBody {
@@ -121,7 +142,7 @@ export function createNotificationPreferencesRoutes(db: Database, deps: Notifica
   app.get("/me", async (c) => {
     const user = c.get("user");
     const row = await getUserNotificationSettings(db, { tenantId: user.tenantId, userId: user.id });
-    return c.json(await serialize(row, user.email, deps.encryptor));
+    return c.json(await serialize(row, user.email, deps.encryptor, deps.vapid != null));
   });
 
   app.put("/me", async (c) => {
@@ -154,6 +175,12 @@ export function createNotificationPreferencesRoutes(db: Database, deps: Notifica
       if (input.webhook !== undefined) {
         if (typeof input.webhook !== "boolean") return c.json({ error: "invalid_categories" }, 400);
         resolvedPrefs[category].webhook = input.webhook;
+      }
+      // push は VAPID 鍵が無い配備でも保存だけは受け付ける(鍵を後から設定したときに
+      // 以前の希望がそのまま生きる)。送信側(buildPersonalChannels)が鍵の有無で判断する。
+      if (input.push !== undefined) {
+        if (typeof input.push !== "boolean") return c.json({ error: "invalid_categories" }, 400);
+        resolvedPrefs[category].push = input.push;
       }
     }
 
@@ -188,22 +215,28 @@ export function createNotificationPreferencesRoutes(db: Database, deps: Notifica
       userId: user.id,
       missingClockOutEmail: resolvedPrefs.missing_clock_out.email,
       missingClockOutWebhook: resolvedPrefs.missing_clock_out.webhook,
+      missingClockOutPush: resolvedPrefs.missing_clock_out.push,
       overtimeAlertEmail: resolvedPrefs.overtime_alert.email,
       overtimeAlertWebhook: resolvedPrefs.overtime_alert.webhook,
+      overtimeAlertPush: resolvedPrefs.overtime_alert.push,
       leaveAlertEmail: resolvedPrefs.leave_alert.email,
       leaveAlertWebhook: resolvedPrefs.leave_alert.webhook,
+      leaveAlertPush: resolvedPrefs.leave_alert.push,
       correctionAlertEmail: resolvedPrefs.correction_alert.email,
       correctionAlertWebhook: resolvedPrefs.correction_alert.webhook,
+      correctionAlertPush: resolvedPrefs.correction_alert.push,
       approvalRequestEmail: resolvedPrefs.approval_request.email,
       approvalRequestWebhook: resolvedPrefs.approval_request.webhook,
+      approvalRequestPush: resolvedPrefs.approval_request.push,
       shiftVarianceEmail: resolvedPrefs.shift_variance.email,
       shiftVarianceWebhook: resolvedPrefs.shift_variance.webhook,
+      shiftVariancePush: resolvedPrefs.shift_variance.push,
       emailAddress: emailAddressResult.value,
       webhookUrl: webhookUrlToStore,
       updatedAt: now,
     });
 
-    return c.json(await serialize(updated, user.email, deps.encryptor));
+    return c.json(await serialize(updated, user.email, deps.encryptor, deps.vapid != null));
   });
 
   // 個人 Webhook のテスト送信(UI の「テスト送信ボタン」用)。判断点(完了報告に明記):

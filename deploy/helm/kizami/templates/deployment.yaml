@@ -27,6 +27,23 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.encryptionSecret.name }}
                   key: {{ .Values.encryptionSecret.key }}
+            {{- if .Values.vapidSecret.name }}
+            - name: VAPID_PUBLIC_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.vapidSecret.name }}
+                  key: {{ .Values.vapidSecret.publicKeyKey }}
+            - name: VAPID_PRIVATE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.vapidSecret.name }}
+                  key: {{ .Values.vapidSecret.privateKeyKey }}
+            - name: VAPID_SUBJECT
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.vapidSecret.name }}
+                  key: {{ .Values.vapidSecret.subjectKey }}
+            {{- end }}
           readinessProbe:
             httpGet: {path: /healthz, port: 3001}
             initialDelaySeconds: 3
@@ -60,6 +77,23 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.notifySecret.name }}
                   key: {{ .Values.notifySecret.key }}
+            {{- end }}
+            {{- if .Values.vapidSecret.name }}
+            - name: VAPID_PUBLIC_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.vapidSecret.name }}
+                  key: {{ .Values.vapidSecret.publicKeyKey }}
+            - name: VAPID_PRIVATE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.vapidSecret.name }}
+                  key: {{ .Values.vapidSecret.privateKeyKey }}
+            - name: VAPID_SUBJECT
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.vapidSecret.name }}
+                  key: {{ .Values.vapidSecret.subjectKey }}
             {{- end }}
           resources: {{- toYaml .Values.resources.worker | nindent 12 }}
           volumeMounts: [{name: data, mountPath: /data}]

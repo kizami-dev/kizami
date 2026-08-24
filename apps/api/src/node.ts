@@ -4,6 +4,7 @@ import { migrateDb } from "@kizami/db";
 import { createApp } from "./app.js";
 import { buildEncryptorFromEnv } from "./lib/encryption.js";
 import { nodemailerSendFn } from "./lib/smtp.js";
+import { buildVapidFromEnv } from "./lib/web-push.js";
 
 const port = Number(process.env.PORT ?? 3001);
 const databaseUrl = process.env.DATABASE_URL ?? "file:./kizami.db";
@@ -36,6 +37,12 @@ const trustProxy = process.env.TRUST_PROXY !== "false";
 const appBaseUrl = process.env.APP_BASE_URL ?? process.env.CORS_ORIGIN;
 const oidcRedirectUri = process.env.OIDC_REDIRECT_URI;
 
+// ブラウザプッシュ通知(Web Push、docs/design/web-push.md)。VAPID_PUBLIC_KEY /
+// VAPID_PRIVATE_KEY / VAPID_SUBJECT がすべて揃っている場合だけ有効になる。未設定なら null で、
+// /push/* は 404 push_unavailable を返し Web UI からプッシュ通知の UI ごと消える。
+// 鍵の生成: `pnpm generate-vapid`(deploy/k8s/README.md 参照)。
+const vapid = buildVapidFromEnv();
+
 const { db } = await migrateDb({ url: databaseUrl });
 const app = createApp({
   db,
@@ -44,6 +51,7 @@ const app = createApp({
   notify: { smtpSendFn: nodemailerSendFn },
   encryptor,
   trustProxy,
+  vapid,
   oidc: {
     ...(appBaseUrl !== undefined ? { appBaseUrl } : {}),
     ...(oidcRedirectUri !== undefined ? { redirectUri: oidcRedirectUri } : {}),

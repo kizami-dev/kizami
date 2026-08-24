@@ -31,16 +31,22 @@ export interface UpsertUserNotificationSettingsInput {
   userId: string;
   missingClockOutEmail: boolean;
   missingClockOutWebhook: boolean;
+  missingClockOutPush: boolean;
   overtimeAlertEmail: boolean;
   overtimeAlertWebhook: boolean;
+  overtimeAlertPush: boolean;
   leaveAlertEmail: boolean;
   leaveAlertWebhook: boolean;
+  leaveAlertPush: boolean;
   correctionAlertEmail: boolean;
   correctionAlertWebhook: boolean;
+  correctionAlertPush: boolean;
   approvalRequestEmail: boolean;
   approvalRequestWebhook: boolean;
+  approvalRequestPush: boolean;
   shiftVarianceEmail: boolean;
   shiftVarianceWebhook: boolean;
+  shiftVariancePush: boolean;
   emailAddress: string | null;
   webhookUrl: string | null;
   /** UTC エポック分 */
@@ -57,16 +63,22 @@ export async function upsertUserNotificationSettings(
     userId: input.userId,
     missingClockOutEmail: input.missingClockOutEmail,
     missingClockOutWebhook: input.missingClockOutWebhook,
+    missingClockOutPush: input.missingClockOutPush,
     overtimeAlertEmail: input.overtimeAlertEmail,
     overtimeAlertWebhook: input.overtimeAlertWebhook,
+    overtimeAlertPush: input.overtimeAlertPush,
     leaveAlertEmail: input.leaveAlertEmail,
     leaveAlertWebhook: input.leaveAlertWebhook,
+    leaveAlertPush: input.leaveAlertPush,
     correctionAlertEmail: input.correctionAlertEmail,
     correctionAlertWebhook: input.correctionAlertWebhook,
+    correctionAlertPush: input.correctionAlertPush,
     approvalRequestEmail: input.approvalRequestEmail,
     approvalRequestWebhook: input.approvalRequestWebhook,
+    approvalRequestPush: input.approvalRequestPush,
     shiftVarianceEmail: input.shiftVarianceEmail,
     shiftVarianceWebhook: input.shiftVarianceWebhook,
+    shiftVariancePush: input.shiftVariancePush,
     emailAddress: input.emailAddress,
     webhookUrl: input.webhookUrl,
     updatedAt: input.updatedAt,
