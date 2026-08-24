@@ -501,6 +501,8 @@ export const en = {
     /** Delta minutes appended to shift-variance warnings (same shape as insufficient_break's breakShortfallSuffix). */
     shiftDeltaSuffix: (delta: string) => `(delta ${delta})`,
     shiftActualOnlySuffix: (actual: string) => `(worked ${actual})`,
+    /** Core-time variance (labor law §32-3), added 2026-08-24. Shows how many minutes of core time were missed. */
+    coreTimeDeltaSuffix: (delta: string) => `(core time missed ${delta})`,
 
     totalsLabel: "Totals by category",
     /** Heading for the monthly allowance totals (see docs/design/allowances.md "UI", added 2026-08-23). */
@@ -554,6 +556,10 @@ export const en = {
     shift_early_leave: "Clocked out earlier than the shift's end time",
     shift_unplanned_work: "There is worked time on a day the shift marked as off",
     shift_absence: "There is no worked time on a day the shift marked as work",
+    /** Core-time variance (labor law §32-3), added 2026-08-24. Missed minutes are appended via monthly.coreTimeDeltaSuffix. */
+    core_time_late_arrival: "Late for core time — clocked in later than the core time start",
+    core_time_early_leave: "Left before core time ended — clocked out earlier than the core time end",
+    core_time_absence: "Absent during core time — no worked time on a day with core time",
   } satisfies Record<
     | "missing_clock_out"
     | "duplicate_clock_in"
@@ -568,7 +574,10 @@ export const en = {
     | "shift_late_arrival"
     | "shift_early_leave"
     | "shift_unplanned_work"
-    | "shift_absence",
+    | "shift_absence"
+    | "core_time_late_arrival"
+    | "core_time_early_leave"
+    | "core_time_absence",
     string
   >,
 
@@ -1267,6 +1276,14 @@ export const en = {
     flexLabel: "Flextime settings",
     flexSettlementMonthly: "Monthly settlement",
     flexStandardDayMinutesLabel: "Standard working hours (per day, minutes)",
+    /**
+     * Core time (labor law §32-3), added 2026-08-24. An **optional** part of flextime;
+     * without it the arrangement is "super flex". It never changes the totals — it only
+     * produces late/early-leave/absence warnings.
+     */
+    coreTimeLabel: "Core time",
+    coreTimeNone: "No core time (super flex)",
+    coreTimeSummary: (start: string, end: string, weekdays: string) => `${start}–${end} (${weekdays})`,
     noVersionYet: "No settings yet",
 
     weekdayLabel: {
@@ -1292,6 +1309,12 @@ export const en = {
     gpsWarningLink: "View personal data settings →",
     gpsRetentionInputLabel: "Retention period (leave blank to match attendance data)",
     flexStandardDayMinutesHint: "On days annual paid leave is taken, this many minutes count toward the working-hours budget.",
+    coreTimeEnabledCheckbox: "Set a core time",
+    coreTimeStartLabel: "Core time start",
+    coreTimeEndLabel: "Core time end",
+    coreTimeWeekdaysLabel: "Days with core time",
+    coreTimeHint:
+      "Absence during core time is shown in the monthly list as a late/early-leave/absence warning. It does not affect the totals (the settlement-period budget) — whether to deduct pay is a payroll decision. The end time must be later than the start time (core time cannot cross midnight).",
 
     submit: "Add this version",
     submitting: "Adding…",
@@ -1318,6 +1341,8 @@ export const en = {
       invalid_gps_retention_days: "GPS coordinate retention period must be a whole number of at least 1",
       invalid_settlement_period: "This version only supports \"Monthly settlement\" for the settlement period",
       invalid_standard_day_minutes: "Standard working hours must be between 1 and 1440 (minutes)",
+      invalid_core_time: "Core time must end after it starts (it cannot cross midnight)",
+      invalid_core_time_weekdays: "Select at least one day for core time",
       effective_from_in_past: "The effective date can only be today or later (past calculation results must not change)",
       version_already_exists: "A version already exists for that effective date. Please choose a different date",
       forbidden: "You don't have permission to perform this action",

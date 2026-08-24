@@ -279,3 +279,12 @@
   align-items: center;
   gap: var(--space-3);
 }
+
+/* コアタイムの適用曜日チェックボックス(2026-08-24 追加)。
+   手当設定の曜日欄(allowance-settings__weekdays)と同じ並べ方だが、
+   コンポーネントをまたいでクラスを共有しない既存の流儀に合わせて別に定義する。 */
+.attendance-settings__weekdays {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}

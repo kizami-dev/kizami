@@ -469,6 +469,8 @@ export const zh = {
     /** 排班预实偏差警告附加的分钟数(与 insufficient_break 的 breakShortfallSuffix 同类型)。 */
     shiftDeltaSuffix: (delta: string) => `(偏差 ${delta})`,
     shiftActualOnlySuffix: (actual: string) => `(实际工作 ${actual})`,
+    /** 核心时间偏差(劳基法32条之3,2026-08-24 添加)。并列显示核心时间内缺勤的分钟数。 */
+    coreTimeDeltaSuffix: (delta: string) => `(核心时间缺勤 ${delta})`,
 
     totalsLabel: "分类合计",
     /** 津贴对象时间月合计的标题(docs/design/allowances.md「UI」小节,2026-08-23 新增)。 */
@@ -520,6 +522,10 @@ export const zh = {
     shift_early_leave: "下班时间早于排班的结束时间",
     shift_unplanned_work: "在排班中定为休息的日期存在实际工作时间",
     shift_absence: "在排班中定为工作的日期没有实际工作时间",
+    /** 核心时间偏差(劳基法32条之3,2026-08-24 添加)。缺勤分钟数通过 monthly.coreTimeDeltaSuffix 并列显示。 */
+    core_time_late_arrival: "核心时间迟到 — 晚于核心时间开始时刻上班",
+    core_time_early_leave: "核心时间早退 — 早于核心时间结束时刻下班",
+    core_time_absence: "核心时间缺勤 — 设有核心时间的日期没有实际工作",
   } satisfies Record<
     | "missing_clock_out"
     | "duplicate_clock_in"
@@ -534,7 +540,10 @@ export const zh = {
     | "shift_late_arrival"
     | "shift_early_leave"
     | "shift_unplanned_work"
-    | "shift_absence",
+    | "shift_absence"
+    | "core_time_late_arrival"
+    | "core_time_early_leave"
+    | "core_time_absence",
     string
   >,
 
@@ -1224,6 +1233,13 @@ export const zh = {
     flexLabel: "弹性工作时间设置",
     flexSettlementMonthly: "按月结算",
     flexStandardDayMinutesLabel: "标准工作时间(每天,分钟)",
+    /**
+     * 核心时间(劳基法32条之3,2026-08-24 添加)。弹性工时制的**可选**设置,
+     * 不设置即为超级弹性工时。不影响汇总,仅显示迟到・早退・缺勤警告。
+     */
+    coreTimeLabel: "核心时间",
+    coreTimeNone: "无核心时间(超级弹性工时)",
+    coreTimeSummary: (start: string, end: string, weekdays: string) => `${start}〜${end}(${weekdays})`,
     noVersionYet: "尚未设置",
 
     weekdayLabel: {
@@ -1249,6 +1265,12 @@ export const zh = {
     gpsWarningLink: "查看个人信息设置 →",
     gpsRetentionInputLabel: "保留期限(留空则与考勤数据相同)",
     flexStandardDayMinutesHint: "在带薪年假当天,该分钟数将计入工作时间额度。",
+    coreTimeEnabledCheckbox: "设置核心时间",
+    coreTimeStartLabel: "核心时间开始",
+    coreTimeEndLabel: "核心时间结束",
+    coreTimeWeekdaysLabel: "设有核心时间的星期",
+    coreTimeHint:
+      "核心时间内的缺勤会在月度列表中以「核心时间迟到・早退・缺勤」警告显示。不影响汇总(结算期额度)——是否扣减工资请由薪资方判断。结束时刻必须晚于开始时刻(不支持跨日的核心时间)。",
 
     submit: "添加此版本",
     submitting: "添加中…",
@@ -1275,6 +1297,8 @@ export const zh = {
       invalid_gps_retention_days: "GPS坐标保留期限请输入1以上的整数",
       invalid_settlement_period: "当前版本的结算周期仅支持「按月结算」",
       invalid_standard_day_minutes: "标准工作时间请输入1〜1440范围内的数值(分钟)",
+      invalid_core_time: "核心时间的结束时刻请设置为晚于开始时刻(不支持跨日设置)",
+      invalid_core_time_weekdays: "请至少选择一个设有核心时间的星期",
       effective_from_in_past: "生效日期只能指定为今天或以后(否则会改变过去的统计结果)",
       version_already_exists: "该生效日期已存在版本,请指定其他日期",
       forbidden: "没有执行此操作的权限",

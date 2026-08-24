@@ -16,6 +16,7 @@
 import { computeAllowanceMinutesByDate, resolveAllowanceDefinitionsForDate } from "./allowances.js";
 import { applyAutoBreakDeduction } from "./auto-break.js";
 import { checkBreakSufficiency } from "./break-check.js";
+import { computeCoreTimeWarnings } from "./core-time.js";
 import { findSettingsForDate, formatDateString } from "./date.js";
 import { buildDailyBreakdown } from "./daily.js";
 import { deriveSegments } from "./derive.js";
@@ -189,12 +190,16 @@ export function calculate(input: EngineInput): EngineOutput {
     input.period,
     input.paidLeave,
   );
+  // コアタイムの予実乖離(労基法32条の3、docs/design/work-systems.md「コアタイム」)。
+  // totals・flexBalance には反映しない(コアタイムを外れても清算期間の総枠は変わらない)。
+  // コアタイムは WorkSystem の flex 分岐にしかない概念なので、この分岐でだけ呼ぶ。
+  const coreTimeWarnings = computeCoreTimeWarnings(days, input.settingsTimeline, input.asOfDate);
   return {
     days,
     totals,
     flexBalance,
     workSystem: "flex",
-    warnings: [...warnings, ...breakWarnings, ...mixedWarning],
+    warnings: [...warnings, ...breakWarnings, ...coreTimeWarnings, ...mixedWarning],
     allowanceTotals,
   };
 }

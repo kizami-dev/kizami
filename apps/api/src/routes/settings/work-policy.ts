@@ -10,20 +10,61 @@ import {
 } from "@kizami/db";
 import type { AppEnv } from "../../auth/middleware.js";
 import { requirePermission } from "../../authz.js";
-import { TZ_OFFSET_MINUTES_JST } from "../../lib/settings.js";
+import { parseCoreTime, TZ_OFFSET_MINUTES_JST } from "../../lib/settings.js";
 import { nowMinutes, todayLocalDate } from "../../lib/time.js";
 import { WORK_POLICY_PERMISSION } from "./permissions.js";
 import { isValidLocalDate, parseJsonRecord, type SettingsRoutesDeps } from "./shared.js";
 
-/** GET /settings/work-policy のレスポンス要素(1版分)。 */
+/**
+ * GET /settings/work-policy のレスポンス要素(1版分)。
+ *
+ * `core`(コアタイム)は DB では JSON 文字列だが、レスポンスでは復元済みのオブジェクト
+ * (または null)で返す — クライアントに JSON の二重パースをさせないため、
+ * legal_holiday_rule / break_rule を返す GET /settings/attendance と同じ流儀。
+ */
 function serializeWorkPolicyVersion(v: WorkPolicyVersion) {
   return {
     effectiveFrom: v.effectiveFrom,
     kind: v.kind,
     settlementPeriod: v.settlementPeriod,
+    core: parseCoreTime(v.core),
     standardDayMinutes: v.standardDayMinutes,
     createdAt: v.createdAt,
   };
+}
+
+/**
+ * リクエストの `core`(コアタイム、labor law §32-3)を検証して DB へ入れる JSON 文字列にする。
+ *
+ * 返り値: `{ core: string | null }` なら採用、`{ error }` なら 400 を返す。
+ * 省略・null は「コアタイムなし」(スーパーフレックス)として扱う — コアタイムの設定自体が
+ * 労使協定の任意事項であり、送らないことが正常な既定だから(docs/design/work-systems.md)。
+ *
+ * 検証(engine の `CoreTime` の契約と一致させる。packages/engine/src/types.ts 参照):
+ * - startMinutes / endMinutes は 0〜1440 の整数
+ * - startMinutes < endMinutes(**日跨ぎを許さない** — コアタイムは日中の帯という制度前提。
+ *   ここで弾かないと、エンジン側が「帯なし」として黙って無視するため、設定したつもりの
+ *   コアタイムが一切効かないという分かりにくい状態になる)
+ * - weekdays(省略可)は 0〜6 の整数の配列。空配列は「全曜日で対象外」を意味してしまい
+ *   設定ミスと区別できないため拒否する(指定しないこと = engine 既定の月〜金)
+ */
+function buildCoreTimeJson(value: unknown): { core: string | null } | { error: string } {
+  if (value === undefined || value === null) return { core: null };
+  if (typeof value !== "object" || Array.isArray(value)) return { error: "invalid_core_time" };
+
+  const { startMinutes, endMinutes, weekdays } = value as Record<string, unknown>;
+  const isMinutesOfDay = (v: unknown): v is number => typeof v === "number" && Number.isInteger(v) && v >= 0 && v <= 1440;
+  if (!isMinutesOfDay(startMinutes) || !isMinutesOfDay(endMinutes) || startMinutes >= endMinutes) {
+    return { error: "invalid_core_time" };
+  }
+
+  const core: { startMinutes: number; endMinutes: number; weekdays?: number[] } = { startMinutes, endMinutes };
+  if (weekdays !== undefined) {
+    if (!Array.isArray(weekdays) || weekdays.length === 0) return { error: "invalid_core_time_weekdays" };
+    if (!weekdays.every((w) => Number.isInteger(w) && w >= 0 && w <= 6)) return { error: "invalid_core_time_weekdays" };
+    core.weekdays = [...new Set(weekdays as number[])].sort((a, b) => a - b);
+  }
+  return { core: JSON.stringify(core) };
 }
 
 // ---- GET/POST /settings/work-policy(フレックス設定の版管理。2026-08-22 追加) ----
@@ -107,6 +148,15 @@ export function registerWorkPolicyRoutes(app: Hono<AppEnv>, db: Database, _deps:
       settlementPeriod = FIXED_SETTLEMENT_PERIOD_PLACEHOLDER;
     }
 
+    // コアタイム(labor law §32-3、2026-08-24 追加)は flex 専用。fixed・monthly_variable では
+    // settlementPeriod と同じくリクエストの値を見ず null で埋める(列の意味が無いため)。
+    let core: string | null = null;
+    if (kind === "flex") {
+      const result = buildCoreTimeJson(body.core);
+      if ("error" in result) return c.json({ error: result.error }, 400);
+      core = result.core;
+    }
+
     // standardDayMinutes: flex/fixed は「所定労働時間(有給の枠算入にも使う)」、
     // monthly_variable は「基準所定(有給換算用)」(上記定数のコメント参照)。
     // monthly_variable でのみ省略を許し、その場合は既定値を使う(後方互換 — フェーズ4以前の
@@ -148,6 +198,7 @@ export function registerWorkPolicyRoutes(app: Hono<AppEnv>, db: Database, _deps:
       effectiveFrom,
       kind,
       settlementPeriod,
+      core,
       standardDayMinutes,
       createdAt: now,
     });

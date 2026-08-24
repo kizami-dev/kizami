@@ -159,7 +159,15 @@ export type WarningKind =
   | "shift_late_arrival"
   | "shift_early_leave"
   | "shift_unplanned_work"
-  | "shift_absence";
+  | "shift_absence"
+  /**
+   * コアタイムの予実乖離(2026-08-24 追加、labor law §32-3、packages/engine/src/core-time.ts)。
+   * フレックスかつコアタイムを設定しているときのみ。集計(totals・flexBalance)には
+   * 反映されない(コアタイムを外れても清算期間の総枠は変わらない)。
+   */
+  | "core_time_late_arrival"
+  | "core_time_early_leave"
+  | "core_time_absence";
 
 export interface CalcWarning {
   kind: WarningKind;
@@ -173,6 +181,11 @@ export interface CalcWarning {
    * と一致、すべて省略可)。missing_shift は actualMinutes のみ(deltaMinutes は無い)。
    */
   shift?: { scheduledMinutes?: number; actualMinutes?: number; deltaMinutes?: number };
+  /**
+   * コアタイム警告(core_time_late_arrival・core_time_early_leave・core_time_absence)の
+   * とき: コアタイムに不在だった分数(packages/engine/src/core-time.ts と一致)。
+   */
+  core?: { deltaMinutes: number };
 }
 
 /** その勤怠日に始まった勤務区間(出勤〜退勤の1まとまり)。中抜けがあれば複数。 */
@@ -829,10 +842,24 @@ export interface CreateAttendanceSettingVersionInput {
   gpsRetentionDays: number | null;
 }
 
+/**
+ * コアタイム(labor law §32-3、2026-08-24 追加)。packages/engine の `CoreTime` と同じ形。
+ * `startMinutes` / `endMinutes` はローカル0時からの分で、日跨ぎは表現しない(start < end)。
+ * `weekdays` は適用曜日(0=日曜)。省略時はエンジン既定の月〜金。
+ */
+export interface CoreTimeDto {
+  startMinutes: number;
+  endMinutes: number;
+  weekdays?: Array<0 | 1 | 2 | 3 | 4 | 5 | 6>;
+}
+
 /** work_policy_versions(フレックス設定)の版(apps/api/src/routes/settings.ts の GET/POST /settings/work-policy と一致)。 */
 export interface WorkPolicyVersionDto {
   effectiveFrom: string;
+  kind: WorkSystemKind;
   settlementPeriod: string;
+  /** コアタイム。null なら「コアタイムなし」(スーパーフレックス) */
+  core: CoreTimeDto | null;
   standardDayMinutes: number;
   createdAt: number;
 }
@@ -844,7 +871,11 @@ export interface WorkPolicySettingsDto {
 
 export interface CreateWorkPolicyVersionInput {
   effectiveFrom: string;
+  /** 労働時間制の種別。この画面(フレックス設定)からは常に "flex" を送る */
+  kind: WorkSystemKind;
   settlementPeriod: string;
+  /** コアタイム。省略・null なら「コアタイムなし」 */
+  core?: CoreTimeDto | null;
   standardDayMinutes: number;
 }
 

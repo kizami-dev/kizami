@@ -8,6 +8,7 @@ import { parse } from "yaml";
 import { daysInMonth, utcMinutesFromLocalDateTime } from "../../src/date.js";
 import type {
   CalcSettings,
+  CoreTime,
   EngineInput,
   LegalHolidayRule,
   PaidLeaveEntry,
@@ -55,6 +56,26 @@ function parseLegalHoliday(raw: RawLegalHoliday): LegalHolidayRule {
   return { kind: "weekday", weekday };
 }
 
+interface RawCoreTime {
+  start: string;
+  end: string;
+  weekdays?: string[];
+}
+
+/** フィクスチャの core 指定を engine の `CoreTime` へ変換する(null はそのまま「なし」)。 */
+function parseCoreTime(raw: RawCoreTime | null | undefined): CoreTime | null {
+  if (!raw) return null;
+  const core: CoreTime = { startMinutes: parseHm(raw.start), endMinutes: parseHm(raw.end) };
+  if (raw.weekdays) {
+    core.weekdays = raw.weekdays.map((name) => {
+      const weekday = WEEKDAY_NAMES[name];
+      if (weekday === undefined) throw new Error(`unknown core weekday: ${name}`);
+      return weekday;
+    });
+  }
+  return core;
+}
+
 interface RawFixture {
   name: string;
   law_reference?: string;
@@ -64,7 +85,11 @@ interface RawFixture {
     /** 週の起算曜日(省略時は sunday)。現行フィクスチャは全てフレックスのため実際には未使用 */
     week_start_weekday?: string;
     legal_holiday: RawLegalHoliday;
-    flex: { settlement: "monthly"; core: null; standard_day: string };
+    /**
+     * `core` はコアタイム(labor law §32-3)。null なら「コアタイムなし」。
+     * 時刻は "HH:MM"、`weekdays` は曜日名の配列(省略時は engine 既定の月〜金)。
+     */
+    flex: { settlement: "monthly"; core: RawCoreTime | null; standard_day: string };
     break_rule: { mode: "punch" };
   };
   period: string; // "YYYY-MM"
@@ -144,7 +169,7 @@ export function loadGoldenCase(yamlText: string): GoldenCase {
     workSystem: {
       kind: "flex",
       settlement: raw.settings.flex.settlement,
-      core: raw.settings.flex.core,
+      core: parseCoreTime(raw.settings.flex.core),
       standardDayMinutes: flexStandardDayMinutes,
     },
     breakRule: { mode: raw.settings.break_rule.mode },

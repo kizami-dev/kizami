@@ -145,6 +145,11 @@ export function MonthlyAttendanceTable({ data, leaveByDate, onCorrect }: Monthly
         label += messages.monthly.shiftActualOnlySuffix(formatDurationHm(w.shift.actualMinutes));
       }
     }
+    // コアタイム乖離(2026-08-24 追加、labor law §32-3)。不在だった分数を併記する
+    // (shift 系と同じ体裁だが、コアタイムには「所定」に相当する値が無いので delta のみ)。
+    if (w.core) {
+      label += messages.monthly.coreTimeDeltaSuffix(formatDurationHm(w.core.deltaMinutes));
+    }
     const list = warningsByDate.get(w.date) ?? [];
     list.push(label);
     warningsByDate.set(w.date, list);

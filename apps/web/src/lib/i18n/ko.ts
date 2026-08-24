@@ -478,6 +478,8 @@ export const ko = {
     /** 시프트 예실 괴리 경고에 덧붙이는 분수(insufficient_break의 breakShortfallSuffix와 동일한 형태). */
     shiftDeltaSuffix: (delta: string) => `(괴리 ${delta})`,
     shiftActualOnlySuffix: (actual: string) => `(실근로 ${actual})`,
+    /** 코어타임 괴리(노동기준법 32조의3, 2026-08-24 추가). 코어타임에 부재한 분수를 병기합니다. */
+    coreTimeDeltaSuffix: (delta: string) => `(코어타임 부재 ${delta})`,
 
     totalsLabel: "구분별 합계",
     /** 수당 대상 시간의 월합계 제목(docs/design/allowances.md「UI」절, 2026-08-23 추가). */
@@ -529,6 +531,10 @@ export const ko = {
     shift_early_leave: "시프트 종료 시각보다 일찍 퇴근했습니다",
     shift_unplanned_work: "시프트에서 휴무로 정한 날에 실근로가 있습니다",
     shift_absence: "시프트에서 근무로 정한 날에 실근로가 없습니다",
+    /** 코어타임 괴리(노동기준법 32조의3, 2026-08-24 추가). 부재 분수는 monthly.coreTimeDeltaSuffix로 병기합니다. */
+    core_time_late_arrival: "코어타임 지각 — 코어타임 시작보다 늦게 출근했습니다",
+    core_time_early_leave: "코어타임 조퇴 — 코어타임 종료보다 일찍 퇴근했습니다",
+    core_time_absence: "코어타임 부재 — 코어타임이 있는 날에 실근로가 없습니다",
   } satisfies Record<
     | "missing_clock_out"
     | "duplicate_clock_in"
@@ -543,7 +549,10 @@ export const ko = {
     | "shift_late_arrival"
     | "shift_early_leave"
     | "shift_unplanned_work"
-    | "shift_absence",
+    | "shift_absence"
+    | "core_time_late_arrival"
+    | "core_time_early_leave"
+    | "core_time_absence",
     string
   >,
 
@@ -1237,6 +1246,13 @@ export const ko = {
     flexLabel: "플렉스타임 설정",
     flexSettlementMonthly: "월간 정산",
     flexStandardDayMinutesLabel: "표준근로시간(1일, 분)",
+    /**
+     * 코어타임(노동기준법 32조의3, 2026-08-24 추가). 플렉스의 **임의** 설정이며,
+     * 설정하지 않으면 슈퍼플렉스입니다. 집계에는 영향을 주지 않고 지각·조퇴·부재 경고만 표시됩니다.
+     */
+    coreTimeLabel: "코어타임",
+    coreTimeNone: "코어타임 없음(슈퍼플렉스)",
+    coreTimeSummary: (start: string, end: string, weekdays: string) => `${start}~${end}(${weekdays})`,
     noVersionYet: "아직 설정이 없습니다",
 
     weekdayLabel: {
@@ -1262,6 +1278,12 @@ export const ko = {
     gpsWarningLink: "개인정보 설정 보기 →",
     gpsRetentionInputLabel: "보관 기간(공백이면 근태 데이터와 동일)",
     flexStandardDayMinutesHint: "연차 사용일에 이 분수가 근로시간으로 한도에 산입됩니다.",
+    coreTimeEnabledCheckbox: "코어타임을 설정한다",
+    coreTimeStartLabel: "코어타임 시작",
+    coreTimeEndLabel: "코어타임 종료",
+    coreTimeWeekdaysLabel: "코어타임이 있는 요일",
+    coreTimeHint:
+      "코어타임 중 부재는 월별 목록에 「코어타임 지각·조퇴·부재」 경고로 표시됩니다. 집계(정산기간 한도)에는 영향을 주지 않습니다 — 임금 공제 여부는 급여 측에서 판단해 주세요. 종료 시각은 시작 시각보다 뒤여야 합니다(날짜를 넘는 코어타임은 설정할 수 없습니다).",
 
     submit: "이 내용으로 버전 추가",
     submitting: "추가 중…",
@@ -1288,6 +1310,8 @@ export const ko = {
       invalid_gps_retention_days: "GPS 좌표 보관 기간은 1 이상의 정수로 입력해 주세요",
       invalid_settlement_period: "정산기간은 이 버전에서는 「월간 정산」만 선택할 수 있습니다",
       invalid_standard_day_minutes: "표준근로시간은 1~1440 범위(분)로 입력해 주세요",
+      invalid_core_time: "코어타임은 시작보다 뒤의 종료 시각으로 지정해 주세요(날짜를 넘는 설정은 불가합니다)",
+      invalid_core_time_weekdays: "코어타임이 있는 요일을 1개 이상 선택해 주세요",
       effective_from_in_past: "적용 시작일은 오늘 이후로만 지정할 수 있습니다(과거 집계 결과가 바뀌기 때문입니다)",
       version_already_exists: "해당 적용 시작일에는 이미 버전이 있습니다. 다른 날짜를 지정해 주세요",
       forbidden: "이 작업을 수행할 권한이 없습니다",

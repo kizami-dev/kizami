@@ -507,6 +507,8 @@ export const ja = {
     /** シフト予実乖離の警告に添える分数(insufficient_break の breakShortfallSuffix と同型)。 */
     shiftDeltaSuffix: (delta: string) => `(乖離 ${delta})`,
     shiftActualOnlySuffix: (actual: string) => `(実労働 ${actual})`,
+    /** コアタイム乖離(labor law §32-3、2026-08-24 追加)。コアタイムに不在だった分数を併記する。 */
+    coreTimeDeltaSuffix: (delta: string) => `(コアタイム不在 ${delta})`,
 
     totalsLabel: "区分別合計",
     /** 固定時間制の月合計内訳(所定内・法定内残業)の見出し(GET /attendance/monthly の figures.fixedBreakdown、2026-08-23 追加)。 */
@@ -559,6 +561,10 @@ export const ja = {
     shift_early_leave: "シフトの終了時刻より早く退勤しました",
     shift_unplanned_work: "シフトで休みと定めた日に実労働があります",
     shift_absence: "シフトで勤務と定めた日に実労働がありません",
+    /** コアタイム乖離(labor law §32-3、2026-08-24 追加)。不在分数は monthly.coreTimeDeltaSuffix で併記する。 */
+    core_time_late_arrival: "コアタイム遅刻 — コアタイムの開始より遅く出勤しました",
+    core_time_early_leave: "コアタイム早退 — コアタイムの終了より早く退勤しました",
+    core_time_absence: "コアタイム不在 — コアタイムのある日に実労働がありません",
   } satisfies Record<
     | "missing_clock_out"
     | "duplicate_clock_in"
@@ -573,7 +579,10 @@ export const ja = {
     | "shift_late_arrival"
     | "shift_early_leave"
     | "shift_unplanned_work"
-    | "shift_absence",
+    | "shift_absence"
+    | "core_time_late_arrival"
+    | "core_time_early_leave"
+    | "core_time_absence",
     string
   >,
 
@@ -1272,6 +1281,13 @@ export const ja = {
     flexLabel: "フレックス設定",
     flexSettlementMonthly: "月次清算",
     flexStandardDayMinutesLabel: "標準労働時間(1日、分)",
+    /**
+     * コアタイム(labor law §32-3、2026-08-24 追加)。フレックスの**任意**設定であり、
+     * 設定しなければスーパーフレックス。集計には影響せず、遅刻・早退・不在の警告だけが出る。
+     */
+    coreTimeLabel: "コアタイム",
+    coreTimeNone: "コアタイムなし(スーパーフレックス)",
+    coreTimeSummary: (start: string, end: string, weekdays: string) => `${start}〜${end}(${weekdays})`,
     noVersionYet: "まだ設定がありません",
 
     weekdayLabel: {
@@ -1297,6 +1313,12 @@ export const ja = {
     gpsWarningLink: "個人情報の設定を見る →",
     gpsRetentionInputLabel: "保持期間(空欄なら勤怠データと同一)",
     flexStandardDayMinutesHint: "有給取得日にこの分数が労働時間として枠に算入されます。",
+    coreTimeEnabledCheckbox: "コアタイムを設定する",
+    coreTimeStartLabel: "コアタイム開始",
+    coreTimeEndLabel: "コアタイム終了",
+    coreTimeWeekdaysLabel: "コアタイムのある曜日",
+    coreTimeHint:
+      "コアタイム中の不在は「コアタイム遅刻・早退・不在」として月次一覧に警告表示されます。集計(清算期間の総枠)には影響しません — 賃金控除を行うかどうかは給与側でご判断ください。終了時刻は開始時刻より後にしてください(日をまたぐコアタイムは設定できません)。",
 
     submit: "この内容で版を追加",
     submitting: "追加中…",
@@ -1323,6 +1345,8 @@ export const ja = {
       invalid_gps_retention_days: "GPS座標の保持期間は1以上の整数で入力してください",
       invalid_settlement_period: "清算期間はこのバージョンでは「月次清算」のみ選べます",
       invalid_standard_day_minutes: "標準労働時間は1〜1440の範囲(分)で入力してください",
+      invalid_core_time: "コアタイムは開始より後の終了時刻で指定してください(日をまたぐ設定はできません)",
+      invalid_core_time_weekdays: "コアタイムのある曜日を1つ以上選んでください",
       effective_from_in_past: "適用開始日は本日以降のみ指定できます(過去の計算結果が変わってしまうため)",
       version_already_exists: "その適用開始日にはすでに版があります。別の日付を指定してください",
       forbidden: "この操作を行う権限がありません",

@@ -53,6 +53,8 @@ describe("GET/POST /settings/work-policy", () => {
       effectiveFrom: "1970-01-01",
       kind: "flex",
       settlementPeriod: "monthly",
+      // シードの初版はコアタイムなし(スーパーフレックス)
+      core: null,
       standardDayMinutes: 480,
       createdAt: 0,
     });

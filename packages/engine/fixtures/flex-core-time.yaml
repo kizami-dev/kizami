@@ -1,0 +1,47 @@
+# コアタイム付きフレックス — 遅刻・早退・不在の3警告が出ても集計は一切変わらないことを固定する。
+# コアタイムが適用される曜日を水曜だけに絞り、4月の各水曜で1パターンずつ検証する。
+name: コアタイム — 遅刻/早退/不在の警告は出るが総枠・実績は変わらない
+law_reference: 労働基準法32条の3(フレックスタイム制・コアタイムは任意設定)
+settings:
+  tz_offset: 540
+  day_boundary: "00:00"
+  legal_holiday: { weekday: sunday }
+  flex:
+    settlement: monthly
+    core: { start: "10:00", end: "15:00", weekdays: [wednesday] }
+    standard_day: "08:00"
+  break_rule: { mode: punch }
+period: 2026-04
+# 04-22(水)は全休。コアタイム不在にはならない(承認済みの不在のため)
+paid_leave:
+  - { date: "2026-04-22", minutes: 480 }
+punches:
+  # 04-01(水) 09:00-18:00・休憩1時間 → コアタイム内に居る。警告なし
+  - { kind: clock_in, at: "2026-04-01T09:00" }
+  - { kind: break_start, at: "2026-04-01T12:00" }
+  - { kind: break_end, at: "2026-04-01T13:00" }
+  - { kind: clock_out, at: "2026-04-01T18:00" }
+  # 04-08(水) 10:30 出勤 → コアタイム開始から30分の遅刻
+  - { kind: clock_in, at: "2026-04-08T10:30" }
+  - { kind: break_start, at: "2026-04-08T12:00" }
+  - { kind: break_end, at: "2026-04-08T13:00" }
+  - { kind: clock_out, at: "2026-04-08T18:00" }
+  # 04-15(水) 14:00 退勤 → コアタイム終了より60分早い早退(5時間勤務なので休憩不要)
+  - { kind: clock_in, at: "2026-04-15T09:00" }
+  - { kind: clock_out, at: "2026-04-15T14:00" }
+  # 04-29(水) は打刻なし → コアタイム不在
+expected:
+  # 実績 = 480(04-01) + 390(04-08) + 300(04-15) + 480(有給 04-22) = 1650
+  # 総枠 = floor(40h*60 * 30 / 7) = 10285(flex-basic.yaml と同じ。コアタイムは総枠に影響しない)
+  totals: { statutory: 1650, overtime: 0, overtime60h: 0, lateNight: 0, statutoryHoliday: 0 }
+  flex_balance: { frame: 10285, actual: 1650, diff: -8635 }
+  warnings:
+    - core_time_late_arrival
+    - core_time_early_leave
+    - core_time_absence
+  days:
+    - { date: "2026-04-01", worked: 480, break: 60, late_night: 0, legal_holiday: false }
+    - { date: "2026-04-08", worked: 390, break: 60, late_night: 0, legal_holiday: false }
+    - { date: "2026-04-15", worked: 300, break: 0, late_night: 0, legal_holiday: false }
+    - { date: "2026-04-22", worked: 0, break: 0, late_night: 0, legal_holiday: false, paid_leave_minutes: 480 }
+    - { date: "2026-04-29", worked: 0, break: 0, late_night: 0, legal_holiday: false }

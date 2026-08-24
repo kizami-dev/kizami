@@ -310,7 +310,11 @@ export function createAttendanceRoutes(db: Database) {
       paidLeave,
       autoBreakWaivedDates,
       allowances: allowanceTimeline,
-      ...(variableExtras ? { shifts: variableExtras.shifts, asOfDate: todayLocalDate(tz) } : {}),
+      ...(variableExtras ? { shifts: variableExtras.shifts } : {}),
+      // 「まだ来ていない日を欠勤・不在と断定しない」ための基準日(EngineInput.asOfDate)。
+      // 以前は monthly_variable(shift_absence)だけに渡していたが、コアタイム不在
+      // (core_time_absence、2026-08-24 追加)も同じ誤報を起こすため、制度によらず常に渡す。
+      asOfDate: todayLocalDate(tz),
     };
 
     const output = calculate(input);

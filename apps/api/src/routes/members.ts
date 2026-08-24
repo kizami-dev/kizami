@@ -1028,8 +1028,15 @@ export function createMembersRoutes(db: Database) {
     if (requestedStandardDayMinutes !== undefined) {
       const policyVersions = await listWorkPolicyVersions(db, { tenantId: actor.tenantId, workPolicyId: policy.id });
       let effectiveMinutes: number | null = null;
+      // コアタイム(labor law §32-3)は「その日に有効な版」の値をそのまま引き継ぐ。ここで
+      // 追記する版は standardDayMinutes を変えるためだけのものなので、テナントの
+      // コアタイム設定(POST /settings/work-policy で入れた値)を意図せず消してしまわないようにする。
+      let effectiveCore: string | null = null;
       for (const v of policyVersions) {
-        if (v.effectiveFrom <= effectiveFrom) effectiveMinutes = v.standardDayMinutes;
+        if (v.effectiveFrom <= effectiveFrom) {
+          effectiveMinutes = v.standardDayMinutes;
+          effectiveCore = v.core;
+        }
       }
       if (effectiveMinutes !== requestedStandardDayMinutes) {
         if (policyVersions.some((v) => v.effectiveFrom === effectiveFrom)) {
@@ -1043,6 +1050,7 @@ export function createMembersRoutes(db: Database) {
           effectiveFrom,
           kind,
           settlementPeriod: kind === "flex" ? "monthly" : FIXED_SETTLEMENT_PERIOD_PLACEHOLDER,
+          core: kind === "flex" ? effectiveCore : null,
           standardDayMinutes: requestedStandardDayMinutes,
           createdAt: now,
         });

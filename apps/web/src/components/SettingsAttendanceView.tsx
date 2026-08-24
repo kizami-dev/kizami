@@ -10,6 +10,7 @@ import {
   type AttendanceSettingVersionDto,
   type AutoBreakRuleDto,
   type BreakRuleDto,
+  type CoreTimeDto,
   type LegalHolidayRuleDto,
   type WorkPolicySettingsDto,
   type WorkPolicyVersionDto,
@@ -83,8 +84,15 @@ function buildBreakRule(mode: "punch" | "auto" | "both", rows: BreakRuleRowForm[
   return { mode, rules };
 }
 
+/** コアタイムの要約("10:00〜15:00(月・火・…)" または「コアタイムなし」)。 */
+function summarizeCoreTime(core: CoreTimeDto | null): string {
+  if (!core) return messages.settingsAttendance.coreTimeNone;
+  const weekdays = (core.weekdays ?? DEFAULT_CORE_WEEKDAYS).map((w) => weekdayLabel(w)).join("・");
+  return messages.settingsAttendance.coreTimeSummary(minutesToHm(core.startMinutes), minutesToHm(core.endMinutes), weekdays);
+}
+
 function summarizeWorkPolicyVersion(v: WorkPolicyVersionDto): string {
-  return `${messages.settingsAttendance.flexStandardDayMinutesLabel}: ${v.standardDayMinutes}分`;
+  return `${messages.settingsAttendance.flexStandardDayMinutesLabel}: ${v.standardDayMinutes}分 / ${messages.settingsAttendance.coreTimeLabel}: ${summarizeCoreTime(v.core)}`;
 }
 
 /** 休憩の自動控除ルール1行の編集用フォーム状態(2026-08-23 追加)。overHm は "HH:MM" 表示。 */
@@ -145,15 +153,37 @@ function initialAttendanceForm(effective: AttendanceSettingVersionDto | null): A
   };
 }
 
+/**
+ * `CoreTime.weekdays` を省略したときにエンジンが使う既定(月〜金)。
+ * packages/engine/src/core-time.ts の DEFAULT_CORE_WEEKDAYS と同じ値
+ * (表示・初期選択のためだけに UI 側にも持つ。判定そのものはエンジンの1箇所で行う)。
+ */
+const DEFAULT_CORE_WEEKDAYS: ReadonlyArray<0 | 1 | 2 | 3 | 4 | 5 | 6> = [1, 2, 3, 4, 5];
+
+const ALL_WEEKDAYS: ReadonlyArray<0 | 1 | 2 | 3 | 4 | 5 | 6> = [0, 1, 2, 3, 4, 5, 6];
+
 interface WorkPolicyFormState {
   effectiveFrom: string;
   standardDayMinutes: string;
+  /** コアタイムを設定するか(既定は「設定しない」= スーパーフレックス) */
+  coreTimeEnabled: boolean;
+  /** "HH:MM" */
+  coreTimeStartHm: string;
+  coreTimeEndHm: string;
+  /** 曜日ごとの選択状態(index = 0..6、0=日曜) */
+  coreTimeWeekdays: boolean[];
 }
 
 function initialWorkPolicyForm(effective: WorkPolicyVersionDto | null): WorkPolicyFormState {
+  const core = effective?.core ?? null;
+  const selected = core?.weekdays ?? DEFAULT_CORE_WEEKDAYS;
   return {
     effectiveFrom: defaultNextMonthFirstDay(),
     standardDayMinutes: effective ? String(effective.standardDayMinutes) : "480",
+    coreTimeEnabled: core !== null,
+    coreTimeStartHm: core ? minutesToHm(core.startMinutes) : "10:00",
+    coreTimeEndHm: core ? minutesToHm(core.endMinutes) : "15:00",
+    coreTimeWeekdays: ALL_WEEKDAYS.map((w) => selected.includes(w)),
   };
 }
 
@@ -325,13 +355,36 @@ export function SettingsAttendanceView() {
       return;
     }
 
+    // コアタイム(labor law §32-3)。「設定する」のチェックが外れていれば null を送る
+    // (= コアタイムなし・スーパーフレックス)。サーバー側と同じ検証をここでも行い、
+    // 400 を往復させずにその場でエラーを出す(既存の休憩ルールと同じ流儀)。
+    let core: CoreTimeDto | null = null;
+    if (workPolicyForm.coreTimeEnabled) {
+      const startMinutes = hmToMinutes(workPolicyForm.coreTimeStartHm);
+      const endMinutes = hmToMinutes(workPolicyForm.coreTimeEndHm);
+      if (startMinutes === null || endMinutes === null || startMinutes >= endMinutes) {
+        setWorkPolicyError(messages.settingsAttendance.errors.invalid_core_time);
+        return;
+      }
+      const weekdays = ALL_WEEKDAYS.filter((w) => workPolicyForm.coreTimeWeekdays[w]);
+      if (weekdays.length === 0) {
+        setWorkPolicyError(messages.settingsAttendance.errors.invalid_core_time_weekdays);
+        return;
+      }
+      core = { startMinutes, endMinutes, weekdays };
+    }
+
     setWorkPolicySaving(true);
     setWorkPolicyError(null);
     setWorkPolicySuccess(false);
     try {
       await api.createWorkPolicyVersion({
         effectiveFrom: workPolicyForm.effectiveFrom,
+        // この画面は「フレックス設定」専用のセクション。POST /settings/work-policy は
+        // kind を必須で受け取る(制度の切り替えはメンバー個別割当の画面が担う)ため明示する。
+        kind: "flex",
         settlementPeriod: "monthly",
+        core,
         standardDayMinutes,
       });
       setWorkPolicySuccess(true);
@@ -701,6 +754,10 @@ export function SettingsAttendanceView() {
                   <span className="attendance-settings__current-label">{messages.settingsAttendance.flexStandardDayMinutesLabel}</span>
                   <span className="attendance-settings__current-value tabular-nums">{workPolicy.effective.standardDayMinutes}</span>
                 </div>
+                <div className="attendance-settings__current-row">
+                  <span className="attendance-settings__current-label">{messages.settingsAttendance.coreTimeLabel}</span>
+                  <span className="attendance-settings__current-value">{summarizeCoreTime(workPolicy.effective.core)}</span>
+                </div>
                 <p className="attendance-settings__current-effective-from tabular-nums">
                   {messages.settingsAttendance.currentEffectiveFrom}: {workPolicy.effective.effectiveFrom}
                 </p>
@@ -737,6 +794,64 @@ export function SettingsAttendanceView() {
                 />
                 <span className="attendance-settings__field-hint">{messages.settingsAttendance.flexStandardDayMinutesHint}</span>
               </label>
+
+              {/* コアタイム(labor law §32-3)。任意設定なので既定は「設定しない」= スーパーフレックス。 */}
+              <fieldset className="attendance-settings__field">
+                <legend>{messages.settingsAttendance.coreTimeLabel}</legend>
+                <p className="attendance-settings__field-hint">{messages.settingsAttendance.coreTimeHint}</p>
+                <label className="attendance-settings__checkbox">
+                  <input
+                    type="checkbox"
+                    checked={workPolicyForm.coreTimeEnabled}
+                    onChange={(e) => setWorkPolicyForm((prev) => (prev ? { ...prev, coreTimeEnabled: e.target.checked } : prev))}
+                  />
+                  <span>{messages.settingsAttendance.coreTimeEnabledCheckbox}</span>
+                </label>
+
+                {workPolicyForm.coreTimeEnabled ? (
+                  <>
+                    <label className="attendance-settings__field">
+                      <span>{messages.settingsAttendance.coreTimeStartLabel}</span>
+                      <input
+                        type="time"
+                        value={workPolicyForm.coreTimeStartHm}
+                        onChange={(e) => setWorkPolicyForm((prev) => (prev ? { ...prev, coreTimeStartHm: e.target.value } : prev))}
+                        required
+                      />
+                    </label>
+                    <label className="attendance-settings__field">
+                      <span>{messages.settingsAttendance.coreTimeEndLabel}</span>
+                      <input
+                        type="time"
+                        value={workPolicyForm.coreTimeEndHm}
+                        onChange={(e) => setWorkPolicyForm((prev) => (prev ? { ...prev, coreTimeEndHm: e.target.value } : prev))}
+                        required
+                      />
+                    </label>
+                    <fieldset className="attendance-settings__field">
+                      <legend>{messages.settingsAttendance.coreTimeWeekdaysLabel}</legend>
+                      <div className="attendance-settings__weekdays">
+                        {ALL_WEEKDAYS.map((w) => (
+                          <label key={w} className="attendance-settings__checkbox">
+                            <input
+                              type="checkbox"
+                              checked={workPolicyForm.coreTimeWeekdays[w] ?? false}
+                              onChange={() =>
+                                setWorkPolicyForm((prev) =>
+                                  prev
+                                    ? { ...prev, coreTimeWeekdays: prev.coreTimeWeekdays.map((checked, idx) => (idx === w ? !checked : checked)) }
+                                    : prev,
+                                )
+                              }
+                            />
+                            <span>{weekdayLabel(w)}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </fieldset>
+                  </>
+                ) : null}
+              </fieldset>
 
               {workPolicyError ? (
                 <p className="correction-error" role="alert">

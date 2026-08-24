@@ -28,6 +28,46 @@ export interface ValidPunch {
 export type PlainDateString = string;
 
 /**
+ * コアタイム(フレックスタイム制で「必ず勤務すべき時間帯」。労基法32条の3、**任意**設定)。
+ *
+ * 制度上の性質(docs/design/work-systems.md「コアタイム」):
+ * - コアタイムを定めるかどうかは労使協定の任意事項であり、定めなければスーパーフレックス
+ * - コアタイム中の不在は「遅刻・早退」として扱えるが、**清算期間の総枠(集計)には影響しない**。
+ *   フレックスの時間外は清算期間の総枠との差でしか決まらないため(work-systems.md 参照)、
+ *   コアタイムを外れても労働時間そのものは1分も増減しない
+ * - よって KIZAMI はコアタイムを **警告としてだけ**扱う(auto-break と同じ
+ *   「計測と警告のみ、控除しない」— 賃金控除は給与側の責任、docs/design/breaks.md)
+ *
+ * 表現(判断点):
+ * - `startMinutes` / `endMinutes` はローカル0時からの分(0〜1440)。`ShiftDay` と違い
+ *   **日跨ぎ(endMinutes <= startMinutes)は表現しない** — コアタイムは「1日の中の、
+ *   全員が居るべき日中の帯」という制度前提であり、夜勤の帯を表す必要がない。
+ *   日跨ぎのコアタイムを許すと「その帯はどの勤怠日に属するのか」という
+ *   (シフト制と違って所定の裏付けが無いまま解かねばならない)問題を抱え込む。
+ *   不正な値は apps/api の POST /settings/work-policy が 400 で弾く。エンジン自体は
+ *   純関数として意味的な妥当性までは関知しないが、帯として成立しない値
+ *   (endMinutes <= startMinutes)は「帯が無い」とみなして警告を出さない(core-time.ts 参照)
+ * - `weekdays` は「コアタイムが適用される曜日」。省略時は月〜金
+ */
+export interface CoreTime {
+  /** ローカル0時からの分(0〜1440)。コアタイム開始 */
+  startMinutes: number;
+  /** ローカル0時からの分(0〜1440)。コアタイム終了。startMinutes より大きいこと */
+  endMinutes: number;
+  /**
+   * コアタイムが適用される曜日(0=日曜)。省略時は月〜金(1〜5)。
+   *
+   * 判断点(2026-08-24): フレックスには monthly_variable の `ShiftDay` のような
+   * 「所定労働日カレンダー」が無く、エンジンが日付から知りうる休みは**法定休日だけ**である。
+   * 土曜のような所定休日(法定休日ではない非勤務日)を区別できないまま
+   * `core_time_absence`(不在)を出すと、週休2日の会社では毎週土曜に誤報が出る。
+   * 曜日の集合をコアタイム設定自体に持たせることで、追加のカレンダー機構を導入せずに
+   * これを防ぐ(実務でもコアタイムは「平日10:00〜15:00」のように曜日とセットで定められる)。
+   */
+  weekdays?: Array<0 | 1 | 2 | 3 | 4 | 5 | 6>;
+}
+
+/**
  * 労働時間制(判別可能ユニオン)。`kind` で分岐する。
  *
  * `standardDayMinutes` は flex/fixed の両方の branch に存在する。固定時間制では
@@ -44,8 +84,11 @@ export type WorkSystem =
   | {
       kind: "flex";
       settlement: "monthly";
-      /** コアタイムは v0.1 では未対応(null 固定) */
-      core: null;
+      /**
+       * コアタイム(労基法32条の3、任意設定)。null なら「コアタイムなし」
+       * (スーパーフレックス)で、コアタイム由来の警告は一切出ない。
+       */
+      core: CoreTime | null;
       /** 標準となる1日の労働時間(分)。有給日の枠算入に使う */
       standardDayMinutes: number;
     }
@@ -283,7 +326,19 @@ export type WarningKind =
   /** シフトが work 以外(legal_holiday/non_working)の日に実労働がある */
   | "shift_unplanned_work"
   /** シフトが work の日に実労働が0分、かつ有給取得もない */
-  | "shift_absence";
+  | "shift_absence"
+  /**
+   * コアタイムの予実乖離(labor law §32-3、core-time.ts)。フレックスかつコアタイムを
+   * 設定しているときのみ出る。shift_* と同じく集計(totals)には一切反映しない —
+   * コアタイム中の不在は「遅刻・早退」だが、フレックスの時間外は清算期間の総枠との差で
+   * しか決まらないため、労働時間は1分も変わらない(賃金控除は給与側の責任)。
+   */
+  /** コアタイム開始より遅い最初の出勤 */
+  | "core_time_late_arrival"
+  /** コアタイム終了より早い最後の退勤 */
+  | "core_time_early_leave"
+  /** コアタイムが適用される日に実労働が0分、かつ有給取得もない */
+  | "core_time_absence";
 
 export interface CalcWarning {
   kind: WarningKind;
@@ -302,6 +357,18 @@ export interface CalcWarning {
    * 警告種別ごとに埋まるフィールドが異なる(shift-variance.ts 参照。すべて省略可)。他の警告種別では未設定。
    */
   shift?: { scheduledMinutes?: number; actualMinutes?: number; deltaMinutes?: number };
+  /**
+   * コアタイム警告(core_time_late_arrival・core_time_early_leave・core_time_absence)の
+   * とき: UI が乖離の分数を表示するための値。`shift` と同じ役割だが、コアタイムには
+   * 「所定(scheduledMinutes)」に相当する概念が無い(フレックスの所定はコアタイムでは
+   * 決まらない)ため、乖離量だけを持つ独立したフィールドにしている。
+   *
+   * `deltaMinutes` の意味は種別ごとに異なる:
+   * - late_arrival: コアタイム開始から最初の出勤までの分(コアタイムに不在だった前半)
+   * - early_leave: 最後の退勤からコアタイム終了までの分(不在だった後半)
+   * - absence: コアタイムの帯の長さそのもの(終日不在なので全部が不在)
+   */
+  core?: { deltaMinutes: number };
 }
 
 export type TimeCategory =

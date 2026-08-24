@@ -17,7 +17,7 @@ import {
   type Transaction,
   type TenantSettingVersion,
 } from "@kizami/db";
-import type { BreakRule, CalcSettings, LawTimelineSpan, LegalHolidayRule, SettingsSpan, WorkSystem } from "@kizami/engine";
+import type { BreakRule, CalcSettings, CoreTime, LawTimelineSpan, LegalHolidayRule, SettingsSpan, WorkSystem } from "@kizami/engine";
 import { buildLawTimeline } from "@kizami/law";
 
 /** Asia/Tokyo 固定(分)。テナントTZが設定可能になるのは v1.0 以降の想定。 */
@@ -44,8 +44,47 @@ export type WorkPolicyVersionRow = {
   workPolicyId: string;
   kind: string;
   settlementPeriod: string;
+  /** work_policy_versions.core(コアタイムの JSON 文字列)。未設定なら null */
+  core: string | null;
   standardDayMinutes: number;
 };
+
+/**
+ * work_policy_versions.core(JSON 文字列)を engine の `CoreTime` へ復元する
+ * (2026-08-24, コアタイム対応)。
+ *
+ * 判断点: DB に入っている値が壊れている(手で書き換えた・将来のスキーマ変更で形が変わった)
+ * 場合は **例外を投げず null(コアタイムなし)にフォールバックする**。コアタイムは
+ * 集計値に一切影響しない警告専用の設定であり(docs/design/work-systems.md「コアタイム」)、
+ * 壊れた値で月次の取得ごと 500 にするより「警告が出ないだけ」に留める方が実害が小さい。
+ * これは `toWeekday`(週の起算曜日 = 集計値に直結するので例外)と逆の判断であり、
+ * 「集計に効く値は落とす、警告だけの値は落とさない」という基準で使い分けている。
+ */
+export function parseCoreTime(raw: string | null): CoreTime | null {
+  if (raw === null || raw.trim() === "") return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (parsed === null || typeof parsed !== "object") return null;
+  const record = parsed as Record<string, unknown>;
+  const { startMinutes, endMinutes, weekdays } = record;
+  if (!isMinutesOfDay(startMinutes) || !isMinutesOfDay(endMinutes) || startMinutes >= endMinutes) return null;
+  const core: CoreTime = { startMinutes, endMinutes };
+  if (Array.isArray(weekdays)) {
+    const valid = weekdays.filter((w): w is 0 | 1 | 2 | 3 | 4 | 5 | 6 => Number.isInteger(w) && (w as number) >= 0 && (w as number) <= 6);
+    // 妥当な曜日が1つも無い配列は「曜日指定なし」= engine 既定(月〜金)に倒す。
+    if (valid.length > 0) core.weekdays = valid;
+  }
+  return core;
+}
+
+/** 0〜1440 の整数(ローカル0時からの分)か。コアタイムの境界検証に使う。 */
+function isMinutesOfDay(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= 1440;
+}
 
 /**
  * テナント全体の work_policy_versions を取得する(userId に依存しないテナント単位のデータ)。
@@ -60,6 +99,7 @@ export async function fetchWorkPolicyVersionRowsForTenant(db: Database | Transac
       workPolicyId: workPolicyVersions.workPolicyId,
       kind: workPolicyVersions.kind,
       settlementPeriod: workPolicyVersions.settlementPeriod,
+      core: workPolicyVersions.core,
       standardDayMinutes: workPolicyVersions.standardDayMinutes,
     })
     .from(workPolicyVersions)
@@ -224,7 +264,13 @@ export async function buildSettingsTimelineWithBaseDayMinutes(
           ? { kind: "fixed", standardDayMinutes: version.standardDayMinutes }
           : version.kind === "monthly_variable"
             ? { kind: "monthly_variable", periodStartDay: tenantVersion.variablePeriodStartDay }
-            : { kind: "flex", settlement: version.settlementPeriod as "monthly", core: null, standardDayMinutes: version.standardDayMinutes },
+            : {
+                kind: "flex",
+                settlement: version.settlementPeriod as "monthly",
+                // コアタイム(labor law §32-3、2026-08-24 追加)。列は flex のときだけ意味を持つ。
+                core: parseCoreTime(version.core),
+                standardDayMinutes: version.standardDayMinutes,
+              },
       breakRule: JSON.parse(tenantVersion.breakRule) as BreakRule,
     };
 

@@ -77,8 +77,8 @@ export const workPolicies = sqliteTable("work_policies", {
 /**
  * work_policies の版(追記専用)。労働時間制の種別を `kind` で区別する:
  * - `"flex"`(フレックスタイム制): `settlementPeriod`(清算期間)/ `core`(コアタイム)を使う
- * - `"fixed"`(固定時間制): `settlementPeriod` / `core` は無視される(列自体は NOT NULL のまま
- *   残すため、fixed でも `settlementPeriod` には便宜上 "monthly" を、`core` には null を入れておく)
+ * - `"fixed"` / `"monthly_variable"`: `settlementPeriod` / `core` は無視される(列自体は残るため、
+ *   `settlementPeriod` には便宜上 "monthly" を、`core` には null を入れておく)
  *
  * 2026-08-23 固定時間制対応で `kind` を追加。既存行のマイグレーションでは "flex" を入れる。
  */
@@ -102,7 +102,16 @@ export const workPolicyVersions = sqliteTable(
     kind: text("kind").notNull().default("flex"),
     /** 清算期間。flex 専用("monthly" 固定)。kind = "fixed" のときは無視される */
     settlementPeriod: text("settlement_period").notNull(),
-    /** コアタイム。flex 専用。v0.1 未対応のため常に null。kind = "fixed" のときは無視される */
+    /**
+     * コアタイム(labor law §32-3)。flex 専用で、未設定(スーパーフレックス)なら null。
+     * 値は engine の `CoreTime` を素直に写した JSON 文字列:
+     * `{"startMinutes":600,"endMinutes":900,"weekdays":[1,2,3,4,5]}`(weekdays は省略可)。
+     *
+     * 判断点(2026-08-24, コアタイム対応): 開始/終了を別々の integer 列にせず既存の text 列へ
+     * JSON で入れる。legal_holiday_rule・break_rule と同じ流儀(構造を持つ設定値は JSON 1列)で、
+     * 曜日集合のような可変長の要素を後から足しても列追加のマイグレーションが要らない。
+     * kind が flex 以外のときは無視される。
+     */
     core: text("core"),
     /** 標準となる1日の労働時間(分)。有給日の枠算入に使う(engine の FlexSettings.standardDayMinutes 相当) */
     standardDayMinutes: integer("standard_day_minutes").notNull(),

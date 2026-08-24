@@ -65,6 +65,13 @@ export interface InsertWorkPolicyVersionParams {
   kind: string;
   /** 清算期間。flex 専用("monthly" 固定)。kind = "fixed" のときは無視される */
   settlementPeriod: string;
+  /**
+   * コアタイム(labor law §32-3)。flex 専用。engine の `CoreTime` を JSON 文字列にしたもの
+   * (`{"startMinutes":600,"endMinutes":900}`)。省略・null なら「コアタイムなし」。
+   * 値の妥当性(0〜1440、start < end)の検証は呼び出し側(apps/api)の責務
+   * — このクエリ層は effectiveFrom の過去日禁止・重複禁止と同じく検証を持たない。
+   */
+  core?: string | null;
   standardDayMinutes: number;
   /** UTC エポック分 */
   createdAt: number;
@@ -84,7 +91,7 @@ export async function insertWorkPolicyVersion(db: Database | Transaction, params
       effectiveFrom: params.effectiveFrom,
       kind: params.kind,
       settlementPeriod: params.settlementPeriod,
-      core: null,
+      core: params.core ?? null,
       standardDayMinutes: params.standardDayMinutes,
       createdAt: params.createdAt,
     })
