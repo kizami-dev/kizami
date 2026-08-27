@@ -30,6 +30,7 @@ const ADMIN_GRANT_KEYS = [
   "member.invite",
   "member.profile.edit",
   "member.deactivate",
+  "member.erase",
   "department.manage",
   "tenant_settings.calendar.manage",
   "tenant_settings.flex.manage",
@@ -59,8 +60,8 @@ const MANAGER_GRANT_KEYS = [
 ];
 
 describe("PERMISSION_CATALOG", () => {
-  it("has exactly the 33 items from permission-catalog.md §1, all with unique keys", () => {
-    expect(PERMISSION_CATALOG.length).toBe(33);
+  it("has exactly the 34 items from permission-catalog.md §1, all with unique keys", () => {
+    expect(PERMISSION_CATALOG.length).toBe(34);
     const keys = PERMISSION_CATALOG.map((e) => e.key);
     expect(new Set(keys).size).toBe(keys.length);
   });

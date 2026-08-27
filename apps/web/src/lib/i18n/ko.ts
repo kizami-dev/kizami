@@ -1882,8 +1882,34 @@ export const ko = {
     deactivateConfirmImpactLogin: "로그인할 수 없게 됩니다",
     deactivateConfirmImpactSession: "현재 로그인 중인 세션이 모두 실효됩니다",
     deactivateConfirmImpactInviteReset: "처리되지 않은 초대·비밀번호 재설정 링크가 실효됩니다",
+    deactivateConfirmImpactRetention: "퇴직일이 기록되며, 보관 기간이 지난 뒤에는 개인 데이터를 지울 수 있게 됩니다",
     reactivateButton: "재활성화",
     reactivating: "재활성화하는 중…",
+
+    /**
+     * 퇴직자의 개인 데이터 지우기(2026-08-27 추가, docs/design/data-retention.md).
+     *
+     * 문구 방침: 「삭제」라고 쓰지 않습니다. 실제로 수행하는 것은 **익명화**이며, 출퇴근 기록의
+     * 행 자체는 노동기준법 제109조의 보존 의무 때문에 남습니다. 「삭제했습니다」라고 표시했는데
+     * 행이 남아 있으면, 열람 청구에 대응하는 담당자가 사실과 다른 설명을 하게 됩니다.
+     */
+    erasedBadge: "지움 완료",
+    retentionTitle: "퇴직자 개인 데이터의 보관 현황",
+    retentionRetiredOn: "퇴직일",
+    retentionErasable: "개인 데이터를 지울 수 있습니다",
+    retentionRemaining: (days: number, from: string) => `지우기 가능까지 ${days}일 남음(${from}부터)`,
+    eraseButton: "개인 데이터 지우기",
+    eraseConfirmTitle: "이 퇴직자의 개인 데이터를 지우시겠습니까",
+    eraseConfirmMessage: "보관 기간이 지나 지울 수 있습니다. 실행하면 다음과 같이 됩니다.",
+    eraseConfirmImpactIdentity: "이름은 「삭제된 사용자」로, 이메일 주소는 사용할 수 없는 주소로 대체됩니다",
+    eraseConfirmImpactCredentials: "비밀번호·2단계 인증·알림 설정·API 키·연동 정보는 삭제됩니다",
+    eraseConfirmImpactAttendance: "출퇴근 기록(출퇴근 기록·집계·마감)은 법정 보존 의무가 있으므로 남습니다. IP 주소·단말 정보·위치 정보만 삭제됩니다",
+    eraseConfirmImpactAudit: "감사 로그의 행 자체는 변경되지 않습니다(표시되는 이름만 익명화됩니다)",
+    eraseConfirmImpactIrreversible: "이 작업은 취소할 수 없습니다. 재활성화도 할 수 없게 됩니다",
+    eraseConfirmLegalNote:
+      "노동기준법 제109조의 보존 의무가 있으므로 출퇴근 기록 자체는 삭제하지 않습니다. 지우는 것은 「누구의 기록인지」를 특정할 수 있는 정보입니다.",
+    eraseConfirmPhraseLabel: (name: string) => `확인을 위해 대상자의 이름 「${name}」을(를) 입력해 주세요`,
+    eraseConfirmPhraseMismatch: "이름이 일치하지 않습니다",
 
     twoFactorBadge: "2FA",
     twoFactorResetButton: "2FA 초기화",
@@ -2009,6 +2035,12 @@ export const ko = {
       invalid_standard_day_minutes: "1일당 기준 소정근로시간은 1~1440분의 정수로 입력해 주세요",
       version_already_exists: "해당 적용 시작일에는 이미 같은 설정의 버전이 있습니다. 다른 날짜를 지정해 주세요",
       not_enabled: "이 멤버는 2단계 인증을 사용하고 있지 않습니다",
+      /** 퇴직자의 개인 데이터 지우기(2026-08-27 추가, POST /members/:id/erase). */
+      not_deactivated: "재직 중인 멤버의 개인 데이터는 지울 수 없습니다. 먼저 퇴직 처리를 해 주세요",
+      retention_period_active: "보관 기간이 지나지 않아 지울 수 없습니다(노동기준법 제109조의 보존 의무)",
+      already_erased: "이 멤버의 개인 데이터는 이미 지워졌습니다",
+      deactivated_at_unknown: "퇴직일이 기록되어 있지 않아 지울 수 없습니다. 일단 재활성화한 뒤 다시 퇴직 처리를 해 주세요",
+      cannot_erase_self: "자기 자신의 개인 데이터는 지울 수 없습니다",
       forbidden: "이 작업을 수행할 권한이 없습니다",
       default: "처리에 실패했습니다. 다시 시도해 주세요",
     },
@@ -2442,6 +2474,22 @@ export const ko = {
     generatedFromRetention: (days: number) => `위치 정보 보관 기간: ${days}일`,
     generatedFromRetentionSame: "위치 정보 보관 기간: 출퇴근 기록과 동일",
     generatedFromNote: "GPS 활성화/비활성화나 보관 기간은 「설정 > 테넌트 프로필」 등 테넌트 설정 변경에 따라 다음 표시 시 갱신됩니다.",
+
+    /**
+     * 퇴직자 데이터의 보관 기간(2026-08-27 추가, docs/design/data-retention.md).
+     * 이 화면에 두는 이유: 연수가 템플릿의 「퇴직 후 취급」 절에 그대로 표시되므로,
+     * 문구를 보면서 정할 수 있는 편이 좋기 때문입니다. 실제 지우기는 멤버 관리 화면에서
+     * 별도의 권한으로 수행합니다.
+     */
+    retentionTitle: "퇴직자 개인 데이터의 보관 기간",
+    retentionHint: "퇴직일부터 이 기간이 지날 때까지 퇴직자의 개인 데이터는 지울 수 없습니다. 기간이 지나면 멤버 관리 화면에서 지울 수 있게 됩니다.",
+    retentionLabel: "보관 기간",
+    retentionOption: (years: number) => (years === 5 ? "5년(노동기준법 제109조의 원칙)" : `${years}년(개정법의 경과 조치)`),
+    retentionLegalNote:
+      "노동기준법 제109조는 기록 보존을 원칙적으로 5년으로 정하고 있으나, 2020년(레이와 2년) 개정의 경과 조치에 따라 당분간은 3년으로 충분합니다. 경과 조치는 언젠가 종료되므로 기본값은 5년으로 하고 있습니다.",
+    retentionExecutionNote: "실제 지우기는 「설정 > 멤버」에서 전용 권한(퇴직자의 개인 데이터를 지울 수 있음)을 가진 담당자가 수행합니다.",
+    retentionSaved: "보관 기간을 저장했습니다.",
+    retentionSaveFailed: "보관 기간을 저장하지 못했습니다. 다시 시도해 주세요",
 
     noticeSectionTitle: "직원 대상 개인정보 안내",
     noticeSectionDesc: "수집 항목·이용 목적·보관 기간·열람 등 청구처를 정리한 템플릿입니다. 직원 안내에 활용해 주세요.",

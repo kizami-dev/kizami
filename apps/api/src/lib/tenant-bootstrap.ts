@@ -63,6 +63,10 @@ export const ADMIN_GRANTS: Grant[] = (
     "member.invite",
     "member.profile.edit",
     "member.deactivate",
+    // 退職者の個人データ消去(2026-08-27 追加、docs/design/data-retention.md)。
+    // 同梱プリセットでは管理者のみ — マネージャーには渡さない(カタログ上 TENANT_ONLY であり、
+    // マネージャーの grants は department_and_descendants で組み立てているため技術的にも載らない)。
+    "member.erase",
     "department.manage",
     "tenant_settings.calendar.manage",
     "tenant_settings.flex.manage",

@@ -3,6 +3,7 @@ import {
   getEffectiveSettingsVersion,
   getTenantById,
   insertAuditLog,
+  updateTenantPersonalDataRetentionYears,
   updateTenantPrivacyContact,
   updateTenantWorkRulesUrl,
   type Database,
@@ -10,6 +11,7 @@ import {
 import { buildInternalTerms, buildPrivacyNotice, type PrivacyTemplateInput } from "@kizami/privacy-template";
 import type { AppEnv } from "../../auth/middleware.js";
 import { requirePermission } from "../../authz.js";
+import { ALLOWED_RETENTION_YEARS, isAllowedRetentionYears } from "../../lib/data-retention.js";
 import { isValidHttpUrl, resolveStringField } from "../../lib/field-validation.js";
 import { TZ_OFFSET_MINUTES_JST } from "../../lib/settings.js";
 import { nowMinutes, todayLocalDate } from "../../lib/time.js";
@@ -106,6 +108,11 @@ export function registerPrivacyRoutes(app: Hono<AppEnv>, db: Database, _deps: Se
       gpsEnabled: settingsVersion?.gpsEnabled ?? false,
       gpsRetentionDays: settingsVersion?.gpsRetentionDays ?? null,
       recordRetentionDescription: tenant.recordRetentionDescription ?? RECORD_RETENTION_DESCRIPTION,
+      // 退職者の個人データ保持年数(2026-08-27)。雛形の「退職後の取り扱い」節に効く。
+      // 打刻記録本体の保存期間の説明文(上の recordRetentionDescription)とは別物であることに注意:
+      // あちらは「記録をいつまで保存するか」の説明文、こちらは「退職者の氏名等をいつ消せるか」を
+      // 決める機械可読な設定値。
+      personalDataRetentionYears: tenant.personalDataRetentionYears,
       workRulesUrl: tenant.workRulesUrl,
       contactPoint: tenant.privacyContactPoint,
     };
@@ -170,4 +177,68 @@ export function registerPrivacyRoutes(app: Hono<AppEnv>, db: Database, _deps: Se
 
     return c.json({ recordRetentionDescription: updated.recordRetentionDescription, privacyContactPoint: updated.privacyContactPoint });
   });
+
+  // ---- GET/PUT /settings/data-retention(退職者データの保持年数。2026-08-27 追加) ----
+  //
+  // docs/design/data-retention.md。労働基準法109条は記録の保存を**原則5年**とし、令和2年改正の
+  // 附則143条2項が「当分の間3年」の経過措置を置いている。どちらを採るかは事業者の判断なので
+  // テナント設定にするが、**既定は原則側の5年**にしてある(経過措置が終了したときに、設定を
+  // 触っていないテナントが一斉に違反側へ倒れるのを避ける)。
+  //
+  // 権限は PRIVACY_TEMPLATES_PERMISSION(= HELP_OVERRIDES_PERMISSION の転用)を使う。
+  // 判断点: この値は打刻の集計に一切影響せず(tenant_settings.* 系ではない)、
+  // 「個人情報の取り扱い方針」という同じ担当者が面倒を見る領域 — 保存期間の説明文・
+  // 開示請求窓口(GET/PUT /settings/privacy-contact)と同じ画面・同じ権限に置く。
+  // 消去の**実行**は別権限(member.erase、カタログ TENANT_ONLY・危険)であり、
+  // 「方針を決める人」と「実際に消す人」は分かれている。
+  app.get("/data-retention", async (c) => {
+    requirePermission(c, PRIVACY_TEMPLATES_PERMISSION, "tenant");
+    const user = c.get("user");
+
+    const tenant = await getTenantById(db, user.tenantId);
+    if (!tenant) return c.json({ error: "tenant_not_found" }, 404);
+
+    return c.json({
+      personalDataRetentionYears: tenant.personalDataRetentionYears,
+      allowedYears: ALLOWED_RETENTION_YEARS,
+    });
+  });
+
+  app.put("/data-retention", async (c) => {
+    requirePermission(c, PRIVACY_TEMPLATES_PERMISSION, "tenant");
+    const user = c.get("user");
+
+    const body = await parseJsonRecord(c);
+    if (body === null) return c.json({ error: "invalid_body" }, 400);
+
+    // 3 / 5 以外は受け付けない。任意の年数を許すと「1年で消せる」設定ができてしまい、
+    // 保存義務違反を製品が手伝うことになる(判断点)。
+    if (!isAllowedRetentionYears(body.personalDataRetentionYears)) {
+      return c.json({ error: "invalid_retention_years" }, 400);
+    }
+
+    const before = await getTenantById(db, user.tenantId);
+    if (!before) return c.json({ error: "tenant_not_found" }, 404);
+
+    const updated = await updateTenantPersonalDataRetentionYears(db, {
+      tenantId: user.tenantId,
+      personalDataRetentionYears: body.personalDataRetentionYears,
+    });
+
+    await insertAuditLog(db, {
+      tenantId: user.tenantId,
+      actorId: user.id,
+      action: "data_retention.update",
+      targetType: "tenant",
+      targetId: user.tenantId,
+      detail: JSON.stringify({
+        before: before.personalDataRetentionYears,
+        after: updated.personalDataRetentionYears,
+      }),
+      occurredAt: nowMinutes(),
+    });
+
+    return c.json({ personalDataRetentionYears: updated.personalDataRetentionYears, allowedYears: ALLOWED_RETENTION_YEARS });
+  });
 }
+

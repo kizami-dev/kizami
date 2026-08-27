@@ -18,11 +18,21 @@ import { and, eq, isNull } from "drizzle-orm";
 import type { Database, Transaction } from "../types.js";
 import { invitations, users } from "../schema/index.js";
 
-/** isActive を false にする(退職処理)。対象が存在しない場合は例外を投げる(呼び出し側が事前に存在確認する前提)。 */
-export async function deactivateUser(db: Database | Transaction, params: { tenantId: string; userId: string }): Promise<typeof users.$inferSelect> {
+/**
+ * isActive を false にする(退職処理)。対象が存在しない場合は例外を投げる(呼び出し側が事前に存在確認する前提)。
+ *
+ * 2026-08-27: `deactivatedAt`(退職日 = 個人データ保持期間の起算日)も同時に記録する。
+ * これが無いと「いつ退職したか」が分からず、消去可能日を決められない
+ * (packages/db/src/schema/users.ts の deactivatedAt のコメント参照)。
+ * `deactivatedAt` を省略した呼び出しは既存の挙動どおり isActive だけを落とす。
+ */
+export async function deactivateUser(
+  db: Database | Transaction,
+  params: { tenantId: string; userId: string; deactivatedAt?: number },
+): Promise<typeof users.$inferSelect> {
   const [row] = await db
     .update(users)
-    .set({ isActive: false })
+    .set(params.deactivatedAt === undefined ? { isActive: false } : { isActive: false, deactivatedAt: params.deactivatedAt })
     .where(and(eq(users.tenantId, params.tenantId), eq(users.id, params.userId)))
     .returning();
   if (!row) {
@@ -31,11 +41,17 @@ export async function deactivateUser(db: Database | Transaction, params: { tenan
   return row;
 }
 
-/** isActive を true に戻す(再有効化)。対象が存在しない場合は例外を投げる(呼び出し側が事前に存在確認する前提)。 */
+/**
+ * isActive を true に戻す(再有効化)。対象が存在しない場合は例外を投げる(呼び出し側が事前に存在確認する前提)。
+ *
+ * 2026-08-27: `deactivatedAt` を null に戻す。復職した人に「退職日」は無く、値を残したままにすると
+ * その人がいつまでも「消去可能になった退職者」の一覧に現れてしまう。
+ * `erasedAt` は触らない — 消去済みの行はそもそもこの関数を通さない(routes/members.ts が 409 で弾く)。
+ */
 export async function reactivateUser(db: Database | Transaction, params: { tenantId: string; userId: string }): Promise<typeof users.$inferSelect> {
   const [row] = await db
     .update(users)
-    .set({ isActive: true })
+    .set({ isActive: true, deactivatedAt: null })
     .where(and(eq(users.tenantId, params.tenantId), eq(users.id, params.userId)))
     .returning();
   if (!row) {

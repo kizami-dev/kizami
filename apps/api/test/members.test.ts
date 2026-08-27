@@ -325,6 +325,10 @@ describe("members API", () => {
       name: "Second User",
       email: second.email,
       isActive: true,
+      // 退職者データのライフサイクル(2026-08-27 追加、docs/design/data-retention.md)。
+      // 在籍中なので未消去・退職日なし = 消去不可。
+      erasedAt: null,
+      retention: { deactivatedDate: null, erasableFrom: null, erasable: false, remainingDays: null },
       hireDate: null,
       // 有給付与の区分(2026-08-24 追加)。DB の DEFAULT が 'full'。
       leaveGrantClass: "full",

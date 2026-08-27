@@ -43,6 +43,13 @@
       "when": 1787835467655,
       "tag": "0005_zippy_pet_avengers",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1787842215411,
+      "tag": "0006_powerful_masque",
+      "breakpoints": true
     }
   ]
 }

@@ -11,7 +11,7 @@
   - スコープの機械可読キー(2026-08-21確定、DB の grants JSON で使用): `self`(本人のみ)/ `department`(自部署)/ `department_and_descendants`(自部署+配下部署)/ `tenant`(テナント全体)。
   - 「危険フラグ」は §4 が言う「編集UI上で影響範囲の説明を添えて表示すべき権限」を指す。§10の文脈ヒント(操作時の都度のツールチップ)とは対象が重なるが別軸であり、ここでは**権限プリセット編集画面での重点表示対象**という意味で付与している。
 
-## 1. 業務タスク単位の権限カタログ(33項目。2026-08-23 に shift.manage、2026-08-24 に tenant_settings.auth.manage と approval_flow.manage を追加)
+## 1. 業務タスク単位の権限カタログ(34項目。2026-08-23 に shift.manage、2026-08-24 に tenant_settings.auth.manage と approval_flow.manage、2026-08-27 に member.erase を追加)
 
 ### 1.1 打刻(代理操作)
 
@@ -72,6 +72,7 @@
 | `member.invite` | メンバーを招待・追加できる | 新しいメンバーをテナントに招待し、アカウントを作成できる | 自部署 / 自部署+配下部署 / テナント全体 | メンバー一覧閲覧 | いいえ |
 | `member.profile.edit` | メンバーの基本情報を編集できる | 氏名・所属部署・雇用形態などメンバーの基本情報を編集できる | 自部署 / 自部署+配下部署 / テナント全体 | メンバー一覧閲覧 | いいえ |
 | `member.deactivate` | メンバーを無効化(退職処理)できる | 退職・休職等によりメンバーのアカウントを無効化し、ログインを停止できる。**二要素認証のリセット**(端末紛失時のロックアウト救済、[two-factor-auth.md](./two-factor-auth.md))もこのキーで保護する — 他人のログイン要件を一段弱める操作であり、退職処理と同格の危険度と判断した(専用キーは新設しない) | 自部署 / 自部署+配下部署 / テナント全体 | メンバー一覧閲覧 | **はい** |
+| `member.erase` | 退職者の個人データを消去できる | 保持期間(労働基準法109条)が経過した退職者について、氏名・メールアドレス・認証情報などの個人データを消去(匿名化)できる。勤怠記録そのものは残る。**取り消しできない操作**([data-retention.md](./data-retention.md))。`member.deactivate` の流用ではなく専用キーを新設した — 無効化は再有効化で取り消せるが消去には戻す経路が無く、同格ではなく一段重い。スコープをテナント全体のみにしたのは、消去可否の判定材料(保存義務・保持期間)が全社で1つであり部署ごとに判断が分かれる余地が無いため | テナント全体 | メンバー一覧閲覧 | **はい** |
 | `member.view` | メンバー一覧・詳細を閲覧できる | メンバーの一覧および詳細プロフィールを閲覧できる | 自部署 / 自部署+配下部署 / テナント全体 | ― | いいえ |
 
 ### 1.9 部署管理
@@ -229,6 +230,7 @@ grants は権限キー×スコープの組だが、**denies は権限キーだ�
 | `member.invite` | `member:create`, `member:read` |
 | `member.profile.edit` | `member:update`, `member:read` |
 | `member.deactivate` | `member:delete`, `member:read` |
+| `member.erase` | `member:erase`, `member:read` |
 | `member.view` | `member:read` |
 | `department.manage` | `department:create`, `department:update`, `department:delete`, `department:read` |
 | `tenant_settings.calendar.manage` | `tenant_settings:update`(target=calendar), `tenant_settings:read` |
@@ -266,6 +268,7 @@ grants は権限キー×スコープの組だが、**denies は権限キーだ�
 | `member.invite` | テナント全体 | ― | ― |
 | `member.profile.edit` | テナント全体 | 自部署+配下部署 | ― |
 | `member.deactivate` | テナント全体 | ― | ― |
+| `member.erase` | テナント全体 | ― | ― |
 | `member.view` | テナント全体※ | 自部署+配下部署 | ― |
 | `department.manage` | テナント全体 | ― | ― |
 | `tenant_settings.calendar.manage` | テナント全体 | ― | ― |

@@ -1930,8 +1930,34 @@ export const ja = {
     deactivateConfirmImpactLogin: "ログインできなくなります",
     deactivateConfirmImpactSession: "現在ログイン中のセッションはすべて失効します",
     deactivateConfirmImpactInviteReset: "未処理の招待・パスワードリセットのリンクは失効します",
+    deactivateConfirmImpactRetention: "退職日が記録され、保持期間の経過後に個人データを消去できるようになります",
     reactivateButton: "再有効化",
     reactivating: "再有効化中…",
+
+    /**
+     * 退職者の個人データ消去(2026-08-27 追加、docs/design/data-retention.md)。
+     *
+     * 文言の方針: 「削除」と書かない。実際に行うのは**匿名化**で、勤怠記録の行そのものは
+     * 労働基準法109条の保存義務のために残る。「削除しました」と表示して行が残っていると、
+     * 開示請求に対応する担当者が事実と違う説明をしてしまう。
+     */
+    erasedBadge: "消去済み",
+    retentionTitle: "退職者の個人データの保持状況",
+    retentionRetiredOn: "退職日",
+    retentionErasable: "個人データを消去できます",
+    retentionRemaining: (days: number, from: string) => `消去可能まであと${days}日(${from}から)`,
+    eraseButton: "個人データを消去",
+    eraseConfirmTitle: "この退職者の個人データを消去しますか",
+    eraseConfirmMessage: "保持期間が経過したため消去できます。実行すると、次のようになります。",
+    eraseConfirmImpactIdentity: "氏名は「削除済みユーザー」に、メールアドレスは無効なアドレスに置き換わります",
+    eraseConfirmImpactCredentials: "パスワード・二要素認証・通知の設定・APIキー・連携情報は削除されます",
+    eraseConfirmImpactAttendance: "勤怠記録(打刻・集計・締め)は法定の保存義務のため残ります。IPアドレス・端末情報・位置情報のみ削除されます",
+    eraseConfirmImpactAudit: "監査ログの行は改変されません(表示される氏名だけが匿名化されます)",
+    eraseConfirmImpactIrreversible: "この操作は取り消せません。再有効化もできなくなります",
+    eraseConfirmLegalNote:
+      "労働基準法第109条の保存義務があるため、勤怠記録そのものは削除しません。消去するのは「誰の記録か」を特定できる情報です。",
+    eraseConfirmPhraseLabel: (name: string) => `確認のため、対象者の氏名「${name}」を入力してください`,
+    eraseConfirmPhraseMismatch: "氏名が一致しません",
 
     /** 二要素認証(2026-08-27 追加)。有効な人だけバッジを出す(無効は無印、招待バッジと同じ流儀)。 */
     twoFactorBadge: "2FA",
@@ -2062,6 +2088,12 @@ export const ja = {
       version_already_exists: "その適用開始日には既に同じ設定の版があります。別の日付を指定してください",
       /** 二要素認証のリセット(2026-08-27 追加、POST /members/:id/two-factor/reset)。 */
       not_enabled: "このメンバーは二要素認証を有効にしていません",
+      /** 退職者の個人データ消去(2026-08-27 追加、POST /members/:id/erase)。 */
+      not_deactivated: "在籍中のメンバーの個人データは消去できません。先に退職処理を行ってください",
+      retention_period_active: "保持期間が経過していないため消去できません(労働基準法第109条の保存義務)",
+      already_erased: "このメンバーの個人データは消去済みです",
+      deactivated_at_unknown: "退職日が記録されていないため消去できません。いったん再有効化してから、あらためて退職処理を行ってください",
+      cannot_erase_self: "自分自身の個人データを消去することはできません",
       forbidden: "この操作を行う権限がありません",
       default: "処理に失敗しました。もう一度お試しください",
     },
@@ -2501,6 +2533,21 @@ export const ja = {
     generatedFromRetention: (days: number) => `位置情報の保持期間: ${days}日`,
     generatedFromRetentionSame: "位置情報の保持期間: 打刻記録と同一",
     generatedFromNote: "GPSの有効/無効や保持期間は「設定 > テナントプロファイル」等、テナント設定側の変更に応じて次回表示時に更新されます。",
+
+    /**
+     * 退職者データの保持期間(2026-08-27 追加、docs/design/data-retention.md)。
+     * この画面に置く理由: 年数が雛形の「退職後の取り扱い」節にそのまま出るため、
+     * 文面を見ながら決められるほうがよい。実際の消去はメンバー管理画面から別権限で行う。
+     */
+    retentionTitle: "退職者の個人データの保持期間",
+    retentionHint: "退職日からこの期間が経過するまで、退職者の個人データは消去できません。期間の経過後、メンバー管理画面から消去できるようになります。",
+    retentionLabel: "保持期間",
+    retentionOption: (years: number) => (years === 5 ? "5年(労働基準法第109条の原則)" : `${years}年(改正法の経過措置)`),
+    retentionLegalNote:
+      "労働基準法第109条は記録の保存を原則5年と定めていますが、令和2年改正の経過措置により当分の間は3年で足ります。経過措置はいずれ終了するため、既定は5年にしています。",
+    retentionExecutionNote: "実際の消去は「設定 > メンバー」から、専用の権限(退職者の個人データを消去できる)を持つ担当者が行います。",
+    retentionSaved: "保持期間を保存しました。",
+    retentionSaveFailed: "保持期間の保存に失敗しました。もう一度お試しください",
 
     noticeSectionTitle: "従業員向けプライバシー通知",
     noticeSectionDesc: "取得する項目・利用目的・保存期間・開示等の請求先をまとめた雛形です。従業員への周知にご利用ください。",

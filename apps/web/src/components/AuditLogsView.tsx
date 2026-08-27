@@ -39,6 +39,9 @@ const KNOWN_ACTIONS: readonly string[] = [
   "correction.approve",
   "correction.approve_step1",
   "correction.reject",
+  // 退職者の個人データ消去(2026-08-27 追加、docs/design/data-retention.md)。
+  // 保持年数の設定変更(data_retention.update)と実際の消去(member.erase)は別アクション。
+  "data_retention.update",
   "department.create",
   "department.delete",
   "department.update",
@@ -55,6 +58,7 @@ const KNOWN_ACTIONS: readonly string[] = [
   "leave_request.reject",
   "leave_settings.update",
   "member.deactivate",
+  "member.erase",
   "member.invite",
   "member.invite.reissue",
   "member.invite.revoke",

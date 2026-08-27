@@ -3,6 +3,12 @@
  * パスワードは argon2id でハッシュ化して `auth_credentials.password_hash` に保存する。
  * OIDC 用の外部 ID テーブルは v1.0 で追加(v0.1 スコープ外)。
  *
+ * 退職者データのライフサイクル(2026-08-27, docs/design/data-retention.md):
+ * `is_active=false`(退職処理)→ `deactivated_at` から保持期間(テナント設定 3 or 5 年)経過
+ * → `member.erase` 権限による**匿名化**(氏名・メールの置換 + 認証系の物理削除)→ `erased_at`。
+ * 勤怠記録(punch_events / closing_snapshots 等)の行は消さない — 労基法109条の保存義務と
+ * 集計の完全性のため。線引きの詳細は上記設計ドキュメントの表を参照。
+ *
  * 参照: docs/design/v01-data-model.md §組織・認証・権限
  */
 
@@ -20,6 +26,29 @@ export const users = sqliteTable(
     name: text("name").notNull(),
     /** false = 無効化(退職処理済み)。ログイン不可 */
     isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
+    /**
+     * 無効化(退職処理)を実行した時刻。UTC エポック分。null = 一度も無効化されていない
+     * (2026-08-27 追加、docs/design/data-retention.md)。
+     *
+     * 判断点: `isActive=false` だけでは**いつ**退職したのかが分からず、保持期間の起算日を
+     * 決められない(監査ログから復元する手もあるが、監査ログは保持期間の判定という
+     * 業務ロジックの入力にすべきデータではない — 閲覧に `audit_log.view` が要る一方、
+     * 消去可否の判定は誰の目にも同じ答えでなければならない)。
+     * 再有効化(reactivateUser)では null に戻す — 復職した人に退職日は無い。
+     *
+     * 保持期間の起算日にこの値を使うことの正当性: 労基法109条の起算日は「最後の記載日」
+     * だが、退職処理は最終出勤日以降に行われるため deactivatedAt >= 最終記載日 が常に成り立つ。
+     * つまりこの起算はどちらへズレても**義務期間より長く保持する**方向にしか倒れない。
+     */
+    deactivatedAt: integer("deactivated_at"),
+    /**
+     * 個人データの消去(匿名化)を実行した時刻。UTC エポック分。null = 未消去
+     * (2026-08-27 追加、docs/design/data-retention.md)。
+     *
+     * これは「無効化」とは別の**終端状態**である。erasedAt が入った行は再有効化できない
+     * (氏名・メール・認証情報が既に失われており、戻す先が無い)。
+     */
+    erasedAt: integer("erased_at"),
     /** 入社日。ローカル日付 "YYYY-MM-DD"。法定有給付与の計算に使う。null = 未設定(有給自動付与不可) */
     hireDate: text("hire_date"),
     /**

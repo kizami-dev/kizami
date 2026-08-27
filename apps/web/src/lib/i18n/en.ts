@@ -1917,8 +1917,35 @@ export const en = {
     deactivateConfirmImpactLogin: "They will no longer be able to log in",
     deactivateConfirmImpactSession: "All of their current login sessions will be revoked",
     deactivateConfirmImpactInviteReset: "Any pending invitation or password reset link will be revoked",
+    deactivateConfirmImpactRetention: "Their retirement date is recorded, and their personal data can be erased once the retention period has passed",
     reactivateButton: "Reactivate",
     reactivating: "Reactivating…",
+
+    /**
+     * Erasure of a departed member's personal data (added 2026-08-27, docs/design/data-retention.md).
+     *
+     * Wording policy: never say "delete". What actually happens is **anonymization** — the attendance
+     * record rows themselves remain, because Article 109 of the Labor Standards Act requires them to be
+     * kept. Saying "deleted" while the rows are still there would make whoever handles a disclosure
+     * request explain something that isn't true.
+     */
+    erasedBadge: "Erased",
+    retentionTitle: "Personal data retention status of this departed member",
+    retentionRetiredOn: "Retirement date",
+    retentionErasable: "Their personal data can be erased",
+    retentionRemaining: (days: number, from: string) => `${days} days until erasure is possible (counted from ${from})`,
+    eraseButton: "Erase personal data",
+    eraseConfirmTitle: "Erase this departed member's personal data?",
+    eraseConfirmMessage: "The retention period has passed, so their personal data can be erased. Doing so will do the following:",
+    eraseConfirmImpactIdentity: "Their name is replaced with \"Deleted user\" and their email address with an unusable address",
+    eraseConfirmImpactCredentials: "Their password, two-factor authentication, notification settings, API keys, and linked-account information are deleted",
+    eraseConfirmImpactAttendance: "Attendance records (punches, totals, and month-end closes) remain, because the law requires them to be kept. Only IP addresses, device information, and location data are deleted",
+    eraseConfirmImpactAudit: "Audit log entries themselves are not altered (only the name shown in them is anonymized)",
+    eraseConfirmImpactIrreversible: "This action cannot be undone. The member can no longer be reactivated either",
+    eraseConfirmLegalNote:
+      "Article 109 of the Labor Standards Act requires these records to be kept, so the attendance records themselves are not deleted. What is erased is the information that identifies whose records they are.",
+    eraseConfirmPhraseLabel: (name: string) => `To confirm, enter the member's name “${name}”`,
+    eraseConfirmPhraseMismatch: "The name doesn't match",
 
     twoFactorBadge: "2FA",
     twoFactorResetButton: "Reset 2FA",
@@ -2044,6 +2071,12 @@ export const en = {
       invalid_standard_day_minutes: "Standard scheduled minutes per day must be a whole number between 1 and 1440",
       version_already_exists: "A version with the same settings already exists for that effective date. Please choose a different date",
       not_enabled: "This member does not have two-factor authentication turned on",
+      /** Erasure of a departed member's personal data (added 2026-08-27, POST /members/:id/erase). */
+      not_deactivated: "The personal data of an active member cannot be erased. Please deactivate them first",
+      retention_period_active: "The retention period has not passed yet, so the data cannot be erased (record-keeping duty under Article 109 of the Labor Standards Act)",
+      already_erased: "This member's personal data has already been erased",
+      deactivated_at_unknown: "No retirement date is recorded, so the data cannot be erased. Please reactivate this member once and then deactivate them again",
+      cannot_erase_self: "You cannot erase your own personal data",
       forbidden: "You don't have permission to perform this action",
       default: "Something went wrong. Please try again",
     },
@@ -2480,6 +2513,23 @@ export const en = {
     generatedFromRetention: (days: number) => `Location data retention period: ${days} days`,
     generatedFromRetentionSame: "Location data retention period: same as punch records",
     generatedFromNote: "GPS on/off and the retention period update the next time this page is shown, based on changes to tenant settings (e.g. \"Settings > Tenant profile\").",
+
+    /**
+     * Retention period for a departed member's data (added 2026-08-27, docs/design/data-retention.md).
+     * Why it lives on this page: the number of years appears verbatim in the template's
+     * "handling after departure" section, so it's easier to decide while reading the text.
+     * The erasure itself is performed from the member management page under a separate permission.
+     */
+    retentionTitle: "Retention period for departed members' personal data",
+    retentionHint: "A departed member's personal data cannot be erased until this period has passed since their retirement date. After that, it can be erased from the member management page.",
+    retentionLabel: "Retention period",
+    retentionOption: (years: number) =>
+      years === 5 ? "5 years (the rule under Article 109 of the Labor Standards Act)" : `${years} years (transitional measure of the amended act)`,
+    retentionLegalNote:
+      "Article 109 of the Labor Standards Act sets record retention at five years in principle, but under the transitional measure of the 2020 (Reiwa 2) amendment, three years is enough for the time being. That transitional measure will end eventually, so the default here is five years.",
+    retentionExecutionNote: "The erasure itself is performed from \"Settings > Members\" by someone who holds the dedicated permission (may erase departed members' personal data).",
+    retentionSaved: "Retention period saved.",
+    retentionSaveFailed: "Failed to save the retention period. Please try again",
 
     noticeSectionTitle: "Employee privacy notice",
     noticeSectionDesc: "A template summarizing what's collected, why, how long it's kept, and where to make requests. Use it to inform employees.",

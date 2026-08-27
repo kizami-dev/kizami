@@ -679,6 +679,28 @@ export interface MemberDto {
    * 「2FAをリセット」ボタンの出し分けに使う(リセットは member.deactivate 権限が必要)。
    */
   twoFactorEnabled: boolean;
+  /**
+   * 個人データを消去(匿名化)した時刻(UTC エポック分、2026-08-27 追加)。null = 未消去。
+   * 値が入っている行は氏名・メールが tombstone に置き換わっており、再有効化もできない。
+   */
+  erasedAt: number | null;
+  /** 退職者データの保持期間の状態(docs/design/data-retention.md)。 */
+  retention: RetentionStatusDto;
+}
+
+/**
+ * 退職者データの保持期間の状態(apps/api/src/lib/data-retention.ts の RetentionStatus と一致)。
+ * 判定はサーバー側の暦計算が正 — 画面側で日付を足し直さない(ズレると担当者が画面を信用できない)。
+ */
+export interface RetentionStatusDto {
+  /** 退職日(ローカル暦日 "YYYY-MM-DD")。null = 在籍中、または退職日が記録されていない古い行 */
+  deactivatedDate: string | null;
+  /** 消去が可能になる最初の日。null = 起算日不明 */
+  erasableFrom: string | null;
+  /** 今日時点で消去可能か */
+  erasable: boolean;
+  /** 消去可能になるまでの残り日数。既に可能なら 0、起算日不明なら null */
+  remainingDays: number | null;
 }
 
 /**
@@ -1029,6 +1051,15 @@ export interface CreateAllowanceDefinitionVersionInput {
   conditions: AllowanceConditionsDto;
 }
 
+/**
+ * GET/PUT /settings/data-retention(退職者データの保持年数。2026-08-27 追加)。
+ * 労働基準法109条の原則5年 / 経過措置の3年のみを許す(docs/design/data-retention.md)。
+ */
+export interface DataRetentionDto {
+  personalDataRetentionYears: number;
+  allowedYears: number[];
+}
+
 /** GET/PUT /settings/privacy-contact(保存期間の説明文・開示請求窓口)。 */
 export interface PrivacyContactDto {
   recordRetentionDescription: string | null;
@@ -1243,6 +1274,8 @@ export interface PrivacyTemplatesDto {
     gpsEnabled: boolean;
     gpsRetentionDays: number | null;
     recordRetentionDescription: string;
+    /** 退職者の個人データ保持年数(3 or 5、2026-08-27 追加)。雛形の「退職後の取り扱い」節に効く。 */
+    personalDataRetentionYears: number;
     workRulesUrl: string | null;
     contactPoint: string | null;
   };
@@ -1796,8 +1829,11 @@ export const api = {
     return request(`/password-resets/${encodeURIComponent(token)}/use`, { method: "POST", body: JSON.stringify({ password }) });
   },
 
-  /** POST /members/:id/deactivate(member.deactivate)。退職処理(無効化)。 */
-  async deactivateMember(memberId: string): Promise<{ member: { id: string; isActive: boolean } }> {
+  /**
+   * POST /members/:id/deactivate(member.deactivate)。退職処理(無効化)。
+   * `deactivatedAt`(退職日)は個人データ保持期間の起算日になる(2026-08-27)。
+   */
+  async deactivateMember(memberId: string): Promise<{ member: { id: string; isActive: boolean; deactivatedAt: number } }> {
     return request(`/members/${encodeURIComponent(memberId)}/deactivate`, { method: "POST" });
   },
 
@@ -1814,6 +1850,22 @@ export const api = {
    */
   async resetMemberTwoFactor(memberId: string): Promise<{ member: { id: string; twoFactorEnabled: false } }> {
     return request(`/members/${encodeURIComponent(memberId)}/two-factor/reset`, { method: "POST" });
+  },
+
+  /**
+   * POST /members/:id/erase(`member.erase`、テナント全体スコープ、2026-08-27 追加)。
+   * 退職者の個人データを消去(匿名化)する。**取り消しできない**
+   * (docs/design/data-retention.md)。
+   *
+   * 409 の主な理由: not_deactivated(まだ退職処理していない)/ retention_period_active
+   * (保持期間が経過していない。body.retention に残り日数と消去可能日)/ already_erased /
+   * deactivated_at_unknown(退職日が記録されていない古い行)。
+   */
+  async eraseMember(memberId: string): Promise<{
+    member: { id: string; isActive: false; erasedAt: number; name: string; email: string };
+    removed: Record<string, number>;
+  }> {
+    return request(`/members/${encodeURIComponent(memberId)}/erase`, { method: "POST" });
   },
 
   /** GET /members/:id/work-policy(tenant_settings.flex.manage)。現在実効の割当+割当履歴。 */
@@ -2073,6 +2125,19 @@ export const api = {
   /** PUT /settings/privacy-contact。省略=維持、null/""=クリア、文字列=置換。 */
   async updatePrivacyContact(input: { recordRetentionDescription?: string | null; privacyContactPoint?: string | null }): Promise<PrivacyContactDto> {
     return request("/settings/privacy-contact", { method: "PUT", body: JSON.stringify(input) });
+  },
+
+  /**
+   * GET /settings/data-retention(2026-08-27 追加、退職者データの保持年数)。
+   * 権限は privacy-contact と同じ(notification.settings.manage の転用)。
+   */
+  async getDataRetention(): Promise<DataRetentionDto> {
+    return request("/settings/data-retention");
+  },
+
+  /** PUT /settings/data-retention。3 または 5 のみ(それ以外は 400 invalid_retention_years)。 */
+  async updateDataRetention(personalDataRetentionYears: number): Promise<DataRetentionDto> {
+    return request("/settings/data-retention", { method: "PUT", body: JSON.stringify({ personalDataRetentionYears }) });
   },
 
   /** GET /api-keys(権限不要、自分のキーのみ)。v0.4。 */

@@ -29,6 +29,7 @@ export const IMPLIED_VIEW_PERMISSIONS: Readonly<Record<PermissionKey, readonly P
   "member.invite": ["member.view"],
   "member.profile.edit": ["member.view"],
   "member.deactivate": ["member.view"],
+  "member.erase": ["member.view"],
   // カタログに独立キーが無いため新規定義(上記コメント参照)
   "department.manage": ["department.view"],
   "tenant_settings.calendar.manage": ["tenant_settings.view"],

@@ -960,3 +960,23 @@ td.org-table__detail-cell {
   gap: var(--space-1);
   font-size: 0.88rem;
 }
+
+/* ---- 退職者データの保持状況(2026-08-27、docs/design/data-retention.md) ---- */
+
+.member-retention {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  font-size: 0.75rem;
+  color: var(--k-ink-soft);
+  margin-top: var(--space-1);
+}
+
+/* 消去可能になった退職者だけを視線に引っかける。急かす表示にはしない(通知も出さない) */
+.member-retention__ready {
+  color: var(--k-key);
+}
+
+.member-retention__waiting {
+  color: var(--k-ink-soft);
+}

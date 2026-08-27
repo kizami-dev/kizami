@@ -42,7 +42,11 @@ describe("member deactivation / reactivation", () => {
 
     const deactivateRes = await app.request(`/members/${memberId}/deactivate`, { method: "POST", headers: { cookie: adminCookie } });
     expect(deactivateRes.status).toBe(200);
-    expect(await deactivateRes.json()).toEqual({ member: { id: memberId, isActive: false } });
+    // deactivatedAt(退職日 = 個人データ保持期間の起算日、2026-08-27)も返る。
+    const deactivateBody = (await deactivateRes.json()) as { member: { id: string; isActive: boolean; deactivatedAt: number } };
+    expect(deactivateBody.member.id).toBe(memberId);
+    expect(deactivateBody.member.isActive).toBe(false);
+    expect(deactivateBody.member.deactivatedAt).toBeGreaterThan(0);
 
     const after = await app.request("/me", { headers: { cookie: memberCookie } });
     expect(after.status).toBe(401);

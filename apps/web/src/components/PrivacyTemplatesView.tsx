@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "waku";
-import { api, ApiError, UnauthorizedError, type PrivacyTemplatesDto } from "../lib/api";
+import { api, ApiError, UnauthorizedError, type DataRetentionDto, type PrivacyTemplatesDto } from "../lib/api";
 import { mapHelpSettingsErrorMessage, messages } from "../lib/messages";
 import { invalidateHelpOverridesCache } from "../lib/useHelpOverrides";
 import { useAuthGuard } from "../lib/useAuthGuard";
@@ -118,10 +118,47 @@ export function PrivacyTemplatesView() {
   const [forbidden, setForbidden] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
 
+  /**
+   * 退職者データの保持年数(2026-08-27 追加、docs/design/data-retention.md)。
+   * ここに置く理由: この値は雛形の「退職後の取り扱い」節に直接効く(GET /settings/privacy-templates
+   * の入力の一部)ので、雛形を確認しながら決められる同じ画面にあるのが自然。
+   * 実際に消去を実行できるのは別権限(`member.erase`)を持つ人で、画面もメンバー管理側。
+   */
+  const [retention, setRetention] = useState<DataRetentionDto | null>(null);
+  const [retentionPending, setRetentionPending] = useState(false);
+  const [retentionSaved, setRetentionSaved] = useState(false);
+  const [retentionError, setRetentionError] = useState<string | null>(null);
+
+  async function handleRetentionChange(years: number) {
+    setRetentionPending(true);
+    setRetentionError(null);
+    setRetentionSaved(false);
+    try {
+      const updated = await api.updateDataRetention(years);
+      setRetention(updated);
+      setRetentionSaved(true);
+      // 雛形の文面に年数が入っているので、保存したら生成し直す。
+      load();
+    } catch (err) {
+      if (err instanceof UnauthorizedError) {
+        router.push("/login");
+        return;
+      }
+      setRetentionError(err instanceof ApiError ? messages.settingsPrivacy.retentionSaveFailed : messages.errors.network);
+    } finally {
+      setRetentionPending(false);
+    }
+  }
+
   function load() {
     setLoading(true);
     setLoadError(null);
     setForbidden(false);
+    api
+      .getDataRetention()
+      .then((res) => setRetention(res))
+      // 保持年数の取得に失敗しても雛形の表示は続ける(403 は下の getPrivacyTemplates 側で拾う)。
+      .catch(() => undefined);
     api
       .getPrivacyTemplates()
       .then((res) => setData(res))
@@ -187,6 +224,36 @@ export function PrivacyTemplatesView() {
               </ul>
               <p className="settings-notif__field-hint">{messages.settingsPrivacy.generatedFromNote}</p>
             </section>
+
+            {retention ? (
+              <section className="settings-notif__section">
+                <h2 className="settings-notif__section-title">{messages.settingsPrivacy.retentionTitle}</h2>
+                <p className="settings-notif__field-hint">{messages.settingsPrivacy.retentionHint}</p>
+                <div className="correction-field">
+                  <label htmlFor="personal-data-retention-years">{messages.settingsPrivacy.retentionLabel}</label>
+                  <select
+                    id="personal-data-retention-years"
+                    value={String(retention.personalDataRetentionYears)}
+                    disabled={retentionPending}
+                    onChange={(e) => void handleRetentionChange(Number(e.target.value))}
+                  >
+                    {retention.allowedYears.map((years) => (
+                      <option key={years} value={years}>
+                        {messages.settingsPrivacy.retentionOption(years)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <p className="settings-notif__field-hint">{messages.settingsPrivacy.retentionLegalNote}</p>
+                <p className="settings-notif__field-hint">{messages.settingsPrivacy.retentionExecutionNote}</p>
+                {retentionError ? (
+                  <p className="correction-error" role="alert">
+                    {retentionError}
+                  </p>
+                ) : null}
+                {retentionSaved && !retentionError ? <p className="settings-notif__success">{messages.settingsPrivacy.retentionSaved}</p> : null}
+              </section>
+            ) : null}
 
             <TemplateCard
               title={messages.settingsPrivacy.noticeSectionTitle}

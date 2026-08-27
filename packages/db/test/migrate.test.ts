@@ -82,6 +82,9 @@ describe("migrate", () => {
     // (2026-08-22 追加, 法令パッケージ結線)は既定値(true/false/false)で入る。
     // work_rules_url(同日追加, 社内規定追記機能)・record_retention_description /
     // privacy_contact_point(同日追加, テナント設定編集機能)は既定 null。
+    // personal_data_retention_years(2026-08-27 追加, 退職者データの保持と消去)は既定 5
+    // (労基法109条の**原則**。3年は経過措置にすぎないので既定は原則側に置く —
+    // docs/design/data-retention.md §6)。
     expect(rows).toEqual([
       {
         id: "t1",
@@ -92,6 +95,7 @@ describe("migrate", () => {
         workRulesUrl: null,
         recordRetentionDescription: null,
         privacyContactPoint: null,
+        personalDataRetentionYears: 5,
         createdAt: 0,
       },
     ]);

@@ -7,6 +7,7 @@ const BASE: PrivacyTemplateInput = {
   gpsEnabled: false,
   gpsRetentionDays: null,
   recordRetentionDescription: "打刻記録は5年間保存します。",
+  personalDataRetentionYears: 5,
   workRulesUrl: null,
   contactPoint: null,
 };
@@ -99,4 +100,33 @@ describe("buildPrivacyNotice", () => {
     const notice = buildPrivacyNotice({ ...BASE, workRulesUrl: null });
     expect(notice).not.toContain("就業規則もあわせてご確認ください");
   });
+
+  // ---- 退職後の取り扱い(2026-08-27、docs/design/data-retention.md) ----
+
+  it("退職後の取り扱いの節を出し、テナント設定の保持年数を文中に反映する", () => {
+    const five = buildPrivacyNotice(BASE);
+    expect(five).toContain("## 退職後の取り扱い");
+    expect(five).toContain("退職日から**5年**が経過した後");
+
+    const three = buildPrivacyNotice({ ...BASE, personalDataRetentionYears: 3 });
+    expect(three).toContain("退職日から**3年**が経過した後");
+    expect(three).not.toContain("退職日から**5年**");
+  });
+
+  it("退職後も勤怠記録は残ること・氏名等が置き換わることの両方を書く(片方だけでは誤解を招く)", () => {
+    const notice = buildPrivacyNotice(BASE);
+    expect(notice).toContain("氏名・メールアドレスを、個人を識別できない表記に置き換えます");
+    expect(notice).toContain("労働基準法第109条");
+    expect(notice).toContain("勤怠記録そのもの");
+    expect(notice).toContain("個人情報保護法第22条");
+  });
+
+  it("GPS が無効なら、退職後の削除対象の列挙にも位置情報を出さない", () => {
+    const off = buildPrivacyNotice(BASE);
+    expect(off).not.toContain("位置情報");
+
+    const on = buildPrivacyNotice({ ...BASE, gpsEnabled: true });
+    expect(on).toContain("ユーザーエージェント・位置情報");
+  });
 });
+

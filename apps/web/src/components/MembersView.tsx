@@ -130,6 +130,13 @@ export function MembersView() {
   const [twoFactorResetPending, setTwoFactorResetPending] = useState(false);
   const [twoFactorResetError, setTwoFactorResetError] = useState<string | null>(null);
 
+  // 退職者の個人データ消去(2026-08-27 追加、docs/design/data-retention.md)。
+  // 無効化と違って**取り消せない**ため、確認ダイアログでは影響の列挙に加えて対象者氏名の
+  // 再入力を求める(ConfirmDialog の confirmPhrase)。
+  const [eraseTarget, setEraseTarget] = useState<MemberDto | null>(null);
+  const [erasePending, setErasePending] = useState(false);
+  const [eraseError, setEraseError] = useState<string | null>(null);
+
   // メンバー個別の労働時間制(2026-08-23 Tier 0 その4 追加)。GET/POST /members/:id/work-policy は
   // tenant_settings.flex.manage(テナント全体スコープ)を要求するため、この権限を持たない場合は
   // そもそも GET も 403 になる — 詳細行を開いたときにその権限を持つ場合のみ取得する
@@ -205,6 +212,12 @@ export function MembersView() {
   const canInvite = hasEffectivePermission(effectivePermissions, "member.invite", "department");
   /** 退職処理(無効化・再有効化、2026-08-23 Tier 0 その4 追加)。 */
   const canDeactivate = hasEffectivePermission(effectivePermissions, "member.deactivate", "department");
+  /**
+   * 退職者の個人データ消去(2026-08-27 追加)。`member.deactivate` とは別のカタログ項目で、
+   * スコープはテナント全体のみ(部署長が自部署の退職者だけ消せる状態を作らないため —
+   * packages/authz/src/catalog.ts の member.erase のコメント参照)。
+   */
+  const canErase = hasEffectivePermission(effectivePermissions, "member.erase", "tenant");
   /**
    * メンバー個別の労働時間制割当(2026-08-23 Tier 0 その4 追加)。GET/POST /settings/work-policy
    * と同じ tenant_settings.flex.manage(テナント全体のみ)を要求する — apps/api/src/routes/
@@ -542,6 +555,32 @@ export function MembersView() {
     }
   }
 
+  function openEraseConfirm(member: MemberDto) {
+    setEraseTarget(member);
+    setEraseError(null);
+  }
+
+  async function handleEraseConfirm() {
+    if (!eraseTarget) return;
+    setErasePending(true);
+    setEraseError(null);
+    try {
+      await api.eraseMember(eraseTarget.id);
+      setEraseTarget(null);
+      // 消去後は氏名・メールが変わるため、詳細を開いたままにしない(古い氏名が残って見える)。
+      setExpandedId(null);
+      setReloadKey((k) => k + 1);
+    } catch (err) {
+      if (err instanceof UnauthorizedError) {
+        router.push("/login");
+        return;
+      }
+      setEraseError(err instanceof ApiError ? mapMemberErrorMessage(err.body) : messages.errors.network);
+    } finally {
+      setErasePending(false);
+    }
+  }
+
   async function handleReactivate(member: MemberDto) {
     setReactivatePendingId(member.id);
     setReactivateError(null);
@@ -800,6 +839,26 @@ export function MembersView() {
                             {!member.isActive ? (
                               <span className="invite-status-badge invite-status-badge--inactive">{messages.members.inactiveBadge}</span>
                             ) : null}
+                            {/*
+                             * 退職者データの保持状況(2026-08-27、docs/design/data-retention.md)。
+                             * 「消去可能になった退職者」を一覧で見つけられるようにするのがこの表示の目的。
+                             * 日次ワーカーによる通知は**しない** — 消去は期限のある義務ではなく
+                             * 「もう消してよい」という状態にすぎず、急かすと誤操作を誘う。
+                             */}
+                            {member.erasedAt !== null ? (
+                              <span className="invite-status-badge invite-status-badge--inactive">{messages.members.erasedBadge}</span>
+                            ) : !member.isActive && member.retention.deactivatedDate !== null ? (
+                              <span className="member-retention" title={messages.members.retentionTitle}>
+                                <span className="member-retention__from tabular-nums">
+                                  {messages.members.retentionRetiredOn}: {member.retention.deactivatedDate}
+                                </span>
+                                <span className={member.retention.erasable ? "member-retention__ready" : "member-retention__waiting"}>
+                                  {member.retention.erasable
+                                    ? messages.members.retentionErasable
+                                    : messages.members.retentionRemaining(member.retention.remainingDays ?? 0, member.retention.erasableFrom ?? "")}
+                                </span>
+                              </span>
+                            ) : null}
                           </td>
                           <td>
                             <div className="org-table__actions">
@@ -861,7 +920,7 @@ export function MembersView() {
                                   {messages.members.twoFactorResetButton}
                                 </button>
                               ) : null}
-                              {canDeactivate && !member.isActive ? (
+                              {canDeactivate && !member.isActive && member.erasedAt === null ? (
                                 <button
                                   type="button"
                                   className="org-table__link-btn"
@@ -869,6 +928,20 @@ export function MembersView() {
                                   onClick={() => handleReactivate(member)}
                                 >
                                   {reactivatePendingId === member.id ? messages.members.reactivating : messages.members.reactivateButton}
+                                </button>
+                              ) : null}
+                              {/*
+                               * 消去は「退職処理済み」かつ「保持期間を経過した」人にだけ出す
+                               * (2026-08-27)。押せない状態のボタンを出して 409 を返させるより、
+                               * 出さないほうが誤解が少ない — 残り日数は左の状態列に出ている。
+                               */}
+                              {canErase && !member.isActive && member.erasedAt === null && member.retention.erasable ? (
+                                <button
+                                  type="button"
+                                  className="org-table__link-btn org-table__link-btn--danger"
+                                  onClick={() => openEraseConfirm(member)}
+                                >
+                                  {messages.members.eraseButton}
                                 </button>
                               ) : null}
                             </div>
@@ -1233,6 +1306,41 @@ export function MembersView() {
         />
       ) : null}
 
+      {eraseTarget ? (
+        <ConfirmDialog
+          title={messages.members.eraseConfirmTitle}
+          message={
+            <>
+              {`「${eraseTarget.name}」— ${messages.members.eraseConfirmMessage}`}
+              <ul className="deactivate-confirm__impact">
+                <li>{messages.members.eraseConfirmImpactIdentity}</li>
+                <li>{messages.members.eraseConfirmImpactCredentials}</li>
+                <li>{messages.members.eraseConfirmImpactAttendance}</li>
+                <li>{messages.members.eraseConfirmImpactAudit}</li>
+                <li>{messages.members.eraseConfirmImpactIrreversible}</li>
+              </ul>
+            </>
+          }
+          extraNote={messages.members.eraseConfirmLegalNote}
+          confirmLabel={messages.members.eraseButton}
+          tone="caution"
+          note=""
+          confirmPhrase={{
+            phrase: eraseTarget.name,
+            label: messages.members.eraseConfirmPhraseLabel(eraseTarget.name),
+            placeholder: eraseTarget.name,
+            mismatchHint: messages.members.eraseConfirmPhraseMismatch,
+          }}
+          pending={erasePending}
+          error={eraseError}
+          onConfirm={handleEraseConfirm}
+          onCancel={() => {
+            setEraseTarget(null);
+            setEraseError(null);
+          }}
+        />
+      ) : null}
+
       {deactivateTarget ? (
         <ConfirmDialog
           title={messages.members.deactivateConfirmTitle}
@@ -1243,6 +1351,7 @@ export function MembersView() {
                 <li>{messages.members.deactivateConfirmImpactLogin}</li>
                 <li>{messages.members.deactivateConfirmImpactSession}</li>
                 <li>{messages.members.deactivateConfirmImpactInviteReset}</li>
+                <li>{messages.members.deactivateConfirmImpactRetention}</li>
               </ul>
             </>
           }

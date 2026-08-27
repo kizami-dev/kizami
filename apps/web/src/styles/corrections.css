@@ -148,6 +148,12 @@
   padding-left: var(--space-3);
 }
 
+/* 対象名の再入力(取り返しのつかない操作の確認、2026-08-27。ConfirmDialog の confirmPhrase) */
+.confirm-dialog__phrase-hint {
+  font-size: 0.8rem;
+  color: var(--k-ink-soft);
+}
+
 /* ---- 申請フォーム(月次画面から開く) ---- */
 
 .correction-form__hint {

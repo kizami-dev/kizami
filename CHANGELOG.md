@@ -15,6 +15,31 @@ API・DB スキーマの互換方針とアップグレード手順は
 
 ### Added
 
+- **退職者データの保持と消去**([docs/design/data-retention.md](docs/design/data-retention.md))
+  - 労働基準法109条の保存義務(原則5年・附則143条2項の経過措置により当分の間3年)と、
+    個人情報保護法22条の「遅滞なき消去」(努力義務)の衝突を、
+    **「保持期間の経過後に、行は残したまま匿名化する」**形で解く
+  - `POST /members/:id/erase` — 氏名を「削除済みユーザー」、メールを tombstone
+    (`user_deleted_<id>@invalid`)に置き換え、パスワード・2FA・セッション・プッシュ購読・
+    個人通知設定・APIキー・招待/リセットトークン・Slack連携・本人宛通知を物理削除し、
+    `punch_events` の IP・UA・GPS 列を null 化する。
+    **勤怠記録・締めスナップショット・監査ログの行は1件も消さない**
+  - 実行条件: 退職処理済み × 退職日が記録済み × 退職日 + 保持年数が経過。
+    未経過は 409 `retention_period_active`(残り日数・消去可能日つき)
+  - 新カタログ項目 `member.erase`(テナント全体スコープ・危険フラグ)。
+    `member.deactivate` の流用にしない — 無効化は取り消せるが消去には戻す経路が無い
+  - テナント設定 `GET/PUT /settings/data-retention`(3 or 5 年、**既定5**。
+    3年は経過措置にすぎず、既定を3にすると経過措置終了時に一斉に違反側へ倒れるため)
+  - 消去済みは無効化とは別の**終端状態**。tombstone でログイン不可・再有効化不可
+  - 確認ダイアログは影響の列挙 + **対象者氏名の再入力**(`ConfirmDialog` の `confirmPhrase`)
+  - メンバー一覧に退職日と保持状況(「消去可能まであと N 日」)を表示。
+    日次ワーカーによる通知はしない(急かす性質の操作ではない)
+  - プライバシー通知の雛形に「退職後の取り扱い」節を追加。
+    ヘルプに `privacy.retention-after-leaving`(4言語、origin: law)を追加
+  - migration 0031(`tenants.personal_data_retention_years` /
+    `users.deactivated_at` / `users.erased_at`)
+  - **テナント自体の削除はスコープ外**(SaaS 形態のフェーズで扱う)
+
 - **可観測性: メトリクスとエラー報告**([docs/design/observability.md](docs/design/observability.md))
   - `GET /metrics`(Prometheus text format 0.0.4)。環境変数 `METRICS_TOKEN` が
     **未設定なら 404**、設定時は `Authorization: Bearer` 必須(既定で口を開けない)

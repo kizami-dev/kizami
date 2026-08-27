@@ -90,3 +90,26 @@ export async function updateTenantPrivacyContact(
   }
   return row;
 }
+
+/**
+ * 退職者の個人データの保持年数(personal_data_retention_years)を更新する
+ * (UPDATE、現在値のみ。2026-08-27、docs/design/data-retention.md)。
+ *
+ * 3 / 5 のどちらかであることの検証は呼び出し側(apps/api/src/routes/settings/privacy.ts)が行う
+ * — 他のクエリと同じく、DB 層は値の意味を解釈しない。
+ * 呼び出し側が監査ログへの記録を担う。
+ */
+export async function updateTenantPersonalDataRetentionYears(
+  db: Database | Transaction,
+  params: { tenantId: string; personalDataRetentionYears: number },
+): Promise<Tenant> {
+  const [row] = await db
+    .update(tenants)
+    .set({ personalDataRetentionYears: params.personalDataRetentionYears })
+    .where(eq(tenants.id, params.tenantId))
+    .returning();
+  if (!row) {
+    throw new Error(`updateTenantPersonalDataRetentionYears: tenant not found: ${params.tenantId}`);
+  }
+  return row;
+}

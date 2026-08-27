@@ -27,6 +27,15 @@ export interface PrivacyTemplateInput {
    * 呼び出し側で組み立てて渡す想定(このパッケージは受け取った文字列をそのまま埋め込む)。
    */
   recordRetentionDescription: string;
+  /**
+   * 退職者の個人データを消去(匿名化)できるようになるまでの保持年数(3 or 5、2026-08-27 追加)。
+   *
+   * `recordRetentionDescription` とは役割が違う。あちらは「打刻記録本体をいつまで保存するか」を
+   * 説明する**文章**で、こちらは「退職した従業員の氏名・メールアドレス等をいつ消せるか」を決める
+   * **機械可読な設定値**。雛形では「退職後の取り扱い」節の年数として文中に出す。
+   * 労働基準法109条(原則5年、令和2年改正附則143条2項の経過措置により当分の間3年)に対応する。
+   */
+  personalDataRetentionYears: number;
   /** 就業規則へのリンク。未設定なら null(その場合、雛形には案内文を出さない) */
   workRulesUrl: string | null;
   /**

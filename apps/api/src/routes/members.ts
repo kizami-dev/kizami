@@ -2,7 +2,7 @@
  * GET /members, POST /members, PATCH /members/:id, PUT /members/:id/presets,
  * POST /members/:id/invitations, DELETE /members/:id/invitations,
  * POST /members/:id/password-resets, DELETE /members/:id/password-resets,
- * POST /members/:id/deactivate, POST /members/:id/reactivate,
+ * POST /members/:id/deactivate, POST /members/:id/reactivate, POST /members/:id/erase,
  * GET /members/:id/work-policy, POST /members/:id/work-policy
  *
  * メンバー一覧・招待式登録・パスワードリセット(管理者発行)・退職処理(無効化)・所属変更・
@@ -13,7 +13,8 @@
  * 発行/取り消しは `member.invite`(カタログにある既存のメンバー管理系権限をそのまま使う。
  * パスワードリセット用の専用権限は新設しない — 選定理由は下記 INVITE_PERMISSION のコメント参照)、
  * 所属(departmentId)の変更は `member.profile.edit`、無効化・再有効化は `member.deactivate`
- * (カタログに専用キーが既にある)。プリセット割当(PUT /:id/presets)は
+ * (カタログに専用キーが既にある)、退職者の個人データ消去は `member.erase`
+ * (2026-08-27 新設。無効化と同格ではなく一段重い — 理由は ERASE_PERMISSION のコメント参照)。プリセット割当(PUT /:id/presets)は
  * `permission.assignment.manage` — 実際の検証・固定原則(自己昇格/自己降格/最後の権限管理
  * 保持者保護)の判定は routes/presets.ts の `assignPresetsToMember()` に委譲する(依頼の
  * section 分けでは C. presets.ts の管轄だが、URL は /members/:id/presets にネストするため、
@@ -28,6 +29,11 @@
  * 1度だけ・DB には SHA-256 のみ)。設計判断は packages/db/src/schema/password-resets.ts、
  * queries/password-resets.ts、queries/member-lifecycle.ts、queries/sessions.ts、
  * および使用エンドポイント routes/password-resets.ts(未認証・公開)を参照。
+ *
+ * 退職者データのライフサイクル(2026-08-27、docs/design/data-retention.md): 退職処理
+ * (`POST /:id/deactivate`)が `users.deactivated_at` を記録し、そこからテナント設定の保持年数
+ * (3 or 5、労働基準法109条)が経過して初めて `POST /:id/erase` による**匿名化**が可能になる。
+ * 消去は勤怠記録の行を1件も消さない(集計と保存義務の両立)。線引きの表は上記設計ドキュメント。
  *
  * スコープの粒度: requirePermission は「保持スコープが最低限 department 以上か」までしか
  * 見ないため、対象メンバー・対象部署が実際に actor の管轄下(所属部署・その配下)にいるかは
@@ -55,6 +61,7 @@ import {
   createUser,
   deactivateUser,
   deleteUserTotp,
+  eraseUserPersonalData,
   getDepartmentById,
   getLatestInvitationForUser,
   getLatestPasswordResetTokenForUser,
@@ -75,6 +82,7 @@ import {
   listUserPolicyAssignments,
   insertWorkPolicyVersion,
   listWorkPolicyVersions,
+  getTenantById,
   reactivateUser,
   revokeAllPasswordResetTokensForUser,
   revokeAllSessionsForUser,
@@ -98,6 +106,12 @@ import type { AppEnv } from "../auth/middleware.js";
 import { generateInvitationToken, INVITATION_TTL_MINUTES } from "../auth/invitation-token.js";
 import { generatePasswordResetToken, PASSWORD_RESET_TTL_MINUTES } from "../auth/password-reset-token.js";
 import { effectivePermissionsFromPresets, ForbiddenError, requirePermission } from "../authz.js";
+import {
+  DEFAULT_RETENTION_YEARS,
+  evaluateRetention,
+  localDateFromEpochMinutes,
+  type RetentionStatus,
+} from "../lib/data-retention.js";
 import { resolveAccessibleDepartmentIds, resolveAccessibleUserIds } from "../lib/scope.js";
 import { nowMinutes, todayLocalDate } from "../lib/time.js";
 import { TZ_OFFSET_MINUTES_JST } from "../lib/settings.js";
@@ -119,6 +133,15 @@ const INVITE_PERMISSION = "member.invite";
 // 退職処理(無効化・再有効化)。カタログに専用キー `member.deactivate` が既にあるためそのまま使う
 // (docs/design/permission-catalog.md §1.8。危険フラグ付き — 権限プリセット編集UIで重点表示される)。
 const DEACTIVATE_PERMISSION = "member.deactivate";
+/**
+ * 退職者の個人データ消去(POST /:id/erase、2026-08-27、docs/design/data-retention.md)。
+ *
+ * 判断点: `member.deactivate` は流用しない。2FA リセットのときは「他人のログイン要件を
+ * 一段弱める操作 = 退職処理と同格」として流用したが、消去は同格ではなく**一段重い**
+ * (無効化には再有効化があるが、消去には戻す経路が存在しない)。カタログに専用キー
+ * `member.erase` を新設した(packages/authz/src/catalog.ts、TENANT_ONLY・危険フラグ付き)。
+ */
+const ERASE_PERMISSION = "member.erase";
 
 const MAX_NAME_LENGTH = 200;
 const MAX_EMAIL_LENGTH = 255;
@@ -191,6 +214,24 @@ function resolveEffectiveAssignment(
   return chosen;
 }
 
+/**
+ * メンバー1人分の保持期間の状態(2026-08-27、docs/design/data-retention.md)。
+ *
+ * `deactivated_at`(UTC エポック分)をローカル暦日に落としてから純関数
+ * `evaluateRetention` に渡す。在籍中(isActive=true)は退職日そのものが存在しないので
+ * null を渡し、`erasable: false` になる。
+ */
+function retentionStatusFor(params: {
+  user: { isActive: boolean; deactivatedAt: number | null };
+  retentionYears: number;
+  today: string;
+}): RetentionStatus {
+  const { user, retentionYears, today } = params;
+  const deactivatedDate =
+    user.isActive || user.deactivatedAt === null ? null : localDateFromEpochMinutes(user.deactivatedAt, TZ_OFFSET_MINUTES_JST);
+  return evaluateRetention({ deactivatedDate, retentionYears, today });
+}
+
 export function createMembersRoutes(db: Database) {
   const app = new Hono<AppEnv>();
 
@@ -213,6 +254,7 @@ export function createMembersRoutes(db: Database) {
       passwordResetRows,
       workPolicyKindByUser,
       totpEnabledUserIds,
+      tenant,
     ] =
       await Promise.all([
         listTenantUsers(db, user.tenantId),
@@ -228,6 +270,10 @@ export function createMembersRoutes(db: Database) {
         // 二要素認証の有効状態(UI バッジ + 「2FAをリセット」ボタンの出し分け、2026-08-27)。
         // テナント分を1クエリで取る(ユーザーごとの個別クエリにしない — N+1 回避)。
         listTenantTotpEnabledUserIds(db, user.tenantId),
+        // 退職者データの保持年数(2026-08-27、docs/design/data-retention.md)。
+        // 一覧に「消去可能になった退職者」を出すために必要(判定は暦日で行う純関数
+        // evaluateRetention に委譲する)。
+        getTenantById(db, user.tenantId),
       ]);
     const allUsers = accessibleUserIds === "all" ? tenantUsers : tenantUsers.filter((u) => accessibleUserIds.has(u.id));
 
@@ -266,6 +312,7 @@ export function createMembersRoutes(db: Database) {
     }
 
     const now = nowMinutes();
+    const retentionYears = tenant?.personalDataRetentionYears ?? DEFAULT_RETENTION_YEARS;
 
     return c.json({
       members: allUsers.map((u) => ({
@@ -273,6 +320,11 @@ export function createMembersRoutes(db: Database) {
         name: u.name,
         email: u.email,
         isActive: u.isActive,
+        // 退職者データのライフサイクル(2026-08-27、docs/design/data-retention.md)。
+        // deactivatedAt が null の無効化済みユーザー(この機能より前に退職処理された行)は
+        // retention.erasable が false になる — 起算日不明のものを消してよいとは答えない。
+        erasedAt: u.erasedAt,
+        retention: retentionStatusFor({ user: u, retentionYears, today }),
         // 入社日(2026-08-22 追加)。法定付与の計算に使う(routes/leave.ts の
         // POST /leave/grants/auto)。null = 未設定 → 法定付与ができない(画面側で警告表示)。
         hireDate: u.hireDate,
@@ -742,7 +794,9 @@ export function createMembersRoutes(db: Database) {
 
     const now = nowMinutes();
     await db.transaction(async (tx) => {
-      await deactivateUser(tx, { tenantId: actor.tenantId, userId: id });
+      // deactivatedAt を同時に記録する(2026-08-27)。個人データ保持期間の起算日になる
+      // — これが無いと「いつ退職したか」が分からず消去可能日を決められない。
+      await deactivateUser(tx, { tenantId: actor.tenantId, userId: id, deactivatedAt: now });
       await revokeAllSessionsForUser(tx, { tenantId: actor.tenantId, userId: id, revokedAt: now });
       await revokePendingInvitationForUser(tx, { tenantId: actor.tenantId, userId: id, revokedAt: now });
       await revokeAllPasswordResetTokensForUser(tx, { tenantId: actor.tenantId, userId: id, revokedAt: now });
@@ -757,7 +811,7 @@ export function createMembersRoutes(db: Database) {
       });
     });
 
-    return c.json({ member: { id, isActive: false } });
+    return c.json({ member: { id, isActive: false, deactivatedAt: now } });
   });
 
   /**
@@ -852,6 +906,13 @@ export function createMembersRoutes(db: Database) {
       return c.json({ error: "already_active" }, 409);
     }
 
+    // 消去済み(erased)は無効化とは別の**終端状態**であり、再有効化できない(2026-08-27)。
+    // 氏名・メール・認証情報は既に失われていて戻す先が無く、tombstone のまま復活させると
+    // 「削除済みユーザー」という名前でログインできる人ができてしまう。
+    if (target.erasedAt !== null) {
+      return c.json({ error: "already_erased" }, 409);
+    }
+
     const now = nowMinutes();
     await reactivateUser(db, { tenantId: actor.tenantId, userId: id });
 
@@ -866,6 +927,110 @@ export function createMembersRoutes(db: Database) {
     });
 
     return c.json({ member: { id, isActive: true } });
+  });
+
+  /**
+   * 退職者の個人データ消去(匿名化)。2026-08-27、docs/design/data-retention.md。
+   *
+   * ## 何をするか
+   *
+   * 氏名を「削除済みユーザー」に、メールを tombstone(`user_deleted_<id>@invalid`)に置き換え、
+   * 認証情報・2FA・セッション・プッシュ購読・個人通知設定・APIキー・招待/リセットトークン・
+   * Slack連携・本人宛通知を物理削除し、punch_events の IP/UA/GPS 列を null 化する。
+   * **勤怠記録の行そのものは1件も消さない**(労働基準法109条の保存義務と集計の完全性)。
+   * 実際の消去処理と各テーブルの線引きの理由は packages/db/src/queries/erasure.ts を参照。
+   *
+   * ## 実行できる条件(3段)
+   *
+   * 1. 退職処理済み(`isActive=false`)であること。在籍者の個人データは利用目的が達成されていない
+   * 2. 退職日(`deactivatedAt`)が記録されていること。起算日が分からないものは消させない
+   * 3. 退職日 + テナント設定の保持年数(3 or 5)が**経過している**こと。未経過は
+   *    409 `retention_period_active`(残り日数・消去可能日つき)で断る
+   *
+   * ## 冪等ではなく 409 で弾く
+   *
+   * 2回目の実行は 409 `already_erased`。冪等に 200 を返すと「消したつもりの相手が実は別人だった」
+   * ときに気づけないうえ、監査ログに同じ操作が何度も並ぶ。取り返しのつかない操作は、
+   * 「もう終わっている」ことを明示的に伝えるほうが安全。
+   *
+   * ## 監査ログ
+   *
+   * `member.erase` を追記する。target は ID 参照(`user:<id>`)なので、匿名化後もどの行に対する
+   * 操作だったかは辿れる一方、氏名は残らない。detail には消した件数の内訳だけを入れ、
+   * **消した値そのもの(氏名・メール)は絶対に入れない** — 監査ログに書けば消したことにならない。
+   */
+  app.post("/:id/erase", async (c) => {
+    // TENANT_ONLY のカタログ項目なので、要求スコープもテナント全体
+    // (部署長が自部署の退職者だけ消せる、という状態を作らない)。
+    requirePermission(c, ERASE_PERMISSION, "tenant");
+    const actor = c.get("user");
+    const id = c.req.param("id");
+
+    const target = await getUserById(db, { tenantId: actor.tenantId, id });
+    // 他テナントのユーザーIDを指定した場合もここで 404(getUserById が tenantId で絞る)。
+    if (!target) return c.json({ error: "not_found" }, 404);
+
+    // 自分自身は消せない(そもそも自分を無効化できないので到達し得ないが、
+    // 「取り返しのつかない操作を自分に対して行えない」ことを明示的に守る)。
+    if (id === actor.id) {
+      return c.json({ error: "cannot_erase_self" }, 409);
+    }
+
+    if (target.erasedAt !== null) {
+      return c.json({ error: "already_erased" }, 409);
+    }
+
+    if (target.isActive) {
+      return c.json({ error: "not_deactivated" }, 409);
+    }
+
+    const tenant = await getTenantById(db, actor.tenantId);
+    const retentionYears = tenant?.personalDataRetentionYears ?? DEFAULT_RETENTION_YEARS;
+    const today = todayLocalDate(TZ_OFFSET_MINUTES_JST);
+    const retention = retentionStatusFor({ user: target, retentionYears, today });
+
+    // 退職日が記録されていない(この機能より前に無効化された行)。起算日不明のまま消させない。
+    // 復旧手順は再有効化 → 退職処理のやり直し(docs/design/data-retention.md「移行」)。
+    if (retention.deactivatedDate === null) {
+      return c.json({ error: "deactivated_at_unknown" }, 409);
+    }
+
+    if (!retention.erasable) {
+      return c.json(
+        {
+          error: "retention_period_active",
+          retention: { ...retention, retentionYears },
+        },
+        409,
+      );
+    }
+
+    const now = nowMinutes();
+    const result = await db.transaction(async (tx) => {
+      const erased = await eraseUserPersonalData(tx, { tenantId: actor.tenantId, userId: id, erasedAt: now });
+      await insertAuditLog(tx, {
+        tenantId: actor.tenantId,
+        actorId: actor.id,
+        action: "member.erase",
+        targetType: "user",
+        targetId: id,
+        // 消した値そのものは入れない(上記コメント)。何件消えたかの内訳と、
+        // どの保持期間設定・どの退職日を根拠に許可したかだけを残す。
+        detail: JSON.stringify({
+          removed: erased.removed,
+          retentionYears,
+          deactivatedDate: retention.deactivatedDate,
+          erasableFrom: retention.erasableFrom,
+        }),
+        occurredAt: now,
+      });
+      return erased;
+    });
+
+    return c.json({
+      member: { id, isActive: false, erasedAt: now, name: result.name, email: result.email },
+      removed: result.removed,
+    });
   });
 
   app.patch("/:id", async (c) => {

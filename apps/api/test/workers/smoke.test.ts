@@ -74,7 +74,9 @@ describe("apps/api boots on workerd + D1", () => {
     const clockIn = await SELF.fetch(`${ORIGIN}/punches`, {
       method: "POST",
       headers: { "content-type": "application/json", cookie },
-      body: JSON.stringify({ kind: "clock_in", occurredAt: Math.floor(Date.now() / 60_000) - 60 }),
+      // 60分前だと JST 0:00〜1:00 の実行で前の勤怠日に落ちて state=out になる(時刻フレーク、
+      // 2026-08-28 修正)。1分前なら日界(既定 0:00)をまたぐ窓が1分に縮み実質消える。
+      body: JSON.stringify({ kind: "clock_in", occurredAt: Math.floor(Date.now() / 60_000) - 1 }),
     });
     expect(clockIn.status).toBe(201);
 

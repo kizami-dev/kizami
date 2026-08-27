@@ -1865,8 +1865,34 @@ export const zh = {
     deactivateConfirmImpactLogin: "将无法登录",
     deactivateConfirmImpactSession: "当前所有登录会话都将失效",
     deactivateConfirmImpactInviteReset: "待处理的邀请、密码重置链接将失效",
+    deactivateConfirmImpactRetention: "系统会记录离职日期,保留期限届满后即可清除其个人数据",
     reactivateButton: "重新启用",
     reactivating: "重新启用中…",
+
+    /**
+     * 离职者个人数据的清除(2026-08-27 新增,docs/design/data-retention.md)。
+     *
+     * 文案方针: 不写「删除」。实际执行的是**匿名化**,考勤记录的行本身会因《劳动基准法》第109条
+     * 的保存义务而保留。若显示「已删除」而记录仍然存在,负责应对信息公开请求的人员就会做出与
+     * 事实不符的说明。
+     */
+    erasedBadge: "已清除",
+    retentionTitle: "离职者个人数据的保留状态",
+    retentionRetiredOn: "离职日期",
+    retentionErasable: "可以清除个人数据",
+    retentionRemaining: (days: number, from: string) => `距离可清除还有${days}天(自${from}起)`,
+    eraseButton: "清除个人数据",
+    eraseConfirmTitle: "确定要清除该离职者的个人数据吗",
+    eraseConfirmMessage: "保留期限已届满,可以清除。执行后将会发生以下情况。",
+    eraseConfirmImpactIdentity: "姓名将替换为「已删除用户」,邮箱地址将替换为无法使用的地址",
+    eraseConfirmImpactCredentials: "密码、两步验证、通知设置、API密钥、关联信息将被删除",
+    eraseConfirmImpactAttendance: "考勤记录(打卡、统计、封账)因法定保存义务而保留,仅删除IP地址、设备信息、位置信息",
+    eraseConfirmImpactAudit: "审计日志的记录本身不会被改动(仅显示的姓名会被匿名化)",
+    eraseConfirmImpactIrreversible: "此操作无法撤销,之后也无法重新启用该成员",
+    eraseConfirmLegalNote:
+      "由于《劳动基准法》第109条规定的保存义务,考勤记录本身不会被删除。清除的是能够识别「记录属于谁」的信息。",
+    eraseConfirmPhraseLabel: (name: string) => `为确认操作,请输入该成员的姓名「${name}」`,
+    eraseConfirmPhraseMismatch: "姓名不一致",
 
     twoFactorBadge: "2FA",
     twoFactorResetButton: "重置2FA",
@@ -1990,6 +2016,12 @@ export const zh = {
       invalid_standard_day_minutes: "每日基准应出勤时间请输入1〜1440之间的整数分钟",
       version_already_exists: "该生效日期已存在相同设置的版本,请指定其他日期",
       not_enabled: "该成员未开启两步验证",
+      /** 离职者个人数据的清除(2026-08-27 新增,POST /members/:id/erase)。 */
+      not_deactivated: "无法清除在职成员的个人数据,请先进行离职处理",
+      retention_period_active: "保留期限尚未届满,无法清除(《劳动基准法》第109条的保存义务)",
+      already_erased: "该成员的个人数据已清除",
+      deactivated_at_unknown: "未记录离职日期,无法清除。请先重新启用该成员,然后重新进行离职处理",
+      cannot_erase_self: "无法清除自己的个人数据",
       forbidden: "没有执行此操作的权限",
       default: "处理失败,请重试",
     },
@@ -2422,6 +2454,21 @@ export const zh = {
     generatedFromRetention: (days: number) => `位置信息保留期限: ${days}天`,
     generatedFromRetentionSame: "位置信息保留期限: 与打卡记录相同",
     generatedFromNote: "GPS的启用/禁用及保留期限会根据「设置 > 租户配置」等租户设置的变更,在下次显示时更新。",
+
+    /**
+     * 离职者数据的保留期限(2026-08-27 新增,docs/design/data-retention.md)。
+     * 放在此页面的理由: 年数会原样出现在模板的「离职后的处理」一节中,因此边看文案边决定更合适。
+     * 实际的清除操作由成员管理页面以另外的权限执行。
+     */
+    retentionTitle: "离职者个人数据的保留期限",
+    retentionHint: "自离职日期起,在此期限届满前无法清除离职者的个人数据。期限届满后,即可从成员管理页面清除。",
+    retentionLabel: "保留期限",
+    retentionOption: (years: number) => (years === 5 ? "5年(《劳动基准法》第109条的原则)" : `${years}年(修正法的过渡措施)`),
+    retentionLegalNote:
+      "《劳动基准法》第109条原则上规定记录保存5年,但根据2020年(令和2年)修正的过渡措施,目前3年即可。过渡措施终将结束,因此默认设为5年。",
+    retentionExecutionNote: "实际的清除操作由持有专用权限(可清除离职者的个人数据)的负责人在「设置 > 成员」中执行。",
+    retentionSaved: "已保存保留期限。",
+    retentionSaveFailed: "保留期限保存失败,请重试",
 
     noticeSectionTitle: "面向员工的隐私声明",
     noticeSectionDesc: "汇总采集项目、使用目的、保存期限、信息公开等请求渠道的模板,可用于向员工进行公示。",

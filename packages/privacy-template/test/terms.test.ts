@@ -7,6 +7,7 @@ const BASE: PrivacyTemplateInput = {
   gpsEnabled: false,
   gpsRetentionDays: null,
   recordRetentionDescription: "打刻記録は5年間保存します。",
+  personalDataRetentionYears: 5,
   workRulesUrl: null,
   contactPoint: null,
 };

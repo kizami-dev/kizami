@@ -31,6 +31,14 @@
  *   性質(単純な現在値のテキスト)なのでここに直接列を追加する(新規テーブルは起こさない)。
  *   GET/PUT /settings/privacy-contact(apps/api/src/routes/settings.ts)が読み書きし、
  *   GET /settings/privacy-templates が未設定時のフォールバック(固定文言/null)付きで使う。
+ * - `personal_data_retention_years`(2026-08-27、退職者データの保持と消去 —
+ *   docs/design/data-retention.md): 退職者の個人データを消去できるようになるまでの保持年数(3 or 5)。
+ *   判断点: 版管理(`tenant_setting_versions`)にはしない。この値は**打刻の集計に一切影響しない**
+ *   (原則6の対象は「計算に影響する設定」)。加えて、版管理にすると「消去を実行した日に有効だった版」と
+ *   「退職日に有効だった版」のどちらで判定するのかという答えの無い問いが生まれる — 保持義務は
+ *   「今この瞬間、この記録を消してよいか」の判断であり、常に**現在値**で評価するのが正しい。
+ *   よって work_rules_url 等と同じ単純な現在値としてここに1列持つ。
+ *   GET/PUT /settings/data-retention(apps/api/src/routes/settings/privacy.ts)が読み書きする。
  *
  * 参照: docs/design/v01-data-model.md §組織・認証・権限
  */
@@ -52,6 +60,12 @@ export const tenants = sqliteTable("tenants", {
   recordRetentionDescription: text("record_retention_description"),
   /** 開示・訂正等の請求を受け付ける窓口(個人情報の雛形に使う)。未設定なら null(記入例プレースホルダにフォールバック) */
   privacyContactPoint: text("privacy_contact_point"),
+  /**
+   * 退職者の個人データを消去(匿名化)できるようになるまでの保持年数。3 または 5 のみ。
+   * 既定は 5(労基法109条の**原則**。3年は令和2年改正附則143条2項の「当分の間」の経過措置であり、
+   * 既定を3にすると経過措置が終了したときに全テナントが一斉に違反側へ倒れる — 既定は原則側に置く)。
+   */
+  personalDataRetentionYears: integer("personal_data_retention_years").notNull().default(5),
   /** UTC エポック分 */
   createdAt: integer("created_at").notNull(),
 });
