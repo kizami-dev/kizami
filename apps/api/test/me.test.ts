@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createApp } from "../src/app.js";
-import { grantPermission, loginAndGetCookie, setupTestDb } from "./support/setup.js";
+import { denyPermission, grantPermission, loginAndGetCookie, setupTestDb } from "./support/setup.js";
 
 interface EffectivePermissionsResponse {
   permissions: Array<{ key: string; scope: string }>;
@@ -48,6 +48,41 @@ describe("GET /me/effective-permissions", () => {
     // 自動的に含まれる(packages/authz/src/implied.ts の IMPLIED_VIEW_PERMISSIONS)。
     expect(findScope(body, "member.view")).toBe("tenant");
     // セルフサービス権限はここでも常に含まれる
+    expect(findScope(body, "self_service.punch")).toBe("self");
+  });
+
+  /**
+   * 拒否ルール(deny、2026-08-24)。レスポンスの形は変わらない(実効権限の最終形をそのまま返す)
+   * — 拒否された権限は「含まれない」という形でだけ現れる。
+   */
+  it("omits permissions denied by any assigned preset (deny wins over grants)", async () => {
+    const { db, tenantId, userId, email, password } = await setupTestDb();
+    // 1つ目のプリセットが tenant スコープで付与し、2つ目のプリセットが同じキーを拒否する
+    await grantPermission(db, { tenantId, userId, permission: "member.invite", scope: "tenant" });
+    await denyPermission(db, { tenantId, userId, permission: "member.invite" });
+    const app = createApp({ db });
+    const cookie = await loginAndGetCookie(app, email, password);
+
+    const res = await app.request("/me/effective-permissions", { headers: { cookie } });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as EffectivePermissionsResponse;
+
+    expect(findScope(body, "member.invite")).toBeUndefined();
+    // 含意先(member.view)も生まれない — 拒否された権限は含意の展開元にならない
+    expect(findScope(body, "member.view")).toBeUndefined();
+    // セルフサービス権限は拒否の影響を受けない
+    expect(findScope(body, "self_service.punch")).toBe("self");
+  });
+
+  it("never drops the self-service permissions, even if a preset tries to deny them", async () => {
+    const { db, tenantId, userId, email, password } = await setupTestDb();
+    await denyPermission(db, { tenantId, userId, permission: "self_service.punch" });
+    const app = createApp({ db });
+    const cookie = await loginAndGetCookie(app, email, password);
+
+    const res = await app.request("/me/effective-permissions", { headers: { cookie } });
+    const body = (await res.json()) as EffectivePermissionsResponse;
+
     expect(findScope(body, "self_service.punch")).toBe("self");
   });
 

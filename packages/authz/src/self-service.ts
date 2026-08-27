@@ -25,3 +25,26 @@ export const SELF_SERVICE_GRANTS: readonly Grant[] = [
   { permission: SELF_SERVICE_PERMISSIONS.requestOwn, scope: "self" },
   { permission: SELF_SERVICE_PERMISSIONS.viewOwnRecord, scope: "self" },
 ];
+
+/**
+ * **denyの対象外(絶対に拒否できない)権限**のキー集合。
+ *
+ * セルフサービス権限は「プリセットのON/OFFに関わらず全ユーザーが常時保持する固定権限」
+ * (上記コメント参照)であり、拒否ルール(deny)によっても取り上げられない。
+ * 自分の打刻ができないユーザーを作れてしまうと、そのユーザーは労働時間を記録する手段を
+ * 失う(=法定の労働時間把握義務を果たせない)ため、deny の適用対象から明示的に外す。
+ *
+ * 評価器(resolve.ts の applyDenies)はこの集合に含まれるキーの deny を黙って無視する。
+ * API 側もカタログに存在しないキーの deny を 400 で弾くため、通常はここへ到達しないが、
+ * 「評価器そのものが自己完結して安全である」ことを保証するために二重で守る。
+ */
+export const UNDENIABLE_PERMISSIONS: ReadonlySet<PermissionKey> = new Set<PermissionKey>([
+  SELF_SERVICE_PERMISSIONS.punch,
+  SELF_SERVICE_PERMISSIONS.requestOwn,
+  SELF_SERVICE_PERMISSIONS.viewOwnRecord,
+]);
+
+/** そのキーが deny の対象になりうるか(セルフサービス権限は常に false)。 */
+export function isDeniablePermission(key: PermissionKey): boolean {
+  return !UNDENIABLE_PERMISSIONS.has(key);
+}

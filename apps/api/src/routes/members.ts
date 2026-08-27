@@ -93,7 +93,7 @@ import { isLeaveGrantClass, type LeaveGrantClass } from "@kizami/leave";
 import type { AppEnv } from "../auth/middleware.js";
 import { generateInvitationToken, INVITATION_TTL_MINUTES } from "../auth/invitation-token.js";
 import { generatePasswordResetToken, PASSWORD_RESET_TTL_MINUTES } from "../auth/password-reset-token.js";
-import { effectivePermissionsFromRawGrantSets, ForbiddenError, requirePermission } from "../authz.js";
+import { effectivePermissionsFromPresets, ForbiddenError, requirePermission } from "../authz.js";
 import { resolveAccessibleDepartmentIds, resolveAccessibleUserIds } from "../lib/scope.js";
 import { nowMinutes, todayLocalDate } from "../lib/time.js";
 import { TZ_OFFSET_MINUTES_JST } from "../lib/settings.js";
@@ -703,7 +703,7 @@ export function createMembersRoutes(db: Database) {
     // 既に無効化済みの holder を「他に1人いる」とカウントしてしまうと、実際にはログインできる
     // 権限管理者が0人になる無効化を通してしまう(判断点)。
     const targetGrantSets = await listAssignedPresetGrants(db, { tenantId: actor.tenantId, userId: id });
-    const targetEffective = effectivePermissionsFromRawGrantSets(targetGrantSets);
+    const targetEffective = effectivePermissionsFromPresets(targetGrantSets);
     if (targetEffective.has(PRESET_MANAGE_PERMISSION)) {
       const [allGrantsByUser, tenantUsers] = await Promise.all([
         listTenantPresetGrantsByUser(db, actor.tenantId),
@@ -713,7 +713,7 @@ export function createMembersRoutes(db: Database) {
       let otherHolders = 0;
       for (const [userId, rawGrantSets] of allGrantsByUser) {
         if (userId === id || !activeUserIds.has(userId)) continue;
-        const effective = effectivePermissionsFromRawGrantSets(rawGrantSets);
+        const effective = effectivePermissionsFromPresets(rawGrantSets);
         if (effective.has(PRESET_MANAGE_PERMISSION)) otherHolders++;
       }
       if (otherHolders === 0) {

@@ -1,0 +1,1 @@
+ALTER TABLE `permission_presets` ADD `denies` text DEFAULT '[]' NOT NULL;

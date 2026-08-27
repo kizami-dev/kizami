@@ -126,17 +126,36 @@ export interface EffectivePermissionEntry {
   sourcePresetNames: string[];
   /** true: 直接チェックされた権限ではなく、他の権限の「操作は閲覧を含意」展開でのみ得ている。 */
   viaImplication: boolean;
+  /**
+   * true: どこかのプリセットが付与しているが、別の(または同じ)プリセットの拒否(deny)に
+   * よって打ち消され、実際には**行使できない**(2026-08-24 追加)。
+   *
+   * 一覧から消さずに残すのは、「割り当てたプリセットに書いてある権限が画面から消えている」
+   * 状態が管理者にとって最も分かりにくいため。打ち消されていることを取り消し線+「拒否」チップで
+   * 明示する(EffectivePermissionsPanel)。付与元が1つも無い権限は元から一覧に出ないので、
+   * このフラグが立つのは「付与と拒否が衝突している」ときだけになる。
+   */
+  denied: boolean;
+  /** denied=true のとき、その拒否を持つプリセット名。 */
+  deniedByPresetNames: string[];
 }
 
 /**
  * 選択中(または割当済み)のプリセット群から実効権限を計算する。
  * - 複数プリセットの合算(union)。同一キーは広い方のスコープを採用
  * - 「操作は閲覧を含意」をカタログの impliesView に沿って展開(不動点まで)
- * - カタログ(30業務タスク)に対応キーが無い含意(内部専用の *.view)は業務タスク一覧には出さない
+ * - **拒否(deny)の適用**。どれか1つのプリセットが拒否していれば、他のプリセットが付与していても
+ *   行使できない(denied=true として一覧に残し、表示側で打ち消し線+チップにする)。
+ *   packages/authz の評価器と同じく、拒否された権限は「操作は閲覧を含意」の展開元にもならない
+ *   (拒否した操作の道連れで得ていた閲覧だけが残る、という中途半端な状態を作らない)
+ * - カタログ(業務タスク)に対応キーが無い含意(内部専用の *.view)は業務タスク一覧には出さない
  *   (INTERNAL_VIEW_LABELS はプリセット編集画面の説明文でのみ使う)
+ *
+ * サーバー側(packages/authz)の判定を代替するものではない、という位置づけはこのファイル冒頭の
+ * コメントのとおり(実際の許可判定は常に apps/api が行う)。
  */
 export function computeEffectivePermissions(
-  presets: readonly { name: string; grants: readonly PermissionGrantDto[] }[],
+  presets: readonly { name: string; grants: readonly PermissionGrantDto[]; denies?: readonly string[] }[],
   catalog: readonly PermissionCatalogEntryDto[],
 ): EffectivePermissionEntry[] {
   const catalogMap = new Map(catalog.map((e) => [e.key, e]));
@@ -147,6 +166,17 @@ export function computeEffectivePermissions(
     direct: boolean;
   }
   const combined = new Map<string, Acc>();
+
+  // 拒否の合算(union)。キー -> それを拒否しているプリセット名。
+  const deniedBy = new Map<string, Set<string>>();
+  for (const preset of presets) {
+    for (const key of preset.denies ?? []) {
+      if (!catalogMap.has(key)) continue; // カタログ外キーの拒否は無視(セルフサービス権限は拒否できない)
+      const names = deniedBy.get(key) ?? new Set<string>();
+      names.add(preset.name);
+      deniedBy.set(key, names);
+    }
+  }
 
   for (const preset of presets) {
     for (const grant of preset.grants) {
@@ -167,6 +197,8 @@ export function computeEffectivePermissions(
     for (const [key, v] of Array.from(combined.entries())) {
       const catEntry = catalogMap.get(key);
       if (!catEntry) continue;
+      // 拒否された権限は含意の展開元にならない(サーバー側 applyDenies の適用順と揃える)
+      if (deniedBy.has(key)) continue;
       for (const impliedKey of catEntry.impliesView) {
         if (!catalogMap.has(impliedKey)) continue;
         const cur = combined.get(impliedKey);
@@ -193,12 +225,15 @@ export function computeEffectivePermissions(
     .map(([key, v]) => {
       const catalogEntry = catalogMap.get(key);
       if (!catalogEntry) return null;
+      const denierNames = deniedBy.get(key);
       return {
         key,
         catalogEntry,
         scope: v.scope,
         sourcePresetNames: Array.from(v.sources).sort(),
         viaImplication: !v.direct,
+        denied: denierNames !== undefined,
+        deniedByPresetNames: denierNames ? Array.from(denierNames).sort() : [],
       };
     })
     .filter((e): e is EffectivePermissionEntry => e !== null)

@@ -9,6 +9,8 @@ export interface PresetFormValue {
   name: string;
   description: string;
   grants: PermissionGrantDto[];
+  /** 拒否する権限キー(スコープなし)。 */
+  denies: string[];
 }
 
 export interface PresetFormDialogProps {
@@ -30,6 +32,12 @@ const MAX_DESCRIPTION_LENGTH = 500;
  * 権限プリセットの作成・編集フォーム(業務タスク単位のチェックボックス+スコープ選択)。
  * 平易さの要件(docs/requirements.md §4): グループ化・descriptionJa併記・危険項目の強調・
  * 「操作は閲覧を含意する」の明示、をすべてここで満たす。
+ *
+ * 拒否(deny、2026-08-24): 各項目を「付与/未設定/拒否」の3状態トグルにはせず、**独立した
+ * 「拒否」セクション**として下に分けた(判断点)。3状態トグルはチェックボックス1個の見た目で
+ * 意味が3つに分かれるため、権限設計に慣れていない担当者(このUIの想定利用者)が
+ * 「未設定」と「拒否」を取り違える。拒否は「他のプリセットの付与まで打ち消す」強い操作なので、
+ * 意図して別セクションを開かないと設定できない導線にし、警告バナーを常時添える。
  */
 export function PresetFormDialog({ mode, catalog, readOnly, initial, pending, error, onSubmit, onCancel }: PresetFormDialogProps) {
   const [name, setName] = useState(initial.name);
@@ -37,6 +45,9 @@ export function PresetFormDialog({ mode, catalog, readOnly, initial, pending, er
   const [selected, setSelected] = useState<Record<string, Scope>>(() =>
     Object.fromEntries(initial.grants.map((g) => [g.key, g.scope])),
   );
+  const [denied, setDenied] = useState<string[]>(() => [...initial.denies]);
+  /** 拒否セクションは既定で畳んでおく(使わないテナントの視界に入れない)。既存の拒否があれば開く。 */
+  const [deniesOpen, setDeniesOpen] = useState(() => initial.denies.length > 0);
   const nameRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -77,11 +88,16 @@ export function PresetFormDialog({ mode, catalog, readOnly, initial, pending, er
     setSelected((prev) => ({ ...prev, [key]: scope }));
   }
 
+  function toggleDeny(key: string) {
+    if (readOnly) return;
+    setDenied((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]));
+  }
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (readOnly) return;
     const grants: PermissionGrantDto[] = Object.entries(selected).map(([key, scope]) => ({ key, scope }));
-    onSubmit({ name, description, grants });
+    onSubmit({ name, description, grants, denies: denied });
   }
 
   return (
@@ -193,6 +209,50 @@ export function PresetFormDialog({ mode, catalog, readOnly, initial, pending, er
                   </ul>
                 </section>
               ))}
+            </div>
+
+            <div className="preset-form__denies">
+              <button
+                type="button"
+                className="preset-form__denies-toggle"
+                aria-expanded={deniesOpen}
+                onClick={() => setDeniesOpen((v) => !v)}
+              >
+                {messages.presets.deniesSectionTitle}
+                {denied.length > 0 ? (
+                  <span className="preset-form__denies-count">{messages.presets.deniesCount(denied.length)}</span>
+                ) : null}
+              </button>
+
+              {deniesOpen ? (
+                <>
+                  <p className="preset-form__denies-warning" role="note">
+                    {messages.presets.deniesWarning}
+                  </p>
+                  <p className="preset-form__denies-hint">{messages.presets.deniesHint}</p>
+
+                  {groups.map((group) => (
+                    <section key={group.id} className="preset-form__group">
+                      <h3 className="preset-form__group-title">{messages.permissions.categoryLabel[group.id]}</h3>
+                      <ul className="preset-form__deny-list">
+                        {group.entries.map((entry) => (
+                          <li key={entry.key} className="preset-form__deny-entry">
+                            <label className="preset-form__entry-header">
+                              <input
+                                type="checkbox"
+                                checked={denied.includes(entry.key)}
+                                disabled={readOnly}
+                                onChange={() => toggleDeny(entry.key)}
+                              />
+                              <span className="preset-form__entry-label">{entry.labelJa}</span>
+                            </label>
+                          </li>
+                        ))}
+                      </ul>
+                    </section>
+                  ))}
+                </>
+              ) : null}
             </div>
 
             {error ? (

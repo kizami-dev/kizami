@@ -591,7 +591,7 @@ export function MembersView() {
   const effectiveEntries = useMemo(() => {
     const selected = presets.filter((p) => selectedPresetIds.includes(p.id));
     return computeEffectivePermissions(
-      selected.map((p) => ({ name: p.name, grants: p.grants })),
+      selected.map((p) => ({ name: p.name, grants: p.grants, denies: p.denies })),
       catalog,
     );
   }, [presets, selectedPresetIds, catalog]);

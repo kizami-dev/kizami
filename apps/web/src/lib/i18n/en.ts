@@ -1908,6 +1908,9 @@ export const en = {
     /** Improvement from self-review: appending this directly after the preset name in parentheses was dense and hard to read.
      * Added a leading period to break it into its own sentence, in plainer wording. */
     effectiveViaImplication: ". A view automatically included with another permission",
+    /** Chip and note for permissions cancelled by a deny rule (added 2026-08-24). */
+    effectiveDeniedChip: "Denied",
+    effectiveDeniedBy: (names: string) => `Denied by "${names}", so this permission cannot be used`,
 
     errors: {
       invalid_body: "Please check the entered content",
@@ -1986,6 +1989,12 @@ export const en = {
     dangerousBadge: "Sensitive",
     dangerousNote: "This permission has significant impact. Please carefully confirm who you're granting it to.",
     impliesViewPrefix: "This permission includes the following views: ",
+    /** Deny section (added 2026-08-24). See docs/design/permission-catalog.md. */
+    deniesSectionTitle: "Deny rules",
+    deniesCount: (n: number) => `${n} denied`,
+    deniesWarning: "Deny takes precedence over every grant. The permission is disabled even if another preset grants it",
+    deniesHint:
+      "Use this only to say \"this person must never do it\". Usually it is enough to simply not grant the permission. Your own punches, your own requests and viewing your own records can never be denied.",
     save: "Save",
     saving: "Saving…",
     cancel: "Cancel",
@@ -1999,6 +2008,8 @@ export const en = {
       invalid_name: "Please enter a name between 1 and 100 characters",
       invalid_description: "Description must be 500 characters or fewer",
       invalid_grants: "Please check the selected permissions",
+      invalid_denies: "Please check the permissions selected for denial",
+      last_admin: "Saving this change would leave the tenant with nobody who can manage permission presets",
       invalid_body: "Please check the entered content",
       not_found: "The permission preset could not be found",
       system_preset: "Built-in presets can't be edited or deleted",

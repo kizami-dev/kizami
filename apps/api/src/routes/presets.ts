@@ -13,10 +13,17 @@
  * - 自己降格の禁止: 自分自身への割当変更で `permission.preset.manage` /
  *   `permission.assignment.manage` のいずれかを失う場合は 409 self_demotion
  * - 最後の権限管理保持者の保護: テナント内で `permission.preset.manage` を持つ最後の1人から
- *   その権限を外す操作(対象が自分でも他人でも)は 409 last_admin
+ *   その権限を外す操作(対象が自分でも他人でも)は 409 last_admin。**割当変更だけでなく
+ *   プリセットの編集(PATCH /presets/:id)にも適用する** — 拒否ルール(deny)の導入により、
+ *   プリセットに `permission.preset.manage` の deny を1つ足すだけで、割当を一切触らずに
+ *   テナントから権限管理者を消せてしまうため(2026-08-24)
  *
- * 判定は「割当変更後の仮の実効権限」を実際に保存する前に計算して行う
- * (apps/api/src/authz.ts の effectivePermissionsFromRawGrantSets を再利用)。
+ * 拒否ルール(deny、2026-08-24): プリセットは grants と別に denies(権限キーの配列・
+ * スコープなし)を持てる。実効権限は「全プリセットの grants の union − 全プリセットの
+ * denies の union」。詳細は docs/design/permission-catalog.md §拒否(deny)ルール。
+ *
+ * 判定は「割当変更後・編集後の仮の実効権限」を実際に保存する前に計算して行う
+ * (apps/api/src/authz.ts の effectivePermissionsFromPresets を再利用)。
  */
 
 import { Hono } from "hono";
@@ -28,6 +35,7 @@ import {
   insertAuditLog,
   listAssignedPresetGrants,
   listPresets,
+  listTenantPresetAssignmentRows,
   listTenantPresetGrantsByUser,
   replacePresetAssignmentsForUser,
   updatePreset,
@@ -35,11 +43,12 @@ import {
   type Database,
   type PermissionPreset,
   type RawPermissionGrant,
+  type RawPresetPermissions,
 } from "@kizami/db";
 import { PERMISSION_CATALOG, scopeRank } from "@kizami/authz";
 import type { Scope } from "@kizami/authz";
 import type { AppEnv } from "../auth/middleware.js";
-import { effectivePermissionsFromRawGrantSets, requirePermission } from "../authz.js";
+import { effectivePermissionsFromPresets, requirePermission } from "../authz.js";
 import { nowMinutes } from "../lib/time.js";
 
 export const PRESET_MANAGE_PERMISSION = "permission.preset.manage";
@@ -58,7 +67,14 @@ function serializePreset(p: PermissionPreset) {
     description: p.description,
     isSystem: p.isSystem,
     grants: JSON.parse(p.grants) as RawPermissionGrant[],
+    /** 拒否する権限キー(スコープなし)。deny 未使用のプリセットでは常に空配列。 */
+    denies: JSON.parse(p.denies) as string[],
   };
+}
+
+/** プリセット行(DB)を実効権限計算の入力へ変換する。 */
+function presetPermissionsOf(p: PermissionPreset): RawPresetPermissions {
+  return { grants: JSON.parse(p.grants) as RawPermissionGrant[], denies: JSON.parse(p.denies) as string[] };
 }
 
 async function parseJsonBody(c: { req: { json: () => Promise<unknown> } }): Promise<Record<string, unknown> | null> {
@@ -111,6 +127,32 @@ function validateGrants(value: unknown): ValidateGrantsResult {
   return { ok: true, grants };
 }
 
+type ValidateDeniesResult = { ok: true; denies: string[] } | { ok: false };
+
+/**
+ * denies[] の各要素(権限キーの文字列)がカタログに実在するかを検証する。
+ * **deny はスコープを持たない**(全スコープでの全面的な拒否)ため、grants と違い
+ * scope の検証は無い — 理由は packages/authz/src/types.ts の Deny 型のコメント参照。
+ *
+ * セルフサービス権限(自分の打刻等)はそもそもカタログに含まれないため、ここで自動的に
+ * 弾かれる(評価器側でも UNDENIABLE_PERMISSIONS で二重に守っている)。
+ * 同一キーの重複指定も不正として扱う。
+ */
+function validateDenies(value: unknown): ValidateDeniesResult {
+  if (!Array.isArray(value)) return { ok: false };
+
+  const denies: string[] = [];
+  const seen = new Set<string>();
+  for (const item of value) {
+    if (typeof item !== "string") return { ok: false };
+    if (!CATALOG_MAP.has(item)) return { ok: false };
+    if (seen.has(item)) return { ok: false };
+    seen.add(item);
+    denies.push(item);
+  }
+  return { ok: true, denies };
+}
+
 export function createPresetsRoutes(db: Database) {
   const app = new Hono<AppEnv>();
 
@@ -139,6 +181,9 @@ export function createPresetsRoutes(db: Database) {
     if (!isValidDescriptionField(description)) return c.json({ error: "invalid_description" }, 400);
     const grantsResult = validateGrants(body.grants);
     if (!grantsResult.ok) return c.json({ error: "invalid_grants" }, 400);
+    // denies は省略可(未指定 = 拒否なし)。既存クライアントとの後方互換のため必須にしない。
+    const deniesResult = validateDenies(body.denies ?? []);
+    if (!deniesResult.ok) return c.json({ error: "invalid_denies" }, 400);
 
     const now = nowMinutes();
     const created = await createPreset(db, {
@@ -147,6 +192,7 @@ export function createPresetsRoutes(db: Database) {
       name: body.name.trim(),
       description,
       grants: JSON.stringify(grantsResult.grants),
+      denies: JSON.stringify(deniesResult.denies),
       createdAt: now,
     });
 
@@ -155,7 +201,12 @@ export function createPresetsRoutes(db: Database) {
       actorId: user.id,
       action: "permission_preset.create",
       presetId: created.id,
-      detail: { name: created.name, description: created.description, grants: grantsResult.grants },
+      detail: {
+        name: created.name,
+        description: created.description,
+        grants: grantsResult.grants,
+        denies: deniesResult.denies,
+      },
       now,
     });
 
@@ -174,7 +225,7 @@ export function createPresetsRoutes(db: Database) {
     const body = await parseJsonBody(c);
     if (body === null) return c.json({ error: "invalid_body" }, 400);
 
-    const updates: { name?: string; description?: string | null; grants?: string } = {};
+    const updates: { name?: string; description?: string | null; grants?: string; denies?: string } = {};
 
     if (body.name !== undefined) {
       if (!isValidNameField(body.name)) return c.json({ error: "invalid_name" }, 400);
@@ -189,6 +240,25 @@ export function createPresetsRoutes(db: Database) {
       if (!grantsResult.ok) return c.json({ error: "invalid_grants" }, 400);
       updates.grants = JSON.stringify(grantsResult.grants);
     }
+    if (body.denies !== undefined) {
+      const deniesResult = validateDenies(body.denies);
+      if (!deniesResult.ok) return c.json({ error: "invalid_denies" }, 400);
+      updates.denies = JSON.stringify(deniesResult.denies);
+    }
+
+    // 固定原則: 最後の「権限管理」保持者の保護。grants を削る編集でも deny を足す編集でも、
+    // 保存後にテナントから permission.preset.manage 保持者が0人になるなら拒否する。
+    if (updates.grants !== undefined || updates.denies !== undefined) {
+      const guard = await guardLastPresetManageHolder(db, {
+        tenantId: user.tenantId,
+        presetId: existing.id,
+        next: {
+          grants: JSON.parse(updates.grants ?? existing.grants) as RawPermissionGrant[],
+          denies: JSON.parse(updates.denies ?? existing.denies) as string[],
+        },
+      });
+      if (!guard.ok) return c.json({ error: guard.error }, 409);
+    }
 
     const updated = await updatePreset(db, { id: existing.id, tenantId: user.tenantId, ...updates });
     if (!updated) return c.json({ error: "not_found" }, 404);
@@ -200,8 +270,18 @@ export function createPresetsRoutes(db: Database) {
       action: "permission_preset.update",
       presetId: updated.id,
       detail: {
-        before: { name: existing.name, description: existing.description, grants: JSON.parse(existing.grants) as unknown },
-        after: { name: updated.name, description: updated.description, grants: JSON.parse(updated.grants) as unknown },
+        before: {
+          name: existing.name,
+          description: existing.description,
+          grants: JSON.parse(existing.grants) as unknown,
+          denies: JSON.parse(existing.denies) as unknown,
+        },
+        after: {
+          name: updated.name,
+          description: updated.description,
+          grants: JSON.parse(updated.grants) as unknown,
+          denies: JSON.parse(updated.denies) as unknown,
+        },
       },
       now,
     });
@@ -237,6 +317,64 @@ export function createPresetsRoutes(db: Database) {
   });
 
   return app;
+}
+
+/**
+ * 固定原則: 最後の「権限管理」保持者の保護 — **プリセット編集版**(2026-08-24、deny 導入に伴い追加)。
+ *
+ * 割当変更版(assignPresetsToMember)は「対象ユーザー1人の実効権限が変わる」前提だが、
+ * プリセットの編集はそのプリセットを割り当てられた**全ユーザー**の実効権限を一斉に変える。
+ * 特に deny は他プリセットの付与も打ち消すため、たった1つの deny 追加でテナント内の
+ * `permission.preset.manage` 保持者を0人にできてしまう(誰も権限プリセットを編集できなくなり、
+ * DB を直接触る以外の回復手段が無くなる)。そこで保存前に、編集後の内容でテナント全ユーザーの
+ * 実効権限を計算し直し、保持者が0人になるなら 409 last_admin で拒否する。
+ *
+ * 「編集前は1人以上いたが編集後は0人」だけを拒否する(編集前から0人の異常なテナントでは、
+ * この編集がその状態を悪化させたわけではないため通す — 別の経路で回復してもらう)。
+ */
+async function guardLastPresetManageHolder(
+  db: Database,
+  params: { tenantId: string; presetId: string; next: RawPresetPermissions },
+): Promise<{ ok: true } | { ok: false; error: "last_admin" }> {
+  const presetsByUser = await listTenantPresetPermissionsByUserWithOverride(db, params);
+
+  let holdersBefore = 0;
+  let holdersAfter = 0;
+  for (const { before, after } of presetsByUser.values()) {
+    if (effectivePermissionsFromPresets(before).has(PRESET_MANAGE_PERMISSION)) holdersBefore++;
+    if (effectivePermissionsFromPresets(after).has(PRESET_MANAGE_PERMISSION)) holdersAfter++;
+  }
+
+  if (holdersBefore > 0 && holdersAfter === 0) return { ok: false, error: "last_admin" };
+  return { ok: true };
+}
+
+/**
+ * テナント全ユーザーについて「現在の割当プリセット群」と「対象プリセットだけ編集後の内容へ
+ * 差し替えた場合の割当プリセット群」の両方を返す。
+ *
+ * listTenantPresetGrantsByUser は preset の内容しか返さない(どの preset 由来かが分からない)
+ * ため、ここでは割当を presetId 付きで読み直す代わりに、編集対象プリセットの「編集前の内容」と
+ * 一致する要素を差し替える…のではなく、割当を直接引き直して確実に対応付ける(判断点:
+ * 内容一致による差し替えは同一内容の別プリセットを取り違えるため)。
+ */
+async function listTenantPresetPermissionsByUserWithOverride(
+  db: Database,
+  params: { tenantId: string; presetId: string; next: RawPresetPermissions },
+): Promise<Map<string, { before: RawPresetPermissions[]; after: RawPresetPermissions[] }>> {
+  const rows = await listTenantPresetAssignmentRows(db, params.tenantId);
+  const map = new Map<string, { before: RawPresetPermissions[]; after: RawPresetPermissions[] }>();
+  for (const row of rows) {
+    const entry = map.get(row.userId) ?? { before: [], after: [] };
+    const current: RawPresetPermissions = {
+      grants: JSON.parse(row.grants) as RawPermissionGrant[],
+      denies: JSON.parse(row.denies) as string[],
+    };
+    entry.before.push(current);
+    entry.after.push(row.presetId === params.presetId ? params.next : current);
+    map.set(row.userId, entry);
+  }
+  return map;
 }
 
 async function insertAuditLogForPreset(
@@ -282,11 +420,11 @@ export async function assignPresetsToMember(params: AssignPresetsParams): Promis
     presets.push(preset);
   }
 
-  const beforeRawGrantSets = await listAssignedPresetGrants(db, { tenantId: actor.tenantId, userId: targetUserId });
-  const afterRawGrantSets: RawPermissionGrant[][] = presets.map((p) => JSON.parse(p.grants) as RawPermissionGrant[]);
+  const beforePresets = await listAssignedPresetGrants(db, { tenantId: actor.tenantId, userId: targetUserId });
+  const afterPresets: RawPresetPermissions[] = presets.map(presetPermissionsOf);
 
-  const beforeEffective = effectivePermissionsFromRawGrantSets(beforeRawGrantSets);
-  const afterEffective = effectivePermissionsFromRawGrantSets(afterRawGrantSets);
+  const beforeEffective = effectivePermissionsFromPresets(beforePresets);
+  const afterEffective = effectivePermissionsFromPresets(afterPresets);
 
   const isSelf = targetUserId === actor.id;
 
@@ -313,11 +451,11 @@ export async function assignPresetsToMember(params: AssignPresetsParams): Promis
   const heldPresetManageBefore = beforeEffective.has(PRESET_MANAGE_PERMISSION);
   const holdsPresetManageAfter = afterEffective.has(PRESET_MANAGE_PERMISSION);
   if (heldPresetManageBefore && !holdsPresetManageAfter) {
-    const allGrantsByUser = await listTenantPresetGrantsByUser(db, actor.tenantId);
+    const allPresetsByUser = await listTenantPresetGrantsByUser(db, actor.tenantId);
     let otherHolders = 0;
-    for (const [userId, rawGrantSets] of allGrantsByUser) {
+    for (const [userId, userPresets] of allPresetsByUser) {
       if (userId === targetUserId) continue;
-      const effective = effectivePermissionsFromRawGrantSets(rawGrantSets);
+      const effective = effectivePermissionsFromPresets(userPresets);
       if (effective.has(PRESET_MANAGE_PERMISSION)) otherHolders++;
     }
     if (otherHolders === 0) {

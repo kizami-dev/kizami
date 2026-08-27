@@ -87,7 +87,7 @@ export function PresetsView() {
 
   function openCreate() {
     setFormError(null);
-    setFormState({ mode: "create", readOnly: false, initial: { name: "", description: "", grants: [] } });
+    setFormState({ mode: "create", readOnly: false, initial: { name: "", description: "", grants: [], denies: [] } });
   }
 
   function openEdit(preset: PermissionPresetDto) {
@@ -96,7 +96,7 @@ export function PresetsView() {
       mode: "edit",
       editingId: preset.id,
       readOnly: preset.isSystem,
-      initial: { name: preset.name, description: preset.description ?? "", grants: preset.grants },
+      initial: { name: preset.name, description: preset.description ?? "", grants: preset.grants, denies: preset.denies },
     });
   }
 
@@ -105,7 +105,12 @@ export function PresetsView() {
     setFormState({
       mode: "create",
       readOnly: false,
-      initial: { name: messages.presets.duplicateNameSuffix(preset.name), description: preset.description ?? "", grants: preset.grants },
+      initial: {
+        name: messages.presets.duplicateNameSuffix(preset.name),
+        description: preset.description ?? "",
+        grants: preset.grants,
+        denies: preset.denies,
+      },
     });
   }
 
@@ -116,9 +121,14 @@ export function PresetsView() {
     const description = value.description.trim() === "" ? null : value.description;
     try {
       if (formState.mode === "create") {
-        await api.createPreset({ name: value.name, description, grants: value.grants });
+        await api.createPreset({ name: value.name, description, grants: value.grants, denies: value.denies });
       } else if (formState.editingId) {
-        await api.updatePreset(formState.editingId, { name: value.name, description, grants: value.grants });
+        await api.updatePreset(formState.editingId, {
+          name: value.name,
+          description,
+          grants: value.grants,
+          denies: value.denies,
+        });
       }
       setFormState(null);
       setReloadKey((k) => k + 1);

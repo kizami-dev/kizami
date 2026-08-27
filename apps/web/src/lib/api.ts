@@ -784,6 +784,12 @@ export interface PermissionPresetDto {
   description: string | null;
   isSystem: boolean;
   grants: PermissionGrantDto[];
+  /**
+   * 拒否する権限キー(2026-08-24 追加)。**スコープを持たない**(全スコープでの全面的な拒否)。
+   * 拒否は他のどのプリセットの付与にも優先する — 詳細は
+   * docs/design/permission-catalog.md §拒否(deny)ルール。
+   */
+  denies: string[];
 }
 
 /** GET /presets/catalog(packages/authz/src/catalog.ts の PERMISSION_CATALOG そのまま)。 */
@@ -800,12 +806,16 @@ export interface CreatePresetInput {
   name: string;
   description?: string | null;
   grants: PermissionGrantDto[];
+  /** 拒否する権限キー(省略時は拒否なし)。 */
+  denies?: string[];
 }
 
 export interface UpdatePresetInput {
   name?: string;
   description?: string | null;
   grants?: PermissionGrantDto[];
+  /** 拒否する権限キー(省略時は変更しない)。 */
+  denies?: string[];
 }
 
 /** 締め状態のイベント種別。close(締め)/reopen(解除)/amend(締め後修正の反映)。packages/db の ClosingEventKind と一致。 */

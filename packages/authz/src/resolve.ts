@@ -1,17 +1,20 @@
 /**
  * 権限エンジン本体。
  *
- * 評価は「grantsの合成→判定」の2段構成に保つ(denyは実装しないが、将来の追加を妨げない
- * ため — docs/requirements.md §4「評価器はdeny追加を妨げない構造にしておく」):
+ * 評価は「grantsの合成→denyの適用→判定」の3段構成:
  *   1. resolveEffectiveGrants(): 複数プリセットの合算(union)+固定原則(セルフサービス権限)
  *   2. expandImplied(): 「操作は閲覧を含意する」の展開
- *   3. hasPermission(): 1./2. の結果に対する判定のみ(ここに deny を差し込める)
+ *   3. hasPermission(): 1./2. の結果に対する判定のみ
+ *
+ * 拒否ルール(deny、2026-08-24 実装。docs/requirements.md §4 のロードマップ項目「権限denyルール」)は
+ * 1. と 2. の**両方の直後**に適用する(applyDenies)。理由は resolveEffectivePermissions のコメント参照。
+ * 全部入りの入口は resolveEffectivePermissions() で、apps/api はこれ1本を呼ぶ。
  */
 
 import { IMPLIED_VIEW_PERMISSIONS } from "./implied.js";
-import { SELF_SERVICE_GRANTS } from "./self-service.js";
+import { SELF_SERVICE_GRANTS, isDeniablePermission } from "./self-service.js";
 import { widerScope, scopeSatisfies } from "./scope.js";
-import type { Grant, PermissionKey, Scope } from "./types.js";
+import type { Deny, Grant, PermissionKey, PresetPermissions, Scope } from "./types.js";
 
 /**
  * 複数プリセットの grants を合算(union)する。同一権限に複数スコープが来たら広い方を採用する
@@ -69,6 +72,52 @@ export function expandImplied(effective: Map<PermissionKey, Scope>): Map<Permiss
   }
 
   return current;
+}
+
+/**
+ * 拒否(deny)を実効権限マップへ適用する。**denyはスコープを持たず全面的**なので、
+ * 該当キーをマップから丸ごと取り除くだけでよい(部分スコープの deny を持たない理由は
+ * types.ts の Deny 型のコメント参照)。
+ *
+ * セルフサービス権限(UNDENIABLE_PERMISSIONS)への deny は黙って無視する
+ * (self-service.ts のコメント参照)。
+ *
+ * 入力のマップは変更せず、新しいマップを返す。
+ */
+export function applyDenies(effective: Map<PermissionKey, Scope>, denies: Iterable<Deny>): Map<PermissionKey, Scope> {
+  const result = new Map(effective);
+  for (const key of denies) {
+    if (!isDeniablePermission(key)) continue;
+    result.delete(key);
+  }
+  return result;
+}
+
+/**
+ * 複数プリセット(付与+拒否)から実効権限の最終形を求める、権限エンジンの唯一の入口。
+ *
+ * 合成規則: **(全プリセットの grants の union) − (全プリセットの denies の union)**。
+ * 1つでも deny を持つプリセットが割り当てられていれば、他のどのプリセットが付与していても
+ * その権限は無効になる(deny は付与に優先する)。
+ *
+ * deny を「合算直後」と「含意展開後」の2回適用しているのは、両方に意味があるため(判断点):
+ *   - 合算直後: 拒否された操作権限は、そこから「操作は閲覧を含意する」の展開も起こさない。
+ *     例) `closing.execute` を拒否 → `closing.view` も(他に付与元が無ければ)得られない。
+ *     拒否したのに拒否した権限由来の閲覧だけ残る、という中途半端な状態を作らない。
+ *   - 含意展開後: 他の権限の含意によって拒否対象が復活するのを防ぐ。
+ *     例) `attendance.record.view` を拒否 → `shift.manage` が含意していても得られない。
+ */
+export function resolveEffectivePermissions(presets: readonly PresetPermissions[]): Map<PermissionKey, Scope> {
+  const denies: Deny[] = [];
+  for (const preset of presets) {
+    if (preset.denies) denies.push(...preset.denies);
+  }
+
+  const unioned = applyDenies(
+    resolveEffectiveGrants(presets.map((p) => [...p.grants])),
+    denies,
+  );
+  return applyDenies(expandImplied(unioned), denies);
 }
 
 /** 実効権限マップが key を requiredScope 以上のスコープで保持しているか判定する。 */

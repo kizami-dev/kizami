@@ -641,6 +641,34 @@ td.org-table__detail-cell {
   color: var(--k-ink-soft);
 }
 
+/* 拒否(deny)された実効権限: 取り消し線+「拒否」チップ(2026-08-24) */
+.effective-perms__item--denied {
+  border-left-color: var(--k-magenta-ink);
+}
+
+.effective-perms__item--denied .effective-perms__item-label {
+  text-decoration: line-through;
+  color: var(--k-ink-soft);
+}
+
+.effective-perms__denied-chip {
+  display: inline-flex;
+  align-items: center;
+  margin-left: var(--space-2);
+  border-radius: 999px;
+  padding: 1px var(--space-2);
+  font-size: 0.7rem;
+  font-weight: 700;
+  border: 1px solid var(--k-magenta-ink);
+  color: var(--k-magenta-ink);
+  text-decoration: none;
+}
+
+.effective-perms__item-denied-note {
+  font-size: 0.78rem;
+  color: var(--k-magenta-ink);
+}
+
 /* ---- 権限プリセット編集フォーム ---- */
 
 .k-modal--preset {
@@ -735,6 +763,63 @@ td.org-table__detail-cell {
   color: var(--k-ink-soft);
   padding-left: 1.65rem;
   margin-top: 2px;
+}
+
+/* ---- 拒否(deny)セクション(2026-08-24) ---- */
+
+.preset-form__denies {
+  margin-top: var(--space-4);
+  border-top: var(--border-hair);
+  padding-top: var(--space-3);
+}
+
+.preset-form__denies-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--k-magenta-ink);
+}
+
+.preset-form__denies-count {
+  border-radius: 999px;
+  padding: 1px var(--space-2);
+  font-size: 0.7rem;
+  border: 1px solid var(--k-magenta-ink);
+}
+
+.preset-form__denies-warning {
+  margin-top: var(--space-2);
+  border: 1px solid var(--k-magenta-ink);
+  border-radius: var(--radius-s);
+  padding: var(--space-2) var(--space-3);
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--k-magenta-ink);
+}
+
+.preset-form__denies-hint {
+  margin-top: var(--space-2);
+  font-size: 0.8rem;
+  color: var(--k-ink-soft);
+}
+
+.preset-form__deny-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.preset-form__deny-entry .preset-form__entry-label {
+  font-size: 0.85rem;
 }
 
 .preset-form__entry-details {

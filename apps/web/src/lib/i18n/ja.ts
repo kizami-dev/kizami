@@ -1912,6 +1912,9 @@ export const ja = {
     /** 自己批評での改善: プリセット名に直接続けて括弧書きしていたため密度が高く読みづらかった。
      * 先頭に句読点を足して文として区切り、平易な言い回しにした。 */
     effectiveViaImplication: "。他の権限に自動的に含まれる閲覧です",
+    /** 拒否(deny)された項目のチップ・注記(2026-08-24 追加)。付与と拒否が衝突したときだけ出る。 */
+    effectiveDeniedChip: "拒否",
+    effectiveDeniedBy: (names: string) => `「${names}」の拒否設定により、この権限は行使できません`,
 
     errors: {
       invalid_body: "入力内容を確認してください",
@@ -1990,6 +1993,12 @@ export const ja = {
     dangerousBadge: "重要",
     dangerousNote: "この権限は影響が大きい操作です。付与する相手をよく確認してください。",
     impliesViewPrefix: "この権限には次の閲覧が含まれます: ",
+    /** 拒否(deny)セクション(2026-08-24 追加)。docs/design/permission-catalog.md §拒否(deny)ルール。 */
+    deniesSectionTitle: "拒否(deny)の設定",
+    deniesCount: (n: number) => `${n}件を拒否中`,
+    deniesWarning: "拒否はすべての付与に優先します。別のプリセットで付与されていても無効になります",
+    deniesHint:
+      "「この人にだけは絶対にさせない」を表すための設定です。通常は付与しないだけで足ります。自分の打刻・自分の申請・自分の記録閲覧は拒否できません。",
     save: "保存",
     saving: "保存中…",
     cancel: "キャンセル",
@@ -2003,6 +2012,8 @@ export const ja = {
       invalid_name: "名前を1〜100文字で入力してください",
       invalid_description: "説明は500文字以内で入力してください",
       invalid_grants: "選択した権限の内容を確認してください",
+      invalid_denies: "拒否に選んだ権限の内容を確認してください",
+      last_admin: "この変更を保存すると、権限プリセットを管理できる人がテナントから居なくなります",
       invalid_body: "入力内容を確認してください",
       not_found: "対象の権限プリセットが見つかりません",
       system_preset: "標準プリセットは編集・削除できません",

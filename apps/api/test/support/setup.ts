@@ -340,3 +340,31 @@ export async function grantPermission(
     createdAt: 0,
   });
 }
+
+/**
+ * テスト用: 権限を1つだけ拒否する(grants は空の)プリセットを作り、ユーザーへ割り当てる。
+ * grantPermission の deny 版(2026-08-24、拒否ルール)。deny はスコープを持たないので
+ * scope の引数は無い(packages/authz/src/types.ts の Deny 型のコメント参照)。
+ */
+export async function denyPermission(
+  db: Database,
+  params: { tenantId: string; userId: string; permission: string },
+): Promise<void> {
+  const presetId = uuidv7();
+  await db.insert(permissionPresets).values({
+    id: presetId,
+    tenantId: params.tenantId,
+    name: `test-deny:${params.permission}`,
+    grants: JSON.stringify([]),
+    denies: JSON.stringify([params.permission]),
+    isSystem: false,
+    createdAt: 0,
+  });
+  await db.insert(presetAssignments).values({
+    id: uuidv7(),
+    tenantId: params.tenantId,
+    userId: params.userId,
+    presetId,
+    createdAt: 0,
+  });
+}

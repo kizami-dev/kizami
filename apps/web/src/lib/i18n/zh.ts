@@ -1854,6 +1854,9 @@ export const zh = {
     effectiveScopeLabel: "适用范围",
     effectiveSourceLabel: "来源",
     effectiveViaImplication: "。这是其他权限自动包含的查看权限",
+    /** 被拒绝(deny)项目的标签与注释(2026-08-24 添加)。 */
+    effectiveDeniedChip: "拒绝",
+    effectiveDeniedBy: (names: string) => `由于「${names}」的拒绝设置,此权限无法行使`,
 
     errors: {
       invalid_body: "请确认输入内容",
@@ -1932,6 +1935,12 @@ export const zh = {
     dangerousBadge: "重要",
     dangerousNote: "此权限影响较大,请谨慎确认授予对象。",
     impliesViewPrefix: "此权限包含以下查看权限: ",
+    /** 拒绝(deny)区块(2026-08-24 添加)。参见 docs/design/permission-catalog.md。 */
+    deniesSectionTitle: "拒绝(deny)设置",
+    deniesCount: (n: number) => `已拒绝 ${n} 项`,
+    deniesWarning: "拒绝优先于所有授予。即使其他预设已授予该权限也会失效",
+    deniesHint:
+      "这是用于表示「绝对不让此人执行」的设置。通常只要不授予即可。本人的打卡、本人的申请、本人记录的查看无法被拒绝。",
     save: "保存",
     saving: "保存中…",
     cancel: "取消",
@@ -1945,6 +1954,8 @@ export const zh = {
       invalid_name: "名称请输入1〜100个字符",
       invalid_description: "说明请控制在500字以内",
       invalid_grants: "请确认所选权限的内容",
+      invalid_denies: "请确认选为拒绝的权限内容",
+      last_admin: "保存此更改后,租户内将没有人能够管理权限预设",
       invalid_body: "请确认输入内容",
       not_found: "未找到目标权限预设",
       system_preset: "标准预设无法编辑或删除",

@@ -10,7 +10,7 @@
  * 含まれるか、の2段で決まる。この2段は既存のアクセス可否判定と全く同じ問いなので、
  * 二重実装せず既存部品をそのまま再利用する:
  *
- * - apps/api/src/authz.ts の effectivePermissionsFromRawGrantSets: プリセット grants の合算+
+ * - apps/api/src/authz.ts の effectivePermissionsFromPresets: プリセット grants の合算+
  *   「操作は閲覧を含意」の展開(loadEffectivePermissions が1ユーザー分に対して行うのと同じ計算)。
  * - apps/api/src/lib/scope.ts の resolveAccessibleUserIds: 実効権限のスコープ→対象ユーザーID集合
  *   (routes/corrections.ts 等が承認時に「対象ユーザーがスコープ内か」を判定するのと同じ関数)。
@@ -41,7 +41,7 @@
 
 import { listTenantPresetGrantsByUser, type Database } from "@kizami/db";
 import type { PermissionKey } from "@kizami/authz";
-import { effectivePermissionsFromRawGrantSets } from "../authz.js";
+import { effectivePermissionsFromPresets } from "../authz.js";
 import { resolveAccessibleUserIds, type ScopeActor } from "./scope.js";
 
 export interface ResolveApproversForUserParams {
@@ -63,7 +63,7 @@ export async function resolveApproversForUser(db: Database, params: ResolveAppro
 
   const approvers: string[] = [];
   for (const [candidateUserId, rawGrantSets] of grantsByUser) {
-    const effective = effectivePermissionsFromRawGrantSets(rawGrantSets);
+    const effective = effectivePermissionsFromPresets(rawGrantSets);
     if (!effective.has(permission)) continue;
 
     const actor: ScopeActor = { id: candidateUserId, tenantId, permissions: effective };
@@ -99,7 +99,7 @@ export async function resolveTenantScopeApprovers(
 
   const approvers: string[] = [];
   for (const [candidateUserId, rawGrantSets] of grantsByUser) {
-    const effective = effectivePermissionsFromRawGrantSets(rawGrantSets);
+    const effective = effectivePermissionsFromPresets(rawGrantSets);
     if (effective.get(permission) === "tenant") {
       approvers.push(candidateUserId);
     }

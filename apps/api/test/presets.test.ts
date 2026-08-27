@@ -3,7 +3,7 @@ import { PERMISSION_CATALOG } from "@kizami/authz";
 import { auditLogs, permissionPresets, uuidv7, type Database } from "@kizami/db";
 import { eq } from "drizzle-orm";
 import { createApp } from "../src/app.js";
-import { grantPermission, loginAndGetCookie, setupSecondUser, setupTestDb } from "./support/setup.js";
+import { denyPermission, grantPermission, loginAndGetCookie, setupSecondUser, setupTestDb } from "./support/setup.js";
 
 async function auditActionsFor(db: Database, tenantId: string): Promise<string[]> {
   const rows = await db.select().from(auditLogs).where(eq(auditLogs.tenantId, tenantId));
@@ -49,6 +49,241 @@ describe("presets API", () => {
       expect(res.status).toBe(200);
       const body = (await res.json()) as { catalog: unknown[] };
       expect(body.catalog.length).toBe(PERMISSION_CATALOG.length);
+    });
+  });
+
+  /**
+   * 拒否ルール(deny、2026-08-24。docs/design/permission-catalog.md §拒否(deny)ルール)。
+   * deny はスコープを持たず全面的で、どのプリセットの付与にも優先する。
+   */
+  describe("denies(拒否ルール)", () => {
+    it("POST /presets accepts denies and GET /presets returns them (UI 用シリアライズ)", async () => {
+      const { db, tenantId, userId, email, password } = await setupTestDb();
+      await grantPermission(db, { tenantId, userId, permission: "permission.preset.manage", scope: "tenant" });
+      const app = createApp({ db });
+      const cookie = await loginAndGetCookie(app, email, password);
+
+      const created = await app.request("/presets", {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie },
+        body: JSON.stringify({
+          name: "締め担当(締め実行は禁止)",
+          grants: [{ key: "closing.view", scope: "tenant" }],
+          denies: ["closing.execute"],
+        }),
+      });
+      expect(created.status).toBe(201);
+      expect((await created.json()) as { preset: { denies: string[] } }).toMatchObject({
+        preset: { denies: ["closing.execute"] },
+      });
+
+      const list = await app.request("/presets", { headers: { cookie } });
+      const body = (await list.json()) as { presets: { name: string; grants: unknown[]; denies: string[] }[] };
+      const target = body.presets.find((p) => p.name === "締め担当(締め実行は禁止)");
+      expect(target?.denies).toEqual(["closing.execute"]);
+      // deny を持たないプリセット(grantPermission が作ったもの)は常に空配列で返る
+      expect(body.presets.every((p) => Array.isArray(p.denies))).toBe(true);
+    });
+
+    it("POST /presets omitting denies defaults to an empty list (後方互換)", async () => {
+      const { db, tenantId, userId, email, password } = await setupTestDb();
+      await grantPermission(db, { tenantId, userId, permission: "permission.preset.manage", scope: "tenant" });
+      const app = createApp({ db });
+      const cookie = await loginAndGetCookie(app, email, password);
+
+      const res = await app.request("/presets", {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie },
+        body: JSON.stringify({ name: "拒否なし", grants: [] }),
+      });
+      expect(res.status).toBe(201);
+      expect((await res.json()) as { preset: { denies: string[] } }).toMatchObject({ preset: { denies: [] } });
+    });
+
+    it("returns 400 invalid_denies for a permission key that doesn't exist in the catalog", async () => {
+      const { db, tenantId, userId, email, password } = await setupTestDb();
+      await grantPermission(db, { tenantId, userId, permission: "permission.preset.manage", scope: "tenant" });
+      const app = createApp({ db });
+      const cookie = await loginAndGetCookie(app, email, password);
+
+      const res = await app.request("/presets", {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie },
+        body: JSON.stringify({ name: "x", grants: [], denies: ["not.a.real.permission"] }),
+      });
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error: "invalid_denies" });
+    });
+
+    it("returns 400 invalid_denies when trying to deny a self-service permission", async () => {
+      const { db, tenantId, userId, email, password } = await setupTestDb();
+      await grantPermission(db, { tenantId, userId, permission: "permission.preset.manage", scope: "tenant" });
+      const app = createApp({ db });
+      const cookie = await loginAndGetCookie(app, email, password);
+
+      // セルフサービス権限はカタログに含まれない(=拒否できない)ため invalid_denies になる
+      const res = await app.request("/presets", {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie },
+        body: JSON.stringify({ name: "x", grants: [], denies: ["self_service.punch"] }),
+      });
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error: "invalid_denies" });
+    });
+
+    it("returns 400 invalid_denies for a duplicated key", async () => {
+      const { db, tenantId, userId, email, password } = await setupTestDb();
+      await grantPermission(db, { tenantId, userId, permission: "permission.preset.manage", scope: "tenant" });
+      const app = createApp({ db });
+      const cookie = await loginAndGetCookie(app, email, password);
+
+      const res = await app.request("/presets", {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie },
+        body: JSON.stringify({ name: "x", grants: [], denies: ["closing.execute", "closing.execute"] }),
+      });
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error: "invalid_denies" });
+    });
+
+    it("PATCH /presets/:id updates denies and records both sides in the audit log", async () => {
+      const { db, tenantId, userId, email, password } = await setupTestDb();
+      await grantPermission(db, { tenantId, userId, permission: "permission.preset.manage", scope: "tenant" });
+      const app = createApp({ db });
+      const cookie = await loginAndGetCookie(app, email, password);
+
+      const created = await app.request("/presets", {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie },
+        body: JSON.stringify({ name: "編集対象", grants: [], denies: ["closing.execute"] }),
+      });
+      const { preset } = (await created.json()) as { preset: { id: string } };
+
+      const res = await app.request(`/presets/${preset.id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json", cookie },
+        body: JSON.stringify({ denies: ["audit_log.view"] }),
+      });
+      expect(res.status).toBe(200);
+      expect((await res.json()) as { preset: { denies: string[] } }).toMatchObject({
+        preset: { denies: ["audit_log.view"] },
+      });
+
+      const updateLog = (await db.select().from(auditLogs).where(eq(auditLogs.tenantId, tenantId))).find(
+        (r) => r.action === "permission_preset.update",
+      );
+      // 監査ログの詳細は afterDigest 列に JSON 文字列で入る(packages/db/src/queries/audit.ts)
+      const detail = JSON.parse(updateLog!.afterDigest!) as {
+        before: { denies: string[] };
+        after: { denies: string[] };
+      };
+      expect(detail.before.denies).toEqual(["closing.execute"]);
+      expect(detail.after.denies).toEqual(["audit_log.view"]);
+    });
+
+    it("a deny in one preset cancels a grant from another preset (実効権限に反映される)", async () => {
+      const { db, tenantId, userId, email, password } = await setupTestDb();
+      // 付与用プリセットで audit_log.view(tenant)を得たうえで、拒否用プリセットも割り当てる
+      await grantPermission(db, { tenantId, userId, permission: "audit_log.view", scope: "tenant" });
+      const app = createApp({ db });
+      const cookie = await loginAndGetCookie(app, email, password);
+
+      const before = await app.request("/audit-logs", { headers: { cookie } });
+      expect(before.status).toBe(200);
+
+      await denyPermission(db, { tenantId, userId, permission: "audit_log.view" });
+
+      const after = await app.request("/audit-logs", { headers: { cookie } });
+      expect(after.status).toBe(403);
+    });
+
+    it("last_admin: a preset edit that denies permission.preset.manage for the last holder is rejected", async () => {
+      const { db, tenantId, userId, email, password } = await setupTestDb();
+      // userId はテナント唯一の権限管理保持者。その権限は自分が編集できるプリセット経由で持つ。
+      await grantPermission(db, { tenantId, userId, permission: "permission.preset.manage", scope: "tenant" });
+      const adminPresetId = (
+        await db.select().from(permissionPresets).where(eq(permissionPresets.tenantId, tenantId))
+      )[0]!.id;
+
+      const app = createApp({ db });
+      const cookie = await loginAndGetCookie(app, email, password);
+
+      // 割当は一切触らず、プリセットに deny を1つ足すだけで権限管理者を0人にできてしまう —
+      // これを 409 last_admin で拒否する(2026-08-24 に追加したプリセット編集版の固定原則)
+      const res = await app.request(`/presets/${adminPresetId}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json", cookie },
+        body: JSON.stringify({ denies: ["permission.preset.manage"] }),
+      });
+      expect(res.status).toBe(409);
+      expect(await res.json()).toEqual({ error: "last_admin" });
+
+      // 拒否されたので DB は変わっていない(引き続き権限管理ができる)
+      const stillOk = await app.request("/presets", { headers: { cookie } });
+      expect(stillOk.status).toBe(200);
+    });
+
+    it("last_admin: a preset edit that removes the permission.preset.manage grant is rejected too", async () => {
+      const { db, tenantId, userId, email, password } = await setupTestDb();
+      await grantPermission(db, { tenantId, userId, permission: "permission.preset.manage", scope: "tenant" });
+      const adminPresetId = (
+        await db.select().from(permissionPresets).where(eq(permissionPresets.tenantId, tenantId))
+      )[0]!.id;
+
+      const app = createApp({ db });
+      const cookie = await loginAndGetCookie(app, email, password);
+
+      const res = await app.request(`/presets/${adminPresetId}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json", cookie },
+        body: JSON.stringify({ grants: [] }),
+      });
+      expect(res.status).toBe(409);
+      expect(await res.json()).toEqual({ error: "last_admin" });
+    });
+
+    it("allows denying permission.preset.manage in a preset while another holder remains", async () => {
+      const { db, tenantId, userId, email, password } = await setupTestDb();
+      await grantPermission(db, { tenantId, userId, permission: "permission.preset.manage", scope: "tenant" });
+      const adminPresetId = (
+        await db.select().from(permissionPresets).where(eq(permissionPresets.tenantId, tenantId))
+      )[0]!.id;
+
+      // もう1人、別プリセット経由の権限管理保持者を用意する(この人は編集対象プリセットを持たない)
+      const other = await setupSecondUser(db, tenantId);
+      await grantPermission(db, { tenantId, userId: other.userId, permission: "permission.preset.manage", scope: "tenant" });
+
+      const app = createApp({ db });
+      const cookie = await loginAndGetCookie(app, email, password);
+
+      const res = await app.request(`/presets/${adminPresetId}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json", cookie },
+        body: JSON.stringify({ denies: ["permission.preset.manage"] }),
+      });
+      expect(res.status).toBe(200);
+
+      // 編集した本人はもう権限管理できない(deny が効いている)
+      const nowForbidden = await app.request("/presets", { headers: { cookie } });
+      expect(nowForbidden.status).toBe(403);
+    });
+
+    it("a preset edit that doesn't touch grants/denies skips the last-admin check", async () => {
+      const { db, tenantId, userId, email, password } = await setupTestDb();
+      await grantPermission(db, { tenantId, userId, permission: "permission.preset.manage", scope: "tenant" });
+      const adminPresetId = (
+        await db.select().from(permissionPresets).where(eq(permissionPresets.tenantId, tenantId))
+      )[0]!.id;
+
+      const app = createApp({ db });
+      const cookie = await loginAndGetCookie(app, email, password);
+
+      const res = await app.request(`/presets/${adminPresetId}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json", cookie },
+        body: JSON.stringify({ name: "名前だけ変更" }),
+      });
+      expect(res.status).toBe(200);
     });
   });
 

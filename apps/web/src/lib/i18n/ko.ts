@@ -1873,6 +1873,9 @@ export const ko = {
     /** 자체 검토를 통한 개선: 프리셋명에 바로 괄호를 붙였더니 밀도가 높아 읽기 어려웠음.
      * 앞에 구두점을 추가해 문장으로 구분하고, 알기 쉬운 표현으로 바꿈. */
     effectiveViaImplication: ". 다른 권한에 자동으로 포함되는 열람 권한입니다",
+    /** 거부(deny)된 항목의 칩과 주석(2026-08-24 추가). */
+    effectiveDeniedChip: "거부",
+    effectiveDeniedBy: (names: string) => `「${names}」의 거부 설정으로 인해 이 권한은 행사할 수 없습니다`,
 
     errors: {
       invalid_body: "입력 내용을 확인해 주세요",
@@ -1951,6 +1954,12 @@ export const ko = {
     dangerousBadge: "중요",
     dangerousNote: "이 권한은 영향이 큰 작업입니다. 부여 대상을 잘 확인해 주세요.",
     impliesViewPrefix: "이 권한에는 다음 열람 권한이 포함됩니다: ",
+    /** 거부(deny) 섹션(2026-08-24 추가). docs/design/permission-catalog.md 참조. */
+    deniesSectionTitle: "거부(deny) 설정",
+    deniesCount: (n: number) => `${n}건 거부 중`,
+    deniesWarning: "거부는 모든 부여보다 우선합니다. 다른 프리셋에서 부여했더라도 무효가 됩니다",
+    deniesHint:
+      "「이 사람에게만은 절대 시키지 않는다」를 나타내기 위한 설정입니다. 보통은 부여하지 않는 것만으로 충분합니다. 본인의 출퇴근 기록·본인의 신청·본인의 기록 열람은 거부할 수 없습니다.",
     save: "저장",
     saving: "저장 중…",
     cancel: "취소",
@@ -1964,6 +1973,8 @@ export const ko = {
       invalid_name: "이름을 1~100자로 입력해 주세요",
       invalid_description: "설명은 500자 이내로 입력해 주세요",
       invalid_grants: "선택한 권한 내용을 확인해 주세요",
+      invalid_denies: "거부로 선택한 권한 내용을 확인해 주세요",
+      last_admin: "이 변경을 저장하면 테넌트에 권한 프리셋을 관리할 수 있는 사람이 없어집니다",
       invalid_body: "입력 내용을 확인해 주세요",
       not_found: "대상 권한 프리셋을 찾을 수 없습니다",
       system_preset: "표준 프리셋은 편집·삭제할 수 없습니다",
