@@ -1,0 +1,36 @@
+// KIZAMI API — Cloudflare Workers 配備(要件 §8「Workers+D1 動作保証」)。
+//
+// **このリポジトリからは自動デプロイしない。** CI で検証するのはビルドが通ることだけ:
+//   pnpm --filter @kizami/api build:workers   (= wrangler deploy --dry-run --outdir dist-workers)
+// 実配備の手順・制約(D1 に明示トランザクションが無い、定期スキャンが動かない等)は
+// docs/design/workers-d1.md にまとめてある。読まずに配備しないこと。
+//
+// マイグレーション: D1 は起動時ではなく **デプロイ時** に適用する。
+//   npx wrangler d1 migrations apply kizami --remote
+// migrations_dir は packages/db/migrations(SQLite レグと同じ .sql をそのまま使う)。
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "kizami-api",
+  "main": "src/workers.ts",
+  // vitest.workers.config.ts の COMPATIBILITY_DATE と揃えること(CI と本番で挙動差を出さない)
+  "compatibility_date": "2026-08-01",
+  // process.env(lib/encryption.ts 等の既定引数)と node:buffer 系の互換のために有効化する。
+  // アプリ経路そのものは node:* を import していない(src/workers.ts の説明を参照)。
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "kizami",
+      // 実際の ID は配備者が `wrangler d1 create kizami` で作って差し替える(dry-run には不要)
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "../../packages/db/migrations"
+    }
+  ],
+  // 秘密でない設定。秘密(KIZAMI_ENCRYPTION_KEY・VAPID_PRIVATE_KEY)は
+  // `wrangler secret put <NAME>` で入れること(ここに書かない)
+  "vars": {
+    "COOKIE_SECURE": "true",
+    "TRUST_PROXY": "true"
+  }
+}

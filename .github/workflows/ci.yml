@@ -70,5 +70,34 @@ jobs:
 
       - run: pnpm --filter @kizami/api test
 
-  # Future: Add matrix tests across Node versions and runtimes
-  # e.g. Node/workerd × D1 combinations(PostgreSQL は上の test-postgres で対応済み)
+  # 要件 §8「Workers+D1 動作保証」/ §9 テストマトリクスの workerd/D1 列。
+  # 上の test ジョブは Node ランタイムしか見ていないので、workerd(miniflare が起動する
+  # Cloudflare Workers の実ランタイム)側は別ジョブで回す。Docker もクラウド接続も不要
+  # (D1 はローカルの SQLite でエミュレートされる)なので、サービスコンテナ無しで走る。
+  #
+  # 収録範囲と、D1 で走らせていないものの一覧は docs/design/workers-d1.md を参照。
+  test-workerd:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # ランタイム非依存パッケージの全テスト + @kizami/db の D1 レグ + apps/api の
+      # workerd 起動スモーク(設定はリポジトリルートの vitest.workers.config.ts)
+      - run: pnpm test:workers
+
+      # Workers バンドルが実際にビルドできること(デプロイはしない — --dry-run)。
+      # node:* を import するコードがアプリ経路に紛れ込むとここで落ちる
+      - run: pnpm --filter @kizami/api build:workers
+
+  # Future: Add matrix tests across Node versions
+  # (workerd/D1 は上の test-workerd、PostgreSQL は test-postgres で対応済み)

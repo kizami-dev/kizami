@@ -7,7 +7,7 @@
  */
 
 import { eq } from "drizzle-orm";
-import type { Database } from "../migrate.js";
+import type { Database } from "../types.js";
 import { tenantNotificationSettings } from "../schema/index.js";
 
 export type TenantNotificationSettings = typeof tenantNotificationSettings.$inferSelect;

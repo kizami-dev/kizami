@@ -426,7 +426,7 @@ export function SettingsAttendanceView() {
         {loadError ? <p className="monthly-error">{loadError}</p> : null}
 
         {!attendanceForbidden && attendance && attendanceForm ? (
-          <section className="attendance-settings__section">
+          <section className="attendance-settings__section" data-tour="attendance-rules">
             <h2 className="attendance-settings__section-title">{messages.settingsAttendance.currentTitle}</h2>
             {attendance.effective ? (
               <div className="attendance-settings__current">

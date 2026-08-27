@@ -23,7 +23,7 @@
  * 意図的に同名の別テナントを作りたい場合のみ ALLOW_DUPLICATE_TENANT_NAME=true を付ける。
  */
 
-import { migrateDb } from "@kizami/db";
+import { migrateDb } from "@kizami/db/node";
 import { bootstrapTenant, findTenantsByName, findUserByEmailInTenant } from "./lib/tenant-bootstrap.js";
 
 /** `--name X` / `--name=X` 形式の引数を読む(環境変数より優先)。 */

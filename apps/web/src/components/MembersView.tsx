@@ -628,6 +628,7 @@ export function MembersView() {
               <button
                 type="button"
                 className="org-settings__primary-btn"
+                data-tour="member-invite"
                 onClick={() => {
                   setInviteError(null);
                   setInviteFormOpen(true);

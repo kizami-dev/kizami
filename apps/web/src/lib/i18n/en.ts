@@ -139,6 +139,60 @@ export const en = {
     hireDateAction: "Open member settings →",
   },
 
+  /** Guided tour (components/Tour.tsx, added 2026-08-27). Step keys match TourStepId in lib/tour.ts. */
+  tour: {
+    ariaLabel: "Guided tour",
+    progress: (current: number, total: number) => `${current} / ${total}`,
+    next: "Next",
+    prev: "Back",
+    finish: "Finish",
+    skip: "Skip",
+    restartTitle: "Take the guided tour",
+    restartDesc: "Walk through punching in, reviewing your month, and filing requests on the real screens.",
+    steps: {
+      dashboard: {
+        title: "This is your starting point",
+        body: "Unread notices, requests awaiting approval, and upcoming deadlines gather here. An empty box means nothing needs you today.",
+      },
+      punch: {
+        title: "Record your time",
+        body: "Clock in, take a break, and clock out with these buttons. Which ones are available depends on your current state.",
+      },
+      monthly: {
+        title: "Read your month",
+        body: "Totals by category. The table below breaks the month down by day and flags days with missing punches.",
+      },
+      corrections: {
+        title: "Fix a punch",
+        body: "File a request here when you forgot to punch or punched at the wrong time. Picking a date in the monthly table opens the same form.",
+      },
+      leave: {
+        title: "Request leave",
+        body: "Pick a date and a leave type while checking your remaining balance. Half-day and hourly leave depend on your company's settings.",
+      },
+      notifPrefs: {
+        title: "How you get notified",
+        body: "Missed punches and approval results can also reach you by email or browser notification. Choose per category.",
+      },
+      settingsHub: {
+        title: "Company settings",
+        body: "Attendance rules, members, and notification channels open from here. Which cards appear depends on your permissions.",
+      },
+      members: {
+        title: "Invite members",
+        body: "Send an invitation link and the person only has to choose a password. Setting a hire date lets paid leave grants be calculated.",
+      },
+      attendance: {
+        title: "Attendance rules",
+        body: "Set the day boundary, statutory holiday, and flextime settlement period. Changes are recorded as versions, so past totals stay as they were.",
+      },
+      closing: {
+        title: "Close the month",
+        body: "Closing fixes the month's totals so payroll can take them. If a correction lands afterwards, the month is kept as amended.",
+      },
+    },
+  },
+
   /** Theme toggle (in the header's user menu, added 2026-08-22 for dark mode support). */
   theme: {
     label: "Theme",

@@ -7,7 +7,7 @@
  */
 
 import { and, eq } from "drizzle-orm";
-import type { Database, Transaction } from "../migrate.js";
+import type { Database, Transaction } from "../types.js";
 import { helpOverrides } from "../schema/index.js";
 
 export type HelpOverride = typeof helpOverrides.$inferSelect;

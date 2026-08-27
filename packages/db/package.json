@@ -3,9 +3,17 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "DB レイヤ — Drizzle ORM(SQLite 既定 / PostgreSQL 選択式) スキーマ・マイグレーション・クエリ",
+  "description": "DB レイヤ — Drizzle ORM(SQLite 既定 / PostgreSQL 選択式 / Cloudflare D1) スキーマ・マイグレーション・クエリ",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./node": "./src/node.ts"
+  },
+  "typedocOptions": {
+    "entryPoints": [
+      "src/index.ts",
+      "src/node.ts"
+    ],
+    "entryPointStrategy": "resolve"
   },
   "scripts": {
     "generate": "drizzle-kit generate",
@@ -19,8 +27,10 @@
     "pg": "^8.23.0"
   },
   "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.22.0",
     "@types/node": "^26.2.0",
     "@types/pg": "^8.23.1",
-    "drizzle-kit": "^0.31.10"
+    "drizzle-kit": "^0.31.10",
+    "wrangler": "4.124.0"
   }
 }

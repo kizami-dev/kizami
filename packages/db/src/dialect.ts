@@ -5,8 +5,13 @@
  * だけで行い、設定項目を増やさない(判断点 2026-08-24)。
  */
 
-/** サポートするダイアレクト。 */
-export type DbDialect = "sqlite" | "postgres";
+/**
+ * サポートするダイアレクト。
+ *
+ * `"d1"`(Cloudflare D1)は接続 URL を持たない — Workers から渡されるバインディングで決まるため、
+ * `resolveDialect()` がこれを返すことはない(src/d1.ts の `createD1Database` だけが付ける)。
+ */
+export type DbDialect = "sqlite" | "postgres" | "d1";
 
 /**
  * 接続 URL からダイアレクトを判定する。

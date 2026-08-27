@@ -28,6 +28,12 @@
  * 取得できない環境(vitest から `app.request()` を直接叩く単体テスト等)では "unknown" を返す
  * ため、その場合すべてのリクエストが同じキーに落ちる点に注意
  * (テストで IP 別の挙動を見るときは trustProxy を有効にしてヘッダで指定する)。
+ *
+ * **Cloudflare Workers では `c.env` はバインディング(D1 等)のオブジェクト**で `incoming` を
+ * 持たない。そのためソースアドレスは常に取れず "unknown" に落ちるが、Workers の前段は必ず
+ * Cloudflare のエッジで `CF-Connecting-IP` が付くため、`trustProxy: true`(既定)の経路で
+ * 正しい IP が得られる。逆に Workers で `TRUST_PROXY=false` にすると全リクエストが
+ * 1つのバケツに落ちるので指定しないこと(docs/design/workers-d1.md)。
  */
 
 import type { Context } from "hono";

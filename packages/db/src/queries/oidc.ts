@@ -4,7 +4,7 @@
  */
 
 import { eq } from "drizzle-orm";
-import type { Database } from "../migrate.js";
+import type { Database } from "../types.js";
 import { tenantOidcSettings } from "../schema/index.js";
 
 export type TenantOidcSettings = typeof tenantOidcSettings.$inferSelect;

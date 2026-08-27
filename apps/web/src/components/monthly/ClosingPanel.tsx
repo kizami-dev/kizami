@@ -127,7 +127,7 @@ export function ClosingPanel({ monthParam, reloadKey, onReload, userId, data }: 
   return (
     <>
       {!closingForbidden && closingState ? (
-        <div className="closing-panel">
+        <div className="closing-panel" data-tour="monthly-closing">
           <div className="closing-panel__actions">
             {closingState.status === "open" ? (
               <>

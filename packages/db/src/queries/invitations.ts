@@ -21,7 +21,7 @@
  */
 
 import { and, desc, eq, isNull } from "drizzle-orm";
-import type { Database, Transaction } from "../migrate.js";
+import type { Database, Transaction } from "../types.js";
 import { authCredentials, invitations } from "../schema/index.js";
 import { uuidv7 } from "../uuid.js";
 import { insertAuditLog } from "./audit.js";

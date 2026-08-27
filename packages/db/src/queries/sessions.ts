@@ -9,7 +9,7 @@
  */
 
 import { and, eq, isNull } from "drizzle-orm";
-import type { Database, Transaction } from "../migrate.js";
+import type { Database, Transaction } from "../types.js";
 import { sessions } from "../schema/index.js";
 
 /** そのユーザーの有効な(未失効)セッションを全て失効させる。対象0件でも冪等に成功する。 */

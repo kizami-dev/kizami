@@ -13,7 +13,7 @@
  * 使うこと。実処理はどちらも src/lib/tenant-bootstrap.ts に集約してある。
  */
 
-import { migrateDb } from "@kizami/db";
+import { migrateDb } from "@kizami/db/node";
 import { bootstrapTenant, findUsersByEmail, syncSystemPresetGrants } from "./lib/tenant-bootstrap.js";
 
 async function main(): Promise<void> {

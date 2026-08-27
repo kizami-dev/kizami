@@ -3,6 +3,10 @@
 KIZAMI は **SQLite(libSQL)を既定**とし、**PostgreSQL を選択式**でサポートする(要件 §9)。
 切り替えは `DATABASE_URL` のスキームだけで行い、設定項目は増やさない。
 
+3つめのダイアレクトとして **Cloudflare D1** も持つ。D1 は接続 URL ではなく Workers の
+バインディングで渡すため切り替えの形が違い、制約も別にあるので
+[Cloudflare Workers + D1 対応](./workers-d1.md) に分けて書いてある。
+
 | `DATABASE_URL` | ダイアレクト | ドライバ | マイグレーション |
 | --- | --- | --- | --- |
 | `file:./kizami.db` / `:memory:` / `libsql://…` | SQLite | `@libsql/client` | `packages/db/migrations/` |
@@ -11,8 +15,13 @@ KIZAMI は **SQLite(libSQL)を既定**とし、**PostgreSQL を選択式**でサ
 判定は [`packages/db/src/dialect.ts`](https://github.com/sasagar/kizami/blob/main/packages/db/src/dialect.ts) の
 `resolveDialect()`。未知のスキームは SQLite 扱いにする(既定が SQLite であること自体が要件のため)。
 
+接続の生成は **Node 専用のサブパス** `@kizami/db/node` にある(`@libsql/client` と `pg` が
+`node:net` / `node:fs` に依存していて workerd ではバンドルできないため。
+[Workers + D1 対応](./workers-d1.md)を参照)。
+スキーマ・クエリ層・型は従来どおり `@kizami/db` から取れる。
+
 ```ts
-import { createDatabase, migrateDb } from "@kizami/db";
+import { createDatabase, migrateDb } from "@kizami/db/node";
 
 // マイグレーションを流して DB ハンドルを得る(apps/api の起動経路と同じ)
 const { db, dialect, client } = await migrateDb({ url: process.env.DATABASE_URL });

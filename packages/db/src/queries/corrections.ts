@@ -8,7 +8,7 @@
  */
 
 import { and, desc, eq } from "drizzle-orm";
-import type { Database, Transaction } from "../migrate.js";
+import type { Database, Transaction } from "../types.js";
 import { correctionRequests } from "../schema/index.js";
 import { uuidv7 } from "../uuid.js";
 

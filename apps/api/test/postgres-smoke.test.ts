@@ -18,7 +18,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { migrateDb, resolveDialect } from "@kizami/db";
+import { migrateDb, resolveDialect } from "@kizami/db/node";
 import { createApp } from "../src/app.js";
 import { loginAndGetCookie, setupTestDb } from "./support/setup.js";
 

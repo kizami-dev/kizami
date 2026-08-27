@@ -197,6 +197,7 @@ export default defineConfig({
           { text: "SSO(OIDC)ログイン", link: "/design/sso-oidc" },
           { text: "ブラウザプッシュ通知(Web Push)", link: "/design/web-push" },
           { text: "DBダイアレクト(SQLite/PostgreSQL)", link: "/design/db-dialects" },
+          { text: "Cloudflare Workers + D1 対応", link: "/design/workers-d1" },
         ],
       },
       {

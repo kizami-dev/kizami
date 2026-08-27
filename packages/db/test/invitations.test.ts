@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import { isUniqueConstraintError } from "../src/errors.js";
-import { migrateDb, type Database } from "./support/db.js";
+import { migrateDb, supportsTransactions, type Database } from "./support/db.js";
 import { eq } from "drizzle-orm";
 import {
   acceptInvitation,
@@ -24,7 +24,10 @@ import { uuidv7 } from "../src/uuid.js";
 
 const DAY_MINUTES = 24 * 60;
 
-describe("invitations", () => {
+// D1 は明示トランザクション(BEGIN/COMMIT)を拒否するため、db.transaction() を通る
+// テストは D1 レグでは skip する(support/db.ts の supportsTransactions と
+// docs/design/workers-d1.md「D1 で動かないもの」を参照)
+describe.skipIf(!supportsTransactions)("invitations", () => {
   let db: Database;
   const tenantId = uuidv7();
   const adminId = uuidv7();
@@ -303,7 +306,7 @@ describe("invitations", () => {
   });
 });
 
-describe("同一分内の再発行(createdAt が同値)の最新解決(2026-08-23 バグ修正)", () => {
+describe.skipIf(!supportsTransactions)("同一分内の再発行(createdAt が同値)の最新解決(2026-08-23 バグ修正)", () => {
   it("同じ nowMinutes で作成→再発行しても、最新として新しい招待が返る", async () => {
     const dbPath = join(tmpdir(), `kizami-db-test-${randomUUID()}.db`);
     const { db } = await migrateDb({ url: `file:${dbPath}` });

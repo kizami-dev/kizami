@@ -1,6 +1,6 @@
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
-import { migrateDb } from "@kizami/db";
+import { migrateDb } from "@kizami/db/node";
 import { createApp } from "./app.js";
 import { buildEncryptorFromEnv } from "./lib/encryption.js";
 import { nodemailerSendFn } from "./lib/smtp.js";

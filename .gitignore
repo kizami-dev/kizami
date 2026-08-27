@@ -1,5 +1,8 @@
 node_modules/
 dist/
+# `wrangler deploy --dry-run --outdir dist-workers`(pnpm --filter @kizami/api build:workers)の出力。
+# Workers バンドルがビルドできることの検証用で、成果物自体はコミットしない
+dist-workers/
 .wrangler/
 .waku/
 storybook-static/

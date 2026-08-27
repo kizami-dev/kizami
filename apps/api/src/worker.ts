@@ -37,7 +37,7 @@
 
 import { Queue, Worker } from "bullmq";
 import IORedis from "ioredis";
-import { migrateDb } from "@kizami/db";
+import { migrateDb } from "@kizami/db/node";
 import type { NotificationChannel } from "@kizami/notify";
 import { buildEncryptorFromEnv } from "./lib/encryption.js";
 import { buildPersonalChannels } from "./lib/notification-channels.js";

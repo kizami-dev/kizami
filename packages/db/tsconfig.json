@@ -11,6 +11,7 @@
     "test",
     "drizzle.config.ts",
     "drizzle.config.pg.ts",
-    "vitest.config.ts"
+    "vitest.config.ts",
+    "vitest.d1.config.ts"
   ]
 }

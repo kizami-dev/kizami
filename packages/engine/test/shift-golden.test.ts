@@ -5,9 +5,6 @@
  * fixtures/README.md の通り、既存の golden.test.ts / load-fixture.ts(flex 専用スキーマ)
  * とは別の、shift 専用の最小ローダーをこのファイル内に持つ。
  */
-import { readFileSync, readdirSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { buildLawTimeline } from "@kizami/law";
 import { parse } from "yaml";
 import { describe, expect, it } from "vitest";
@@ -15,8 +12,13 @@ import { calculate } from "../src/index.js";
 import { utcMinutesFromLocalDateTime } from "../src/date.js";
 import type { CalcSettings, EngineInput, PlainDateString, PunchKind, ShiftDay, ShiftDayType } from "../src/types.js";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const shiftFixturesDir = join(__dirname, "..", "fixtures", "shift");
+import { loadYamlFixtures } from "./support/fixtures.js";
+
+// fixtures/shift/*.yaml をビルド時に文字列として取り込む(golden.test.ts と同じ理由で
+// node:fs を使わない — support/fixtures.ts 冒頭の説明を参照)
+const fixtures = loadYamlFixtures(
+  import.meta.glob("../fixtures/shift/*.yaml", { query: "?raw", import: "default", eager: true }),
+);
 
 const WEEKDAY_NAMES: Record<string, 0 | 1 | 2 | 3 | 4 | 5 | 6> = {
   sunday: 0,
@@ -109,15 +111,14 @@ function loadShiftFixture(yamlText: string) {
   return { name: raw.name, input, expected: raw.expected };
 }
 
-const fixtureFiles = readdirSync(shiftFixturesDir).filter((f) => f.endsWith(".yaml"));
+const fixtureFiles = fixtures.map(([file]) => file);
 
 describe("shift golden cases (monthly_variable)", () => {
   it("found at least one shift fixture", () => {
     expect(fixtureFiles.length).toBeGreaterThan(0);
   });
 
-  for (const file of fixtureFiles) {
-    const yamlText = readFileSync(join(shiftFixturesDir, file), "utf-8");
+  for (const [file, yamlText] of fixtures) {
     const { name, input, expected } = loadShiftFixture(yamlText);
 
     it(`${file}: ${name}`, () => {

@@ -8,7 +8,7 @@
  */
 
 import { and, eq } from "drizzle-orm";
-import type { Database } from "../migrate.js";
+import type { Database } from "../types.js";
 import { userNotificationSettings } from "../schema/index.js";
 
 export type UserNotificationSettings = typeof userNotificationSettings.$inferSelect;

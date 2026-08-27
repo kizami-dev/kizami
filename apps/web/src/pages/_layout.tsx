@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { LocaleGate } from "../components/LocaleGate";
 import { PwaRegister } from "../components/PwaRegister";
+import { Tour } from "../components/Tour";
 import { THEME_INIT_SCRIPT } from "../lib/theme";
 import "../styles/tokens.css";
 import "../styles/base.css";
@@ -25,6 +26,7 @@ import "../styles/allowance-settings.css";
 import "../styles/api-keys-settings.css";
 import "../styles/audit-logs.css";
 import "../styles/shifts.css";
+import "../styles/tour.css";
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
   return (
@@ -82,7 +84,14 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
       {/* 言語切り替え(2026-08-23 追加)の再レンダリング境界。ロケールが変わると
           children 以下を丸ごと再マウントし、既存コンポーネントの `messages.xxx` 参照
           (フック不要)にも新しい言語を反映させる。詳細は components/LocaleGate.tsx 参照。 */}
-      <LocaleGate>{children}</LocaleGate>
+      <LocaleGate>
+        {children}
+        {/* 使い方ツアー(2026-08-27 追加)。ページを跨ぐ手順があるためレイアウトに1つだけ置く。
+            LocaleGate の内側なのは、言語を切り替えたときにツアーの文言も差し替わるようにするため
+            (進捗は sessionStorage に持つので、再マウントされても続きから再開する)。
+            ログイン前の画面では何も描画しない — components/Tour.tsx の isTourablePath 参照。 */}
+        <Tour />
+      </LocaleGate>
       <PwaRegister />
     </>
   );

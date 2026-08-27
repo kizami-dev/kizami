@@ -29,7 +29,6 @@
  * に bot_token 列を足すだけで拡張できる形にしてある)。
  */
 
-import { randomUUID } from "node:crypto";
 import { Hono } from "hono";
 import {
   getSlackUserLinkBySlackUserId,
@@ -38,6 +37,7 @@ import {
   insertPunchEvent,
   insertSlackLinkToken,
   listValidPunches,
+  uuidv7,
   type Database,
 } from "@kizami/db";
 import type { PunchKind } from "@kizami/engine";
@@ -192,7 +192,7 @@ export function createSlackRoutes(db: Database, deps: SlackRoutesDeps = {}) {
       const token = generateLinkToken();
       const now = nowMinutes();
       await insertSlackLinkToken(db, {
-        id: randomUUID(),
+        id: uuidv7(),
         tenantId,
         slackUserId,
         tokenHash: await sha256Hex(token),

@@ -1,22 +1,21 @@
-import { readdirSync, readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { calculate } from "../src/index.js";
 import { loadGoldenCase } from "./support/load-fixture.js";
+import { loadYamlFixtures } from "./support/fixtures.js";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const fixturesDir = join(__dirname, "..", "fixtures");
-
-const fixtureFiles = readdirSync(fixturesDir).filter((f) => f.endsWith(".yaml"));
+// fixtures/*.yaml をビルド時に文字列として取り込む(node:fs は使わない — このスイートは
+// Node レグと workerd レグの両方で走るため。support/fixtures.ts 冒頭の説明を参照)
+const fixtures = loadYamlFixtures(
+  import.meta.glob("../fixtures/*.yaml", { query: "?raw", import: "default", eager: true }),
+);
+const fixtureFiles = fixtures.map(([file]) => file);
 
 describe("golden cases", () => {
   it("found at least one fixture", () => {
     expect(fixtureFiles.length).toBeGreaterThan(0);
   });
 
-  for (const file of fixtureFiles) {
-    const yamlText = readFileSync(join(fixturesDir, file), "utf-8");
+  for (const [file, yamlText] of fixtures) {
     const golden = loadGoldenCase(yamlText);
 
     it(`${file}: ${golden.name}`, () => {

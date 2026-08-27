@@ -20,7 +20,12 @@ describe("migrate", () => {
         : await client.execute(
             "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name != '__drizzle_migrations'",
           );
-    const names = tableNames.rows.map((row) => row.name).sort();
+    // D1 は内部テーブル(_cf_*)と適用履歴(d1_migrations)が同居する。
+    // "_" 始まりを落とせば SQLite の __drizzle_migrations も含めてまとめて除ける
+    const names = tableNames.rows
+      .map((row) => row.name as string)
+      .filter((name) => !name.startsWith("_") && name !== "d1_migrations")
+      .sort();
     expect(names).toEqual(
       [
         "allowance_definition_versions",

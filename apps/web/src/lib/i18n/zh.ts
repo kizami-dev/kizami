@@ -121,6 +121,60 @@ export const zh = {
     hireDateAction: "打开成员设置 →",
   },
 
+  /** 使用向导(components/Tour.tsx,2026-08-27 新增)。steps 的键与 lib/tour.ts 的 TourStepId 一一对应。 */
+  tour: {
+    ariaLabel: "使用向导",
+    progress: (current: number, total: number) => `${current} / ${total}`,
+    next: "下一步",
+    prev: "上一步",
+    finish: "结束",
+    skip: "跳过",
+    restartTitle: "查看使用向导",
+    restartDesc: "跟随实际画面,了解从打卡到提交申请的流程。",
+    steps: {
+      dashboard: {
+        title: "这里是入口",
+        body: "未读通知、待审批的申请、临近期限的事项都会集中在这一栏。这里为空,就说明今天没有待办。",
+      },
+      punch: {
+        title: "打卡",
+        body: "用这些按钮记录上班、休息与下班。可按的按钮取决于当前状态。",
+      },
+      monthly: {
+        title: "查看本月记录",
+        body: "按区分统计的合计时长。每日明细排在下方表格中,打卡缺失的日期会带有警告。",
+      },
+      corrections: {
+        title: "修正打卡",
+        body: "漏打或打错都从这里提交申请。在月度表格中选择日期也可以提交同样的申请。",
+      },
+      leave: {
+        title: "申请休假",
+        body: "一边查看剩余年假,一边选择日期与类型。能否按半天或按小时休取决于公司设置。",
+      },
+      notifPrefs: {
+        title: "接收通知的方式",
+        body: "漏打卡提醒与审批结果也可以通过邮件或浏览器通知送达,可按类别分别选择。",
+      },
+      settingsHub: {
+        title: "公司设置",
+        body: "考勤规则、成员、通知发送渠道都从这里打开。显示哪些项目取决于你拥有的权限。",
+      },
+      members: {
+        title: "邀请成员",
+        body: "发送邀请链接后,对方只需设置密码即可开始使用。填写入职日期后即可计算带薪年假的授予天数。",
+      },
+      attendance: {
+        title: "考勤规则",
+        body: "设置日界、法定休息日与弹性工作制的结算期间。变更会记录为版本,过去的统计不会改变。",
+      },
+      closing: {
+        title: "月度结算",
+        body: "结算后即可确定该月统计并交给薪资系统。结算后若有修正,该月会保留“已修正”标记。",
+      },
+    },
+  },
+
   /** 主题切换(页头用户菜单内)。 */
   theme: {
     label: "主题",

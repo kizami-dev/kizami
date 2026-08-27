@@ -15,7 +15,7 @@
  */
 
 import { and, eq, isNull } from "drizzle-orm";
-import type { Database, Transaction } from "../migrate.js";
+import type { Database, Transaction } from "../types.js";
 import { invitations, users } from "../schema/index.js";
 
 /** isActive を false にする(退職処理)。対象が存在しない場合は例外を投げる(呼び出し側が事前に存在確認する前提)。 */

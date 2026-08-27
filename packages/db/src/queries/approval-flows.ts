@@ -5,7 +5,7 @@
  */
 
 import { eq } from "drizzle-orm";
-import type { Database, Transaction } from "../migrate.js";
+import type { Database, Transaction } from "../types.js";
 import { approvalFlowSettings } from "../schema/index.js";
 
 export type ApprovalFlowSettings = typeof approvalFlowSettings.$inferSelect;

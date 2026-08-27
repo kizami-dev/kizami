@@ -70,8 +70,19 @@ docs               VitePress ドキュメント+要件定義
 
 ```sh
 pnpm install
-pnpm test
+pnpm test          # Node ランタイムで全パッケージのテスト
+pnpm typecheck
+pnpm test:workers  # workerd(Cloudflare Workers)+ D1 レグ
 ```
+
+`pnpm test:workers` は [miniflare](https://developers.cloudflare.com/workers/testing/miniflare/) が
+起動する実際の Workers ランタイム上で、ランタイム非依存パッケージのテスト・`@kizami/db` の
+D1 レグ・`apps/api` の起動スモークを走らせます(Docker もクラウド接続も不要)。
+何が Workers で動き何が動かないかは
+[docs/design/workers-d1.md](./docs/design/workers-d1.md) を参照してください。
+
+PostgreSQL レグを走らせたい場合は `TEST_PG_URL` を渡します
+([docs/design/db-dialects.md](./docs/design/db-dialects.md))。
 
 ### スクリーンショットの撮り直し
 

@@ -9,7 +9,7 @@
  */
 
 import { and, eq } from "drizzle-orm";
-import type { Database } from "../migrate.js";
+import type { Database } from "../types.js";
 import { permissionPresets, presetAssignments } from "../schema/index.js";
 import { uuidv7 } from "../uuid.js";
 

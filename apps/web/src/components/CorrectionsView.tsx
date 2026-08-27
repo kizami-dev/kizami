@@ -566,7 +566,7 @@ export function CorrectionsView() {
         <h1 className="corrections__title">{messages.nav.corrections}</h1>
         <p className="corrections__tagline">{messages.corrections.tagline}</p>
 
-        <section className="corrections__section">
+        <section className="corrections__section" data-tour="corrections-own">
           <h2 className="corrections__section-title">{messages.corrections.title}</h2>
 
           {loading ? <p className="monthly-loading">{messages.loading}</p> : null}

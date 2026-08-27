@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
-import { migrateDb, type Database } from "./support/db.js";
+import { migrateDb, supportsTransactions, type Database } from "./support/db.js";
 import {
   findValidSlackLinkTokenByHash,
   getSlackUserLinkBySlackUserId,
@@ -113,7 +113,10 @@ describe("slack settings queries", () => {
       expect(await getSlackUserLinkByUserId(db, { tenantId, userId })).toBeNull();
     });
 
-    it("linkSlackUser links a slack user to a kizami user and both lookups find it", async () => {
+    // D1 は明示トランザクション(BEGIN/COMMIT)を拒否するため、linkSlackUser の
+    // db.transaction() を通るテストは D1 レグでは skip する
+    // (support/db.ts の supportsTransactions と docs/design/workers-d1.md を参照)
+    it.skipIf(!supportsTransactions)("linkSlackUser links a slack user to a kizami user and both lookups find it", async () => {
       const link = await linkSlackUser(db, { tenantId, slackUserId: "U123", userId, linkedAt: 100 });
       expect(link.slackUserId).toBe("U123");
       expect(link.userId).toBe(userId);
@@ -122,7 +125,7 @@ describe("slack settings queries", () => {
       expect((await getSlackUserLinkByUserId(db, { tenantId, userId }))?.slackUserId).toBe("U123");
     });
 
-    it("re-linking the same slack_user_id to a different kizami user replaces the target (last link wins)", async () => {
+    it.skipIf(!supportsTransactions)("re-linking the same slack_user_id to a different kizami user replaces the target (last link wins)", async () => {
       const otherUserId = uuidv7();
       await db.insert(users).values({ id: otherUserId, tenantId, email: "c@example.com", name: "C", createdAt: 0 });
 
@@ -135,7 +138,7 @@ describe("slack settings queries", () => {
       expect(await getSlackUserLinkByUserId(db, { tenantId, userId })).toBeNull();
     });
 
-    it("re-linking the same kizami user to a different slack account replaces the old mapping (one slack account per user)", async () => {
+    it.skipIf(!supportsTransactions)("re-linking the same kizami user to a different slack account replaces the old mapping (one slack account per user)", async () => {
       await linkSlackUser(db, { tenantId, slackUserId: "U123", userId, linkedAt: 100 });
       const relinked = await linkSlackUser(db, { tenantId, slackUserId: "U456", userId, linkedAt: 200 });
       expect(relinked.slackUserId).toBe("U456");

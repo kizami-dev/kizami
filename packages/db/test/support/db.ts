@@ -16,12 +16,24 @@
  * 作るため、閉じ忘れると max_connections を食い潰す)。
  */
 
-import { migrateDb as migrateRealDb, type CreateDatabaseOptions, type DatabaseHandle } from "../../src/migrate.js";
+import { migrateDb as migrateRealDb, type CreateDatabaseOptions } from "../../src/migrate.js";
+import type { DatabaseHandle } from "../../src/types.js";
 
-export type { Database, DatabaseHandle, Transaction } from "../../src/migrate.js";
+export type { Database, DatabaseHandle, Transaction } from "../../src/types.js";
 
 /** テスト用に切ったスキーマの接頭辞。globalSetup がこの接頭辞のスキーマを一括削除する。 */
 export const TEST_PG_SCHEMA_PREFIX = "kizami_test_";
+
+/**
+ * このレグの DB が明示トランザクション(`BEGIN`/`COMMIT`)を使えるか。
+ *
+ * SQLite/libSQL と PostgreSQL は使える。**Cloudflare D1 は使えない**(D1 は
+ * `BEGIN TRANSACTION` / `SAVEPOINT` を拒否し、原子的な複数文実行は `batch()` だけ)。
+ * `db.transaction()` を通るテストは `describe.skipIf(!supportsTransactions)` /
+ * `it.skipIf(!supportsTransactions)` で D1 レグから外す — 制約は
+ * docs/design/workers-d1.md「D1 で動かないもの」に一覧してある。
+ */
+export const supportsTransactions = true;
 
 /** このプロセスが PostgreSQL 側を叩くかどうか。 */
 export const isPostgresTestRun = process.env.KIZAMI_TEST_DIALECT === "postgres";

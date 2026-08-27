@@ -9,11 +9,18 @@
  * 特に JOIN の別名は素の `drizzle-orm/sqlite-core` の `alias` だと PostgreSQL 側で
  * 元テーブル名が消える(`left join "superseding"`)。src/alias.ts がこれを吸収している
  * ことを、ここで両ダイアレクトの SQL を比較して確認する。
+ *
+ * 3つめのダイアレクト Cloudflare D1(2026-08-27 追加)も同じ観点で並べてある。D1 は
+ * drizzle の中で libSQL と同じ `SQLiteAsyncDialect` を使うので SQL は一致するはずだが、
+ * 「一致するはず」を実際に突き合わせておく(D1 の実 DB に対する検査は D1 レグ
+ * = packages/db/vitest.d1.config.ts 側が持つ。このファイル自体は pg / @libsql/client の
+ * ドライバを直接読むため Node レグ専用)。
  */
 
 import { describe, expect, it } from "vitest";
 import { and, eq, notExists, sql } from "drizzle-orm";
 import { drizzle as drizzleLibsql } from "drizzle-orm/libsql";
+import { drizzle as drizzleD1 } from "drizzle-orm/d1";
 import { drizzle as drizzlePg } from "drizzle-orm/node-postgres";
 import { alias as sqliteCoreAlias } from "drizzle-orm/sqlite-core";
 import { Pool } from "pg";
@@ -26,6 +33,11 @@ import { punchEvents } from "../src/schema/index.js";
 const sqliteDb = drizzleLibsql({ connection: { url: ":memory:" } }) as never as ReturnType<typeof drizzleLibsql>;
 const pgDb = drizzlePg(new Pool({ connectionString: "postgres://localhost/unused" })) as never as {
   select: (typeof sqliteDb)["select"];
+};
+// D1 も同様。バインディングは触られないのでダミーで足りる
+const d1Db = drizzleD1({} as never) as never as {
+  select: (typeof sqliteDb)["select"];
+  insert: (typeof sqliteDb)["insert"];
 };
 
 /** 「有効な打刻」= 他イベントに supersede されていないもの、を引くクエリ(punches.ts と同型)。 */
@@ -68,6 +80,9 @@ describe("クエリ層の SQL が両ダイアレクトで一致する", () => {
 
     // プレースホルダの記法(? と $1)以外は同一 SQL であること
     expect(pgSql.replace(/\$\d+/g, "?")).toBe(sqliteSql);
+
+    // D1 は libSQL と同じ SQLiteAsyncDialect なので、そのまま一致する
+    expect(buildValidPunchQuery(d1Db, alias(punchEvents, "superseding")).toSQL().sql).toBe(sqliteSql);
   });
 
   it("回帰確認: 素の sqlite-core の alias だと PostgreSQL 側で元テーブル名が落ちる", () => {
@@ -95,5 +110,6 @@ describe("クエリ層の SQL が両ダイアレクトで一致する", () => {
         .replaceAll('on conflict ("punch_events"."id")', 'on conflict ("id")');
 
     expect(normalize(build(pgDb as never))).toBe(normalize(build(sqliteDb)));
+    expect(build(d1Db as never)).toBe(build(sqliteDb));
   });
 });

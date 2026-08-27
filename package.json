@@ -9,6 +9,7 @@
   "scripts": {
     "build": "pnpm -r build",
     "test": "pnpm -r test",
+    "test:workers": "vitest run --config vitest.workers.config.ts",
     "typecheck": "pnpm -r typecheck",
     "docs:dev": "pnpm --filter @kizami/docs dev",
     "docs:api": "node scripts/typedoc-validate.mjs",
@@ -21,11 +22,13 @@
     "storybook:build": "pnpm --filter @kizami/web storybook:build"
   },
   "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.22.0",
     "@types/node": "^26.2.0",
     "playwright": "^1.56.1",
     "temporal-polyfill": "^1.0.4",
     "tsx": "^4.23.12",
     "typescript": "^7.0.2",
-    "vitest": "^4.1.11"
+    "vitest": "^4.1.11",
+    "wrangler": "4.124.0"
   }
 }

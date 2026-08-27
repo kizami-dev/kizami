@@ -10,7 +10,7 @@
  */
 
 import { and, eq, gt, isNull, or } from "drizzle-orm";
-import type { Database } from "../migrate.js";
+import type { Database } from "../types.js";
 import { slackLinkTokens, slackUserLinks, tenantSlackSettings } from "../schema/index.js";
 import { uuidv7 } from "../uuid.js";
 

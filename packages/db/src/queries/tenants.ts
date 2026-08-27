@@ -5,7 +5,7 @@
  */
 
 import { eq } from "drizzle-orm";
-import type { Database, Transaction } from "../migrate.js";
+import type { Database, Transaction } from "../types.js";
 import { tenants } from "../schema/index.js";
 
 export type Tenant = typeof tenants.$inferSelect;

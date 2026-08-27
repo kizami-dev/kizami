@@ -313,7 +313,7 @@ export function DashboardView() {
           ) : null}
           {gpsUnavailableNote ? <p className="punch-gps-notice__unavailable">{messages.punchGps.unavailableNote}</p> : null}
 
-          <div className="dashboard-punch__pad">
+          <div className="dashboard-punch__pad" data-tour="punch-pad">
             <button
               type="button"
               className="punch-button punch-button--in"
@@ -404,7 +404,7 @@ export function DashboardView() {
         </section>
 
         {/* ---- 3. 要対応(あるものだけ) ---- */}
-        <section className="dashboard-card" aria-label={messages.dashboard.todoTitle}>
+        <section className="dashboard-card" aria-label={messages.dashboard.todoTitle} data-tour="dashboard-todo">
           <h2 className="dashboard-card__title">{messages.dashboard.todoTitle}</h2>
 
           {!todoDataLoaded ? (

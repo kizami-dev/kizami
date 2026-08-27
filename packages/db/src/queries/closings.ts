@@ -7,7 +7,7 @@
  */
 
 import { and, asc, eq, gte, inArray, lte } from "drizzle-orm";
-import type { Database, Transaction } from "../migrate.js";
+import type { Database, Transaction } from "../types.js";
 import {
   ALLOWANCE_CLOSING_SNAPSHOT_CATEGORY_PREFIX,
   closingEvents,

@@ -1,0 +1,165 @@
+/**
+ * 使い方ツアー(components/Tour.tsx、2026-08-27 追加)のスタイル。
+ *
+ * 既存トークンだけで作る(新しい色は足さない):
+ *   - 暗幕は --k-scrim(確認ダイアログの幕と同じ。奥を沈める役割はテーマで変えない)
+ *   - 切り抜きの縁と「進む」は --k-cyan / --k-cyan-ink(打刻・リンクと同じ主役色)
+ *   - カードは --k-surface + --shadow-card(ダッシュボードのカードと同じ質感)
+ * 位置(top/left/width/height)は JS が実測して style 属性で与える — CSS 側は形と色だけを持つ。
+ */
+
+.tour {
+  position: fixed;
+  inset: 0;
+  z-index: 200; /* k-modal__backdrop(100)より上。ツアー中は他の層に隠れない */
+  pointer-events: none;
+}
+
+/* 操作を止める層。暗さは .tour__cutout の box-shadow が作るため、ここは透明のまま。 */
+.tour__blocker {
+  position: fixed;
+  inset: 0;
+  pointer-events: auto;
+}
+
+/*
+ * ハイライトの切り抜き。要素そのものは透明で、外側へ広げた巨大な box-shadow が
+ * 画面全体を覆う=「そこだけ明るく残る」形になる(SVG マスクを使わずに済む古典的な手)。
+ */
+.tour__cutout {
+  position: fixed;
+  border-radius: var(--radius-m);
+  box-shadow:
+    0 0 0 2px var(--k-cyan),
+    0 0 0 9999px var(--k-scrim);
+  pointer-events: none;
+  transition:
+    top 180ms ease,
+    left 180ms ease,
+    width 180ms ease,
+    height 180ms ease;
+}
+
+.tour__card {
+  position: fixed;
+  width: min(22rem, calc(100vw - 2 * var(--space-3)));
+  box-sizing: border-box;
+  background: var(--k-surface);
+  border: var(--border-hair);
+  border-radius: var(--radius-m);
+  box-shadow: var(--shadow-card);
+  padding: var(--space-4);
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.tour__card:focus {
+  outline: none;
+  box-shadow: var(--shadow-card), var(--focus-ring);
+}
+
+.tour__progress {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--k-ink-soft);
+  letter-spacing: 0.04em;
+}
+
+.tour__title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--k-key);
+}
+
+.tour__body {
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.65;
+  color: var(--k-ink-soft);
+}
+
+.tour__actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
+
+.tour__nav {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.tour__skip {
+  border: none;
+  background: transparent;
+  color: var(--k-ink-soft);
+  font-size: 0.78rem;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  padding: var(--space-1);
+}
+
+.tour__skip:hover {
+  color: var(--k-key);
+}
+
+.tour__prev,
+.tour__next {
+  border-radius: var(--radius-s);
+  padding: var(--space-2) var(--space-4);
+  font-size: 0.82rem;
+  font-weight: 500;
+  border: var(--border-hair);
+  background: transparent;
+  color: var(--k-key);
+}
+
+.tour__prev:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--k-key) 6%, transparent);
+}
+
+.tour__prev:disabled {
+  color: var(--k-ink-soft);
+  opacity: 0.5;
+}
+
+.tour__next {
+  border-color: transparent;
+  background: var(--k-cyan);
+  /* シアン原色塗りの上のテキストはテーマに関わらず暗色で固定する(tokens.css の判断点参照)。 */
+  color: var(--k-fill-text-dark);
+}
+
+.tour__next:hover {
+  background: color-mix(in srgb, var(--k-cyan) 85%, var(--k-key));
+}
+
+/* 動きを減らす設定では、切り抜きの追従アニメーションを止める(位置は即座に確定させる)。 */
+@media (prefers-reduced-motion: reduce) {
+  .tour__cutout {
+    transition: none;
+  }
+}
+
+/* 狭い画面では操作列が窮屈になるため、スキップを下段へ落として指で押せる幅を確保する。 */
+@media (max-width: 400px) {
+  .tour__actions {
+    flex-direction: column-reverse;
+    align-items: stretch;
+  }
+
+  .tour__nav {
+    justify-content: space-between;
+  }
+
+  .tour__prev,
+  .tour__next {
+    flex: 1;
+  }
+}

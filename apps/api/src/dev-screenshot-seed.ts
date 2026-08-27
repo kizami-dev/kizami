@@ -37,8 +37,8 @@ import {
   workPolicies,
   workPolicyVersions,
   type Database,
-  migrateDb,
 } from "@kizami/db";
+import { migrateDb } from "@kizami/db/node";
 import { hashPassword } from "./auth/password.js";
 
 const MINUTES_PER_DAY = 1440;

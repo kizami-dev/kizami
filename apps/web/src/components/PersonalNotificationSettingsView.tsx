@@ -262,7 +262,7 @@ export function PersonalNotificationSettingsView() {
 
         {form && settings ? (
           <form className="settings-personal-notif__form" onSubmit={handleSave}>
-            <section className="settings-notif__section">
+            <section className="settings-notif__section" data-tour="personal-notifications">
               <h2 className="settings-notif__section-title">{messages.settingsPersonalNotifications.categoriesSectionTitle}</h2>
               <p className="settings-notif__field-hint">{messages.settingsPersonalNotifications.inappAlwaysOnHint}</p>
 

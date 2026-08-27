@@ -21,7 +21,7 @@ export function MonthlyTotals({ data }: MonthlyTotalsProps) {
   const fixedBreakdown = data.figures.fixedBreakdown;
   return (
     <>
-      <div>
+      <div data-tour="monthly-totals">
         <p className="flex-balance__label">{messages.monthly.totalsLabel}</p>
         <div className="totals-row">
           {TOTAL_CATEGORIES.map((cat) => (

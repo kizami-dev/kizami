@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import { isUniqueConstraintError } from "../src/errors.js";
-import { migrateDb, type Database } from "./support/db.js";
+import { migrateDb, supportsTransactions, type Database } from "./support/db.js";
 import { insertAuditLog } from "../src/queries/audit.js";
 import {
   createCorrectionRequest,
@@ -149,7 +149,10 @@ describe("correction_requests", () => {
     expect(rows).toHaveLength(1);
   });
 
-  it("reflects a correction approval atomically inside db.transaction (event insert + status update + audit log)", async () => {
+  // D1 は明示トランザクション(BEGIN/COMMIT)を拒否するため、db.transaction() を通る
+  // テストは D1 レグでは skip する(support/db.ts の supportsTransactions と
+  // docs/design/workers-d1.md「D1 で動かないもの」を参照)
+  it.skipIf(!supportsTransactions)("reflects a correction approval atomically inside db.transaction (event insert + status update + audit log)", async () => {
     const target = await insertPunchEvent(db, {
       tenantId,
       userId,
@@ -214,7 +217,7 @@ describe("correction_requests", () => {
     expect(logs).toHaveLength(1);
   });
 
-  it("rolls back the whole transaction when the second supersede of the same event violates the UNIQUE index", async () => {
+  it.skipIf(!supportsTransactions)("rolls back the whole transaction when the second supersede of the same event violates the UNIQUE index", async () => {
     const target = await insertPunchEvent(db, {
       tenantId,
       userId,

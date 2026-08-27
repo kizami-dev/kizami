@@ -16,58 +16,35 @@
  *   drizzle-kit の `migrations-pg/` 生成と drift テストにだけ使う。
  * - したがって `Database` 型は libSQL 版を「代表型」として使う。PostgreSQL 実体を返すときは
  *   ここで一度だけキャストし、呼び出し側(apps/api・src/queries/)は差を意識しない。
+ *
+ * **このファイルは Node 専用**(2026-08-27、要件 §8「Workers+D1 動作保証」)。@libsql/client も
+ * pg も node:net / node:fs に依存しており workerd ではバンドルできないため、パッケージの
+ * エントリを2つに割った:
+ * - `@kizami/db`      … ランタイム非依存(スキーマ・クエリ・型・D1 ファクトリ)。workerd で動く
+ * - `@kizami/db/node` … 上に加えてこのファイル(createDatabase / migrateDb)。Node 専用
+ * 3つめのダイアレクト(Cloudflare D1)は src/d1.ts。設計は docs/design/workers-d1.md。
  */
 
-import { createClient, type Client as LibsqlClient } from "@libsql/client";
-import { drizzle, type LibSQLDatabase } from "drizzle-orm/libsql";
+import { createClient } from "@libsql/client";
+import { drizzle } from "drizzle-orm/libsql";
 import { migrate as libsqlMigrate } from "drizzle-orm/libsql/migrator";
 import { drizzle as drizzlePg } from "drizzle-orm/node-postgres";
 import { migrate as pgMigrate } from "drizzle-orm/node-postgres/migrator";
 import { Pool } from "pg";
 import { resolveDialect, type DbDialect } from "./dialect.js";
 import * as schema from "./schema/index.js";
-
-/**
- * KIZAMI の DB ハンドル。
- *
- * 実体は libSQL 版 / PostgreSQL 版のどちらかだが、クエリ層が使う API 面は同一なので
- * libSQL 版の型を代表として使う(上のファイル冒頭コメント参照)。
- */
-export type Database = LibSQLDatabase<typeof schema>;
-
-/**
- * `db.transaction(async (tx) => ...)` のコールバック引数の型。
- * 複数テーブルへの書き込みをアトミックに行うクエリ関数(insertAuditLog 等)は
- * `Database | Transaction` を受け取れるようにして、通常呼び出しとトランザクション内
- * 呼び出しの両方に対応する。
- */
-export type Transaction = Parameters<Parameters<Database["transaction"]>[0]>[0];
-
-/**
- * ダイアレクト非依存の最小クライアント。`migrateDb` / `createDatabase` の戻り値で返す。
- *
- * drizzle を通さない生 SQL(テストのスキーマ確認など)と後始末だけを提供する。
- * 以前は @libsql/client の `Client` をそのまま返していたが、PostgreSQL でも同じ形で
- * 扱えるようにここで最小面に絞った。
- */
-export interface DbClient {
-  /** 生 SQL を1文実行して行を返す。 */
-  execute(sql: string): Promise<{ rows: Record<string, unknown>[] }>;
-  /** 接続を閉じる。 */
-  close(): Promise<void>;
-}
-
-/** `migrateDb` / `createDatabase` の戻り値。 */
-export interface DatabaseHandle {
-  db: Database;
-  client: DbClient;
-  dialect: DbDialect;
-}
+import type { Database, DatabaseHandle } from "./types.js";
 
 const SQLITE_MIGRATIONS_FOLDER = new URL("../migrations", import.meta.url).pathname;
 const PG_MIGRATIONS_FOLDER = new URL("../migrations-pg", import.meta.url).pathname;
 
-/** ダイアレクト既定のマイグレーションフォルダ。 */
+/**
+ * ダイアレクト既定のマイグレーションフォルダ。
+ *
+ * D1 は SQLite 互換なので `migrations/` を共有する(wrangler の `d1 migrations apply` が
+ * 同じディレクトリを読む — apps/api/wrangler.jsonc の `migrations_dir`)。ただし D1 に対して
+ * 実行時マイグレーションは流さない(`migrateDb` 参照)。
+ */
 export function defaultMigrationsFolder(dialect: DbDialect): string {
   return dialect === "postgres" ? PG_MIGRATIONS_FOLDER : SQLITE_MIGRATIONS_FOLDER;
 }
@@ -88,15 +65,6 @@ export interface CreateDatabaseOptions {
   pgPoolMax?: number;
   /** アイドル接続を閉じるまでのミリ秒(既定は node-postgres のまま)。 */
   pgIdleTimeoutMillis?: number;
-}
-
-/**
- * libsql クライアントから Drizzle DB インスタンスを作る(マイグレーションは適用しない)。
- *
- * @deprecated 新規コードは `createDatabase` を使うこと。既存の呼び出し互換のために残している。
- */
-export function createDb(client: LibsqlClient): Database {
-  return drizzle(client, { schema });
 }
 
 function createLibsql(options: CreateDatabaseOptions): DatabaseHandle {
@@ -169,11 +137,18 @@ export async function createDatabase(url?: string, options?: Omit<CreateDatabase
  * 指定した接続先(既定は SQLite の in-memory)にマイグレーションを適用し、DB ハンドルを返す。
  *
  * マイグレーションフォルダはダイアレクトごとに別系統(`migrations/` と `migrations-pg/`)。
+ *
+ * **D1 では適用しない**: Cloudflare D1 のマイグレーションはデプロイ時に
+ * `wrangler d1 migrations apply` が流す(Workers に「起動時に1回」の場所が無いため)。
+ * この関数は Node 専用で D1 ハンドルを作ることは無いが、将来 D1 ハンドルが渡された場合に
+ * node:fs 依存のマイグレータへ落ちないよう明示的に skip する。詳細は docs/design/workers-d1.md。
  */
 export async function migrateDb(
   options?: CreateDatabaseOptions & { migrationsFolder?: string },
 ): Promise<DatabaseHandle> {
   const handle = await createDatabase(options?.url, options);
+  // D1 はデプロイ時適用(上の doc コメント)。ここで何もしないのが正しい挙動
+  if (handle.dialect === "d1") return handle;
   const migrationsFolder = options?.migrationsFolder ?? defaultMigrationsFolder(handle.dialect);
 
   if (handle.dialect === "postgres") {

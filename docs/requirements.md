@@ -142,17 +142,25 @@
 | レイヤ | 選定 | 備考 |
 | --- | --- | --- |
 | 言語 | TypeScript | Node 26+ |
-| API | Hono | Node上で運用(Workers両対応、下記) |
+| API | Hono | Node上で運用。Workers(workerd)でも起動・動作する(2026-08-27 実装、[design/workers-d1.md](./design/workers-d1.md)) |
 | フロント | Waku (React) | RSCベース |
 | ビルド/テスト | Vite / Vitest | WakuはVite基盤。ツールチェーンをViteエコシステムに統一 |
 | ドキュメント | VitePress | OSSドキュメントサイト(日/英) |
 | ORM | Drizzle | SQLite/PostgreSQL両ダイアレクトを抽象 |
-| DB | SQLiteベース+PostgreSQL選択式 | 既定はSQLite。大規模はPostgreSQL(2026-08-24 実装 — `DATABASE_URL` が `postgres://` なら自動で切り替え、[design/db-dialects.md](./design/db-dialects.md))。Cloudflare D1にも対応(動作保証、§9) |
+| DB | SQLiteベース+PostgreSQL選択式 | 既定はSQLite。大規模はPostgreSQL(2026-08-24 実装 — `DATABASE_URL` が `postgres://` なら自動で切り替え、[design/db-dialects.md](./design/db-dialects.md))。Cloudflare D1は3つめのダイアレクトとして実装済み(2026-08-27。バインディング注入・マイグレーションはデプロイ時適用 — [design/workers-d1.md](./design/workers-d1.md)) |
 | キュー/キャッシュ | Valkey + BullMQ | リマインドスケジューラ・ジョブキュー用(確定) |
 | 配布 | Docker Compose+Helm chart | 1社1インスタンスでもマルチテナントでも可 |
 | リファレンス環境 | 既存k3sクラスタ | 開発者自身のドッグフーディング環境 |
 
-**決定**: **Cloudflare Workers + D1 での動作を保証する**(v1.0要件)。コアロジック(集計エンジン・ドメイン層)はランタイム非依存に保ち、Node/workerd両方をCIで検証(§9)。Valkey+BullMQはNode環境前提のため、キュー/スケジューラ層は差し替え可能な抽象とする: Node環境=Valkey+BullMQ、Workers環境=Cloudflare Queues+Cron Triggers。両実装をv1.0までに揃える。
+**決定**: **Cloudflare Workers + D1 での動作を保証する**(v1.0要件)。コアロジック(集計エンジン・ドメイン層)はランタイム非依存に保ち、Node/workerd両方をCIで検証(§9)。Valkey+BullMQはNode環境前提のため、キュー/スケジューラ層は差し替え可能な抽象とする: Node環境=Valkey+BullMQ、Workers環境=Cloudflare Queues+Cron Triggers。
+
+**実装状況(2026-08-27)**: HTTP API は workerd + D1 で起動・動作する(`apps/api/src/workers.ts` + `apps/api/wrangler.jsonc`、CI の `test-workerd` ジョブで検証)。ただし**動作保証範囲には制約がある**:
+
+- **D1 は明示トランザクション(`BEGIN`/`SAVEPOINT`)を拒否する**ため、`db.transaction()` を通る書き込み経路(招待・パスワード再設定・修正申請の承認・締め・休暇申請の承認・メンバー停止/再開・Slack連携)は D1 配備では使えない。読み取りと打刻が中心の API までが動作保証範囲
+- **定期スキャン(リマインド・36協定アラート・シフト乖離・有休付与提案)は Node の `worker.ts` のみ**。Cron Triggers + Cloudflare Queues 実装は未着手(スキャン本体は既に BullMQ にも `node:*` にも依存しない純関数なので、呼び出し側だけの課題)
+- **SMTP 送信は Node のみ**(nodemailer が `node:net` 依存)。`@kizami/notify` は送信関数の注入形なので fetch ベースのメール API を1本書けば Workers でも送れる
+
+制約と配備手順の一覧は [design/workers-d1.md](./design/workers-d1.md)。
 
 ## 9. テスト戦略
 
@@ -168,14 +176,14 @@ Workers動作保証(§8)と SQLite/PostgreSQL/D1 の3ダイアレクト対応を
 
 | レイヤ | 手法 | 実行環境 |
 | --- | --- | --- |
-| 集計エンジン(unit) | Vitest+ゴールデンケース。不変条件(区分合計=総実労働 等)は fast-check の property-based で補強 | Node と workerd(@cloudflare/vitest-pool-workers)の両方で同一スイート |
-| リポジトリ層(integration) | Drizzle経由の実DBテスト。同一スイートを3ダイアレクトで実行 | SQLite(libSQL) / PostgreSQL(2026-08-24 実装 — `TEST_PG_URL` を渡すと packages/db の全テストが両ダイアレクトで走る) / D1(Miniflare、未着手) |
-| API(integration) | hono/testing でリクエストレベル検証。権限マトリクス(permission×scope)網羅と監査ログ不可変性テストを含む | Node と workerd の両方 |
+| 集計エンジン(unit) | Vitest+ゴールデンケース。不変条件(区分合計=総実労働 等)は fast-check の property-based で補強 | Node と workerd(@cloudflare/vitest-pool-workers)の両方で同一スイート(2026-08-27 実装 — フィクスチャの読み込みを `node:fs` から `import.meta.glob` へ移して両ランタイム共通にした) |
+| リポジトリ層(integration) | Drizzle経由の実DBテスト。同一スイートを3ダイアレクトで実行 | SQLite(libSQL) / PostgreSQL(2026-08-24 実装 — `TEST_PG_URL` を渡すと packages/db の全テストが両ダイアレクトで走る) / D1(2026-08-27 実装 — `pnpm test:workers` で miniflare 上の D1 に対して同一スイートが走る。トランザクション依存の34件のみ skip) |
+| API(integration) | hono/testing でリクエストレベル検証。権限マトリクス(permission×scope)網羅と監査ログ不可変性テストを含む | 本体スイートは Node。workerd は起動スモーク1本(`SELF.fetch()` で実物の `src/workers.ts` を叩き、ログイン→打刻→勤務状態→月次まで確認)。判断の背景は [design/workers-d1.md](./design/workers-d1.md) |
 | E2E | Playwright。主要業務フロー(打刻→集計→修正申請→承認→締め→CSV) | SQLite構成のフルスタック |
 
 ### CIマトリクス
 
-- 毎PR: unit(Node+workerd)、integration(SQLite/PostgreSQL — CI の `test-postgres` ジョブ/D1)、E2E主要フロー
+- 毎PR: unit(Node+workerd — CI の `test` / `test-workerd` ジョブ)、integration(SQLite/PostgreSQL — `test-postgres` ジョブ / D1 — `test-workerd` ジョブ)、E2E主要フロー
 - nightly: E2E全量、PostgreSQL複数バージョン
 - Workers動作保証の実体はこのマトリクスの workerd/D1 列。緑でないPRはマージ不可
 
@@ -184,7 +192,7 @@ Workers動作保証(§8)と SQLite/PostgreSQL/D1 の3ダイアレクト対応を
 **決定**: 各機能画面に「この画面で何ができるか・その操作がどこに影響するか」を**ツールチップ/インラインヒント形式で都度提示**し、ユーザーの迷いを減らす。自明な操作(出勤ボタン等)には付けない。
 
 - 付与の目安: **影響が画面の外に及ぶ操作**(締めの実行/解除、承認、権限プリセットの割当、自動控除ルールの変更)と、**法制度に由来する表示**(清算期間の総枠、法定休日、年5日義務、36協定の閾値)
-- 初回ログイン時のオンボーディングツアーはロードマップ。まずは文脈内ヒントを優先
+- 初回ログイン時のオンボーディングツアーは実装済み(2026-08-27)。文脈内ヒント(ツールチップ)を主、ツアーを従とする関係は変えない — ツアーは「どこに何があるか」を一度案内するだけで、操作の意味は各画面のヒントが引き続き担う
 
 ### ビジュアルデザイン方針
 
@@ -214,8 +222,8 @@ Workers動作保証(§8)と SQLite/PostgreSQL/D1 の3ダイアレクト対応を
 | v0.4 | 入口の拡張 | Slackコマンド打刻、Webhook通知、PWA+GPS打刻、公開打刻API(APIキー)、MCPサーバー(打刻・照会・申請) |
 | v0.5 | 制度の拡張 | 固定時間制(1日8h・週40hの二段判定、法定内残業の区分)、月次一覧への打刻時刻表示(広い画面では出勤・退勤の独立列)、制度に応じた表示の出し分け、休憩不足の検知(労基法34条・勤怠日チェーン単位 — 中抜けの空白を休憩相当に算入)、休憩の自動控除(auto/both、本人が打ち消し申請できる形 — [design/breaks.md](./design/breaks.md))、招待式メンバー登録、手当対象時間の算出([design/allowances.md](./design/allowances.md))、多言語UI(日・英・韓・中〔簡体〕) |
 | v0.7 | シフト制と有給付与フロー | シフト制/1ヶ月単位の変形労働時間制(3段の時間外判定・シフト表・予実乖離の警告 — [design/shift-work.md](./design/shift-work.md))、**有給付与の予告→承認→通知フロー**(下記)、シフト制ユーザーの有給1日分の分数換算(シフトのある日はその所定、無い日は基準所定)<br>実装状況(2026-08-24): フェーズ1〜4 完了 |
-| v1.0 | 企業利用可能・OSS公開 | マルチテナント有効化(2026-08-24 完了: テナント作成CLI + テナント間分離の監査テスト — [design/multi-tenancy.md](./design/multi-tenancy.md))、OIDC(2026-08-24 完了: 認可コード+PKCE、自動プロビジョニングなし — [design/sso-oidc.md](./design/sso-oidc.md))、PostgreSQL選択式(2026-08-24 完了: `DATABASE_URL` のスキームで切替、全DBテストを両ダイアレクトで実行 — [design/db-dialects.md](./design/db-dialects.md))、**Workers+D1動作保証**(キュー層のCloudflare Queues実装込み)、Compose/Helm配布、ドキュメント整備 |
-| 以降 | ロードマップ | 3ヶ月清算、freee/MF の**API**連携、オンボーディングツアー<br>実装済み(2026-08-27): **freee/MF向けCSVエクスポート**(`?format=freee` / `?format=mf`。区分別時間数を各社の勤怠項目へマッピング。金額計算は従来どおり給与ソフト側の責任 — [design/payroll-export.md](./design/payroll-export.md))<br>実装済み(2026-08-24): **権限denyルール**(プリセットが拒否を持てる。拒否は全付与に優先・スコープなし・セルフサービス権限は対象外 — [design/permission-catalog.md](./design/permission-catalog.md#拒否-deny-ルール))、**Web Push**(ブラウザプッシュ通知。VAPID 自前実装・外部サービス不使用、カテゴリごとに個人でON/OFF、鍵未設定なら機能ごと非表示 — [design/web-push.md](./design/web-push.md))、**コアタイム**(労基法32条の3。警告のみ・集計に影響しない — [design/work-systems.md](./design/work-systems.md)「コアタイム」)、**多段承認**(種別ごとに単段/二段を選べるテナント設定。仕掛かり中の申請は作成時点の段数で確定 — [design/approval-flows.md](./design/approval-flows.md)) |
+| v1.0 | 企業利用可能・OSS公開 | マルチテナント有効化(2026-08-24 完了: テナント作成CLI + テナント間分離の監査テスト — [design/multi-tenancy.md](./design/multi-tenancy.md))、OIDC(2026-08-24 完了: 認可コード+PKCE、自動プロビジョニングなし — [design/sso-oidc.md](./design/sso-oidc.md))、PostgreSQL選択式(2026-08-24 完了: `DATABASE_URL` のスキームで切替、全DBテストを両ダイアレクトで実行 — [design/db-dialects.md](./design/db-dialects.md))、**Workers+D1動作保証**(2026-08-27 一次実装: HTTP API が workerd+D1 で動作、CI に `test-workerd` ジョブ追加 — [design/workers-d1.md](./design/workers-d1.md)。**残: D1 のトランザクション制約でブロックされる承認系書き込み経路、キュー層の Cloudflare Queues + Cron Triggers 実装、fetch ベースのメール送信**)、Compose/Helm配布、ドキュメント整備 |
+| 以降 | ロードマップ | 3ヶ月清算、freee/MF の**API**連携<br>実装済み(2026-08-27): **オンボーディングツアー**(初回ログイン時に自動で始まる案内。打刻→月次→修正/休暇の申請→個人の通知設定をたどり、`member.invite` を持つ人にはさらに設定ハブ→メンバー招待→勤怠ルール→締めが続く。外部ライブラリを足さない自前のスポットライト実装で、対象要素は `data-tour` 属性で指す。権限で消えた要素の手順は黙って飛ばす。完了/スキップの記録は端末ごと〔localStorage〕— 端末都合の設定でありサーバーには保存しない。設定ハブの「使い方ツアーを見る」からいつでも再実行)、**freee/MF向けCSVエクスポート**(`?format=freee` / `?format=mf`。区分別時間数を各社の勤怠項目へマッピング。金額計算は従来どおり給与ソフト側の責任 — [design/payroll-export.md](./design/payroll-export.md))<br>実装済み(2026-08-24): **権限denyルール**(プリセットが拒否を持てる。拒否は全付与に優先・スコープなし・セルフサービス権限は対象外 — [design/permission-catalog.md](./design/permission-catalog.md#拒否-deny-ルール))、**Web Push**(ブラウザプッシュ通知。VAPID 自前実装・外部サービス不使用、カテゴリごとに個人でON/OFF、鍵未設定なら機能ごと非表示 — [design/web-push.md](./design/web-push.md))、**コアタイム**(労基法32条の3。警告のみ・集計に影響しない — [design/work-systems.md](./design/work-systems.md)「コアタイム」)、**多段承認**(種別ごとに単段/二段を選べるテナント設定。仕掛かり中の申請は作成時点の段数で確定 — [design/approval-flows.md](./design/approval-flows.md)) |
 
 > 有給付与の3段フロー(v0.7 で実装、2026-08-23 決定 / 2026-08-24 実装): (1) 付与基準日の**30日前**に管理者へ予告通知 — 対象者・算定日数に加え、打刻・シフトから計算した**出勤率の参考値**(労基法39条1項の8割出勤要件の検算材料)を添える。(2) 管理者が確認のうえ承認すると、そこで初めて付与(`leave_grants`)が作られる。(3) 承認時に本人へ「◯日付与されました」を leave_alert カテゴリ・個人チャネルで通知。機械が無条件に付与を確定させない — 出勤率要件の最終判断は人が行う。設計・決定の詳細は [design/shift-work.md](./design/shift-work.md) の「フェーズ4の決定事項」を参照。
 

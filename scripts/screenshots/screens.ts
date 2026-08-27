@@ -29,6 +29,20 @@ export interface Screen {
    * 省略時は管理者セッション(既定)で撮る。
    */
   authAs?: string;
+  /**
+   * 使い方ツアー(apps/web/src/components/Tour.tsx)を出したまま撮るか(既定 false)。
+   *
+   * ツアーは初回ログイン時に自動で始まるため、何もしないと**すべての画面**に暗幕が
+   * かぶってしまう。そこで capture.ts が全画面で完了フラグ(kizami.tour.v1.done)を
+   * 先に localStorage へ書き込み、この旗を立てた画面でだけ消す(= その画面でだけ始まる)。
+   */
+  tour?: boolean;
+  /**
+   * ページ全体ではなくビューポート分だけを撮るか(既定 false = fullPage)。
+   * 画面に固定(position: fixed)された層を主役にする画面で使う — fullPage だと
+   * 固定層がページ途中に写り込み、実際の見え方と食い違うため(モバイルのタブバーと同じ事情)。
+   */
+  viewportOnly?: boolean;
 }
 
 export const SCREENS: Screen[] = [
@@ -55,6 +69,16 @@ export const SCREENS: Screen[] = [
     caption: "今日の状態・未処理の申請・期限が近い義務を一望する入口。",
     requiresAuth: true,
     mobile: true,
+  },
+  {
+    slug: "tour",
+    path: "/",
+    title: "使い方ツアー(初回ログイン)",
+    caption: "初めてログインすると、打刻から申請までの流れを画面上で案内する。権限に応じて管理者向けの手順が続き、あとから設定ハブでいつでも見直せる。",
+    requiresAuth: true,
+    mobile: true,
+    tour: true,
+    viewportOnly: true,
   },
   {
     slug: "punch",

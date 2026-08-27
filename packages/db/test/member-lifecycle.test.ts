@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { migrateDb, type Database } from "./support/db.js";
+import { migrateDb, supportsTransactions, type Database } from "./support/db.js";
 import { createInvitation, deactivateUser, reactivateUser, revokePendingInvitationForUser } from "../src/queries/index.js";
 import { tenants, users } from "../src/schema/index.js";
 import { uuidv7 } from "../src/uuid.js";
@@ -40,8 +40,10 @@ describe("deactivateUser / reactivateUser", () => {
   });
 });
 
+// 招待の作成(createInvitation)が db.transaction() を使うため、D1 レグでは skip する
+// (support/db.ts の supportsTransactions と docs/design/workers-d1.md を参照)
 describe("revokePendingInvitationForUser", () => {
-  it("revokes the pending invitation for the user", async () => {
+  it.skipIf(!supportsTransactions)("revokes the pending invitation for the user", async () => {
     const { db, tenantId, adminId, targetId } = await setup();
     await createInvitation(db, {
       tenantId,

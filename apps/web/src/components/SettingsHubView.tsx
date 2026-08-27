@@ -2,6 +2,7 @@
 
 import { Link } from "waku";
 import { messages } from "../lib/messages";
+import { restartTour } from "./Tour";
 import { useSettingsAccess } from "../lib/useSettingsAccess";
 import { useAuthGuard } from "../lib/useAuthGuard";
 import { AppHeader } from "./AppHeader";
@@ -202,7 +203,7 @@ export function SettingsHubView() {
             ) : null}
 
             {cards.length > 0 ? (
-              <section className="settings-hub__group">
+              <section className="settings-hub__group" data-tour="settings-hub-tenant">
                 <h2 className="settings-hub__group-title">{messages.settingsHub.tenantGroupTitle}</h2>
                 <div className="settings-hub__grid">
                   {cards.map((c) => (
@@ -216,6 +217,19 @@ export function SettingsHubView() {
             ) : null}
           </>
         )}
+
+        {/*
+          使い方ツアーの再実行(2026-08-27 追加)。初回ログイン時に自動で始まるツアーを
+          あとから見直すための唯一の入口。設定ハブは(個人の通知設定が全員可のため)権限に
+          関わらず全員が開けるので、ここに置けばメンバーも管理者も辿り着ける。
+          完了記録は端末ごと(localStorage)のため、ここから消して最初からやり直す。
+        */}
+        <p className="settings-hub__tour">
+          <button type="button" className="settings-hub__tour-link" onClick={restartTour}>
+            {messages.tour.restartTitle}
+          </button>
+          <span className="settings-hub__tour-desc">{messages.tour.restartDesc}</span>
+        </p>
       </main>
     </div>
   );

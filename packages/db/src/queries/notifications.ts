@@ -9,7 +9,7 @@
 
 import { and, count, desc, eq, isNull } from "drizzle-orm";
 import { isUniqueConstraintError } from "../errors.js";
-import type { Database } from "../migrate.js";
+import type { Database } from "../types.js";
 import { notifications } from "../schema/index.js";
 import { uuidv7 } from "../uuid.js";
 

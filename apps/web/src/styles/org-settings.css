@@ -154,6 +154,36 @@
   color: var(--k-ink-soft);
 }
 
+/* 使い方ツアーの再実行(2026-08-27 追加)。設定カードと張り合わないよう、
+   カード群の下に一行のテキストリンクとして静かに置く。 */
+.settings-hub__tour {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding-top: var(--space-4);
+  border-top: var(--border-hair);
+}
+
+.settings-hub__tour-link {
+  border: none;
+  background: transparent;
+  padding: 0;
+  font-size: 0.85rem;
+  color: var(--k-cyan-ink);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.settings-hub__tour-link:hover {
+  color: var(--k-key);
+}
+
+.settings-hub__tour-desc {
+  font-size: 0.78rem;
+  color: var(--k-ink-soft);
+}
+
 /* ---- 共通レイアウト(部署・メンバー・プリセット管理) ---- */
 
 .org-settings {

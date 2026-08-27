@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
-import { migrateDb, type Database } from "./support/db.js";
+import { migrateDb, supportsTransactions, type Database } from "./support/db.js";
 import {
   createPasswordResetToken,
   findPasswordResetTokenByHash,
@@ -19,7 +19,10 @@ import { uuidv7 } from "../src/uuid.js";
 
 const DAY_MINUTES = 24 * 60;
 
-describe("password-resets", () => {
+// D1 は明示トランザクション(BEGIN/COMMIT)を拒否するため、db.transaction() を通る
+// テストは D1 レグでは skip する(support/db.ts の supportsTransactions と
+// docs/design/workers-d1.md「D1 で動かないもの」を参照)
+describe.skipIf(!supportsTransactions)("password-resets", () => {
   let db: Database;
   const tenantId = uuidv7();
   const adminId = uuidv7();
