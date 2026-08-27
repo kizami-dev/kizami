@@ -94,7 +94,7 @@
 - 月次締め(確定・ロック)
 - **締め後の遡及修正**: 専用権限「締めの解除」を持つユーザーのみが再オープン可能。再オープン→修正→再締めの全操作を監査ログに記録し、締め状態の履歴(誰がいつ解除したか)も保持
 - **汎用CSV/APIエクスポート**で区分別時間数を出力(v0.3)
-- **freee/マネーフォワード連携**(各社のインポート形式・API)はロードマップ
+- **freee/マネーフォワード連携**: **CSVエクスポートは対応済み**(2026-08-27。`GET /exports/attendance.csv?format=freee|mf` — freee人事労務の勤怠サマリー24列は一次情報で列仕様を確認済み、マネーフォワード クラウド給与は**固定の列仕様が存在せず**事業者ごとの勤怠項目名に依存するため転記用CSV。どちらも取り込み前のマッピング確認が必須で、UI では β 表示。日数系(出勤日数・欠勤日数・有休取得日数)はKIZAMI が算出しないため空欄 — [design/payroll-export.md](./design/payroll-export.md))。**API連携(OAuth経由の直接連携)はロードマップ**
 
 ## 7. テナント・認証・通知
 
@@ -215,7 +215,7 @@ Workers動作保証(§8)と SQLite/PostgreSQL/D1 の3ダイアレクト対応を
 | v0.5 | 制度の拡張 | 固定時間制(1日8h・週40hの二段判定、法定内残業の区分)、月次一覧への打刻時刻表示(広い画面では出勤・退勤の独立列)、制度に応じた表示の出し分け、休憩不足の検知(労基法34条・勤怠日チェーン単位 — 中抜けの空白を休憩相当に算入)、休憩の自動控除(auto/both、本人が打ち消し申請できる形 — [design/breaks.md](./design/breaks.md))、招待式メンバー登録、手当対象時間の算出([design/allowances.md](./design/allowances.md))、多言語UI(日・英・韓・中〔簡体〕) |
 | v0.7 | シフト制と有給付与フロー | シフト制/1ヶ月単位の変形労働時間制(3段の時間外判定・シフト表・予実乖離の警告 — [design/shift-work.md](./design/shift-work.md))、**有給付与の予告→承認→通知フロー**(下記)、シフト制ユーザーの有給1日分の分数換算(シフトのある日はその所定、無い日は基準所定)<br>実装状況(2026-08-24): フェーズ1〜4 完了 |
 | v1.0 | 企業利用可能・OSS公開 | マルチテナント有効化(2026-08-24 完了: テナント作成CLI + テナント間分離の監査テスト — [design/multi-tenancy.md](./design/multi-tenancy.md))、OIDC(2026-08-24 完了: 認可コード+PKCE、自動プロビジョニングなし — [design/sso-oidc.md](./design/sso-oidc.md))、PostgreSQL選択式(2026-08-24 完了: `DATABASE_URL` のスキームで切替、全DBテストを両ダイアレクトで実行 — [design/db-dialects.md](./design/db-dialects.md))、**Workers+D1動作保証**(キュー層のCloudflare Queues実装込み)、Compose/Helm配布、ドキュメント整備 |
-| 以降 | ロードマップ | 3ヶ月清算、freee/MF連携、オンボーディングツアー<br>実装済み(2026-08-24): **権限denyルール**(プリセットが拒否を持てる。拒否は全付与に優先・スコープなし・セルフサービス権限は対象外 — [design/permission-catalog.md](./design/permission-catalog.md#拒否-deny-ルール))、**Web Push**(ブラウザプッシュ通知。VAPID 自前実装・外部サービス不使用、カテゴリごとに個人でON/OFF、鍵未設定なら機能ごと非表示 — [design/web-push.md](./design/web-push.md))、**コアタイム**(労基法32条の3。警告のみ・集計に影響しない — [design/work-systems.md](./design/work-systems.md)「コアタイム」)、**多段承認**(種別ごとに単段/二段を選べるテナント設定。仕掛かり中の申請は作成時点の段数で確定 — [design/approval-flows.md](./design/approval-flows.md)) |
+| 以降 | ロードマップ | 3ヶ月清算、freee/MF の**API**連携、オンボーディングツアー<br>実装済み(2026-08-27): **freee/MF向けCSVエクスポート**(`?format=freee` / `?format=mf`。区分別時間数を各社の勤怠項目へマッピング。金額計算は従来どおり給与ソフト側の責任 — [design/payroll-export.md](./design/payroll-export.md))<br>実装済み(2026-08-24): **権限denyルール**(プリセットが拒否を持てる。拒否は全付与に優先・スコープなし・セルフサービス権限は対象外 — [design/permission-catalog.md](./design/permission-catalog.md#拒否-deny-ルール))、**Web Push**(ブラウザプッシュ通知。VAPID 自前実装・外部サービス不使用、カテゴリごとに個人でON/OFF、鍵未設定なら機能ごと非表示 — [design/web-push.md](./design/web-push.md))、**コアタイム**(労基法32条の3。警告のみ・集計に影響しない — [design/work-systems.md](./design/work-systems.md)「コアタイム」)、**多段承認**(種別ごとに単段/二段を選べるテナント設定。仕掛かり中の申請は作成時点の段数で確定 — [design/approval-flows.md](./design/approval-flows.md)) |
 
 > 有給付与の3段フロー(v0.7 で実装、2026-08-23 決定 / 2026-08-24 実装): (1) 付与基準日の**30日前**に管理者へ予告通知 — 対象者・算定日数に加え、打刻・シフトから計算した**出勤率の参考値**(労基法39条1項の8割出勤要件の検算材料)を添える。(2) 管理者が確認のうえ承認すると、そこで初めて付与(`leave_grants`)が作られる。(3) 承認時に本人へ「◯日付与されました」を leave_alert カテゴリ・個人チャネルで通知。機械が無条件に付与を確定させない — 出勤率要件の最終判断は人が行う。設計・決定の詳細は [design/shift-work.md](./design/shift-work.md) の「フェーズ4の決定事項」を参照。
 

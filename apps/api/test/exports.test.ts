@@ -31,8 +31,8 @@ async function postPunch(app: RequestLike, cookie: string, kind: string, occurre
   expect(res.status).toBe(201);
 }
 
-async function getCsv(app: RequestLike, cookie: string, month: string) {
-  const res = await app.request(`/exports/attendance.csv?month=${month}`, { headers: { cookie } });
+async function getCsv(app: RequestLike, cookie: string, month: string, query = "") {
+  const res = await app.request(`/exports/attendance.csv?month=${month}${query}`, { headers: { cookie } });
   // Response#text() は TextDecoder 既定(ignoreBOM: false)によりデコード時に先頭の
   // UTF-8 BOM バイト列を消費してしまうため、BOM の有無はデコード前の生バイトで確認する。
   const bytes = new Uint8Array(await res.clone().arrayBuffer());
@@ -293,5 +293,155 @@ describe("GET /exports/attendance.csv", () => {
 
     const userRow = rows.find((r) => r[0] === userId) as string[];
     expect(userRow[13]).toBe(""); // 本人はフレックスなのでこちらも空文字
+  });
+});
+
+/**
+ * 給与ソフト向け形式(?format=freee|mf、2026-08-27 追加)。列そのものの対応づけは
+ * test/payroll-export.test.ts が単体で固定しているので、ここでは「ルートを通したときに
+ * 期待どおりのヘッダ・行・エンコーディング・ファイル名・権限になるか」だけを見る。
+ */
+describe("GET /exports/attendance.csv?format=", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(FIXED_NOW);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** 固定時間制(所定7h)で 09:00-19:00 を1日打刻した状態を作る。 */
+  async function setupFixedMonth() {
+    const { db, tenantId, userId, email, password } = await setupTestDb();
+    await switchToFixedWorkPolicy(db, { tenantId, standardDayMinutes: 420 });
+    await grantPermission(db, { tenantId, userId, permission: "export.attendance.run", scope: "tenant" });
+    const app = createApp({ db });
+    const cookie = await loginAndGetCookie(app, email, password);
+    await postPunch(app, cookie, "clock_in", jstMinutes(2026, 4, 1, 9, 0));
+    await postPunch(app, cookie, "clock_out", jstMinutes(2026, 4, 1, 19, 0));
+    // 所定7h(420分)+法定内残業1h(60分)+法定時間外2h(120分)
+    return { db, tenantId, userId, email, app, cookie };
+  }
+
+  it("権限が無ければ形式によらず 403(既存どおり export.attendance.run が要る)", async () => {
+    const { db, email, password } = await setupTestDb();
+    const app = createApp({ db });
+    const cookie = await loginAndGetCookie(app, email, password);
+
+    for (const format of ["freee", "mf"]) {
+      const res = await app.request(`/exports/attendance.csv?month=2026-04&format=${format}`, { headers: { cookie } });
+      expect(res.status).toBe(403);
+    }
+  });
+
+  it("format=generic は未指定と完全に同じ出力になる(既存挙動の不変を固定)", async () => {
+    const { app, cookie } = await setupFixedMonth();
+    const implicit = await getCsv(app, cookie, "2026-04");
+    const explicit = await getCsv(app, cookie, "2026-04", "&format=generic");
+    expect(explicit.text).toBe(implicit.text);
+    expect(explicit.headers.get("content-disposition")).toBe(implicit.headers.get("content-disposition"));
+  });
+
+  it("未知の format は 400 invalid_format(黙って generic に落とさない)", async () => {
+    const { app, cookie } = await setupFixedMonth();
+    const res = await app.request("/exports/attendance.csv?month=2026-04&format=moneyforward", { headers: { cookie } });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "invalid_format" });
+  });
+
+  it("給与ソフト形式 + compare=original は 400 compare_not_supported(固定列に差分列は足せない)", async () => {
+    const { app, cookie } = await setupFixedMonth();
+    const res = await app.request("/exports/attendance.csv?month=2026-04&format=freee&compare=original", { headers: { cookie } });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "compare_not_supported" });
+  });
+
+  it("format=freee: 24列・分単位・従業員番号列にメールアドレス・日数系は空欄", async () => {
+    const { email, app, cookie } = await setupFixedMonth();
+    const { status, headers, text, hasBom } = await getCsv(app, cookie, "2026-04", "&format=freee");
+
+    expect(status).toBe(200);
+    expect(headers.get("content-type")).toBe("text/csv; charset=utf-8");
+    expect(headers.get("content-disposition")).toBe('attachment; filename="kizami-freee-2026-04.csv"');
+    expect(hasBom).toBe(true); // freee は UTF-8(BOM付き)を受理する(routes/exports.ts の判断点)
+    expect(text.includes("\r\n")).toBe(true);
+
+    const { header, rows } = parseCsv(text);
+    expect(header).toHaveLength(24);
+    expect(header[0]).toBe("従業員番号");
+    expect(header[2]).toBe("所定労働時間（分）"); // 全角括弧
+    expect(rows).toHaveLength(1);
+
+    const row = rows[0] as string[];
+    expect(row[0]).toBe(email); // 社員番号を持たないのでメールアドレスを入れる
+    expect(row[2]).toBe("420"); // 所定労働時間(分)
+    expect(row[3]).toBe("60"); // 法定内残業時間(分)
+    expect(row[4]).toBe("120"); // 時間外労働時間(分)
+    expect(row[8]).toBe("600"); // 総労働時間(分) = 420 + 60 + 120 + 0
+    expect(row[9]).toBe(""); // 総労働日数(KIZAMI は算出しない)
+    expect(row[19]).toBe("2026-04-01"); // 集計開始日
+    expect(row[20]).toBe("2026-04-30"); // 集計終了日
+  });
+
+  it("format=mf: MF の勤怠項目名ヘッダ・時:分表記", async () => {
+    const { email, app, cookie } = await setupFixedMonth();
+    const { status, headers, text, hasBom } = await getCsv(app, cookie, "2026-04", "&format=mf");
+
+    expect(status).toBe(200);
+    expect(headers.get("content-type")).toBe("text/csv; charset=utf-8");
+    expect(headers.get("content-disposition")).toBe('attachment; filename="kizami-mf-2026-04.csv"');
+    expect(hasBom).toBe(true);
+
+    const { header, rows } = parseCsv(text);
+    expect(header).toEqual([
+      "従業員番号",
+      "氏名",
+      "対象年月",
+      "所定内出勤時間",
+      "法定内残業時間",
+      "残業時間",
+      "60時間超残業時間",
+      "深夜労働時間",
+      "法定休日労働時間",
+    ]);
+
+    const row = rows[0] as string[];
+    expect(row[0]).toBe(email);
+    expect(row[2]).toBe("2026-04");
+    expect(row[3]).toBe("7:00"); // 所定内出勤時間(420分)
+    expect(row[4]).toBe("1:00"); // 法定内残業時間(60分)
+    expect(row[5]).toBe("2:00"); // 残業時間(120分)
+    expect(row[6]).toBe("0:00"); // 60時間超残業時間
+  });
+
+  it("締め済み月でもスナップショット由来の値で出力できる(未締めと同じ値)", async () => {
+    const { db, tenantId, userId, app, cookie } = await setupFixedMonth();
+    await grantPermission(db, { tenantId, userId, permission: "closing.execute", scope: "tenant" });
+
+    const before = parseCsv((await getCsv(app, cookie, "2026-04", "&format=freee")).text).rows[0] as string[];
+
+    const closeRes = await app.request("/closings/2026-04/close", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({}),
+    });
+    expect(closeRes.status).toBe(200);
+
+    const after = parseCsv((await getCsv(app, cookie, "2026-04", "&format=freee")).text).rows[0] as string[];
+    expect(after).toEqual(before);
+  });
+
+  it("監査ログに format が残る", async () => {
+    const { db, tenantId, app, cookie } = await setupFixedMonth();
+    await getCsv(app, cookie, "2026-04", "&format=freee");
+
+    const rows = await db.select().from(auditLogs).where(eq(auditLogs.tenantId, tenantId));
+    // insertAuditLog は detail(JSON文字列)を audit_logs.after_digest に格納する
+    // (packages/db/src/queries/audit.ts 参照)。
+    const detail = JSON.parse(rows.find((r) => r.action === "export.attendance")?.afterDigest ?? "{}") as {
+      format?: string;
+    };
+    expect(detail.format).toBe("freee");
   });
 });

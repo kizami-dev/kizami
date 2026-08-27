@@ -1201,6 +1201,14 @@ export const zh = {
     } satisfies Record<"close" | "reopen" | "amend", string>,
     historyCorrectionLink: "查看相关修正申请",
 
+    csvFormatLabel: "格式",
+    csvFormatOptions: {
+      generic: "通用CSV",
+      freee: "freee人事劳务(测试版)",
+      mf: "Money Forward云薪资(测试版)",
+    },
+    csvFormatBetaNote:
+      "测试版:这是按各服务的考勤导入格式生成的兼容CSV。导入前请务必确认列名、单位和员工标识与贵公司的设置一致。天数(出勤天数、缺勤天数、带薪年假使用天数等)因KIZAMI不进行计算而留空。",
     csvDownload: "下载CSV",
     csvDownloading: "生成中…",
     csvCompareOriginalLabel: "包含与初始值的差异",

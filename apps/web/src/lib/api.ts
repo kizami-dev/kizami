@@ -2138,9 +2138,29 @@ export interface AttendanceCsvDownload {
   filename: string;
 }
 
-/** GET /exports/attendance.csv[?compare=original] を blob として取得する。Content-Disposition のファイル名を尊重する。 */
-export async function downloadAttendanceCsv(month: string, compareOriginal: boolean): Promise<AttendanceCsvDownload> {
-  const query = `?month=${encodeURIComponent(month)}${compareOriginal ? "&compare=original" : ""}`;
+/**
+ * CSV エクスポートの形式(apps/api/src/lib/payroll-export.ts の ExportFormat と同じ値)。
+ * "generic" は KIZAMI 汎用CSV、"freee"/"mf" は各給与ソフトの勤怠インポート向け互換CSV(β)。
+ */
+export type AttendanceCsvFormat = "generic" | "freee" | "mf";
+
+/**
+ * GET /exports/attendance.csv[?compare=original][&format=…] を blob として取得する。
+ * Content-Disposition のファイル名を尊重する。
+ *
+ * `format` は既定 "generic"(未指定時は API 側でも generic 扱い)。generic のときだけ
+ * クエリを付けないのは、既存のリクエスト URL を変えないため(API 側の既定と一致するので
+ * 挙動は同じ)。
+ */
+export async function downloadAttendanceCsv(
+  month: string,
+  compareOriginal: boolean,
+  format: AttendanceCsvFormat = "generic",
+): Promise<AttendanceCsvDownload> {
+  const query =
+    `?month=${encodeURIComponent(month)}` +
+    (compareOriginal ? "&compare=original" : "") +
+    (format === "generic" ? "" : `&format=${format}`);
   let res: Response;
   try {
     res = await fetch(`${BASE_URL}/exports/attendance.csv${query}`, { credentials: "include" });

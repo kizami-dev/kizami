@@ -1,5 +1,5 @@
 /**
- * GET /exports/attendance.csv?month=YYYY-MM[&compare=original]
+ * GET /exports/attendance.csv?month=YYYY-MM[&compare=original][&format=generic|freee|mf]
  *
  * 汎用CSVエクスポート(v0.3 第一弾)。参照: docs/requirements.md §6(締めと出口)、
  * docs/design/permission-catalog.md §1.6(エクスポート)。
@@ -33,6 +33,17 @@
  *   取れるようになったため。既存の5区分+flex3種と同じ original_ / diff_ 構成の対称性を保つ
  *   ための判断 — 詳細は本ファイルの実装コメント参照)
  *
+ * 給与ソフト向け形式(2026-08-27 追加):
+ * - `?format=freee` / `?format=mf` で、freee人事労務 / マネーフォワード クラウド給与の
+ *   勤怠インポートに合わせた**互換CSV(β・要マッピング確認)**を出す。既定は `generic` で、
+ *   従来の挙動(列・順序・エンコーディング)は一切変えない
+ * - 列の定義は apps/api/src/lib/payroll-export.ts に集約する(ここには置かない)。
+ *   ⚠ 各社とも完全な列仕様を一次情報として公開していないため、そのまま取り込める保証は無い —
+ *   検証状況と出典は docs/design/payroll-export.md を参照
+ * - `compare=original` は generic 専用。給与ソフトのインポートは決まった列しか受け付けないため、
+ *   差分列を足した CSV は取り込めない(400 `compare_not_supported`)。差額調整が必要なときは
+ *   generic 形式で差分を確認してから、給与ソフト側で調整する運用になる
+ *
  * CSV は UTF-8 BOM 付き・CRLF 改行(Excel 対応、依頼どおり)。
  */
 
@@ -52,6 +63,7 @@ import { requirePermission } from "../authz.js";
 import { buildAllowanceTimeline, resolveAllowanceColumnsForPeriod, type AllowanceColumn } from "../lib/allowances.js";
 import { engineOutputFromSnapshots, sumFixedBreakdown, type SnapshotTotals } from "../lib/closing-snapshot.js";
 import { buildTenantMonthlyContext } from "../lib/closing-amend.js";
+import { parseExportFormat, PAYROLL_FORMAT_SPECS, type PayrollExportFormat } from "../lib/payroll-export.js";
 import { resolveAccessibleUserIds } from "../lib/scope.js";
 import { dateFromEpochDay, daysInMonth, epochDayFromDate, formatDate, nowMinutes, parseMonthParam } from "../lib/time.js";
 import { calculateMonthlyForUser } from "../reminders.js";
@@ -276,6 +288,85 @@ function buildCsv(rows: string[], header: readonly string[]): string {
 }
 
 /**
+ * レスポンスに載せる直前の形。形式ごとに列だけでなくファイル名も変わるため、
+ * 「本文・Content-Type・ファイル名」を1組にして返す。
+ * (文字コードは現状すべて UTF-8 BOM — 判断の理由は renderPayrollCsv の JSDoc)
+ */
+interface RenderedCsv {
+  body: string;
+  contentType: string;
+  filename: string;
+}
+
+/** 汎用CSV(既定)。列・エンコーディング・ファイル名すべて従来どおり。 */
+function renderGenericCsv(params: {
+  entries: readonly RowInput[];
+  columns: readonly AllowanceColumn[];
+  compareOriginal: boolean;
+  period: string;
+}): RenderedCsv {
+  const rows = params.entries.map((e) => buildRow({ ...e, columns: params.columns }));
+  return {
+    body: buildCsv(rows, buildHeader(params.columns, params.compareOriginal)),
+    contentType: "text/csv; charset=utf-8",
+    filename: `kizami-${params.period}.csv`,
+  };
+}
+
+/**
+ * 給与ソフト向けCSV(freee / mf)。列の定義は lib/payroll-export.ts の spec に完全に委ねる。
+ *
+ * 従業員識別子(判断点、2026-08-27): users に社員番号のフィールドは無い。給与ソフト側の
+ * 社員番号と突き合わせるには本来それが要るが、そのためだけに users へ列を足すと
+ * 「KIZAMI が持つ必要のない他システムの識別子」をスキーマに抱えることになる(しかも
+ * 給与ソフトが複数あれば1列では足りない)。そこで**社員番号は持たず、メールアドレス列で出す**。
+ * freee人事労務・マネーフォワード クラウド給与ともメールアドレスは従業員に必須の項目なので、
+ * 取り込み側でキー列をメールアドレスに指定するか、表計算で社員番号へ差し替える運用を前提にする。
+ * 詳細は docs/design/payroll-export.md「従業員の識別子」。
+ *
+ * 手当の列(generic の allowance_<name>)は出さない。手当は会社ごとに任意の名前で定義される
+ * KIZAMI 固有の概念で、給与ソフト側の固定列に対応づけられないため(対応づけは支給項目の設定を
+ * 見ないと決まらず、こちらで推測すると誤った支給に直結する)。手当対象時間が要る場合は
+ * generic 形式を併用する。
+ *
+ * 文字コード(判断点、2026-08-27): generic と同じ **UTF-8 BOM 付き・CRLF** で出す。
+ * - freee: 公式サンプルCSVの実体は BOM 無し UTF-8 だが、freee 自身が文字コードエラー時の
+ *   復旧手順として「UTF-8(BOM付き)」で保存し直すよう案内している
+ *   (https://support.freee.co.jp/hc/ja/articles/360021412932)ため、BOM 付きは受理される。
+ *   日数系の列を人が補完する前提上、Excel でそのまま開けること(=BOM)を優先した。
+ * - マネーフォワード: **文字コードの一次情報を確認できていない**(Shift_JIS が要るかどうかも
+ *   含めてヘルプ本文に記載が無く、画面キャプチャ内にしか出てこない)。確認できないものを
+ *   推測で Shift_JIS にはしないため UTF-8 BOM で出し、文字化けする場合は表計算側で
+ *   保存し直す運用をドキュメントに書く(iconv 等の依存を憶測で足さない)。
+ */
+function renderPayrollCsv(params: {
+  entries: readonly RowInput[];
+  format: PayrollExportFormat;
+  period: string;
+  periodStartDate: string;
+  periodEndDate: string;
+}): RenderedCsv {
+  const spec = PAYROLL_FORMAT_SPECS[params.format];
+  const rows = params.entries.map((e) =>
+    buildCsvRow(
+      spec.buildRow({
+        email: e.user.email,
+        name: e.user.name,
+        period: e.period,
+        periodStartDate: params.periodStartDate,
+        periodEndDate: params.periodEndDate,
+        figures: e.current,
+      }),
+    ),
+  );
+  return {
+    body: buildCsv(rows, spec.header),
+    contentType: "text/csv; charset=utf-8",
+    filename: `kizami-${params.format}-${params.period}.csv`,
+  };
+}
+
+/**
  * 手当の列(allowance_<name>、テナント・期間ごとに動的)を `closed` の直前に挿入したヘッダを
  * 組み立てる。列名の先頭に付ける固定プレフィックス `allowance_` はヘッダ上の名前空間の目印
  * (docs/design/allowances.md「CSVエクスポート」— 名前自体はテナントが自由に付けられるため、
@@ -304,10 +395,28 @@ export function createExportsRoutes(db: Database) {
     const period = monthStartDate.slice(0, 7);
     const compareOriginal = c.req.query("compare") === "original";
 
+    const format = parseExportFormat(c.req.query("format"));
+    if (!format) {
+      return c.json({ error: "invalid_format" }, 400);
+    }
+    if (format !== "generic" && compareOriginal) {
+      // 給与ソフトのインポートは決まった列しか受け付けないため、差分列を足した CSV は
+      // そもそも取り込めない。黙って compare を無視すると「差分入りのつもりで出したのに
+      // 入っていない」事故になるので、明示的に断る(本ファイル冒頭の判断点参照)。
+      return c.json({ error: "compare_not_supported" }, 400);
+    }
+
     // 手当の列(テナント単位・期間に依存、ユーザーには依存しない)を一度だけ解決する
     // (docs/design/allowances.md「CSVエクスポート」— 列名は期間開始日時点の版を使う)。
-    const allowanceTimeline = await buildAllowanceTimeline(db, { tenantId: user.tenantId, fromDate: monthStartDate, toDate: monthEndDate });
-    const allowanceColumns = resolveAllowanceColumnsForPeriod(allowanceTimeline, monthStartDate);
+    // 給与ソフト形式は手当の列を出さない(renderPayrollCsv の JSDoc)ので、その場合は
+    // 定義の読み出し自体を省く。
+    const allowanceColumns =
+      format === "generic"
+        ? resolveAllowanceColumnsForPeriod(
+            await buildAllowanceTimeline(db, { tenantId: user.tenantId, fromDate: monthStartDate, toDate: monthEndDate }),
+            monthStartDate,
+          )
+        : [];
 
     const accessibleUserIds = await resolveAccessibleUserIds(db, {
       actor: { id: user.id, tenantId: user.tenantId, permissions: c.get("permissions") },
@@ -323,7 +432,10 @@ export function createExportsRoutes(db: Database) {
     const closingState = await getClosingState(db, { tenantId: user.tenantId, period });
     const closed = closingState.status === "closed";
 
-    const rows: string[] = [];
+    // 行の材料(ユーザー + 区分別時間数)をまず集め、CSV への整形は形式ごとに後段で行う
+    // (2026-08-27 の format 追加でこの2段構えにした。以前はループ内で直接 CSV 行文字列を
+    // 組み立てていたが、freee/mf 形式では列も単位も違うため、収集と整形を分けた)。
+    const entries: RowInput[] = [];
     if (closed) {
       const snapshotsByUser = await getClosingSnapshotsForUsers(db, {
         tenantId: user.tenantId,
@@ -338,7 +450,7 @@ export function createExportsRoutes(db: Database) {
         const original = originalSnapshotsByUser
           ? monthlyFiguresFromSnapshot(engineOutputFromSnapshots(originalSnapshotsByUser.get(u.id) ?? []))
           : undefined;
-        rows.push(buildRow({ user: u, period, current, closed, original, columns: allowanceColumns }));
+        entries.push({ user: u, period, current, closed, original });
       }
     } else {
       // N+1解消: 未締め月のCSVは対象ユーザー全員が同じテナント・同じ月なので、
@@ -353,7 +465,7 @@ export function createExportsRoutes(db: Database) {
           const current = monthlyFiguresFromEngineOutput(output);
           // 未締めの月には amend という概念が無い(そもそも確定値が存在しない)ため、
           // compare=original が指定されていても current をそのまま original として扱う(diff=0)。
-          rows.push(buildRow({ user: u, period, current, closed, original: compareOriginal ? current : undefined, columns: allowanceColumns }));
+          entries.push({ user: u, period, current, closed, original: compareOriginal ? current : undefined });
         } catch {
           // テナント設定・制度割当がまだ揃っていないユーザーはスキップする
           // (apps/api/src/reminders.ts runReminderScan と同じ方針)。
@@ -361,8 +473,10 @@ export function createExportsRoutes(db: Database) {
       }
     }
 
-    const header = buildHeader(allowanceColumns, compareOriginal);
-    const csv = buildCsv(rows, header);
+    const rendered =
+      format === "generic"
+        ? renderGenericCsv({ entries, columns: allowanceColumns, compareOriginal, period })
+        : renderPayrollCsv({ entries, format, period, periodStartDate: monthStartDate, periodEndDate: monthEndDate });
 
     await insertAuditLog(db, {
       tenantId: user.tenantId,
@@ -370,13 +484,15 @@ export function createExportsRoutes(db: Database) {
       action: "export.attendance",
       targetType: "export",
       targetId: period,
-      detail: JSON.stringify({ period, userCount: rows.length, closed, compareOriginal }),
+      // format は既定(generic)でも必ず記録する — 「誰がどの給与ソフト向けに出したか」は
+      // 賃金の追跡で意味を持つ情報なので、後から監査ログだけで判断できるようにする。
+      detail: JSON.stringify({ period, userCount: entries.length, closed, compareOriginal, format }),
       occurredAt: nowMinutes(),
     });
 
-    c.header("Content-Type", "text/csv; charset=utf-8");
-    c.header("Content-Disposition", `attachment; filename="kizami-${period}.csv"`);
-    return c.body(csv);
+    c.header("Content-Type", rendered.contentType);
+    c.header("Content-Disposition", `attachment; filename="${rendered.filename}"`);
+    return c.body(rendered.body);
   });
 
   return app;

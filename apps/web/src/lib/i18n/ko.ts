@@ -1215,6 +1215,14 @@ export const ko = {
     } satisfies Record<"close" | "reopen" | "amend", string>,
     historyCorrectionLink: "관련 수정 신청 확인",
 
+    csvFormatLabel: "형식",
+    csvFormatOptions: {
+      generic: "범용 CSV",
+      freee: "freee 인사노무(베타)",
+      mf: "머니포워드 클라우드 급여(베타)",
+    },
+    csvFormatBetaNote:
+      "베타: 각 서비스의 근태 가져오기에 맞춘 호환 CSV입니다. 가져오기 전에 열 이름·단위·직원 식별자가 귀사의 설정과 일치하는지 반드시 확인하세요. 일수(출근 일수·결근 일수·연차 사용 일수 등)는 KIZAMI가 산출하지 않으므로 비어 있습니다.",
     csvDownload: "CSV 다운로드",
     csvDownloading: "생성 중…",
     csvCompareOriginalLabel: "최초 값과의 차이 포함",

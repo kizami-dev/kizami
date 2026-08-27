@@ -570,6 +570,25 @@
   height: 1rem;
 }
 
+.csv-export__format {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.85rem;
+}
+
+/*
+ * 給与ソフト形式(freee/MF)を選んだときの注意書き(β・要マッピング確認)。
+ * flex 行の途中で改行させ、幅いっぱいに出す(注意書きがボタンの右に埋もれると読まれないため)。
+ */
+.csv-export__beta {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--k-ink-soft);
+}
+
 /*
  * モバイル(2026-08-23 追加): 勤務列・時間外列が増えたことで、素の表のままだと 390px 幅で
  * 横スクロールが発生する。列を間引くと中抜けの有無・時間外の内訳など修正申請の判断に

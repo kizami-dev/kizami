@@ -1252,6 +1252,14 @@ export const ja = {
     } satisfies Record<"close" | "reopen" | "amend", string>,
     historyCorrectionLink: "由来の修正申請を確認する",
 
+    csvFormatLabel: "形式",
+    csvFormatOptions: {
+      generic: "汎用CSV",
+      freee: "freee人事労務(β)",
+      mf: "マネーフォワード クラウド給与(β)",
+    } satisfies Record<"generic" | "freee" | "mf", string>,
+    csvFormatBetaNote:
+      "β: 各社の勤怠インポートに合わせた互換CSVです。列名・単位・従業員の識別子が御社の設定と一致するか、取り込み前に必ず確認してください。日数(出勤日数・欠勤日数・有休取得日数など)はKIZAMIが算出しないため空欄です。",
     csvDownload: "CSVをダウンロード",
     csvDownloading: "作成中…",
     csvCompareOriginalLabel: "当初値との差分を含める",

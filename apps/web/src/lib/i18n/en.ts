@@ -1243,6 +1243,14 @@ export const en = {
     } satisfies Record<"close" | "reopen" | "amend", string>,
     historyCorrectionLink: "View the originating correction request",
 
+    csvFormatLabel: "Format",
+    csvFormatOptions: {
+      generic: "Generic CSV",
+      freee: "freee HR (beta)",
+      mf: "Money Forward Cloud Payroll (beta)",
+    },
+    csvFormatBetaNote:
+      "Beta: a compatibility CSV shaped for each vendor's attendance import. Always verify the column names, units and employee identifier against your own settings before importing. Day counts (days worked, days absent, paid leave taken, etc.) are left blank because KIZAMI does not calculate them.",
     csvDownload: "Download CSV",
     csvDownloading: "Preparing…",
     csvCompareOriginalLabel: "Include difference from original values",
