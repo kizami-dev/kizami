@@ -20,6 +20,8 @@
 #   アップグレードが起きる。使い分けとアップグレード手順は ../../docs/design/release-process.md。
 # - ブラウザプッシュ通知(Web Push)を使う場合は VAPID_* を api / worker の両方に設定する
 #   (下記)。任意機能で、未設定なら Web UI からプッシュ通知の項目が消えるだけ。
+# - 監視(Prometheus の /metrics・Sentry 互換のエラー報告)は既定 OFF。有効化は
+#   METRICS_TOKEN / SENTRY_DSN を .env で設定する(../../docs/design/observability.md)。
 name: kizami
 services:
   proxy:
@@ -46,6 +48,19 @@ services:
       VAPID_PUBLIC_KEY: ${KIZAMI_VAPID_PUBLIC_KEY:-}
       VAPID_PRIVATE_KEY: ${KIZAMI_VAPID_PRIVATE_KEY:-}
       VAPID_SUBJECT: ${KIZAMI_VAPID_SUBJECT:-}
+      # 可観測性(任意。../../docs/design/observability.md)。既定はどちらも空 = 無効。
+      # METRICS_TOKEN: Prometheus 用の Bearer トークン。**空なら GET /metrics は 404**。
+      #   有効にする場合は .env に `openssl rand -hex 32` の値を置き、Prometheus 側に
+      #   `authorization: {type: Bearer, credentials: ...}` を書く。
+      #   Caddy は /api/* を api へ通すので、スクレイプ先は http://<host>:8080/api/metrics。
+      #   **公開ポートに出す構成では、前段で /api/metrics を社内からのみ許可すること**
+      #   (トークンで守ってはいるが、外に晒す必然性が無い)。
+      METRICS_TOKEN: ${KIZAMI_METRICS_TOKEN:-}
+      # SENTRY_DSN: エラー報告(Sentry 互換)の送り先。自前の sentry-relay / GlitchTip /
+      #   Bugsink を想定。空なら外部へは何も出ていかない。
+      SENTRY_DSN: ${KIZAMI_SENTRY_DSN:-}
+      SENTRY_SERVER_NAME: ${KIZAMI_SENTRY_SERVER_NAME:-}
+      SENTRY_ENVIRONMENT: ${KIZAMI_SENTRY_ENVIRONMENT:-}
     volumes:
       - data:/data
     restart: unless-stopped
@@ -62,6 +77,11 @@ services:
       VAPID_PUBLIC_KEY: ${KIZAMI_VAPID_PUBLIC_KEY:-}
       VAPID_PRIVATE_KEY: ${KIZAMI_VAPID_PRIVATE_KEY:-}
       VAPID_SUBJECT: ${KIZAMI_VAPID_SUBJECT:-}
+      # 定期スキャンの失敗も api と同じ受け口へ送る(任意)。worker 側に /metrics は生えない —
+      # スキャンの心拍は DB(worker_heartbeats)に書き、api の /metrics がそれを読んで出す。
+      SENTRY_DSN: ${KIZAMI_SENTRY_DSN:-}
+      SENTRY_SERVER_NAME: ${KIZAMI_SENTRY_SERVER_NAME:-}
+      SENTRY_ENVIRONMENT: ${KIZAMI_SENTRY_ENVIRONMENT:-}
     volumes:
       - data:/data
     depends_on: [valkey, api]

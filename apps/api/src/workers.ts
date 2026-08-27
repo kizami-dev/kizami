@@ -26,6 +26,7 @@ import { Hono } from "hono";
 import { createD1Database, type D1DatabaseBinding } from "@kizami/db";
 import { createApp } from "./app.js";
 import { buildEncryptorFromEnv } from "./lib/encryption.js";
+import { buildErrorReporterFromEnv } from "./lib/error-report.js";
 import { buildVapidFromEnv } from "./lib/web-push.js";
 
 /**
@@ -53,6 +54,19 @@ export interface WorkerEnv {
   VAPID_PRIVATE_KEY?: string;
   /** Web Push の VAPID subject(`mailto:` か `https://`)。 */
   VAPID_SUBJECT?: string;
+  /** Prometheus スクレイプ用トークン。未設定なら GET /metrics は生えない(404)。secret 推奨。 */
+  METRICS_TOKEN?: string;
+  /** エラー報告(Sentry 互換)の DSN。未設定なら no-op。secret として設定する。 */
+  SENTRY_DSN?: string;
+  /** エラー報告の server_name。 */
+  SENTRY_SERVER_NAME?: string;
+  /** エラー報告の environment。 */
+  SENTRY_ENVIRONMENT?: string;
+  /**
+   * リリース版("0.7.0" 等)。Node 版は package.json から読む(lib/version.ts)が、
+   * Workers ではファイルを読めないので vars で渡す。未設定なら "unknown"。
+   */
+  KIZAMI_RELEASE?: string;
 }
 
 /** アイソレート内キャッシュ(上のコメント「リクエストごとに createApp() しない理由」)。 */
@@ -66,6 +80,11 @@ let cached: { binding: D1DatabaseBinding; app: ReturnType<typeof createWorkerApp
  */
 export function createWorkerApp(env: WorkerEnv) {
   const { db } = createD1Database(env.DB);
+
+  // 可観測性(docs/design/observability.md)。Node 版(src/node.ts)と同じ環境変数名を使う。
+  // Node と違い package.json を読めないので、版は vars の KIZAMI_RELEASE から取る。
+  const release = env.KIZAMI_RELEASE ?? "unknown";
+  const flatEnv = env as unknown as Record<string, string | undefined>;
 
   const app = createApp({
     db,
@@ -84,6 +103,11 @@ export function createWorkerApp(env: WorkerEnv) {
     // Workers の前段は必ず Cloudflare のエッジで、CF-Connecting-IP は必ず上書きされる
     trustProxy: env.TRUST_PROXY !== "false",
     vapid: buildVapidFromEnv(env as unknown as Record<string, string | undefined>),
+    release,
+    // workerd では process メトリクス(RSS・uptime)が取れないので、その2本だけ欠ける
+    // (lib/metrics.ts の collectProcessMetrics)。他は Node 版と同じ内容が出る。
+    ...(env.METRICS_TOKEN !== undefined ? { metricsToken: env.METRICS_TOKEN } : {}),
+    errorReporter: buildErrorReporterFromEnv(flatEnv, { release, runtime: "workerd" }),
     oidc: {
       ...(env.APP_BASE_URL !== undefined ? { appBaseUrl: env.APP_BASE_URL } : {}),
       ...(env.OIDC_REDIRECT_URI !== undefined ? { redirectUri: env.OIDC_REDIRECT_URI } : {}),

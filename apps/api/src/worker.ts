@@ -6,6 +6,14 @@
  * - VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY / VAPID_SUBJECT(ブラウザプッシュ通知。未設定なら無効)
  * - REMINDER_INTERVAL_MINUTES (既定 15)
  * - DATABASE_URL (既定 "file:./kizami.db"、apps/api/src/node.ts と同じ既定値)
+ * - SENTRY_DSN / SENTRY_SERVER_NAME / SENTRY_ENVIRONMENT(エラー報告。未設定なら no-op。
+ *   docs/design/observability.md)
+ *
+ * 2026-08-27: 可観測性のため、スキャン1本ごとに **worker_heartbeats へ心拍を書く**
+ * (最終実行時刻と成功/失敗の累計)。api の GET /metrics がこの表を読んで
+ * kizami_worker_last_run_timestamp_seconds / kizami_worker_runs_total として出す。
+ * ワーカー側に HTTP サーバーを立てない理由は packages/db/src/schema/worker-heartbeats.ts。
+ * スキャンが例外で終わったときは同時に SENTRY_DSN 宛のエラー報告も出す(撃ちっ放し)。
  *
  * 2026-08-22: 3スキャンが作る通知はすべて本人宛(打刻忘れ・36協定アラート・有給失効間近/
  * 年5日義務。2026-08-24 にシフト予実乖離の**本人宛**通知も加わった)であるため、通知チャネルは
@@ -37,9 +45,12 @@
 
 import { Queue, Worker } from "bullmq";
 import IORedis from "ioredis";
+import { recordWorkerHeartbeat } from "@kizami/db";
 import { migrateDb } from "@kizami/db/node";
 import type { NotificationChannel } from "@kizami/notify";
 import { buildEncryptorFromEnv } from "./lib/encryption.js";
+import { buildErrorReporterFromEnv } from "./lib/error-report.js";
+import { resolveRelease } from "./lib/version.js";
 import { buildPersonalChannels } from "./lib/notification-channels.js";
 import { resolveNotificationCategory } from "./lib/notification-preferences.js";
 import { runLeaveAlertScan } from "./leave-alerts.js";
@@ -51,6 +62,18 @@ import { runShiftVarianceAlertScan } from "./shift-variance-alerts.js";
 import { buildVapidFromEnv } from "./lib/web-push.js";
 
 const QUEUE_NAME = "kizami-reminders";
+
+/**
+ * worker_heartbeats.job_name に使う識別子(= `/metrics` の `job` ラベル)。
+ * 増減させたらここと docs/design/observability.md の一覧を揃えること。
+ */
+const SCAN_JOBS = {
+  reminder: "reminder",
+  overtimeAlert: "overtime-alert",
+  leaveAlert: "leave-alert",
+  shiftVarianceAlert: "shift-variance-alert",
+  leaveGrantProposal: "leave-grant-proposal",
+} as const;
 // このジョブは打刻忘れリマインドと36協定アラートの両方のスキャンを担う(周期は共通)。
 const SCHEDULER_ID = "kizami-notification-scan";
 const JOB_NAME = "kizami-notification-scan";
@@ -64,6 +87,8 @@ const encryptor = buildEncryptorFromEnv();
 // ブラウザプッシュ通知の VAPID 鍵(docs/design/web-push.md)。未設定なら null =
 // 個人設定で push=true でも push チャネルは組み立てられない(静かに送らない)。
 const vapid = buildVapidFromEnv();
+// エラー報告(docs/design/observability.md)。SENTRY_DSN 未設定なら no-op。
+const errorReporter = buildErrorReporterFromEnv(process.env, { release: resolveRelease(), runtime: "node" });
 
 if (!Number.isFinite(reminderIntervalMinutes) || reminderIntervalMinutes <= 0) {
   throw new Error(`REMINDER_INTERVAL_MINUTES must be a positive number, got: ${process.env.REMINDER_INTERVAL_MINUTES}`);
@@ -108,6 +133,25 @@ async function main(): Promise<void> {
         return cached;
       };
 
+      /**
+       * スキャン1本の後始末(可観測性、docs/design/observability.md)。
+       *
+       * - 心拍を worker_heartbeats に書く(成功/失敗の累計は単調増加)。api の GET /metrics が読む
+       * - 失敗していればエラー報告(SENTRY_DSN 未設定なら no-op)。文脈はスキャン名だけを渡す
+       *   — 対象ユーザーやテナントは載せない(プライバシー: lib/error-report.ts 冒頭)
+       *
+       * 心拍の書き込み自体が失敗してもスキャンの成否には影響させない(観測のための書き込みで
+       * 業務処理を落とさない)。
+       */
+      const finishScan = async (jobName: string, err?: unknown): Promise<void> => {
+        if (err !== undefined) errorReporter.capture(err, { job: jobName });
+        try {
+          await recordWorkerHeartbeat(db, { jobName, nowMinutes, ok: err === undefined });
+        } catch (heartbeatErr) {
+          console.error(`[kizami-reminders] ${jobName} の心拍を記録できませんでした:`, heartbeatErr);
+        }
+      };
+
       // 打刻忘れリマインドと36協定アラートは独立したスキャンとして順に走らせる。
       // 片方が例外を投げても他方の実行を妨げないよう、それぞれ個別に try/catch する
       // (要件: 「片方の失敗が他方を止めない」)。
@@ -120,8 +164,10 @@ async function main(): Promise<void> {
         console.log(
           `[kizami-reminders] scanned ${result.scannedUserCount} active users, created ${result.created.length} notification(s)`,
         );
+        await finishScan(SCAN_JOBS.reminder);
       } catch (err) {
         console.error("[kizami-reminders] missing-clock-out scan failed:", err);
+        await finishScan(SCAN_JOBS.reminder, err);
       }
 
       let overtimeScanned = 0;
@@ -133,8 +179,10 @@ async function main(): Promise<void> {
         console.log(
           `[kizami-reminders] overtime-alert scan: scanned ${result.scannedUserCount} active users, created ${result.created.length} notification(s)`,
         );
+        await finishScan(SCAN_JOBS.overtimeAlert);
       } catch (err) {
         console.error("[kizami-reminders] overtime-alert scan failed:", err);
+        await finishScan(SCAN_JOBS.overtimeAlert, err);
       }
 
       let leaveAlertScanned = 0;
@@ -146,8 +194,10 @@ async function main(): Promise<void> {
         console.log(
           `[kizami-reminders] leave-alert scan: scanned ${result.scannedUserCount} active users, created ${result.created.length} notification(s)`,
         );
+        await finishScan(SCAN_JOBS.leaveAlert);
       } catch (err) {
         console.error("[kizami-reminders] leave-alert scan failed:", err);
+        await finishScan(SCAN_JOBS.leaveAlert, err);
       }
 
       // シフト予実乖離の日次通知(docs/design/shift-work.md 決定事項4)。このスキャンだけは
@@ -169,8 +219,10 @@ async function main(): Promise<void> {
         console.log(
           `[kizami-reminders] shift-variance-alert scan: scanned ${result.scannedUserCount} active users, created ${result.created.length} manager notification(s) and ${result.createdSelf.length} personal notification(s)`,
         );
+        await finishScan(SCAN_JOBS.shiftVarianceAlert);
       } catch (err) {
         console.error("[kizami-reminders] shift-variance-alert scan failed:", err);
+        await finishScan(SCAN_JOBS.shiftVarianceAlert, err);
       }
 
       // 有給付与の予告(docs/requirements.md §11、v0.7 フェーズ4)。宛先は「本人ではなく管理者
@@ -185,8 +237,10 @@ async function main(): Promise<void> {
         console.log(
           `[kizami-reminders] leave-grant-proposal scan: scanned ${result.scannedUserCount} user(s) with hire date, created ${result.created.length} proposal(s)`,
         );
+        await finishScan(SCAN_JOBS.leaveGrantProposal);
       } catch (err) {
         console.error("[kizami-reminders] leave-grant-proposal scan failed:", err);
+        await finishScan(SCAN_JOBS.leaveGrantProposal, err);
       }
 
       return {

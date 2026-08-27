@@ -44,6 +44,23 @@ spec:
                   name: {{ .Values.vapidSecret.name }}
                   key: {{ .Values.vapidSecret.subjectKey }}
             {{- end }}
+            {{- if .Values.observability.metricsSecret.name }}
+            - name: METRICS_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.observability.metricsSecret.name }}
+                  key: {{ .Values.observability.metricsSecret.key }}
+            {{- end }}
+            {{- if .Values.observability.sentrySecret.name }}
+            - name: SENTRY_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.observability.sentrySecret.name }}
+                  key: {{ .Values.observability.sentrySecret.key }}
+            {{- end }}
+            {{- if .Values.observability.environment }}
+            - {name: SENTRY_ENVIRONMENT, value: {{ .Values.observability.environment | quote }}}
+            {{- end }}
           readinessProbe:
             httpGet: {path: /healthz, port: 3001}
             initialDelaySeconds: 3
@@ -94,6 +111,18 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.vapidSecret.name }}
                   key: {{ .Values.vapidSecret.subjectKey }}
+            {{- end }}
+            {{- if .Values.observability.sentrySecret.name }}
+            # 定期スキャンの失敗も api と同じ受け口へ送る。worker に /metrics は生えない
+            # (心拍は DB の worker_heartbeats 経由で api の /metrics に出る)。
+            - name: SENTRY_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.observability.sentrySecret.name }}
+                  key: {{ .Values.observability.sentrySecret.key }}
+            {{- end }}
+            {{- if .Values.observability.environment }}
+            - {name: SENTRY_ENVIRONMENT, value: {{ .Values.observability.environment | quote }}}
             {{- end }}
           resources: {{- toYaml .Values.resources.worker | nindent 12 }}
           volumeMounts: [{name: data, mountPath: /data}]

@@ -59,6 +59,7 @@ export const {
   users,
   userTotp,
   userTotpRecoveryCodes,
+  workerHeartbeats,
   workPolicies,
   workPolicyVersions,
 } = pg;

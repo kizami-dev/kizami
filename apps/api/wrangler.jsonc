@@ -27,10 +27,18 @@
       "migrations_dir": "../../packages/db/migrations"
     }
   ],
-  // 秘密でない設定。秘密(KIZAMI_ENCRYPTION_KEY・VAPID_PRIVATE_KEY)は
-  // `wrangler secret put <NAME>` で入れること(ここに書かない)
+  // 秘密でない設定。秘密(KIZAMI_ENCRYPTION_KEY・VAPID_PRIVATE_KEY・METRICS_TOKEN・
+  // SENTRY_DSN)は `wrangler secret put <NAME>` で入れること(ここに書かない)。
+  //
+  // 可観測性(../../docs/design/observability.md、任意):
+  //   wrangler secret put METRICS_TOKEN   # 未設定なら GET /metrics は 404
+  //   wrangler secret put SENTRY_DSN      # 未設定ならエラー報告は no-op
+  // Node 版はリリース版を package.json から読むが、Workers では読めないので
+  // KIZAMI_RELEASE を vars で渡す(未設定なら "unknown")。
+  // workerd では process メトリクス(RSS・uptime)だけが取れず、他は Node 版と同じ。
   "vars": {
     "COOKIE_SECURE": "true",
-    "TRUST_PROXY": "true"
+    "TRUST_PROXY": "true",
+    "KIZAMI_RELEASE": "unknown"
   }
 }

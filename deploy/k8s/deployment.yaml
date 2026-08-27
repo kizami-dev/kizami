@@ -75,6 +75,27 @@ spec:
                   name: kizami-vapid
                   key: subject
                   optional: true
+            # 可観測性(任意。../../docs/design/observability.md)。どちらも
+            # optional: true — Secret が無ければ環境変数が付かず、機能ごと無効になる。
+            #
+            # METRICS_TOKEN: Prometheus の GET /metrics に必要な Bearer トークン。
+            # **未設定なら /metrics は 404**(既定で口を開けない)。作成例は本 README の
+            # 「メトリクスとエラー報告」節。
+            - name: METRICS_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: kizami-metrics
+                  key: token
+                  optional: true
+            # SENTRY_DSN: エラー報告(Sentry 互換)の送り先。自前の sentry-relay /
+            # GlitchTip / Bugsink を想定。**未設定なら外部へは何も出ていかない**。
+            # server_name は未設定なら HOSTNAME(= Pod 名)へ自動で落ちる。
+            - name: SENTRY_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: kizami-sentry
+                  key: dsn
+                  optional: true
           volumeMounts:
             - name: data
               mountPath: /data
@@ -160,6 +181,16 @@ spec:
                 secretKeyRef:
                   name: kizami-vapid
                   key: subject
+                  optional: true
+            # エラー報告(任意)。api と同じ Secret を参照する — 定期スキャンの失敗も
+            # 同じ受け口へ送りたいため(../../docs/design/observability.md)。
+            # メトリクス用のポートは worker には開けない: worker は心拍を DB
+            # (worker_heartbeats)へ書き、api の /metrics がそれを読んで出す。
+            - name: SENTRY_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: kizami-sentry
+                  key: dsn
                   optional: true
           volumeMounts:
             - name: data

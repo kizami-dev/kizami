@@ -163,6 +163,15 @@
 
 制約と配備手順の一覧は [design/workers-d1.md](./design/workers-d1.md)。
 
+### 運用の可観測性(2026-08-27 実装)
+
+セルフホストの運用者が「動いているか・壊れていないか」を自分で見られるように、2つの面を用意する。**どちらも既定 OFF** — セルフホスト製品が既定で外部へ何かを送ることはしない。設計・公開項目・カーディナリティ方針の詳細は [design/observability.md](./design/observability.md)。
+
+- **`GET /metrics`**(Prometheus text format 0.0.4、環境変数 `METRICS_TOKEN`。未設定なら **404**、設定時は `Authorization: Bearer` 必須): リクエスト数・所要時間ヒストグラム・プロセス指標に加え、テナント数/ユーザー数/直近24時間の打刻数(60秒キャッシュ、索引に当たる COUNT のみ)と、定期スキャンの最終実行時刻・成功/失敗の累計を出す。ラベルは**ルートパターン・ステータスクラスまで**で、生パス・ユーザーID・テナントIDは付けない(時系列の本数が入力で増える作りにしない)。ワーカーは別プロセスなので、心拍を `worker_heartbeats` テーブルに書いて api の `/metrics` が読む形にし、追加のポート・Service を要らなくしている
+- **エラー報告**(Sentry プロトコル互換、環境変数 `SENTRY_DSN`。未設定なら no-op): 想定外のルート例外と定期スキャンの失敗を store API へ1件ずつ POST する。想定内の分岐(403/409)は送らない。**リクエストボディ・ヘッダ・メールアドレス・ユーザーID は決して送らず**、テナントIDもハッシュ先頭8桁だけをタグにする(この不変条件はテストで固定)。60秒の重複除去と窓あたり件数の上限で、エラーの嵐が配備を潰さないようにしてある
+
+依存は増やしていない。`prom-client` は workerd で動かない既定メトリクスを抱えるため、`@sentry/node` はグローバルにパッチを当てるため、いずれも採らず自前の最小実装で持つ(Web Push の VAPID 自前実装と同じ判断)。
+
 ## 9. テスト戦略
 
 Workers動作保証(§8)と SQLite/PostgreSQL/D1 の3ダイアレクト対応をテストマトリクスで担保する。原則は**「集計エンジンを純関数・ランタイム非依存・DB非依存に保つ」**こと。
@@ -223,7 +232,7 @@ Workers動作保証(§8)と SQLite/PostgreSQL/D1 の3ダイアレクト対応を
 | v0.4 | 入口の拡張 | Slackコマンド打刻、Webhook通知、PWA+GPS打刻、公開打刻API(APIキー)、MCPサーバー(打刻・照会・申請) |
 | v0.5 | 制度の拡張 | 固定時間制(1日8h・週40hの二段判定、法定内残業の区分)、月次一覧への打刻時刻表示(広い画面では出勤・退勤の独立列)、制度に応じた表示の出し分け、休憩不足の検知(労基法34条・勤怠日チェーン単位 — 中抜けの空白を休憩相当に算入)、休憩の自動控除(auto/both、本人が打ち消し申請できる形 — [design/breaks.md](./design/breaks.md))、招待式メンバー登録、手当対象時間の算出([design/allowances.md](./design/allowances.md))、多言語UI(日・英・韓・中〔簡体〕) |
 | v0.7 | シフト制と有給付与フロー | シフト制/1ヶ月単位の変形労働時間制(3段の時間外判定・シフト表・予実乖離の警告 — [design/shift-work.md](./design/shift-work.md))、**有給付与の予告→承認→通知フロー**(下記)、シフト制ユーザーの有給1日分の分数換算(シフトのある日はその所定、無い日は基準所定)<br>実装状況(2026-08-24): フェーズ1〜4 完了 |
-| v1.0 | 企業利用可能・OSS公開 | マルチテナント有効化(2026-08-24 完了: テナント作成CLI + テナント間分離の監査テスト — [design/multi-tenancy.md](./design/multi-tenancy.md))、OIDC(2026-08-24 完了: 認可コード+PKCE、自動プロビジョニングなし — [design/sso-oidc.md](./design/sso-oidc.md))、PostgreSQL選択式(2026-08-24 完了: `DATABASE_URL` のスキームで切替、全DBテストを両ダイアレクトで実行 — [design/db-dialects.md](./design/db-dialects.md))、**Workers+D1動作保証**(2026-08-27 一次実装: HTTP API が workerd+D1 で動作、CI に `test-workerd` ジョブ追加 — [design/workers-d1.md](./design/workers-d1.md)。**残: D1 のトランザクション制約でブロックされる承認系書き込み経路、キュー層の Cloudflare Queues + Cron Triggers 実装、fetch ベースのメール送信**)、Compose/Helm配布、ドキュメント整備 |
+| v1.0 | 企業利用可能・OSS公開 | マルチテナント有効化(2026-08-24 完了: テナント作成CLI + テナント間分離の監査テスト — [design/multi-tenancy.md](./design/multi-tenancy.md))、OIDC(2026-08-24 完了: 認可コード+PKCE、自動プロビジョニングなし — [design/sso-oidc.md](./design/sso-oidc.md))、PostgreSQL選択式(2026-08-24 完了: `DATABASE_URL` のスキームで切替、全DBテストを両ダイアレクトで実行 — [design/db-dialects.md](./design/db-dialects.md))、**Workers+D1動作保証**(2026-08-27 一次実装: HTTP API が workerd+D1 で動作、CI に `test-workerd` ジョブ追加 — [design/workers-d1.md](./design/workers-d1.md)。**残: D1 のトランザクション制約でブロックされる承認系書き込み経路、キュー層の Cloudflare Queues + Cron Triggers 実装、fetch ベースのメール送信**)、Compose/Helm配布、ドキュメント整備、**運用の可観測性**(2026-08-27 完了: Prometheus `/metrics` + Sentry互換のエラー報告。どちらも既定 OFF — [design/observability.md](./design/observability.md)) |
 | 以降 | ロードマップ | 3ヶ月清算、freee/MF の**API**連携<br>実装済み(2026-08-27): **オンボーディングツアー**(初回ログイン時に自動で始まる案内。打刻→月次→修正/休暇の申請→個人の通知設定をたどり、`member.invite` を持つ人にはさらに設定ハブ→メンバー招待→勤怠ルール→締めが続く。外部ライブラリを足さない自前のスポットライト実装で、対象要素は `data-tour` 属性で指す。権限で消えた要素の手順は黙って飛ばす。完了/スキップの記録は端末ごと〔localStorage〕— 端末都合の設定でありサーバーには保存しない。設定ハブの「使い方ツアーを見る」からいつでも再実行)、**freee/MF向けCSVエクスポート**(`?format=freee` / `?format=mf`。区分別時間数を各社の勤怠項目へマッピング。金額計算は従来どおり給与ソフト側の責任 — [design/payroll-export.md](./design/payroll-export.md))<br>実装済み(2026-08-24): **権限denyルール**(プリセットが拒否を持てる。拒否は全付与に優先・スコープなし・セルフサービス権限は対象外 — [design/permission-catalog.md](./design/permission-catalog.md#拒否-deny-ルール))、**Web Push**(ブラウザプッシュ通知。VAPID 自前実装・外部サービス不使用、カテゴリごとに個人でON/OFF、鍵未設定なら機能ごと非表示 — [design/web-push.md](./design/web-push.md))、**コアタイム**(労基法32条の3。警告のみ・集計に影響しない — [design/work-systems.md](./design/work-systems.md)「コアタイム」)、**多段承認**(種別ごとに単段/二段を選べるテナント設定。仕掛かり中の申請は作成時点の段数で確定 — [design/approval-flows.md](./design/approval-flows.md)) |
 
 > 有給付与の3段フロー(v0.7 で実装、2026-08-23 決定 / 2026-08-24 実装): (1) 付与基準日の**30日前**に管理者へ予告通知 — 対象者・算定日数に加え、打刻・シフトから計算した**出勤率の参考値**(労基法39条1項の8割出勤要件の検算材料)を添える。(2) 管理者が確認のうえ承認すると、そこで初めて付与(`leave_grants`)が作られる。(3) 承認時に本人へ「◯日付与されました」を leave_alert カテゴリ・個人チャネルで通知。機械が無条件に付与を確定させない — 出勤率要件の最終判断は人が行う。設計・決定の詳細は [design/shift-work.md](./design/shift-work.md) の「フェーズ4の決定事項」を参照。

@@ -15,6 +15,28 @@ API・DB スキーマの互換方針とアップグレード手順は
 
 ### Added
 
+- **可観測性: メトリクスとエラー報告**([docs/design/observability.md](docs/design/observability.md))
+  - `GET /metrics`(Prometheus text format 0.0.4)。環境変数 `METRICS_TOKEN` が
+    **未設定なら 404**、設定時は `Authorization: Bearer` 必須(既定で口を開けない)
+  - 公開項目: HTTP リクエスト数・所要時間ヒストグラム・RSS / uptime・
+    テナント数 / ユーザー数 / 直近24時間の打刻数(60秒キャッシュ)・
+    定期スキャンの最終実行時刻と成功/失敗の累計
+  - ラベルは**ルートパターンとステータスクラスまで**。生パス・ユーザーID・テナントIDは
+    付けない(時系列の本数が入力で増えないようにする)
+  - ワーカーの心拍は新テーブル `worker_heartbeats`(migration 0030)経由で api の
+    `/metrics` が出す。ワーカー側に追加のポート・Service は要らない
+  - `kizami_punches_last24h` のために `punch_events(occurred_at)` の索引を1本追加
+  - `prom-client` は入れず自前の最小レジストリ(workerd でも同じコードが動くため)
+- **エラー報告(Sentry プロトコル互換)**。環境変数 `SENTRY_DSN` が未設定なら完全な no-op
+  - 想定外のルート例外(500)と定期スキャンの失敗を store API へ POST。403 / 409 のような
+    想定内の分岐は送らない
+  - **リクエストボディ・クエリ・ヘッダ・Cookie・メールアドレス・ユーザーID は送らない**。
+    テナントIDは SHA-256 の先頭8桁のみをタグにする(テストで固定)
+  - 撃ちっ放し・3秒タイムアウト・60秒の重複除去・窓あたり件数の上限。gzip は使わない
+  - `@sentry/node` は入れない(グローバルへのパッチと依存の重さを避けるため)
+  - 配備の配線: k8s(`kizami-metrics` / `kizami-sentry` Secret、`optional: true`)・
+    Helm(`observability.*`)・Compose(`.env`)・Workers(`wrangler secret put`)。すべて既定 OFF
+
 - **二要素認証(TOTP)**(自前認証の任意オプション、[docs/design/two-factor-auth.md](docs/design/two-factor-auth.md))
   - RFC 6238(30秒 / 6桁 / SHA-1 / ±1ステップ許容)を依存を増やさず自前実装
     (`@kizami/crypto`、WebCrypto のみ・RFC 6238 Appendix B と RFC 4648 のテストベクタで固定)

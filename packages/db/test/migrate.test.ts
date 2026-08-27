@@ -70,6 +70,7 @@ describe("migrate", () => {
         "users",
         "work_policies",
         "work_policy_versions",
+        "worker_heartbeats",
       ].sort(),
     );
 

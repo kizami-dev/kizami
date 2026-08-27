@@ -3,7 +3,9 @@ import { Hono } from "hono";
 import { migrateDb } from "@kizami/db/node";
 import { createApp } from "./app.js";
 import { buildEncryptorFromEnv } from "./lib/encryption.js";
+import { buildErrorReporterFromEnv } from "./lib/error-report.js";
 import { nodemailerSendFn } from "./lib/smtp.js";
+import { resolveRelease } from "./lib/version.js";
 import { buildVapidFromEnv } from "./lib/web-push.js";
 
 const port = Number(process.env.PORT ?? 3001);
@@ -43,6 +45,13 @@ const oidcRedirectUri = process.env.OIDC_REDIRECT_URI;
 // 鍵の生成: `pnpm generate-vapid`(deploy/k8s/README.md 参照)。
 const vapid = buildVapidFromEnv();
 
+// 可観測性(docs/design/observability.md)。どちらも**未設定なら機能ごと無効**:
+// - METRICS_TOKEN 未設定 → GET /metrics は生えない(404)
+// - SENTRY_DSN 未設定 → エラー報告は no-op(外部へは何も出ていかない)
+const release = resolveRelease();
+const metricsToken = process.env.METRICS_TOKEN;
+const errorReporter = buildErrorReporterFromEnv(process.env, { release, runtime: "node" });
+
 const { db } = await migrateDb({ url: databaseUrl });
 const app = createApp({
   db,
@@ -52,6 +61,9 @@ const app = createApp({
   encryptor,
   trustProxy,
   vapid,
+  release,
+  errorReporter,
+  ...(metricsToken !== undefined ? { metricsToken } : {}),
   oidc: {
     ...(appBaseUrl !== undefined ? { appBaseUrl } : {}),
     ...(oidcRedirectUri !== undefined ? { redirectUri: oidcRedirectUri } : {}),

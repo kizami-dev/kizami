@@ -44,6 +44,25 @@ vapidSecret:
   privateKeyKey: privateKey
   subjectKey: subject
 
+# 任意: 可観測性(docs/design/observability.md)。どちらも name を空のままにすると
+# 環境変数が付かず、機能ごと無効な通常運用になる(既定 OFF)。
+# encryptionSecret と同じく、チャートは Secret を生成しない(事前に kubectl create secret)。
+observability:
+  # Prometheus スクレイプ用の Bearer トークンを入れた Secret。
+  #   kubectl -n <ns> create secret generic kizami-metrics --from-literal=token="$(openssl rand -hex 32)"
+  # **name が空のあいだ GET /metrics は 404**(トークンを知らない相手には存在すら見えない)。
+  metricsSecret:
+    name: ""
+    key: token
+  # エラー報告(Sentry プロトコル互換)の DSN を入れた Secret。api / worker の両方に渡る。
+  #   kubectl -n <ns> create secret generic kizami-sentry --from-literal=dsn="https://<key>@<host>/<id>"
+  sentrySecret:
+    name: ""
+    key: dsn
+  # 任意: エラー報告の environment("production" 等)。空なら付けない
+  # (server_name は未設定なら Pod 名 = HOSTNAME に自動で落ちる)。
+  environment: ""
+
 persistence:
   storageClassName: ""   # 空ならクラスタ既定(k3s なら local-path)
   size: 1Gi

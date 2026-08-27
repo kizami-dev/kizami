@@ -59,5 +59,10 @@ export const punchEvents = sqliteTable(
   (table) => [
     index("punch_events_tenant_user_occurred_idx").on(table.tenantId, table.userId, table.occurredAt),
     uniqueIndex("punch_events_supersedes_idx").on(table.supersedesId),
+    // 全テナント横断で「直近24時間の打刻件数」を数えるための索引(2026-08-27、
+    // kizami_punches_last24h / docs/design/observability.md)。上の複合索引は tenant_id 先頭
+    // なので、テナントを跨ぐ occurred_at だけの範囲検索には効かない。
+    // 書き込み側のコストは小さい: occurred_at はほぼ単調増加なので B-tree の右端に追記され続ける。
+    index("punch_events_occurred_idx").on(table.occurredAt),
   ],
 );

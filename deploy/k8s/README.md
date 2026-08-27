@@ -251,6 +251,66 @@ TCP のソースアドレスのみでレート制限をかけるようになる(
 この k8s 配備は上表の Cloudflare Tunnel 経由が前提なので、`TRUST_PROXY` は未設定
 (=既定 true)のままでよい。
 
+## メトリクスとエラー報告(監視、任意)
+
+設計と公開項目の一覧は [design/observability.md](../../docs/design/observability.md)。
+**どちらも既定 OFF**で、Secret を作らなければ従来どおりの動作になる。
+
+### Prometheus(GET /metrics)
+
+`METRICS_TOKEN` を入れた Secret を作ると、api コンテナに `GET /metrics`
+(text format 0.0.4)が生える。**Secret が無いあいだ `/metrics` は 404** を返す —
+外からは機能の有無すら分からない(メトリクスにはテナント数・ユーザー数・打刻数という
+「その事業所の規模」が出るため、既定で口を開けない設計にしてある)。
+
+```sh
+kubectl -n kizami create secret generic kizami-metrics \
+  --from-literal=token="$(openssl rand -hex 32)"
+kubectl -n kizami rollout restart deployment/kizami
+```
+
+Prometheus 側(kube-prometheus-stack の `ScrapeConfig` / 素の `scrape_config` いずれでも):
+
+```yaml
+scrape_configs:
+  - job_name: kizami
+    scrape_interval: 15s
+    metrics_path: /metrics
+    authorization:
+      type: Bearer
+      credentials: "<kizami-metrics の token と同じ値>"
+    static_configs:
+      - targets: ["kizami-api.kizami.svc.cluster.local:3001"]
+```
+
+- ワーカー(定期スキャン)用に**追加のポートや Service は要らない**。ワーカーは心拍を
+  DB(`worker_heartbeats`)へ書き、api の `/metrics` がそれを読んで
+  `kizami_worker_last_run_timestamp_seconds` / `kizami_worker_runs_total` として出す。
+- スクレイプは公開打刻 API のレート制限(`Authorization: Bearer` 付き 120回/分)の枠を
+  消費しない(`/metrics` はその制限より前に応答を返し切る)。
+- **Ingress / Cloudflare Tunnel の経路に `/metrics` を載せない**ことを推奨する。
+  クラスタ内の Prometheus から Service へ直接引くのが素直。
+
+### エラー報告(Sentry プロトコル互換)
+
+`SENTRY_DSN` を入れた Secret を作ると、ルートの未捕捉例外と定期スキャンの失敗を
+Sentry の store API へ1件ずつ POST する。送り先は**セルフホストの受け口**
+(sentry-relay → GlitchTip / Bugsink)を想定している(Sentry SaaS でも同じ形で動く)。
+
+```sh
+kubectl -n kizami create secret generic kizami-sentry \
+  --from-literal=dsn='https://<publicKey>@sentry.example.com/<projectId>'
+kubectl -n kizami rollout restart deployment/kizami
+```
+
+`deployment.yaml` は `api` / `worker` 両コンテナでこの Secret を `optional: true` で参照する。
+`server_name` は未設定なら `HOSTNAME`(= Pod 名)に自動で落ちるので、通常は追加設定不要。
+
+送られる内容は例外の型・メッセージ・スタックトレースと、ルートパターン・HTTP メソッド・
+テナントID のハッシュ先頭8桁だけ。**リクエストボディ・クエリ・ヘッダ・Cookie・
+メールアドレス・ユーザーID・GPS 座標は送られない**(送らないことをテストで固定してある)。
+詳細は [design/observability.md](../../docs/design/observability.md)。
+
 ## 社内規定ドキュメント(docs-local/)
 
 VitePress サイト(`docs/`、`pnpm docs:build`)は、この `deploy/k8s/` 一式には**現時点で

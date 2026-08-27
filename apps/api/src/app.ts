@@ -32,7 +32,10 @@ import { createSettingsRoutes, type SettingsRoutesDeps } from "./routes/settings
 import { createShiftsRoutes } from "./routes/shifts.js";
 import { createSlackRoutes } from "./routes/slack.js";
 import { createLeaveRoutes } from "./routes/leave.js";
+import { createMetricsRoutes } from "./routes/metrics.js";
 import { createRateLimiter, ipRateLimitMiddleware, RATE_LIMITS } from "./lib/rate-limit.js";
+import { noopErrorReporter, type ErrorReporter } from "./lib/error-report.js";
+import { createHttpMetrics } from "./lib/metrics.js";
 
 export interface CreateAppDeps {
   db: Database;
@@ -86,6 +89,23 @@ export interface CreateAppDeps {
    * pushAvailable: false を返す(= Web UI からプッシュ通知の UI が消える)。
    */
   vapid?: VapidKeys | null;
+  /**
+   * Prometheus スクレイプ用トークン(環境変数 `METRICS_TOKEN`、docs/design/observability.md)。
+   * **未設定/空文字なら GET /metrics というルートを生やさない**(= 404)。既定で口が開かない
+   * ようにしてある — メトリクスにはテナント数・ユーザー数・打刻数という「事業所の規模」が出るため。
+   */
+  metricsToken?: string;
+  /**
+   * 未捕捉のルート例外を送るエラー報告先(`SENTRY_DSN`、docs/design/observability.md)。
+   * 省略時は何もしない no-op。node.ts / worker.ts は lib/error-report.ts の
+   * buildErrorReporterFromEnv() で組み立てて渡す。
+   */
+  errorReporter?: ErrorReporter;
+  /**
+   * リリース版("0.7.0" 等)。`/metrics` の kizami_build_info に載せるだけで、
+   * アプリの挙動には影響しない。省略時は "unknown"(lib/version.ts 参照)。
+   */
+  release?: string;
 }
 
 /**
@@ -96,7 +116,20 @@ export interface CreateAppDeps {
  * テストは :memory: DB を、Node ランタイムは env から作った DB をそれぞれ渡せるようにする。
  */
 export function createApp(deps: CreateAppDeps) {
-  const { db, secureCookies = false, corsOrigin, notify, encryptor, trustProxy = true, rateLimitNow, oidc, vapid } = deps;
+  const {
+    db,
+    secureCookies = false,
+    corsOrigin,
+    notify,
+    encryptor,
+    trustProxy = true,
+    rateLimitNow,
+    oidc,
+    vapid,
+    metricsToken,
+    errorReporter = noopErrorReporter,
+    release,
+  } = deps;
   const app = new Hono<AppEnv>();
 
   if (corsOrigin) {
@@ -116,7 +149,50 @@ export function createApp(deps: CreateAppDeps) {
     oidcPerIp: createRateLimiter({ ...RATE_LIMITS.oidcPerIp, now }),
   };
 
+  // HTTP メトリクスの計測(docs/design/observability.md)。**最初に登録する** —
+  // Hono は登録順にミドルウェアを合成するので、ここが一番外側になり、レート制限で 429 に
+  // なったリクエストも 404 も同じように数えられる。
+  //
+  // ラベルに使うのは Hono が解決した**ルートパターン**(`c.req.routePath`)であって生の
+  // パスではない(`/punches/:id` であって `/punches/019abc…` ではない)。未一致のリクエストは
+  // `/*` に畳まれるため、存在しない URL を叩かれても時系列は増えない(lib/metrics.ts)。
+  //
+  // `await next()` が例外で終わることはない: Hono の compose が onError まで内部で処理して
+  // c.res に 500 を入れてから戻ってくるため、ここでは常に最終ステータスが読める。
+  const httpMetrics = createHttpMetrics();
+  app.use("*", async (c, next) => {
+    const startedAt = performance.now();
+    await next();
+    httpMetrics.record({
+      method: c.req.method,
+      routePath: c.req.routePath,
+      status: c.res.status,
+      durationSeconds: (performance.now() - startedAt) / 1000,
+    });
+  });
+
   app.get("/healthz", (c) => c.json({ ok: true, name: "kizami" }));
+
+  // GET /metrics(Prometheus)。METRICS_TOKEN が無い配備ではルートごと生やさない = 404。
+  // **authed より前に登録する**必要がある: 後段だと `Authorization: Bearer ...` を見る
+  // 公開打刻 API のレート制限(apiKeyPerIp)のバケツをスクレイプが消費してしまう
+  // (routes/metrics.ts 冒頭「レート制限との関係」)。
+  if (metricsToken !== undefined && metricsToken !== "") {
+    app.route(
+      "/metrics",
+      createMetricsRoutes(db, {
+        token: metricsToken,
+        httpMetrics,
+        ...(release !== undefined ? { release } : {}),
+      }),
+    );
+  } else {
+    // 未設定でも **ここで 404 を返し切る**。何も登録しないと後段の authed に流れ、
+    // (1) 401 が返って「トークンさえあれば口がある」ことが分かってしまう
+    // (2) `Authorization: Bearer ...` 付きの探索が公開打刻 API のレート制限枠を食う
+    // の2点で不都合。機能が無効な配備では「そんなパスは無い」を貫く。
+    app.all("/metrics", (c) => c.json({ error: "not_found" }, 404));
+  }
 
   // OIDC(SSO)ログインの3経路は未認証で開放される(セッションを張る前の経路のため)。
   // start は「任意の issuer へ HTTP を出させる」入口、callback は「ID トークンを持ち込ませる」入口、
@@ -249,6 +325,16 @@ export function createApp(deps: CreateAppDeps) {
       return c.json({ error: "month_closed" }, 409);
     }
     console.error(err);
+    // 想定外の例外だけをエラー報告に送る(上の 403 / 409 は「想定内の分岐」なので送らない)。
+    // 渡してよいのはルートパターン・メソッド・テナントIDのみ。**リクエストボディ・クエリ・
+    // ヘッダ・メールアドレスは渡さない**(lib/error-report.ts 冒頭「プライバシー」)。
+    // tenantId は lib/error-report.ts 側で SHA-256 の先頭8桁に潰してから送られる。
+    const tenantId: string | undefined = c.get("user")?.tenantId;
+    errorReporter.capture(err, {
+      method: c.req.method,
+      route: c.req.routePath,
+      ...(tenantId !== undefined ? { tenantId } : {}),
+    });
     return c.json({ error: "internal_error" }, 500);
   });
 
