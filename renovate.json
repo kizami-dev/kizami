@@ -1,0 +1,28 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", ":timezone(Asia/Tokyo)"],
+  "labels": ["dependencies"],
+  "rangeStrategy": "bump",
+  "schedule": ["before 7am on saturday"],
+  "prConcurrentLimit": 5,
+  "packageRules": [
+    {
+      "description": "drizzle は内部依存(sqlite-core alias を PG に流用)があるためパッチも個別PR・自動マージ禁止。dialect-portability テストが守るが人間が見る",
+      "matchPackageNames": ["drizzle-orm", "drizzle-kit"],
+      "automerge": false,
+      "prPriority": 5
+    },
+    {
+      "description": "wrangler は @cloudflare/vitest-pool-workers の pin と揃える必要がある(workerd 二重化防止)ため同一PRにまとめる",
+      "groupName": "cloudflare workers toolchain",
+      "matchPackageNames": ["wrangler", "@cloudflare/vitest-pool-workers", "@cloudflare/workers-types"]
+    },
+    {
+      "description": "devDependencies のパッチ/マイナーはまとめて週次1本",
+      "matchDepTypes": ["devDependencies"],
+      "matchUpdateTypes": ["patch", "minor"],
+      "groupName": "dev dependencies (non-major)"
+    }
+  ],
+  "vulnerabilityAlerts": {"labels": ["security"], "schedule": ["at any time"]}
+}
