@@ -331,6 +331,26 @@ export const en = {
     ssoButton: "Log in with SSO",
     ssoButtonForTenant: (tenantName: string) => `Log in to ${tenantName} with SSO`,
     ssoStarting: "Redirecting to SSO…",
+
+    totpTitle: "Enter your verification code",
+    totpDescription: "Enter the 6-digit code shown in your authenticator app.",
+    totpCodeLabel: "6-digit code",
+    totpSubmit: "Verify",
+    totpSubmitting: "Verifying…",
+    totpUseRecovery: "Use a recovery code",
+    totpUseCode: "Use the authenticator app code",
+    totpRecoveryLabel: "Recovery code",
+    totpRecoveryDescription: "If you cannot use your authenticator app, enter one of the recovery codes you saved when you turned on two-factor authentication (each one works only once).",
+    totpBack: "Start over from login",
+    totpExpiredNotice: "This verification has expired. Please log in again",
+    totpErrors: {
+      invalid_body: "Please check the format of the code",
+      invalid_code: "That code is not correct. Please try again",
+      totp_expired: "This verification has expired. Please log in again",
+      rate_limited: "Too many attempts. Please wait a while and try again",
+      encryption_unavailable: "This action is unavailable right now. Please contact your administrator",
+      default: "Verification failed. Please try again",
+    },
   },
 
   /**
@@ -1204,6 +1224,7 @@ export const en = {
     attendance: "Attendance rules",
     allowances: "Allowance-eligible time",
     shiftPatterns: "Shift patterns",
+    security: "Two-factor auth",
     apiKeys: "API keys",
     slack: "Slack integration",
     sso: "SSO (OIDC)",
@@ -1243,6 +1264,8 @@ export const en = {
     helpDesc: "Set your company's own rules shown in help, and a link to your work rules.",
     privacyTitle: "Personal data",
     privacyDesc: "Review draft employee privacy notices and internal usage terms generated from your current settings.",
+    securityTitle: "Two-factor authentication",
+    securityDesc: "Require a 6-digit code from your authenticator app in addition to your password. Regenerate recovery codes or turn it off here.",
     apiKeysTitle: "API keys",
     apiKeysDesc: "Issue and revoke API keys for punching in from external clients such as IC card readers, Slack bots, and MCP servers.",
     slackTitle: "Slack integration",
@@ -1897,6 +1920,15 @@ export const en = {
     reactivateButton: "Reactivate",
     reactivating: "Reactivating…",
 
+    twoFactorBadge: "2FA",
+    twoFactorResetButton: "Reset 2FA",
+    twoFactorResetConfirmTitle: "Reset two-factor authentication?",
+    twoFactorResetConfirmMessage: "This is a rescue action for someone who has lost both their authenticator app and their recovery codes. Resetting will do the following:",
+    twoFactorResetConfirmImpactLogin: "They will be able to log in with their password alone from next time",
+    twoFactorResetConfirmImpactNotify: "The member will be notified",
+    twoFactorResetConfirmImpactAudit: "This action is recorded in the audit log",
+    twoFactorResetConfirmImpactReenroll: "They have to set up two-factor authentication again themselves",
+
     /**
      * Per-member work system assignment (added 2026-08-23 Tier 0 part 4). GET/POST
      * /members/:id/work-policy (tenant_settings.flex.manage, tenant scope only). Without this
@@ -2011,6 +2043,8 @@ export const en = {
       /** Standard scheduled minutes per day for paid leave conversion (v0.7 phase 4, added 2026-08-24). */
       invalid_standard_day_minutes: "Standard scheduled minutes per day must be a whole number between 1 and 1440",
       version_already_exists: "A version with the same settings already exists for that effective date. Please choose a different date",
+      not_enabled: "This member does not have two-factor authentication turned on",
+      forbidden: "You don't have permission to perform this action",
       default: "Something went wrong. Please try again",
     },
   },
@@ -2467,6 +2501,83 @@ export const en = {
    * No permission required (anyone can issue/revoke their own keys, per the request "no
    * permission needed since it's for personal use").
    */
+  settingsSecurity: {
+    title: "Two-factor authentication",
+    tagline: "Protect your login with a 6-digit code from your authenticator app, on top of your password.",
+    loadFailed: "Failed to load. Please try again",
+
+    unavailableTitle: "Not available in this environment",
+    unavailableDescription:
+      "Two-factor authentication is unavailable because the operator has not configured an encryption key (KIZAMI_ENCRYPTION_KEY). Without it the authenticator secret cannot be stored encrypted. Please talk to whoever operates this system if you would like to use it.",
+
+    statusTitle: "Current status",
+    statusEnabled: "On",
+    statusDisabled: "Off",
+    enabledAtLabel: "Turned on at",
+    recoveryRemainingLabel: "Recovery codes left",
+    recoveryRemainingValue: (count: number) => `${count}`,
+    recoveryRemainingWarning: "You are running low on recovery codes. Regenerate them and store them somewhere safe.",
+
+    enableTitle: "Turn on two-factor authentication",
+    enableDescription: "Once it is on, logging in requires a 6-digit code from your authenticator app in addition to your password.",
+    enableStart: "Turn on two-factor authentication",
+    enableStarting: "Preparing…",
+
+    setupTitle: "Register in your authenticator app",
+    setupManualHint:
+      "KIZAMI does not show a QR code. In your authenticator app (Google Authenticator, 1Password, Authy and so on), choose \"Enter a setup key\" or manual entry and paste the key below.",
+    setupSecretLabel: "Setup key (for manual entry)",
+    setupUriLabel: "otpauth URI (some authenticator apps accept this string directly)",
+    setupCodeLabel: "The 6-digit code shown in your authenticator app",
+    setupCodePlaceholder: "123456",
+    setupSubmit: "Turn on",
+    setupSubmitting: "Turning on…",
+    setupCancel: "Cancel",
+
+    recoveryTitle: "Recovery codes",
+    recoveryWarning: "These will never be shown again once you close this panel. Print them or store them in a password manager or another safe place.",
+    recoveryDescription: "One-time codes you can enter instead of an authenticator code if you lose access to your app (each one works only once).",
+    recoveryCopyAll: "Copy all",
+    recoveryDone: "I have saved them. Close",
+
+    copy: "Copy",
+    copied: "Copied",
+    copyFailed: "Copy failed. Please select the text and copy it manually",
+
+    verifyTitle: "Confirm it is you",
+    verifyDescription: "To prevent this being done from a hijacked session, both your current password and a 6-digit code from your authenticator app are required.",
+    passwordLabel: "Current password",
+    codeLabel: "6-digit code from your authenticator app",
+
+    regenerateTitle: "Regenerate recovery codes",
+    regenerateDescription: "Issues 10 new codes. Every recovery code you currently hold stops working.",
+    regenerateSubmit: "Regenerate recovery codes",
+    regenerateSubmitting: "Regenerating…",
+
+    disableTitle: "Turn off two-factor authentication",
+    disableDescription: "Once it is off, logging in only requires your password.",
+    disableSubmit: "Turn off two-factor authentication",
+    disableSubmitting: "Turning off…",
+    disableConfirmTitle: "Turn off two-factor authentication?",
+    disableConfirmMessage: "Turning it off will do the following:",
+    disableConfirmImpactPassword: "Logging in will only require your password",
+    disableConfirmImpactRecovery: "Every recovery code you currently hold stops working",
+    disableConfirmImpactReenable: "Turning it back on means registering in your authenticator app again from scratch",
+    disabledNotice: "Two-factor authentication has been turned off.",
+
+    errors: {
+      invalid_body: "Please check what you entered",
+      invalid_code: "That code is not correct. Check your authenticator app and try again",
+      invalid_password: "That password is not correct",
+      setup_required: "Registration was not completed. Please start again from \"Turn on two-factor authentication\"",
+      already_enabled: "Two-factor authentication is already on",
+      not_enabled: "Two-factor authentication is not turned on",
+      rate_limited: "Too many attempts. Please wait a while and try again",
+      encryption_unavailable: "This action is unavailable right now. Please contact your administrator",
+      default: "Something went wrong. Please try again",
+    },
+  },
+
   settingsApiKeys: {
     title: "API keys",
     tagline: "Keys for punching from external clients that can't hold a session cookie, such as IC card readers, Slack bots, and MCP servers.",

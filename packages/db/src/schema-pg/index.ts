@@ -57,6 +57,8 @@ export const {
   userNotificationSettings,
   userPolicyAssignments,
   users,
+  userTotp,
+  userTotpRecoveryCodes,
   workPolicies,
   workPolicyVersions,
 } = pg;

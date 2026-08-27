@@ -307,6 +307,26 @@ export const zh = {
     ssoButton: "使用 SSO 登录",
     ssoButtonForTenant: (tenantName: string) => `使用 SSO 登录 ${tenantName}`,
     ssoStarting: "正在跳转到 SSO…",
+
+    totpTitle: "请输入验证码",
+    totpDescription: "请输入身份验证器应用中显示的6位验证码。",
+    totpCodeLabel: "6位验证码",
+    totpSubmit: "验证",
+    totpSubmitting: "正在验证…",
+    totpUseRecovery: "使用恢复码",
+    totpUseCode: "使用身份验证器应用的验证码",
+    totpRecoveryLabel: "恢复码",
+    totpRecoveryDescription: "如果无法使用身份验证器应用,请输入开启两步验证时保存的其中一个恢复码(每个只能使用一次)。",
+    totpBack: "从登录重新开始",
+    totpExpiredNotice: "验证已超时,请重新登录",
+    totpErrors: {
+      invalid_body: "请检查验证码的格式",
+      invalid_code: "验证码不正确,请重试",
+      totp_expired: "验证已超时,请重新登录",
+      rate_limited: "尝试次数过多,请稍后再试",
+      encryption_unavailable: "当前无法执行此操作,请联系管理员",
+      default: "验证失败,请重试",
+    },
   },
 
   /**
@@ -1163,6 +1183,7 @@ export const zh = {
     attendance: "考勤规则",
     allowances: "津贴对象时间",
     shiftPatterns: "排班模板",
+    security: "两步验证",
     apiKeys: "API密钥",
     slack: "Slack集成",
     sso: "SSO(OIDC)",
@@ -1202,6 +1223,8 @@ export const zh = {
     helpDesc: "设置帮助中显示的自有公司规定,以及工作规则的链接。",
     privacyTitle: "个人信息",
     privacyDesc: "根据当前设置查看面向员工的隐私声明与公司内部使用条款的模板。",
+    securityTitle: "两步验证",
+    securityDesc: "除密码外还要求输入身份验证器应用的6位验证码。恢复码的重新生成与关闭也在此处操作。",
     apiKeysTitle: "API密钥",
     apiKeysDesc: "签发和吊销供IC卡读卡器、Slack bot、MCP服务器等外部客户端打卡使用的API密钥。",
     slackTitle: "Slack集成",
@@ -1845,6 +1868,15 @@ export const zh = {
     reactivateButton: "重新启用",
     reactivating: "重新启用中…",
 
+    twoFactorBadge: "2FA",
+    twoFactorResetButton: "重置2FA",
+    twoFactorResetConfirmTitle: "确定要重置两步验证吗",
+    twoFactorResetConfirmMessage: "这是为同时丢失身份验证器应用和恢复码的成员提供的补救操作。重置后将会发生以下情况。",
+    twoFactorResetConfirmImpactLogin: "该成员下次起可仅凭密码登录",
+    twoFactorResetConfirmImpactNotify: "系统会通知该成员本人",
+    twoFactorResetConfirmImpactAudit: "此操作会记录在审计日志中",
+    twoFactorResetConfirmImpactReenroll: "两步验证需由本人重新设置",
+
     /**
      * 成员个人劳动时间制度分配(2026-08-23 Tier 0 第4部分新增)。GET/POST
      * /members/:id/work-policy(tenant_settings.flex.manage,仅限租户全局范围)。没有此权限时
@@ -1957,6 +1989,8 @@ export const zh = {
       /** 每日基准应出勤时间(用于年假折算,v0.7 第4阶段,2026-08-24 新增)。 */
       invalid_standard_day_minutes: "每日基准应出勤时间请输入1〜1440之间的整数分钟",
       version_already_exists: "该生效日期已存在相同设置的版本,请指定其他日期",
+      not_enabled: "该成员未开启两步验证",
+      forbidden: "没有执行此操作的权限",
       default: "处理失败,请重试",
     },
   },
@@ -2408,6 +2442,83 @@ export const zh = {
    * API密钥(公开打卡接口)的管理页面(/settings/api-keys)。
    * 无需权限(自己的密钥任何人都可以签发、吊销)。
    */
+  settingsSecurity: {
+    title: "两步验证",
+    tagline: "在密码之外,再用身份验证器应用中的6位验证码保护你的登录。",
+    loadFailed: "获取信息失败,请重试",
+
+    unavailableTitle: "当前环境无法使用",
+    unavailableDescription:
+      "由于运维人员未配置加密密钥(KIZAMI_ENCRYPTION_KEY),两步验证无法使用。因为无法以加密方式保存身份验证器的密钥。如需使用,请与系统运维负责人联系。",
+
+    statusTitle: "当前状态",
+    statusEnabled: "已开启",
+    statusDisabled: "未开启",
+    enabledAtLabel: "开启时间",
+    recoveryRemainingLabel: "剩余恢复码",
+    recoveryRemainingValue: (count: number) => `${count} 个`,
+    recoveryRemainingWarning: "恢复码所剩不多,请重新生成并保存在安全的地方。",
+
+    enableTitle: "开启两步验证",
+    enableDescription: "开启后,下次登录起除密码外还需要输入身份验证器应用的6位验证码。",
+    enableStart: "开启两步验证",
+    enableStarting: "正在准备…",
+
+    setupTitle: "在身份验证器应用中注册",
+    setupManualHint:
+      "KIZAMI 不显示二维码。请在身份验证器应用(Google Authenticator、1Password、Authy 等)中选择「手动输入」或「输入设置密钥」,粘贴下面的密钥完成注册。",
+    setupSecretLabel: "设置密钥(用于手动输入)",
+    setupUriLabel: "otpauth URI(支持的身份验证器应用也可直接使用此字符串注册)",
+    setupCodeLabel: "身份验证器应用中显示的6位验证码",
+    setupCodePlaceholder: "123456",
+    setupSubmit: "开启",
+    setupSubmitting: "正在开启…",
+    setupCancel: "取消",
+
+    recoveryTitle: "恢复码",
+    recoveryWarning: "关闭此界面后将不再显示。请打印,或保存到密码管理工具等安全的地方。",
+    recoveryDescription: "当无法使用身份验证器应用时,可代替验证码输入并登录的一次性代码(每个只能使用一次)。",
+    recoveryCopyAll: "全部复制",
+    recoveryDone: "已保存,关闭",
+
+    copy: "复制",
+    copied: "已复制",
+    copyFailed: "复制失败,请手动选择后复制",
+
+    verifyTitle: "身份确认",
+    verifyDescription: "为防止会话被劫持后被人操作,需要同时输入当前密码和身份验证器应用的6位验证码。",
+    passwordLabel: "当前密码",
+    codeLabel: "身份验证器应用的6位验证码",
+
+    regenerateTitle: "重新生成恢复码",
+    regenerateDescription: "将新签发10个。当前持有的恢复码将全部失效。",
+    regenerateSubmit: "重新生成恢复码",
+    regenerateSubmitting: "正在重新生成…",
+
+    disableTitle: "关闭两步验证",
+    disableDescription: "关闭后,登录将仅需密码。",
+    disableSubmit: "关闭两步验证",
+    disableSubmitting: "正在关闭…",
+    disableConfirmTitle: "确定要关闭两步验证吗",
+    disableConfirmMessage: "关闭后将会发生以下情况。",
+    disableConfirmImpactPassword: "登录将仅需密码",
+    disableConfirmImpactRecovery: "当前持有的恢复码将全部失效",
+    disableConfirmImpactReenable: "若要再次开启,需要从在身份验证器应用中注册开始重新设置",
+    disabledNotice: "已关闭两步验证。",
+
+    errors: {
+      invalid_body: "请检查输入内容",
+      invalid_code: "验证码不正确。请确认身份验证器应用的显示后重试",
+      invalid_password: "密码不正确",
+      setup_required: "注册尚未完成,请从「开启两步验证」重新开始",
+      already_enabled: "两步验证已经开启",
+      not_enabled: "两步验证尚未开启",
+      rate_limited: "尝试次数过多,请稍后再试",
+      encryption_unavailable: "当前无法执行此操作,请联系管理员",
+      default: "处理失败,请重试",
+    },
+  },
+
   settingsApiKeys: {
     title: "API密钥",
     tagline: "用于IC卡读卡器、Slack bot、MCP服务器等无法持有会话Cookie的外部客户端进行打卡的密钥。",

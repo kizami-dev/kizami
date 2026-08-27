@@ -30,3 +30,4 @@ export * from "./users.js";
 export * from "./user-notification-settings.js";
 export * from "./leave.js";
 export * from "./password-resets.js";
+export * from "./totp.js";

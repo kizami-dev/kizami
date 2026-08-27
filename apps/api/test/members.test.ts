@@ -336,6 +336,8 @@ describe("members API", () => {
       hasPendingPasswordReset: false,
       // setupSecondUser は work_policy 割当を行わないため未割当(null)。
       workSystemKind: null,
+      // 二要素認証(2026-08-27 追加)。有効化していないので false。
+      twoFactorEnabled: false,
     });
   });
 });

@@ -11,6 +11,7 @@ import { createApiKeysRoutes } from "./routes/api-keys.js";
 import { createAttendanceRoutes } from "./routes/attendance.js";
 import { createAuditLogsRoutes } from "./routes/audit-logs.js";
 import { createAuthRoutes } from "./routes/auth.js";
+import { createTotpRoutes } from "./routes/auth-totp.js";
 import { createOidcRoutes, type OidcRoutesOptions } from "./routes/auth-oidc.js";
 import { createAutoBreakWaiversRoutes } from "./routes/auto-break-waivers.js";
 import { createClosingsRoutes } from "./routes/closings.js";
@@ -109,6 +110,7 @@ export function createApp(deps: CreateAppDeps) {
   const rateLimiters = {
     loginPerIpEmail: createRateLimiter({ ...RATE_LIMITS.loginPerIpEmail, now }),
     loginPerIp: createRateLimiter({ ...RATE_LIMITS.loginPerIp, now }),
+    totpPerIpUser: createRateLimiter({ ...RATE_LIMITS.totpPerIpUser, now }),
     tokenPerIp: createRateLimiter({ ...RATE_LIMITS.tokenPerIp, now }),
     apiKeyPerIp: createRateLimiter({ ...RATE_LIMITS.apiKeyPerIp, now }),
     oidcPerIp: createRateLimiter({ ...RATE_LIMITS.oidcPerIp, now }),
@@ -128,7 +130,15 @@ export function createApp(deps: CreateAppDeps) {
     "/auth",
     createAuthRoutes(db, {
       secureCookies,
-      rateLimit: { perIpEmail: rateLimiters.loginPerIpEmail, perIp: rateLimiters.loginPerIp, trustProxy },
+      rateLimit: {
+        perIpEmail: rateLimiters.loginPerIpEmail,
+        perIp: rateLimiters.loginPerIp,
+        // 2FA のコード検証はセルフサービス側(/auth/totp/*)と同じカウンタを共有する
+        // (経路を変えても総当たりの回数が増えないように。lib/rate-limit.ts の RATE_LIMITS)。
+        perIpUser: rateLimiters.totpPerIpUser,
+        trustProxy,
+      },
+      encryptor: encryptor ?? null,
     }),
   );
 
@@ -181,6 +191,17 @@ export function createApp(deps: CreateAppDeps) {
   authed.use("*", authOrApiKeyMiddleware(db, { secureCookies }));
   authed.use("*", apiKeyScopeGuardMiddleware());
   authed.route("/me", createMeRoutes(db));
+  // 二要素認証(TOTP)のセルフサービス(docs/design/two-factor-auth.md、2026-08-27)。
+  // 認証済み本人のみ・権限チェック無し(routes/auth-totp.ts 冒頭コメント)。ログインの
+  // 第2段階(POST /auth/login/totp)は未認証で叩く必要があるため routes/auth.ts 側にある。
+  // APIキー認証では触れない(auth/api-key-scope-guard.ts の許可表に載せていない = 403)。
+  authed.route(
+    "/auth/totp",
+    createTotpRoutes(db, {
+      encryptor: encryptor ?? null,
+      rateLimit: { perIpUser: rateLimiters.totpPerIpUser, trustProxy },
+    }),
+  );
   authed.route("/api-keys", createApiKeysRoutes(db));
   authed.route("/punches", createPunchesRoutes(db));
   authed.route("/attendance", createAttendanceRoutes(db));

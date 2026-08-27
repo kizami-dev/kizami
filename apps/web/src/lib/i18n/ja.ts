@@ -335,6 +335,34 @@ export const ja = {
     ssoButton: "SSO でログイン",
     ssoButtonForTenant: (tenantName: string) => `${tenantName} に SSO でログイン`,
     ssoStarting: "SSO へ移動中…",
+
+    /**
+     * 二要素認証(TOTP)のログイン2段目(2026-08-27 追加)。POST /auth/login が 200 のまま
+     * `{ status: "totp_required" }` を返したときに表示する。中間状態は httpOnly Cookie 側に
+     * あるため、この画面が保持するのは「入力中のコード」だけ。
+     */
+    totpTitle: "確認コードを入力してください",
+    totpDescription: "認証アプリに表示されている6桁のコードを入力してください。",
+    totpCodeLabel: "6桁のコード",
+    totpSubmit: "確認する",
+    totpSubmitting: "確認しています…",
+    /** リカバリコード入力への切り替え(認証アプリを失った人の唯一の自力復帰経路)。 */
+    totpUseRecovery: "リカバリコードを使う",
+    totpUseCode: "認証アプリのコードを使う",
+    totpRecoveryLabel: "リカバリコード",
+    totpRecoveryDescription: "認証アプリが使えない場合は、有効化したときに保管したリカバリコードを1つ入力してください(1つにつき1回だけ使えます)。",
+    totpBack: "ログインからやり直す",
+    /** 401 totp_expired(中間状態の期限切れ)。1段目へ戻したうえでこの文言を出す。 */
+    totpExpiredNotice: "確認の有効期限が切れました。もう一度ログインしてください",
+    /** POST /auth/login/totp のエラーマッピング(lib/messages.ts の mapLoginTotpErrorMessage)。 */
+    totpErrors: {
+      invalid_body: "コードの形式を確認してください",
+      invalid_code: "コードが正しくありません。もう一度お試しください",
+      totp_expired: "確認の有効期限が切れました。もう一度ログインしてください",
+      rate_limited: "試行回数が多すぎます。しばらく待ってからやり直してください",
+      encryption_unavailable: "現在この操作を利用できません。管理者にお問い合わせください",
+      default: "確認に失敗しました。もう一度お試しください",
+    },
   },
 
   /**
@@ -1217,6 +1245,7 @@ export const ja = {
     attendance: "勤怠ルール",
     allowances: "手当対象時間",
     shiftPatterns: "シフトパターン",
+    security: "二要素認証",
     apiKeys: "APIキー",
     slack: "Slack連携",
     sso: "SSO(OIDC)",
@@ -1256,6 +1285,8 @@ export const ja = {
     helpDesc: "ヘルプに表示する自社のルールと、就業規則へのリンクを設定します。",
     privacyTitle: "個人情報",
     privacyDesc: "従業員向けプライバシー通知・社内利用規約の雛形を、現在の設定から確認します。",
+    securityTitle: "二要素認証",
+    securityDesc: "パスワードに加えて認証アプリの6桁コードを求める設定です。リカバリコードの再生成・無効化もここで行います。",
     apiKeysTitle: "APIキー",
     apiKeysDesc: "ICカードリーダー・Slack bot・MCPサーバーなど外部クライアントから打刻するためのAPIキーを発行・失効します。",
     slackTitle: "Slack連携",
@@ -1902,6 +1933,16 @@ export const ja = {
     reactivateButton: "再有効化",
     reactivating: "再有効化中…",
 
+    /** 二要素認証(2026-08-27 追加)。有効な人だけバッジを出す(無効は無印、招待バッジと同じ流儀)。 */
+    twoFactorBadge: "2FA",
+    twoFactorResetButton: "2FAをリセット",
+    twoFactorResetConfirmTitle: "二要素認証をリセットしますか",
+    twoFactorResetConfirmMessage: "認証アプリもリカバリコードも失った人を救済するための操作です。リセットすると、次のようになります。",
+    twoFactorResetConfirmImpactLogin: "対象者は次回からパスワードのみでログインできるようになります",
+    twoFactorResetConfirmImpactNotify: "対象者本人へ通知が届きます",
+    twoFactorResetConfirmImpactAudit: "この操作は監査ログに記録されます",
+    twoFactorResetConfirmImpactReenroll: "二要素認証の再設定は本人が行う必要があります",
+
     /**
      * メンバー個別の労働時間制割当(2026-08-23 Tier 0 その4 追加)。GET/POST /members/:id/work-policy
      * (tenant_settings.flex.manage、テナント全体スコープのみ)。この権限が無い場合、そもそも
@@ -2019,6 +2060,9 @@ export const ja = {
       /** 1日あたりの基準所定時間(有給換算用、v0.7 フェーズ4、2026-08-24 追加)。 */
       invalid_standard_day_minutes: "1日あたりの基準所定時間は1〜1440分の整数で入力してください",
       version_already_exists: "その適用開始日には既に同じ設定の版があります。別の日付を指定してください",
+      /** 二要素認証のリセット(2026-08-27 追加、POST /members/:id/two-factor/reset)。 */
+      not_enabled: "このメンバーは二要素認証を有効にしていません",
+      forbidden: "この操作を行う権限がありません",
       default: "処理に失敗しました。もう一度お試しください",
     },
   },
@@ -2477,6 +2521,90 @@ export const ja = {
    * APIキー(公開打刻API、v0.4)の管理画面(/settings/api-keys)。
    * 権限は不要(自分のキーは誰でも発行・失効できる、依頼「自分用なので権限不要」)。
    */
+  /**
+   * 二要素認証(TOTP)の設定(/settings/security、2026-08-27 追加)。
+   * 自分の認証設定なので権限は不要(APIキー画面と同じ扱い)。
+   */
+  settingsSecurity: {
+    title: "二要素認証",
+    tagline: "パスワードに加えて、認証アプリに表示される6桁のコードでログインを守ります。",
+    loadFailed: "情報の取得に失敗しました。もう一度お試しください",
+
+    /** available=false(運用者が暗号化鍵を設定していない)ときの説明。利用者側では解決できない。 */
+    unavailableTitle: "この環境では利用できません",
+    unavailableDescription:
+      "運用者が暗号化鍵(KIZAMI_ENCRYPTION_KEY)を設定していないため、二要素認証は利用できません。認証アプリの秘密鍵を暗号化して保存できないためです。利用したい場合はシステムの運用担当者にご相談ください。",
+
+    statusTitle: "現在の状態",
+    statusEnabled: "有効",
+    statusDisabled: "無効",
+    enabledAtLabel: "有効にした日時",
+    recoveryRemainingLabel: "残りのリカバリコード",
+    recoveryRemainingValue: (count: number) => `${count} 個`,
+    recoveryRemainingWarning: "リカバリコードが残りわずかです。再生成して安全な場所に保管してください。",
+
+    enableTitle: "二要素認証を有効にする",
+    enableDescription: "有効にすると、次回のログインからパスワードに加えて認証アプリの6桁コードが必要になります。",
+    enableStart: "二要素認証を有効にする",
+    enableStarting: "準備しています…",
+
+    setupTitle: "認証アプリに登録する",
+    /** v0 では QR 画像を出さない(SecuritySettingsView 冒頭のコメント参照)ため、手動入力を明示的に案内する。 */
+    setupManualHint:
+      "KIZAMI は QR コードを表示しません。認証アプリ(Google Authenticator・1Password・Authy など)の「手動入力」または「セットアップキーを入力」から、下のキーを貼り付けて登録してください。",
+    setupSecretLabel: "セットアップキー(手動入力用)",
+    setupUriLabel: "otpauth URI(対応している認証アプリならこの文字列からも登録できます)",
+    setupCodeLabel: "認証アプリに表示された6桁のコード",
+    setupCodePlaceholder: "123456",
+    setupSubmit: "有効にする",
+    setupSubmitting: "有効にしています…",
+    setupCancel: "やめる",
+
+    recoveryTitle: "リカバリコード",
+    recoveryWarning: "この画面を閉じると二度と表示されません。印刷するか、パスワード管理ツールなど安全な場所に保管してください。",
+    recoveryDescription: "認証アプリが使えなくなったときに、コードの代わりに入力してログインできる使い捨てのコードです(1つにつき1回だけ使えます)。",
+    recoveryCopyAll: "すべてコピー",
+    recoveryDone: "保管しました。閉じる",
+
+    copy: "コピー",
+    copied: "コピーしました",
+    copyFailed: "コピーに失敗しました。手動で選択してコピーしてください",
+
+    /** 無効化・リカバリコード再生成の共通フォーム(パスワード+現在のコードの二重確認)。 */
+    verifyTitle: "本人確認",
+    verifyDescription: "セッションを乗っ取られた状態での操作を防ぐため、現在のパスワードと認証アプリの6桁コードの両方が必要です。",
+    passwordLabel: "現在のパスワード",
+    codeLabel: "認証アプリの6桁のコード",
+
+    regenerateTitle: "リカバリコードを再生成",
+    regenerateDescription: "新しく10個を発行します。いま持っているリカバリコードはすべて使えなくなります。",
+    regenerateSubmit: "リカバリコードを再生成",
+    regenerateSubmitting: "再生成しています…",
+
+    disableTitle: "二要素認証を無効にする",
+    disableDescription: "無効にすると、ログインはパスワードのみになります。",
+    disableSubmit: "二要素認証を無効にする",
+    disableSubmitting: "無効にしています…",
+    disableConfirmTitle: "二要素認証を無効にしますか",
+    disableConfirmMessage: "無効にすると、次のようになります。",
+    disableConfirmImpactPassword: "ログインはパスワードだけになります",
+    disableConfirmImpactRecovery: "いま持っているリカバリコードはすべて使えなくなります",
+    disableConfirmImpactReenable: "また有効にする場合は、認証アプリへの登録からやり直しになります",
+    disabledNotice: "二要素認証を無効にしました。",
+
+    errors: {
+      invalid_body: "入力内容を確認してください",
+      invalid_code: "コードが正しくありません。認証アプリの表示を確認してもう一度お試しください",
+      invalid_password: "パスワードが正しくありません",
+      setup_required: "登録が完了していません。「二要素認証を有効にする」からやり直してください",
+      already_enabled: "二要素認証はすでに有効です",
+      not_enabled: "二要素認証は有効になっていません",
+      rate_limited: "試行回数が多すぎます。しばらく待ってからやり直してください",
+      encryption_unavailable: "現在この操作を利用できません。管理者にお問い合わせください",
+      default: "処理に失敗しました。もう一度お試しください",
+    },
+  },
+
   settingsApiKeys: {
     title: "APIキー",
     tagline: "ICカードリーダー・Slack bot・MCPサーバーなど、セッションCookieを持てない外部クライアントから打刻するためのキーです。",

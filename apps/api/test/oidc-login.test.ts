@@ -8,7 +8,7 @@
 
 import { and, eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
-import { auditLogs, tenants, upsertTenantOidcSettings, users, uuidv7, type Database } from "@kizami/db";
+import { auditLogs, tenants, upsertTenantOidcSettings, users, userTotp, uuidv7, type Database } from "@kizami/db";
 import { createApp } from "../src/app.js";
 import { clearOidcCaches } from "../src/lib/oidc.js";
 import { createMockIdp, type MockIdp } from "./support/mock-idp.js";
@@ -165,6 +165,38 @@ describe("OIDC SSO ログイン", () => {
     expect(logs).toHaveLength(1);
     const detail = JSON.parse(logs[0]?.afterDigest ?? "{}") as { method: string; issuer: string };
     expect(detail.method).toBe("oidc");
+  });
+
+  it("2FA を有効にしていても SSO ログインは TOTP を要求しない(MFA は IdP の責務)", async () => {
+    // 判断点(docs/design/two-factor-auth.md「OIDC との関係」): KIZAMI の 2FA は
+    // **自前認証(パスワード)を補強するもの**であって、SSO には掛けない。SSO では
+    // 「誰であるか」を IdP が保証しており、多要素を要求するかどうかも IdP 側の条件付き
+    // アクセスポリシーで決まる。ここで KIZAMI が二重に要求すると、IdP 側で既に MFA を
+    // 済ませた利用者に無意味な二度手間を強いることになる。
+    const { seeded, idp, app } = await scenario();
+
+    await seeded.db.insert(userTotp).values({
+      userId: seeded.userId,
+      tenantId: seeded.tenantId,
+      secretEncrypted: await testEncryptor().encrypt("GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"),
+      enabledAt: 0,
+      lastUsedCounter: null,
+      createdAt: 0,
+    });
+
+    const { txCookie, state } = await startSso(app, idp, seeded.tenantId);
+    const res = await callback(app, { code: "auth-code-2fa", state, cookie: txCookie });
+
+    // パスワードログイン(POST /auth/login)なら totp_required になる状況でも、
+    // SSO はその場でセッションを張ってホームへ戻す
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe("/");
+    const sessionCookie = cookieNamed(res, "kizami_session");
+    expect(sessionCookie).not.toBeNull();
+    expect(cookieNamed(res, "kizami_totp_tx")).toBeNull();
+
+    const me = await app.request("/me", { headers: { cookie: sessionCookie as string } });
+    expect(me.status).toBe(200);
   });
 
   it("IdP のメールが大文字小文字だけ違っても同一ユーザーとして突合する", async () => {

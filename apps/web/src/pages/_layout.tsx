@@ -24,6 +24,7 @@ import "../styles/privacy-settings.css";
 import "../styles/attendance-settings.css";
 import "../styles/allowance-settings.css";
 import "../styles/api-keys-settings.css";
+import "../styles/security-settings.css";
 import "../styles/audit-logs.css";
 import "../styles/shifts.css";
 import "../styles/tour.css";

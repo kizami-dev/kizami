@@ -123,6 +123,13 @@ export function MembersView() {
   const [reactivatePendingId, setReactivatePendingId] = useState<string | null>(null);
   const [reactivateError, setReactivateError] = useState<{ memberId: string; message: string } | null>(null);
 
+  // 二要素認証の管理者リセット(2026-08-27 追加)。認証アプリもリカバリコードも失った人の
+  // 唯一の救済経路のため管理者に出すが、実行すると対象者の 2FA 保護が外れる(次回は
+  // パスワードのみでログインできてしまう)ので、退職処理と同じく確認ダイアログを挟む。
+  const [twoFactorResetTarget, setTwoFactorResetTarget] = useState<MemberDto | null>(null);
+  const [twoFactorResetPending, setTwoFactorResetPending] = useState(false);
+  const [twoFactorResetError, setTwoFactorResetError] = useState<string | null>(null);
+
   // メンバー個別の労働時間制(2026-08-23 Tier 0 その4 追加)。GET/POST /members/:id/work-policy は
   // tenant_settings.flex.manage(テナント全体スコープ)を要求するため、この権限を持たない場合は
   // そもそも GET も 403 になる — 詳細行を開いたときにその権限を持つ場合のみ取得する
@@ -511,6 +518,30 @@ export function MembersView() {
     }
   }
 
+  function openTwoFactorResetConfirm(member: MemberDto) {
+    setTwoFactorResetTarget(member);
+    setTwoFactorResetError(null);
+  }
+
+  async function handleTwoFactorResetConfirm() {
+    if (!twoFactorResetTarget) return;
+    setTwoFactorResetPending(true);
+    setTwoFactorResetError(null);
+    try {
+      await api.resetMemberTwoFactor(twoFactorResetTarget.id);
+      setTwoFactorResetTarget(null);
+      setReloadKey((k) => k + 1);
+    } catch (err) {
+      if (err instanceof UnauthorizedError) {
+        router.push("/login");
+        return;
+      }
+      setTwoFactorResetError(err instanceof ApiError ? mapMemberErrorMessage(err.body) : messages.errors.network);
+    } finally {
+      setTwoFactorResetPending(false);
+    }
+  }
+
   async function handleReactivate(member: MemberDto) {
     setReactivatePendingId(member.id);
     setReactivateError(null);
@@ -757,6 +788,12 @@ export function MembersView() {
                                   {messages.members.passwordResetBadge}
                                 </span>
                               ) : null}
+                              {/* 二要素認証(2026-08-27 追加)。有効な人だけ出す(無効は無印)。 */}
+                              {member.twoFactorEnabled ? (
+                                <span className="invite-status-badge invite-status-badge--two-factor">
+                                  {messages.members.twoFactorBadge}
+                                </span>
+                              ) : null}
                             </div>
                           </td>
                           <td>
@@ -809,6 +846,19 @@ export function MembersView() {
                                   onClick={() => openDeactivateConfirm(member)}
                                 >
                                   {messages.members.deactivateButton}
+                                </button>
+                              ) : null}
+                              {/* 2FAリセットは退職処理と同じ member.deactivate 権限で出す
+                                  (どちらも「その人のログイン手段に手を入れる」操作のため)。
+                                  自分自身には出さない — 自分の 2FA は /settings/security で
+                                  パスワード+コードを添えて外すのが正規の手順。 */}
+                              {canDeactivate && member.twoFactorEnabled && !isSelf ? (
+                                <button
+                                  type="button"
+                                  className="org-table__link-btn org-table__link-btn--danger"
+                                  onClick={() => openTwoFactorResetConfirm(member)}
+                                >
+                                  {messages.members.twoFactorResetButton}
                                 </button>
                               ) : null}
                               {canDeactivate && !member.isActive ? (
@@ -1152,6 +1202,33 @@ export function MembersView() {
           onCancel={() => {
             setRevokeResetTarget(null);
             setRevokeResetError(null);
+          }}
+        />
+      ) : null}
+
+      {twoFactorResetTarget ? (
+        <ConfirmDialog
+          title={messages.members.twoFactorResetConfirmTitle}
+          message={
+            <>
+              {`「${twoFactorResetTarget.name}」— ${messages.members.twoFactorResetConfirmMessage}`}
+              <ul className="deactivate-confirm__impact">
+                <li>{messages.members.twoFactorResetConfirmImpactLogin}</li>
+                <li>{messages.members.twoFactorResetConfirmImpactNotify}</li>
+                <li>{messages.members.twoFactorResetConfirmImpactAudit}</li>
+                <li>{messages.members.twoFactorResetConfirmImpactReenroll}</li>
+              </ul>
+            </>
+          }
+          confirmLabel={messages.members.twoFactorResetButton}
+          tone="caution"
+          note=""
+          pending={twoFactorResetPending}
+          error={twoFactorResetError}
+          onConfirm={handleTwoFactorResetConfirm}
+          onCancel={() => {
+            setTwoFactorResetTarget(null);
+            setTwoFactorResetError(null);
           }}
         />
       ) : null}

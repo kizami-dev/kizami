@@ -11,7 +11,8 @@ import { SettingsNav } from "./SettingsNav";
 
 /**
  * apps/api の監査ログ挿入箇所(apps/api/src/routes/*.ts の insertAuditLog 呼び出し)から
- * grep で収集した action 名の一覧(2026-08-24 時点、46種)。翻訳はしない — action はコードに
+ * grep で収集した action 名の一覧(2026-08-27 時点、55種。従来コメントの「46種」は
+ * その後の追加分が反映されておらず実数と食い違っていたため、この機会に数え直した)。翻訳はしない — action はコードに
  * 現れる識別子そのものであり、4言語で意味が変わるものではないため(依頼の select はこの一覧を
  * そのまま列挙すればよい、と読んだ判断点)。増減したら本配列を追従させる。
  */
@@ -24,6 +25,11 @@ const KNOWN_ACTIONS: readonly string[] = [
   // 最終決裁とは別のアクションとして記録する(approve_step1) — 監査で「反映された承認」と
   // 「まだ反映されていない一次承認」を取り違えないため。
   "approval_flow_settings.update",
+  // 二要素認証(2026-08-27 追加)。本人の操作(auth.totp.*)と、管理者による強制解除
+  // (member.totp.reset)は別アクションとして記録される。
+  "auth.totp.disable",
+  "auth.totp.enable",
+  "auth.totp.recovery_codes.regenerate",
   "auto_break_waiver.approve",
   "auto_break_waiver.approve_step1",
   "auto_break_waiver.reject",
@@ -55,6 +61,7 @@ const KNOWN_ACTIONS: readonly string[] = [
   "member.password_reset.issue",
   "member.password_reset.revoke",
   "member.reactivate",
+  "member.totp.reset",
   "member.update",
   "member.work_policy.assign",
   "notification_settings.test",

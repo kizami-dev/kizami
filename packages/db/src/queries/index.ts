@@ -22,6 +22,7 @@ export * from "./settings.js";
 export * from "./shifts.js";
 export * from "./slack.js";
 export * from "./tenants.js";
+export * from "./totp.js";
 export * from "./user-notification-settings.js";
 export * from "./leave.js";
 export * from "./work-policies.js";

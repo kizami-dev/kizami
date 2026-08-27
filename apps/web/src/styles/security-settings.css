@@ -1,0 +1,163 @@
+/* /settings/security(二要素認証(TOTP)の設定、2026-08-27 追加)専用のスタイル。
+   フォーム・セクションの本体は settings.css(.settings-notif__*)と corrections.css
+   (.correction-field / .k-modal__confirm)を流用し、ここでは
+   「暗号化鍵が無い配置の注意書き」「セットアップキー・otpauth URI のコピー枠」
+   「1度きりのリカバリコード表示」など、この画面固有の見た目だけを持つ。
+   リカバリコードの枠は api-keys-settings.css の .api-keys__reveal(発行直後のトークン表示)と
+   同じ意匠にしてある — どちらも「ここでしか見られない秘密」を出す枠であり、
+   利用者が同じ重みの画面だと認識できるようにするため。 */
+
+/* 外枠(main)の幅は settings.css の .settings-notif__main(--width-content-wide)のまま。
+   この画面は入力欄と説明文が主体で一覧を持たないため、api-keys-settings.css のような
+   外枠の上書きは不要 — 内側のフォームは .settings-notif__form の --width-form が制約する。 */
+
+/* 運用者が KIZAMI_ENCRYPTION_KEY を設定していない配置での説明。操作は何も出さないため、
+   エラー(赤)ではなく「今は使えない」ことを落ち着いて伝える枠にする。 */
+.security-settings__unavailable {
+  border: var(--border-hair);
+  border-radius: var(--radius-m);
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  background: color-mix(in srgb, var(--k-key) 3%, transparent);
+}
+
+.security-settings__unavailable-desc {
+  margin: 0;
+  color: var(--k-ink-soft);
+  line-height: 1.7;
+}
+
+.security-settings__status {
+  margin: 0 0 var(--space-2);
+}
+
+.security-settings__badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 2px var(--space-2);
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.security-settings__badge--on {
+  border: 1px solid var(--k-cyan-ink);
+  color: var(--k-cyan-ink);
+}
+
+.security-settings__badge--off {
+  border: 1px solid var(--k-ink-soft);
+  color: var(--k-ink-soft);
+}
+
+.security-settings__facts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--space-1) var(--space-3);
+  margin: 0;
+}
+
+.security-settings__facts dt {
+  color: var(--k-ink-soft);
+  font-size: 0.85rem;
+}
+
+.security-settings__facts dd {
+  margin: 0;
+}
+
+.security-settings__warning {
+  color: var(--k-magenta-ink);
+  margin: var(--space-2) 0 0;
+}
+
+.security-settings__setup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+
+.security-settings__setup-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  margin: 0;
+}
+
+/* 「値+コピーボタン」の横並び(api-keys__token-row と同じ構造)。 */
+.security-settings__copy-row {
+  display: flex;
+  align-items: stretch;
+  gap: var(--space-2);
+}
+
+.security-settings__secret,
+.security-settings__uri,
+.security-settings__code {
+  font-family: var(--font-mono);
+  padding: var(--space-2) var(--space-3);
+  border: var(--border-hair);
+  border-radius: var(--radius-s);
+  background: var(--k-paper);
+  /* クリップボード API が使えない環境(http 配信・権限拒否)でも手で選択できるようにする。 */
+  user-select: all;
+}
+
+.security-settings__secret {
+  flex: 1;
+  font-size: 1rem;
+  letter-spacing: 0.08em;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+.security-settings__uri {
+  flex: 1;
+  font-size: 0.82rem;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+/* 有効化直後・再生成直後の1回きりのリカバリコード表示。 */
+.security-settings__reveal {
+  border: 2px solid var(--k-magenta-ink);
+  border-radius: var(--radius-m);
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  background: color-mix(in srgb, var(--k-magenta) 4%, transparent);
+}
+
+.security-settings__reveal-warning {
+  color: var(--k-magenta-ink);
+  font-weight: 700;
+  margin: 0;
+}
+
+.security-settings__codes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+  gap: var(--space-2);
+}
+
+.security-settings__code {
+  display: block;
+  font-size: 0.95rem;
+  text-align: center;
+}
+
+/* 再生成・無効化の2ブロック。同じ本人確認欄を共有するため、罫線で操作の境目を示す。 */
+.security-settings__action-block {
+  border-top: var(--border-hair);
+  padding-top: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}

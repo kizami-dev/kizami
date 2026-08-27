@@ -18,5 +18,6 @@ Only the latest release (main branch) receives security fixes.
 
 ## 設計上の注意 / Notes for self-hosters
 
-- `KIZAMI_ENCRYPTION_KEY` は保存時暗号化(Webhook URL 等)の鍵です。漏えい時はローテーションし、保存済みの秘密を再登録してください
+- `KIZAMI_ENCRYPTION_KEY` は保存時暗号化(Webhook URL・SSO の client secret・二要素認証の共有鍵)の鍵です。漏えい時はローテーションし、保存済みの秘密を再登録してください。**鍵を失うと二要素認証を有効にしている利用者はログインできなくなります**(管理者による 2FA リセットで復旧します)
+- 二要素認証(TOTP)は利用者が個人で有効化できます。人事データを扱う性質上、少なくとも権限の強いアカウントでの利用を推奨します
 - 勤怠データには個人情報が含まれます。公開インスタンスにする場合はリバースプロキシでの TLS 終端と、ログイン試行の制限(fail2ban 等)を推奨します

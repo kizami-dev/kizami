@@ -391,6 +391,14 @@ td.org-table__detail-cell {
   color: var(--k-magenta-ink);
 }
 
+/* 二要素認証を有効にしているメンバーのバッジ(2026-08-27 追加)。「守られている状態」なので
+   招待中と同じ C(シアン)の枠のみ。無効の人は無印(バッジを出さない)— 未設定であることを
+   一覧で名指しして急かす画面ではないため。 */
+.invite-status-badge--two-factor {
+  border: 1px solid var(--k-cyan-ink);
+  color: var(--k-cyan-ink);
+}
+
 /* 退職処理(無効化、2026-08-23 Tier 0 その4 追加)の状態バッジ。invite-status-badge と
    同じ「塗りつぶさない・危険色の枠のみ」の見た目を踏襲する(危険=Mの原則どおり)。 */
 .invite-status-badge--inactive {

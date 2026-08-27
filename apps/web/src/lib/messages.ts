@@ -66,6 +66,19 @@ function makeErrorMapper<E extends Record<string, string> & { default: string }>
  */
 export const mapLoginErrorMessage = makeErrorMapper(() => messages.login.errors);
 /**
+ * ログイン2段目(POST /auth/login/totp)のエラーマッピング(2026-08-27 追加)。
+ * 1段目(mapLoginErrorMessage)と辞書を分けているのは、`invalid_code` や `totp_expired` が
+ * 「パスワードが違う」ではなく「コードが違う/確認の期限切れ」という別種の失敗であり、
+ * 同じ errors 配下に混ぜると 1段目でも出うる文言に見えてしまうため。
+ */
+export const mapLoginTotpErrorMessage = makeErrorMapper(() => messages.login.totpErrors);
+/**
+ * 二要素認証(TOTP)の設定(GET /auth/totp・POST /auth/totp/{setup,enable,disable,recovery-codes})の
+ * エラーマッピング(2026-08-27 追加)。invalid_password(パスワード欄)と invalid_code(コード欄)を
+ * 別文言にして、どちらを直せばよいか分かるようにしている。
+ */
+export const mapTwoFactorErrorMessage = makeErrorMapper(() => messages.settingsSecurity.errors);
+/**
  * 招待受諾(POST /invitations/:token/accept)のエラーマッピング(2026-08-24 追加)。
  * 404/410 は画面全体の状態(無効・期限切れ)へ分岐するため、呼び出し側で先に処理する。
  */

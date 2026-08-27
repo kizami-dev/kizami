@@ -24,6 +24,13 @@ export interface SettingsAccess {
   allowances: boolean;
   /** /settings/api-keys。自分のキーの発行・一覧・失効は全認証済みユーザーが行えるため、常に true。 */
   apiKeys: boolean;
+  /**
+   * /settings/security(二要素認証(TOTP)、2026-08-27 追加)。自分の認証設定のため権限不要
+   * (apps/api の /auth/totp* は requirePermission を掛けていない)。常に true にし、
+   * 「この配置で 2FA が使えるか」(暗号化鍵の有無)は画面側が GET /auth/totp の available で
+   * 判定する — ナビから消してしまうと、使えない理由を知る術が利用者に無くなるため。
+   */
+  security: boolean;
   slack: boolean;
   /** /settings/sso(SSO(OIDC)設定、2026-08-24 追加)。tenant_settings.auth.manage(tenant スコープ)。 */
   sso: boolean;
@@ -79,6 +86,7 @@ export function useSettingsAccess(): SettingsAccess {
     loading,
     myNotifications: true,
     apiKeys: true,
+    security: true,
     slackLink: true,
     notifications: has("notification.settings.manage", "tenant"),
     departments: has("department.manage", "department_and_descendants") || has("member.view", "department"),

@@ -65,6 +65,8 @@ describe("migrate", () => {
         "tenants",
         "user_notification_settings",
         "user_policy_assignments",
+        "user_totp",
+        "user_totp_recovery_codes",
         "users",
         "work_policies",
         "work_policy_versions",

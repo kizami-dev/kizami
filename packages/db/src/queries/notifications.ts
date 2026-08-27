@@ -9,7 +9,7 @@
 
 import { and, count, desc, eq, isNull } from "drizzle-orm";
 import { isUniqueConstraintError } from "../errors.js";
-import type { Database } from "../types.js";
+import type { Database, Transaction } from "../types.js";
 import { notifications } from "../schema/index.js";
 import { uuidv7 } from "../uuid.js";
 
@@ -32,7 +32,7 @@ export interface NewNotificationInput {
  * UNIQUE 制約違反を捕捉して何もせず null を返す(重複防止。呼び出し側で「新規作成できたか」の
  * 判定に使う — 外部チャネルへの送信は新規作成できたときだけ行う)。
  */
-export async function createNotificationIfAbsent(db: Database, input: NewNotificationInput): Promise<Notification | null> {
+export async function createNotificationIfAbsent(db: Database | Transaction, input: NewNotificationInput): Promise<Notification | null> {
   try {
     const [row] = await db
       .insert(notifications)

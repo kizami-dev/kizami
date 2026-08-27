@@ -103,6 +103,20 @@ export interface AuthTenant {
   name: string | null;
 }
 
+/**
+ * POST /auth/login の成功レスポンス(2026-08-27、二要素認証(TOTP)対応で union 化)。
+ *
+ * 2FA を有効にしている利用者では、メール+パスワードが正しくても **200 のまま**
+ * `{ status: "totp_required" }` が返る(セッションはまだ張られていない)。この中間状態は
+ * httpOnly Cookie 側だけに載るため、Web が保持・送信すべき値は何も無い —
+ * 呼び出し側は6桁コード(またはリカバリコード)を集めて `api.loginTotp()` を呼ぶだけでよい。
+ *
+ * 判断点: 例外(MultipleTenantsError 方式)ではなく戻り値の union にした。ステータスは 200 で
+ * 「認証は成功しているが手順が1つ残っている」正常系であり、エラー経路に混ぜると
+ * `mapLoginErrorMessage` の対象になってしまうため。`"status" in result` で絞り込める。
+ */
+export type LoginResult = { status: "totp_required" } | { user: AuthUser };
+
 export type PunchKind = "clock_in" | "clock_out" | "break_start" | "break_end";
 export type AttendanceState = "out" | "working" | "onBreak";
 
@@ -660,6 +674,11 @@ export interface MemberDto {
    * 実際に計算へ使われる値は engine 側が effective-dated に解決する)。
    */
   workSystemKind: WorkSystemKind | null;
+  /**
+   * 二要素認証(TOTP)を有効にしているか(2026-08-27 追加)。一覧のバッジと
+   * 「2FAをリセット」ボタンの出し分けに使う(リセットは member.deactivate 権限が必要)。
+   */
+  twoFactorEnabled: boolean;
 }
 
 /**
@@ -1274,6 +1293,34 @@ export interface CreateApiKeyInput {
   expiresAt?: number | null;
 }
 
+/**
+ * 二要素認証(TOTP)の状態(GET /auth/totp、2026-08-27 追加)。
+ *
+ * `available` は「この配置(デプロイ)で 2FA が使えるか」= 運用者が暗号化鍵
+ * (KIZAMI_ENCRYPTION_KEY)を設定しているか。TOTP の秘密鍵は暗号化して保存するため、
+ * 鍵が無い環境では有効化そのものができない — false のときは画面で操作を出さず、
+ * 「運用者の設定が必要」である旨だけを説明する(利用者側では解決できないため)。
+ */
+export interface TotpStatusDto {
+  available: boolean;
+  enabled: boolean;
+  /** UTC エポック分。未有効化なら null。 */
+  enabledAt: number | null;
+  /** 未使用のリカバリコードの残数(有効化直後は10)。 */
+  recoveryCodesRemaining: number;
+}
+
+/**
+ * POST /auth/totp/setup のレスポンス(有効化前の仮登録)。
+ * secret は base32 の「セットアップキー」、otpauthUri は otpauth://totp/... 形式。
+ * v0 では QR 画像を出さない(SecuritySettingsView の冒頭コメント参照)ため、この2つを
+ * そのまま画面に出してコピーさせる。
+ */
+export interface TotpSetupDto {
+  secret: string;
+  otpauthUri: string;
+}
+
 /** approved_step1 = 一次承認済み・二次承認待ち(二段承認のときだけ現れる中間状態)。 */
 export type AutoBreakWaiverStatus = "pending" | "approved_step1" | "approved" | "rejected" | "withdrawn";
 
@@ -1415,8 +1462,12 @@ export const api = {
    * tenantId 省略時、同一メール+パスワードが複数テナントに一致すると 409 multiple_tenants
    * (`MultipleTenantsError`)を投げる。呼び出し側はそれを選択肢として表示し、選ばれた
    * tenantId を付けて同じ email/password で再送する(パスワードは検証済みのため再入力不要)。
+   *
+   * 2026-08-27: 2FA 有効なアカウントでは 200 のまま `{ status: "totp_required" }` が返るように
+   * なったため、戻り値を `LoginResult`(union)にした。呼び出し側は `"status" in result` で
+   * 分岐し、6桁コードを集めて `loginTotp()` を呼ぶ(LoginResult のコメント参照)。
    */
-  async login(email: string, password: string, tenantId?: string): Promise<{ user: AuthUser }> {
+  async login(email: string, password: string, tenantId?: string): Promise<LoginResult> {
     try {
       return await request("/auth/login", {
         method: "POST",
@@ -1755,6 +1806,16 @@ export const api = {
     return request(`/members/${encodeURIComponent(memberId)}/reactivate`, { method: "POST" });
   },
 
+  /**
+   * POST /members/:id/two-factor/reset(member.deactivate、department スコープ、2026-08-27 追加)。
+   * 認証アプリもリカバリコードも失った従業員を救済するための管理者操作。対象者の 2FA 設定を
+   * 消すだけで、次回は「パスワードのみ」でログインできる状態に戻る(再設定は本人が行う)。
+   * 409 not_enabled = 対象者はそもそも 2FA を使っていない。
+   */
+  async resetMemberTwoFactor(memberId: string): Promise<{ member: { id: string; twoFactorEnabled: false } }> {
+    return request(`/members/${encodeURIComponent(memberId)}/two-factor/reset`, { method: "POST" });
+  },
+
   /** GET /members/:id/work-policy(tenant_settings.flex.manage)。現在実効の割当+割当履歴。 */
   async getMemberWorkPolicy(memberId: string): Promise<MemberWorkPolicySettingsDto> {
     return request(`/members/${encodeURIComponent(memberId)}/work-policy`);
@@ -2027,6 +2088,54 @@ export const api = {
   /** DELETE /api-keys/:id(権限不要、自分のキーのみ失効可)。 */
   async revokeApiKey(id: string): Promise<{ apiKey: ApiKeyDto }> {
     return request(`/api-keys/${encodeURIComponent(id)}`, { method: "DELETE" });
+  },
+
+  // ---- 二要素認証(TOTP、2026-08-27 追加) ----
+  // いずれも「自分の認証設定」なので権限は不要(APIキーと同じ扱い)。ただし無効化と
+  // リカバリコード再生成だけは、セッションを乗っ取られた状態での操作を防ぐため
+  // 現在のパスワード+現在の6桁コードの二重確認を要求する(apps/api 側の仕様)。
+
+  /** GET /auth/totp(権限不要、自分の状態のみ)。available=false のときは 2FA 自体が使えない配置。 */
+  async getTotpStatus(): Promise<TotpStatusDto> {
+    return request("/auth/totp");
+  },
+
+  /**
+   * POST /auth/totp/setup(権限不要)。秘密鍵を仮発行する(この時点ではまだ有効化されない)。
+   * 409 already_enabled / 503 encryption_unavailable。
+   */
+  async startTotpSetup(): Promise<TotpSetupDto> {
+    return request("/auth/totp/setup", { method: "POST" });
+  },
+
+  /**
+   * POST /auth/totp/enable(権限不要)。setup で得た秘密鍵に対する6桁コードを検証し、有効化する。
+   * リカバリコード(10本)は **このレスポンスでしか取得できない**(以後は再生成のみ)。
+   */
+  async enableTotp(code: string): Promise<{ enabled: true; recoveryCodes: string[] }> {
+    return request("/auth/totp/enable", { method: "POST", body: JSON.stringify({ code }) });
+  },
+
+  /** POST /auth/totp/disable(権限不要)。現在のパスワードと現在の6桁コードの両方が必要。 */
+  async disableTotp(input: { password: string; code: string }): Promise<{ enabled: false }> {
+    return request("/auth/totp/disable", { method: "POST", body: JSON.stringify(input) });
+  },
+
+  /**
+   * POST /auth/totp/recovery-codes(権限不要)。リカバリコードを再生成する(古いものは全て無効)。
+   * disable と同じく現在のパスワード+現在の6桁コードが必要。
+   */
+  async regenerateTotpRecoveryCodes(input: { password: string; code: string }): Promise<{ recoveryCodes: string[] }> {
+    return request("/auth/totp/recovery-codes", { method: "POST", body: JSON.stringify(input) });
+  },
+
+  /**
+   * POST /auth/login/totp(未認証、login で受け取った httpOnly Cookie の中間状態に対して実行)。
+   * `code`(認証アプリの6桁)と `recoveryCode`(紛失時の使い捨てコード)のどちらか一方のみを渡す。
+   * 401 totp_expired は中間状態の有効期限切れ — 呼び出し側はログイン画面の1段目へ戻す。
+   */
+  async loginTotp(input: { code: string } | { recoveryCode: string }): Promise<{ user: AuthUser }> {
+    return request("/auth/login/totp", { method: "POST", body: JSON.stringify(input) });
   },
 
   /**

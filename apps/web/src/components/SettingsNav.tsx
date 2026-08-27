@@ -17,6 +17,7 @@ export type SettingsSection =
   | "attendance"
   | "allowances"
   | "shiftPatterns"
+  | "security"
   | "apiKeys"
   | "slack"
   | "sso"
@@ -35,6 +36,7 @@ type SettingsRoute =
   | "/settings/attendance"
   | "/settings/allowances"
   | "/settings/shift-patterns"
+  | "/settings/security"
   | "/settings/api-keys"
   | "/settings/slack"
   | "/settings/sso"
@@ -87,6 +89,8 @@ export function SettingsNav({ active }: { active: SettingsSection }) {
     { key: "leave", to: "/settings/leave", label: messages.settingsNav.leave, enabled: access.leave },
     { key: "help", to: "/settings/help", label: messages.settingsNav.help, enabled: access.help },
     { key: "privacy", to: "/settings/privacy", label: messages.settingsNav.privacy, enabled: access.privacy },
+    // 二要素認証(2026-08-27 追加)。自分の認証設定なので、同じく権限不要の APIキーの隣に置く。
+    { key: "security", to: "/settings/security", label: messages.settingsNav.security, enabled: access.security },
     { key: "apiKeys", to: "/settings/api-keys", label: messages.settingsNav.apiKeys, enabled: access.apiKeys },
     { key: "slack", to: "/settings/slack", label: messages.settingsNav.slack, enabled: access.slack },
     { key: "sso", to: "/settings/sso", label: messages.settingsNav.sso, enabled: access.sso },

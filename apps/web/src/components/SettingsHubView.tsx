@@ -25,6 +25,7 @@ type SettingsRoute =
   | "/settings/attendance"
   | "/settings/allowances"
   | "/settings/shift-patterns"
+  | "/settings/security"
   | "/settings/api-keys"
   | "/settings/slack"
   | "/settings/sso"
@@ -38,6 +39,15 @@ export function SettingsHubView() {
   // 「自分の設定」(全員アクセス可)と「会社の設定」(権限が必要)をカード群として分ける
   // (依頼: テナント設定と個人設定が混ざらないようにする)。
   const personalCards: { key: string; enabled: boolean; to: SettingsRoute; title: string; desc: string }[] = [
+    // 二要素認証は「アカウントそのものを守る設定」で、他の個人設定(通知の受け取り方・APIキー・
+    // Slack連携)より優先度が高いため先頭に置く(2026-08-27 追加)。
+    {
+      key: "security",
+      enabled: access.security,
+      to: "/settings/security" as const,
+      title: messages.settingsHub.securityTitle,
+      desc: messages.settingsHub.securityDesc,
+    },
     {
       key: "myNotifications",
       enabled: access.myNotifications,

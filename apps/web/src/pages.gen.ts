@@ -50,6 +50,8 @@ import type { getConfig as File_SettingsPresets_getConfig } from './pages/settin
 // prettier-ignore
 import type { getConfig as File_SettingsPrivacy_getConfig } from './pages/settings/privacy';
 // prettier-ignore
+import type { getConfig as File_SettingsSecurity_getConfig } from './pages/settings/security';
+// prettier-ignore
 import type { getConfig as File_SettingsShiftPatterns_getConfig } from './pages/settings/shift-patterns';
 // prettier-ignore
 import type { getConfig as File_SettingsSlackLink_getConfig } from './pages/settings/slack-link';
@@ -90,6 +92,7 @@ type Page =
 | ({ path: '/settings/notifications/me' } & GetConfigResponse<typeof File_SettingsNotificationsMe_getConfig>)
 | ({ path: '/settings/presets' } & GetConfigResponse<typeof File_SettingsPresets_getConfig>)
 | ({ path: '/settings/privacy' } & GetConfigResponse<typeof File_SettingsPrivacy_getConfig>)
+| ({ path: '/settings/security' } & GetConfigResponse<typeof File_SettingsSecurity_getConfig>)
 | ({ path: '/settings/shift-patterns' } & GetConfigResponse<typeof File_SettingsShiftPatterns_getConfig>)
 | ({ path: '/settings/slack-link' } & GetConfigResponse<typeof File_SettingsSlackLink_getConfig>)
 | ({ path: '/settings/slack' } & GetConfigResponse<typeof File_SettingsSlack_getConfig>)

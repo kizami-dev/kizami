@@ -195,6 +195,7 @@ export default defineConfig({
           { text: "多段承認(承認フロー)", link: "/design/approval-flows" },
           { text: "マルチテナントとテナント分離", link: "/design/multi-tenancy" },
           { text: "SSO(OIDC)ログイン", link: "/design/sso-oidc" },
+          { text: "二要素認証(TOTP)", link: "/design/two-factor-auth" },
           { text: "ブラウザプッシュ通知(Web Push)", link: "/design/web-push" },
           { text: "DBダイアレクト(SQLite/PostgreSQL)", link: "/design/db-dialects" },
           { text: "Cloudflare Workers + D1 対応", link: "/design/workers-d1" },

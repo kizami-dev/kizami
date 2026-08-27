@@ -51,12 +51,15 @@ import {
   createInvitation,
   createInvitationInTx,
   createPasswordResetToken,
+  createNotificationIfAbsent,
   createUser,
   deactivateUser,
+  deleteUserTotp,
   getDepartmentById,
   getLatestInvitationForUser,
   getLatestPasswordResetTokenForUser,
   getUserById,
+  getUserTotp,
   insertAuditLog,
   isUniqueConstraintError,
   listAssignedPresetGrants,
@@ -66,6 +69,7 @@ import {
   listTenantAssignedPresetNames,
   listTenantMembershipsWithDepartment,
   listTenantPresetGrantsByUser,
+  listTenantTotpEnabledUserIds,
   listTenantUserIdsWithCredentials,
   listTenantUsers,
   listUserPolicyAssignments,
@@ -200,7 +204,16 @@ export function createMembersRoutes(db: Database) {
     });
 
     const today = todayLocalDate(TZ_OFFSET_MINUTES_JST);
-    const [tenantUsers, membershipRows, presetNameRows, invitationRows, credentialUserIds, passwordResetRows, workPolicyKindByUser] =
+    const [
+      tenantUsers,
+      membershipRows,
+      presetNameRows,
+      invitationRows,
+      credentialUserIds,
+      passwordResetRows,
+      workPolicyKindByUser,
+      totpEnabledUserIds,
+    ] =
       await Promise.all([
         listTenantUsers(db, user.tenantId),
         listTenantMembershipsWithDepartment(db, user.tenantId),
@@ -212,6 +225,9 @@ export function createMembersRoutes(db: Database) {
         // (packages/db/src/queries/work-policies.ts の listCurrentWorkPolicyKindsForTenant 参照、
         // ユーザーごとの個別クエリにはしない — N+1 回避)。
         listCurrentWorkPolicyKindsForTenant(db, { tenantId: user.tenantId, asOfDate: today }),
+        // 二要素認証の有効状態(UI バッジ + 「2FAをリセット」ボタンの出し分け、2026-08-27)。
+        // テナント分を1クエリで取る(ユーザーごとの個別クエリにしない — N+1 回避)。
+        listTenantTotpEnabledUserIds(db, user.tenantId),
       ]);
     const allUsers = accessibleUserIds === "all" ? tenantUsers : tenantUsers.filter((u) => accessibleUserIds.has(u.id));
 
@@ -281,6 +297,9 @@ export function createMembersRoutes(db: Database) {
         // (listCurrentWorkPolicyKindsForTenant の規約、割当自体が無いユーザーは Map に
         // 含まれないため `.get(u.id) ?? null` で両ケースとも null に落ちる)。
         workSystemKind: workPolicyKindByUser.get(u.id) ?? null,
+        // 二要素認証(TOTP)を有効化済みか(2026-08-27)。UI バッジと、ロックアウト救済の
+        // 「2FAをリセット」ボタンの出し分けに使う(docs/design/two-factor-auth.md)。
+        twoFactorEnabled: totpEnabledUserIds.has(u.id),
       })),
     });
   });
@@ -739,6 +758,77 @@ export function createMembersRoutes(db: Database) {
     });
 
     return c.json({ member: { id, isActive: false } });
+  });
+
+  /**
+   * 二要素認証(2FA)のリセット(ロックアウト救済、2026-08-27)。
+   * docs/design/two-factor-auth.md「管理者によるリセット」。
+   *
+   * 認証アプリを入れた端末を失くし、リカバリコードも手元に無い従業員を救う唯一の経路。
+   * TOTP の登録とリカバリコードを消すだけで、パスワードには触れない(次のログインは
+   * パスワードのみで通り、本人が改めて 2FA を設定し直す)。
+   *
+   * ## 権限の選定(判断点)
+   *
+   * `member.deactivate`(退職処理)と同格に置く。これは**他人のログイン要件を一段弱める**操作で、
+   * 攻撃者から見れば「2FA を消してからパスワードを総当たり/リセットする」踏み台になる。
+   * `member.invite`(招待・パスワードリセット発行)より重い扱いが妥当で、カタログ上
+   * 「危険」と印の付いた既存キーは `member.deactivate` — 専用キーを新設せず、これを流用する。
+   *
+   * ## 事後の可視性
+   *
+   * 監査ログ(`member.totp.reset`)に加え、**本人へアプリ内通知を送る**。管理者が黙って
+   * 2FA を外せてしまうと、乗っ取られた管理者アカウントによる 2FA 解除に本人が気づけない。
+   * 通知は「受け取り設定で OFF にできない」アプリ内のみに送る(個人チャネルの
+   * カテゴリには載せない — セキュリティ事象は本人が黙らせられるべきではないため。
+   * apps/api/src/lib/notification-preferences.ts の resolveNotificationCategory には
+   * 意図的に追加していない)。
+   */
+  app.post("/:id/two-factor/reset", async (c) => {
+    requirePermission(c, DEACTIVATE_PERMISSION, "department");
+    const actor = c.get("user");
+    const id = c.req.param("id");
+
+    const target = await getUserById(db, { tenantId: actor.tenantId, id });
+    if (!target) return c.json({ error: "not_found" }, 404);
+
+    const accessibleUserIds = await resolveAccessibleUserIds(db, {
+      actor: { id: actor.id, tenantId: actor.tenantId, permissions: c.get("permissions") },
+      permission: DEACTIVATE_PERMISSION,
+    });
+    if (accessibleUserIds !== "all" && !accessibleUserIds.has(id)) {
+      throw new ForbiddenError(`target user ${id} is outside actor's scope`);
+    }
+
+    const existing = await getUserTotp(db, { tenantId: actor.tenantId, userId: id });
+    if (!existing) return c.json({ error: "not_enabled" }, 409);
+
+    const now = nowMinutes();
+    await db.transaction(async (tx) => {
+      await deleteUserTotp(tx, { tenantId: actor.tenantId, userId: id });
+      await insertAuditLog(tx, {
+        tenantId: actor.tenantId,
+        actorId: actor.id,
+        action: "member.totp.reset",
+        targetType: "user",
+        targetId: id,
+        detail: JSON.stringify({}),
+        occurredAt: now,
+      });
+      await createNotificationIfAbsent(tx, {
+        tenantId: actor.tenantId,
+        userId: id,
+        type: "security_totp_reset",
+        // 勤怠日に紐づかない通知なので null(notifications の UNIQUE は NULL 同士を
+        // 区別するため、リセットのたびに新しい通知が作られる — schema/notifications.ts の判断点)。
+        subjectDate: null,
+        title: "二要素認証が管理者によって解除されました",
+        body: `${actor.displayName} が二要素認証の設定を解除しました。心当たりがない場合は、すぐに管理者へ連絡してください。再設定は「設定 → セキュリティ」から行えます。`,
+        createdAt: now,
+      });
+    });
+
+    return c.json({ member: { id, twoFactorEnabled: false } });
   });
 
   /** 再有効化。isActive=true に戻すのみ(セッション・招待・リセットトークンの復元は行わない — 必要なら改めて発行する)。 */

@@ -315,6 +315,26 @@ export const ko = {
     ssoButton: "SSO로 로그인",
     ssoButtonForTenant: (tenantName: string) => `${tenantName}에 SSO로 로그인`,
     ssoStarting: "SSO로 이동 중…",
+
+    totpTitle: "확인 코드를 입력해 주세요",
+    totpDescription: "인증 앱에 표시된 6자리 코드를 입력해 주세요.",
+    totpCodeLabel: "6자리 코드",
+    totpSubmit: "확인",
+    totpSubmitting: "확인하는 중…",
+    totpUseRecovery: "복구 코드 사용",
+    totpUseCode: "인증 앱 코드 사용",
+    totpRecoveryLabel: "복구 코드",
+    totpRecoveryDescription: "인증 앱을 사용할 수 없는 경우, 2단계 인증을 켤 때 보관해 둔 복구 코드를 하나 입력해 주세요(하나당 한 번만 사용할 수 있습니다).",
+    totpBack: "로그인부터 다시 하기",
+    totpExpiredNotice: "확인 유효 기간이 지났습니다. 다시 로그인해 주세요",
+    totpErrors: {
+      invalid_body: "코드 형식을 확인해 주세요",
+      invalid_code: "코드가 올바르지 않습니다. 다시 시도해 주세요",
+      totp_expired: "확인 유효 기간이 지났습니다. 다시 로그인해 주세요",
+      rate_limited: "시도 횟수가 너무 많습니다. 잠시 후 다시 시도해 주세요",
+      encryption_unavailable: "현재 이 작업을 사용할 수 없습니다. 관리자에게 문의해 주세요",
+      default: "확인에 실패했습니다. 다시 시도해 주세요",
+    },
   },
 
   /**
@@ -1176,6 +1196,7 @@ export const ko = {
     attendance: "근태 규칙",
     allowances: "수당 대상 시간",
     shiftPatterns: "시프트 패턴",
+    security: "2단계 인증",
     apiKeys: "API 키",
     slack: "Slack 연동",
     sso: "SSO(OIDC)",
@@ -1215,6 +1236,8 @@ export const ko = {
     helpDesc: "도움말에 표시할 자사 규칙과 취업규칙 링크를 설정합니다.",
     privacyTitle: "개인정보",
     privacyDesc: "직원 대상 개인정보 안내·사내 이용약관 템플릿을 현재 설정 기준으로 확인합니다.",
+    securityTitle: "2단계 인증",
+    securityDesc: "비밀번호에 더해 인증 앱의 6자리 코드를 요구하는 설정입니다. 복구 코드 재생성·해제도 여기에서 할 수 있습니다.",
     apiKeysTitle: "API 키",
     apiKeysDesc: "IC카드 리더·Slack bot·MCP 서버 등 외부 클라이언트에서 출퇴근을 기록하기 위한 API 키를 발급·폐기합니다.",
     slackTitle: "Slack 연동",
@@ -1862,6 +1885,15 @@ export const ko = {
     reactivateButton: "재활성화",
     reactivating: "재활성화하는 중…",
 
+    twoFactorBadge: "2FA",
+    twoFactorResetButton: "2FA 초기화",
+    twoFactorResetConfirmTitle: "2단계 인증을 초기화하시겠습니까",
+    twoFactorResetConfirmMessage: "인증 앱과 복구 코드를 모두 잃어버린 사람을 구제하기 위한 작업입니다. 초기화하면 다음과 같이 됩니다.",
+    twoFactorResetConfirmImpactLogin: "대상자는 다음부터 비밀번호만으로 로그인할 수 있게 됩니다",
+    twoFactorResetConfirmImpactNotify: "대상자 본인에게 알림이 전달됩니다",
+    twoFactorResetConfirmImpactAudit: "이 작업은 감사 로그에 기록됩니다",
+    twoFactorResetConfirmImpactReenroll: "2단계 인증의 재설정은 본인이 직접 해야 합니다",
+
     /**
      * 멤버별 근로시간제 할당(2026-08-23 Tier 0 4번째 추가). GET/POST /members/:id/work-policy
      * (tenant_settings.flex.manage, 테넌트 전체 스코프만). 이 권한이 없으면 GET도 403이 되므로
@@ -1976,6 +2008,8 @@ export const ko = {
       /** 1일당 기준 소정근로시간(연차 환산용, v0.7 4단계, 2026-08-24 추가). */
       invalid_standard_day_minutes: "1일당 기준 소정근로시간은 1~1440분의 정수로 입력해 주세요",
       version_already_exists: "해당 적용 시작일에는 이미 같은 설정의 버전이 있습니다. 다른 날짜를 지정해 주세요",
+      not_enabled: "이 멤버는 2단계 인증을 사용하고 있지 않습니다",
+      forbidden: "이 작업을 수행할 권한이 없습니다",
       default: "처리에 실패했습니다. 다시 시도해 주세요",
     },
   },
@@ -2428,6 +2462,83 @@ export const ko = {
    * API 키(공개 출퇴근 API, v0.4) 관리 화면(/settings/api-keys).
    * 권한이 필요하지 않음(자신의 키는 누구나 발급·폐기할 수 있음, 요청 「본인용이므로 권한 불필요」).
    */
+  settingsSecurity: {
+    title: "2단계 인증",
+    tagline: "비밀번호에 더해 인증 앱에 표시되는 6자리 코드로 로그인을 보호합니다.",
+    loadFailed: "정보를 가져오지 못했습니다. 다시 시도해 주세요",
+
+    unavailableTitle: "이 환경에서는 사용할 수 없습니다",
+    unavailableDescription:
+      "운영자가 암호화 키(KIZAMI_ENCRYPTION_KEY)를 설정하지 않았기 때문에 2단계 인증을 사용할 수 없습니다. 인증 앱의 비밀 키를 암호화해 저장할 수 없기 때문입니다. 사용하고 싶다면 시스템 운영 담당자에게 문의해 주세요.",
+
+    statusTitle: "현재 상태",
+    statusEnabled: "사용 중",
+    statusDisabled: "사용 안 함",
+    enabledAtLabel: "켠 일시",
+    recoveryRemainingLabel: "남은 복구 코드",
+    recoveryRemainingValue: (count: number) => `${count}개`,
+    recoveryRemainingWarning: "복구 코드가 얼마 남지 않았습니다. 재생성해 안전한 곳에 보관해 주세요.",
+
+    enableTitle: "2단계 인증 켜기",
+    enableDescription: "켜면 다음 로그인부터 비밀번호에 더해 인증 앱의 6자리 코드가 필요합니다.",
+    enableStart: "2단계 인증 켜기",
+    enableStarting: "준비하는 중…",
+
+    setupTitle: "인증 앱에 등록하기",
+    setupManualHint:
+      "KIZAMI는 QR 코드를 표시하지 않습니다. 인증 앱(Google Authenticator·1Password·Authy 등)의 「직접 입력」 또는 「설정 키 입력」에서 아래 키를 붙여 넣어 등록해 주세요.",
+    setupSecretLabel: "설정 키(직접 입력용)",
+    setupUriLabel: "otpauth URI(지원하는 인증 앱이라면 이 문자열로도 등록할 수 있습니다)",
+    setupCodeLabel: "인증 앱에 표시된 6자리 코드",
+    setupCodePlaceholder: "123456",
+    setupSubmit: "켜기",
+    setupSubmitting: "켜는 중…",
+    setupCancel: "그만두기",
+
+    recoveryTitle: "복구 코드",
+    recoveryWarning: "이 화면을 닫으면 두 번 다시 표시되지 않습니다. 인쇄하거나 비밀번호 관리 도구 등 안전한 곳에 보관해 주세요.",
+    recoveryDescription: "인증 앱을 사용할 수 없게 되었을 때 코드 대신 입력해 로그인할 수 있는 일회용 코드입니다(하나당 한 번만 사용할 수 있습니다).",
+    recoveryCopyAll: "모두 복사",
+    recoveryDone: "보관했습니다. 닫기",
+
+    copy: "복사",
+    copied: "복사했습니다",
+    copyFailed: "복사에 실패했습니다. 직접 선택해 복사해 주세요",
+
+    verifyTitle: "본인 확인",
+    verifyDescription: "세션이 탈취된 상태에서의 조작을 막기 위해, 현재 비밀번호와 인증 앱의 6자리 코드가 모두 필요합니다.",
+    passwordLabel: "현재 비밀번호",
+    codeLabel: "인증 앱의 6자리 코드",
+
+    regenerateTitle: "복구 코드 재생성",
+    regenerateDescription: "새로 10개를 발급합니다. 지금 가지고 있는 복구 코드는 모두 사용할 수 없게 됩니다.",
+    regenerateSubmit: "복구 코드 재생성",
+    regenerateSubmitting: "재생성하는 중…",
+
+    disableTitle: "2단계 인증 끄기",
+    disableDescription: "끄면 로그인은 비밀번호만으로 이루어집니다.",
+    disableSubmit: "2단계 인증 끄기",
+    disableSubmitting: "끄는 중…",
+    disableConfirmTitle: "2단계 인증을 끄시겠습니까",
+    disableConfirmMessage: "끄면 다음과 같이 됩니다.",
+    disableConfirmImpactPassword: "로그인은 비밀번호만으로 이루어집니다",
+    disableConfirmImpactRecovery: "지금 가지고 있는 복구 코드는 모두 사용할 수 없게 됩니다",
+    disableConfirmImpactReenable: "다시 켤 때는 인증 앱 등록부터 다시 해야 합니다",
+    disabledNotice: "2단계 인증을 껐습니다.",
+
+    errors: {
+      invalid_body: "입력 내용을 확인해 주세요",
+      invalid_code: "코드가 올바르지 않습니다. 인증 앱의 표시를 확인하고 다시 시도해 주세요",
+      invalid_password: "비밀번호가 올바르지 않습니다",
+      setup_required: "등록이 완료되지 않았습니다. 「2단계 인증 켜기」부터 다시 시도해 주세요",
+      already_enabled: "2단계 인증은 이미 켜져 있습니다",
+      not_enabled: "2단계 인증이 켜져 있지 않습니다",
+      rate_limited: "시도 횟수가 너무 많습니다. 잠시 후 다시 시도해 주세요",
+      encryption_unavailable: "현재 이 작업을 사용할 수 없습니다. 관리자에게 문의해 주세요",
+      default: "처리에 실패했습니다. 다시 시도해 주세요",
+    },
+  },
+
   settingsApiKeys: {
     title: "API 키",
     tagline: "IC카드 리더·Slack bot·MCP 서버 등 세션 쿠키를 가질 수 없는 외부 클라이언트에서 출퇴근을 기록하기 위한 키입니다.",

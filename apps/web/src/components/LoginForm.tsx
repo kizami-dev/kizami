@@ -3,7 +3,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "waku";
 import { api, ApiError, MultipleTenantsError, type LoginTenantOption, type SsoAvailableTenant } from "../lib/api";
-import { mapLoginErrorMessage, messages } from "../lib/messages";
+import { mapLoginErrorMessage, mapLoginTotpErrorMessage, messages } from "../lib/messages";
 import { KizamiMark } from "./KizamiMark";
 
 export function LoginForm() {
@@ -28,6 +28,20 @@ export function LoginForm() {
   /** 直近に照会したメールアドレス(同じ値で二重に叩かないため)。 */
   const [ssoLookedUpEmail, setSsoLookedUpEmail] = useState<string | null>(null);
   const [ssoStarting, setSsoStarting] = useState(false);
+
+  /**
+   * 二要素認証(TOTP)の2段目(2026-08-27 追加)。POST /auth/login が **200 のまま**
+   * `{ status: "totp_required" }` を返したときに true になる。
+   *
+   * この中間状態(どのユーザーの検証が途中か)は httpOnly Cookie 側だけに載るため、
+   * ここで持つのは「2段目を表示しているか」と「入力中のコード」だけでよい
+   * (email/password を保持し続ける必要は無い — 実際 handleTotpSubmit では送らない)。
+   */
+  const [awaitingTotp, setAwaitingTotp] = useState(false);
+  /** 認証アプリの6桁コードではなく、リカバリコードを入力するモードか。 */
+  const [useRecoveryCode, setUseRecoveryCode] = useState(false);
+  const [totpCode, setTotpCode] = useState("");
+  const [totpSubmitting, setTotpSubmitting] = useState(false);
 
   // SSO のコールバックが失敗すると /login?error=<code> へ戻ってくる(apps/api/src/routes/auth-oidc.ts)。
   // 初回マウント時に一度だけ読み、messages.login.errors の対応する文言を出す。
@@ -91,7 +105,14 @@ export function LoginForm() {
     setSubmitting(true);
     setError(null);
     try {
-      await api.login(email, password);
+      const result = await api.login(email, password);
+      // 2FA 有効なアカウントは、ここではまだログイン完了していない(2026-08-27)。
+      if ("status" in result) {
+        setAwaitingTotp(true);
+        setUseRecoveryCode(false);
+        setTotpCode("");
+        return;
+      }
       router.push("/");
     } catch (err) {
       if (err instanceof MultipleTenantsError) {
@@ -113,7 +134,13 @@ export function LoginForm() {
     setSubmitting(true);
     setError(null);
     try {
-      await api.login(email, password, tenantId);
+      const result = await api.login(email, password, tenantId);
+      if ("status" in result) {
+        setAwaitingTotp(true);
+        setUseRecoveryCode(false);
+        setTotpCode("");
+        return;
+      }
       router.push("/");
     } catch (err) {
       // ここでの失敗は基本的に通信エラーのみ(email/password は直前に検証済み)だが、
@@ -123,6 +150,49 @@ export function LoginForm() {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  /**
+   * 2段目の送信(POST /auth/login/totp)。`code` と `recoveryCode` は排他で、
+   * 入力モードに応じてどちらか一方だけを送る(両方送ると 400 invalid_body)。
+   */
+  async function handleTotpSubmit(e: FormEvent) {
+    e.preventDefault();
+    const value = totpCode.trim();
+    if (value === "") {
+      setError(messages.login.totpErrors.invalid_body);
+      return;
+    }
+    setTotpSubmitting(true);
+    setError(null);
+    try {
+      await api.loginTotp(useRecoveryCode ? { recoveryCode: value } : { code: value });
+      router.push("/");
+    } catch (err) {
+      if (err instanceof ApiError) {
+        const code = err.body && typeof err.body === "object" && "error" in err.body ? (err.body as { error: unknown }).error : null;
+        if (code === "totp_expired") {
+          // 中間状態の Cookie が切れている。この画面に留まってもコードを入れ直す先が無いため、
+          // 1段目(メール+パスワード)へ戻したうえで理由を伝える。
+          resetToPasswordStep();
+          setError(messages.login.totpExpiredNotice);
+          return;
+        }
+        setError(mapLoginTotpErrorMessage(err.body));
+      } else {
+        setError(messages.login.totpErrors.default);
+      }
+    } finally {
+      setTotpSubmitting(false);
+    }
+  }
+
+  /** 2段目から1段目へ戻す。パスワードは持ち越さない(handleBackToEmail と同じ判断)。 */
+  function resetToPasswordStep() {
+    setAwaitingTotp(false);
+    setUseRecoveryCode(false);
+    setTotpCode("");
+    setPassword("");
   }
 
   function handleBackToEmail() {
@@ -152,7 +222,64 @@ export function LoginForm() {
           </p>
         ) : null}
 
-        {selectingTenant ? (
+        {awaitingTotp ? (
+          <form className="login-form" onSubmit={handleTotpSubmit} noValidate>
+            <h2 className="login-tenant-select__title">{messages.login.totpTitle}</h2>
+            <p className="login-tenant-select__desc">
+              {useRecoveryCode ? messages.login.totpRecoveryDescription : messages.login.totpDescription}
+            </p>
+
+            <div className="login-field">
+              <label htmlFor="login-totp-code">
+                {useRecoveryCode ? messages.login.totpRecoveryLabel : messages.login.totpCodeLabel}
+              </label>
+              {/* 入力モードを切り替えたら値も作法も変わるため、key を変えて input を作り直す
+                  (6桁専用の maxLength・inputMode がリカバリコード入力に残らないようにする)。 */}
+              <input
+                key={useRecoveryCode ? "recovery" : "code"}
+                id="login-totp-code"
+                name={useRecoveryCode ? "recovery-code" : "one-time-code"}
+                type="text"
+                autoComplete={useRecoveryCode ? "off" : "one-time-code"}
+                inputMode={useRecoveryCode ? "text" : "numeric"}
+                maxLength={useRecoveryCode ? 64 : 6}
+                required
+                autoFocus
+                value={totpCode}
+                onChange={(e) => setTotpCode(e.target.value)}
+              />
+            </div>
+
+            <button type="submit" className="login-submit" disabled={totpSubmitting}>
+              {totpSubmitting ? messages.login.totpSubmitting : messages.login.totpSubmit}
+            </button>
+
+            <button
+              type="button"
+              className="login-tenant-select__back"
+              disabled={totpSubmitting}
+              onClick={() => {
+                setUseRecoveryCode((prev) => !prev);
+                setTotpCode("");
+                setError(null);
+              }}
+            >
+              {useRecoveryCode ? messages.login.totpUseCode : messages.login.totpUseRecovery}
+            </button>
+
+            <button
+              type="button"
+              className="login-tenant-select__back"
+              disabled={totpSubmitting}
+              onClick={() => {
+                resetToPasswordStep();
+                setError(null);
+              }}
+            >
+              {messages.login.totpBack}
+            </button>
+          </form>
+        ) : selectingTenant ? (
           <div className="login-tenant-select">
             <h2 className="login-tenant-select__title">{messages.login.tenantSelectTitle}</h2>
             <p className="login-tenant-select__desc">{messages.login.tenantSelectDescription}</p>
