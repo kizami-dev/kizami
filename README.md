@@ -2,6 +2,8 @@
 
 日本の労働法制に準拠した、セルフホスト可能な出退勤打刻型の勤怠管理システム。
 
+**[kizami.dev](https://kizami.dev/)** — プロダクト紹介 / **[docs.kizami.dev](https://docs.kizami.dev/)** — ドキュメント / **[demo.kizami.dev](https://demo.kizami.dev/)** — デモ(`demo@kizami.dev` / `kizami-demo`、毎晩リセット)
+
 **Status: beta (v0.7)** — フレックスタイム制・固定時間制・1ヶ月単位の変形労働時間制(シフト制)、
 有給休暇(法定・基準日・比例付与、付与の予告→承認→本人通知)、月次締め、監査ログ、
 権限プリセット、4言語 UI(日英韓中)、MCP サーバーまで実装済み。作者環境で実運用中。
