@@ -5,7 +5,8 @@
 前提:
 
 - StorageClass `local-path` が既定で使えること(k3s 同梱の Local Path Provisioner)
-- イメージは `.github/workflows/images.yml` で `ghcr.io/sasagar/kizami-api` / `kizami-web` に `linux/amd64,linux/arm64` マルチアーチ push 済みであること
+- イメージは `.github/workflows/images.yml`(main への push)と `release.yml`(版タグの push)で `ghcr.io/sasagar/kizami-api` / `kizami-web` に `linux/amd64,linux/arm64` マルチアーチ push 済みであること。
+  ここのマニフェストは `:latest` を追う(作者環境の方針 — 壊れたら即座に気づける前提)。**セルフホストでは `:0.7.0` のような版タグへの固定を推奨**する(`deployment.yaml` の `image:` を書き換える)。使い分けとアップグレード手順は [../../docs/design/release-process.md](../../docs/design/release-process.md) を参照
 - SQLite ファイル DB を PVC(RWO)に置くため **replicas は 1 固定**。水平スケールは不可(PostgreSQL 構成にすればこの制約は外れる — 下記「PostgreSQL を使う」節)
 
 ## 適用手順

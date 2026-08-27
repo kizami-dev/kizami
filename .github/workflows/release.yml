@@ -1,0 +1,200 @@
+name: Release
+
+# 版タグ(v0.7.0 など)の push で走るリリースパイプライン。
+#
+#   verify  … タグ / package.json / CHANGELOG の一致と「まだリリースしていない版であること」
+#   test    … ci.yml をそのまま呼ぶ(テスト定義を複製しない)
+#   images  … GHCR へ :<version> と :latest を push(images.yml と同じ buildx/cache 構成)
+#   release … CHANGELOG の該当節を本文に GitHub Release を作成
+#
+# **版タグはイミュータブル**: 既に Release か GHCR の版タグが存在する場合、verify が落ちて
+# 何も上書きしない。打ち直しではなく次のパッチ版で仕切り直すこと
+# (docs/design/release-process.md)。
+#
+# main への push で走る images.yml とは対象(ブランチ / タグ)が排他なので二重 push は起きない。
+
+on:
+  push:
+    tags:
+      - "v*"
+
+env:
+  REGISTRY: ghcr.io
+
+permissions:
+  contents: read
+
+# 同一タグのリリースを並走させない(cancel はしない — 途中で切ると
+# 「イメージだけ push されて Release が無い」状態になり得るため)。
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # release-check.mjs は依存ゼロの素の Node スクリプトなので、
+      # pnpm install を待たずに(= 一番安いところで)判定できる。
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+
+      # タグ名は GITHUB_REF_NAME から読む(スクリプト側が対応済み)。
+      - name: Check tag / package.json / CHANGELOG
+        run: node scripts/release-check.mjs
+
+      - name: Resolve version
+        id: version
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+      # 既に Release がある = そのタグは公開済み。上書きすると
+      # 「同じ版タグが指す中身が変わる」ので中止する。
+      - name: Ensure the release does not exist yet
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+            echo "::error::${GITHUB_REF_NAME} の GitHub Release が既に存在します。版タグは打ち直さず、次のパッチ版で仕切り直してください。"
+            exit 1
+          fi
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # 版タグ付きのイメージが既に居るなら、この版は push 済み。
+      # :latest は動くが :<version> は動かさない、が方針。
+      # (inspect が権限やネットワークで失敗した場合は「未使用」と見なして先へ進む —
+      #  イミュータブル性の主たる歯止めは上の Release 存在チェックの方)
+      - name: Ensure the versioned image tags are unused
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          version="$VERSION"
+          for image in kizami-api kizami-web; do
+            ref="${REGISTRY}/sasagar/${image}:${version}"
+            if docker buildx imagetools inspect "$ref" >/dev/null 2>&1; then
+              echo "::error::${ref} は既に存在します。版タグはイミュータブルです — 打ち直さず次のパッチ版で仕切り直してください。"
+              exit 1
+            fi
+          done
+
+  # CI と同一のジョブ定義(typecheck / test / docs:build / PostgreSQL / workerd)を再利用する。
+  test:
+    needs: verify
+    uses: ./.github/workflows/ci.yml
+
+  build-push:
+    needs: [verify, test]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    strategy:
+      matrix:
+        include:
+          - image: kizami-api
+            dockerfile: docker/api.Dockerfile
+          - image: kizami-web
+            dockerfile: docker/web.Dockerfile
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # images.yml と同じ scope を使い、main の push で温まったキャッシュに相乗りする。
+      - name: Build and push ${{ matrix.image }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/sasagar/${{ matrix.image }}:${{ needs.verify.outputs.version }}
+            ${{ env.REGISTRY }}/sasagar/${{ matrix.image }}:latest
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+
+  release:
+    needs: [verify, build-push]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+
+      # CHANGELOG.md からタグに対応する節だけを切り出して本文にする
+      # (見出し行は含めない — Release のタイトルと二重になるため)。
+      - name: Extract release notes from CHANGELOG
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: node scripts/release-check.mjs --body --out release-notes.md
+
+      # 版番号は verify で SemVer として検証済みの値のみが来るが、
+      # run 本文への直接展開は避けて env 経由で受ける。
+      - name: Append image references
+        env:
+          VERSION: ${{ needs.verify.outputs.version }}
+        run: |
+          version="$VERSION"
+          {
+            echo ""
+            echo "---"
+            echo ""
+            echo "## コンテナイメージ"
+            echo ""
+            echo '```'
+            echo "ghcr.io/sasagar/kizami-api:${version}"
+            echo "ghcr.io/sasagar/kizami-web:${version}"
+            echo '```'
+            echo ""
+            echo "セルフホストでは版タグの固定を推奨します(\`KIZAMI_TAG=${version}\`)。"
+            echo "アップグレード手順は [docs/design/release-process.md](https://github.com/sasagar/kizami/blob/${GITHUB_REF_NAME}/docs/design/release-process.md) を参照してください。"
+          } >> release-notes.md
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ github.ref_name }}
+          body_path: release-notes.md
+          draft: false
+          prerelease: false
+          make_latest: true

@@ -1,6 +1,7 @@
 {
   "name": "kizami-monorepo",
   "private": true,
+  "version": "0.7.0",
   "type": "module",
   "packageManager": "pnpm@10.33.0",
   "engines": {
@@ -17,6 +18,7 @@
     "docs:company": "node scripts/sync-company-docs.mjs",
     "docs:build": "pnpm docs:api && pnpm docs:guide && pnpm docs:company && pnpm --filter @kizami/docs build",
     "generate-vapid": "node scripts/generate-vapid.mjs",
+    "release:check": "node scripts/release-check.mjs",
     "screenshots": "mise exec node@26 -- pnpm exec tsx scripts/screenshots/index.ts",
     "storybook": "pnpm --filter @kizami/web storybook",
     "storybook:build": "pnpm --filter @kizami/web storybook:build"

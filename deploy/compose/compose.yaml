@@ -15,6 +15,9 @@
 #   PostgreSQL を使いたい場合はファイル末尾の「PostgreSQL 構成」を参照(既定は SQLite のまま)。
 # - worker は api と同じイメージで src/worker.ts を実行(リマインダー・乖離通知・有給予告の
 #   日次スキャン)。キューは Valkey(永続化なし — ジョブは毎日再スケジュールされるため)。
+# - イメージタグは .env の KIZAMI_TAG(既定 latest)。**本番運用では版タグの固定を推奨**
+#   (例 KIZAMI_TAG=0.7.0)。latest は毎リリース中身が変わるため、意図しないタイミングで
+#   アップグレードが起きる。使い分けとアップグレード手順は ../../docs/design/release-process.md。
 # - ブラウザプッシュ通知(Web Push)を使う場合は VAPID_* を api / worker の両方に設定する
 #   (下記)。任意機能で、未設定なら Web UI からプッシュ通知の項目が消えるだけ。
 name: kizami

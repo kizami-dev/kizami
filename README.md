@@ -4,9 +4,12 @@
 
 **[kizami.dev](https://kizami.dev/)** — プロダクト紹介 / **[docs.kizami.dev](https://docs.kizami.dev/)** — ドキュメント / **[demo.kizami.dev](https://demo.kizami.dev/)** — デモ(`demo@kizami.dev` / `kizami-demo`、毎晩リセット)
 
-**Status: beta (v0.7)** — フレックスタイム制・固定時間制・1ヶ月単位の変形労働時間制(シフト制)、
+**Status: beta — [v0.7.0](https://github.com/sasagar/kizami/releases/tag/v0.7.0)(最初の公開リリース)**
+フレックスタイム制・固定時間制・1ヶ月単位の変形労働時間制(シフト制)、
 有給休暇(法定・基準日・比例付与、付与の予告→承認→本人通知)、月次締め、監査ログ、
 権限プリセット、4言語 UI(日英韓中)、MCP サーバーまで実装済み。作者環境で実運用中。
+変更履歴は [CHANGELOG.md](CHANGELOG.md)、リリースとアップグレードの方針は
+[docs/design/release-process.md](docs/design/release-process.md) を参照。
 
 ## なぜ KIZAMI か
 
@@ -26,7 +29,7 @@
 - 集計エンジン(`packages/engine`)は純関数・ランタイム非依存・DB非依存
 - Node と Cloudflare Workers の両対応(動作保証は v1.0 要件)
 - DB は SQLite 既定+PostgreSQL/D1 選択式(Drizzle)
-- 権限は AWS IAM 風のプリセット方式(permission × scope、加算のみ)
+- 権限は AWS IAM 風のプリセット方式(permission × scope、加算 + 拒否優先の deny ルール)
 - スタック: TypeScript / Hono / Waku / Drizzle / Vite / Vitest / VitePress
 
 詳細は [docs/requirements.md](docs/requirements.md) を参照。
@@ -54,6 +57,10 @@ cp .env.example .env    # KIZAMI_ENCRYPTION_KEY(openssl rand -base64 32)と初�
 docker compose up -d
 docker compose run --rm seed   # 初回のみ: 初期管理者を作成(冪等)
 ```
+
+イメージは既定で `:latest` を追います。本番のセルフホストでは `.env` の `KIZAMI_TAG` に
+版タグ(例 `KIZAMI_TAG=0.7.0`)を指定して固定することを推奨します
+([理由と使い分け](docs/design/release-process.md))。
 
 http://localhost:8080 にアクセスし、設定した管理者でログインしてください。
 Kubernetes(k3s)での構成例は [deploy/k8s](deploy/k8s) を参照。

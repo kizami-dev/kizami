@@ -2,6 +2,11 @@
 #
 # 前提(deploy/k8s と同じ): SQLite ファイル DB + RWO PVC のため replicas は 1 固定・
 # 更新戦略 Recreate。スケールアウトしたい場合は将来の PostgreSQL 対応を待つこと。
+#
+# イメージタグ: 既定は latest(最新を追う)。**本番運用では版タグの固定を推奨**
+# (--set image.api.tag=0.7.0 --set image.web.tag=0.7.0)。latest は毎リリース
+# 中身が変わるため pullPolicy: Always と組み合わせると Pod 再作成のたびに
+# アップグレードが起きる。使い分けは docs/design/release-process.md を参照。
 image:
   api:
     repository: ghcr.io/sasagar/kizami-api

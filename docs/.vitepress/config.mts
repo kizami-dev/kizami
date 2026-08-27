@@ -198,6 +198,7 @@ export default defineConfig({
           { text: "ブラウザプッシュ通知(Web Push)", link: "/design/web-push" },
           { text: "DBダイアレクト(SQLite/PostgreSQL)", link: "/design/db-dialects" },
           { text: "Cloudflare Workers + D1 対応", link: "/design/workers-d1" },
+          { text: "リリース手順とバージョン方針", link: "/design/release-process" },
         ],
       },
       {

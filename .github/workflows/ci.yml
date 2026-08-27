@@ -4,6 +4,10 @@ on:
   push:
     branches: [main]
   pull_request:
+  # リリース(.github/workflows/release.yml)から同じジョブ群を呼び出す。
+  # テストの定義をリリース側に複製しないための再利用点 — CI で通る条件と
+  # リリースの合格条件が食い違わないようにする。
+  workflow_call:
 
 jobs:
   test:
