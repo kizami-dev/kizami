@@ -36,6 +36,10 @@ const EXCLUDED_ON_D1 = [
   // sqlite-core / pg-core のスキーマ定義同士を突き合わせる drift 検査。実 DB を一切使わない
   // 静的検査なので、D1 で回しても得られる情報が無い(Node レグで毎回走っている)
   "test/schema-drift.test.ts",
+  // SQLite → PostgreSQL のデータ移行ツール(src/migrate-data.ts)。@libsql/client と pg の
+  // ハンドルを同時に開き、journal を node:fs で読む Node 専用ツールなので workerd で動かない
+  // (移行は配備作業であって Workers 上で走らせるものではない)
+  "test/migrate-data.test.ts",
 ];
 
 export default defineConfig({

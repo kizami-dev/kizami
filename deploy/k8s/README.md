@@ -413,11 +413,33 @@ KIZAMI は `DATABASE_URL` のスキームだけでダイアレクトを切り替
    1 固定だが、PostgreSQL なら api を水平スケールできる
    (worker は日次スキャンの二重実行を避けるため 1 のままにすること)
 
-既存の SQLite からのデータ移行ツールは用意していない(スキーマは両ダイアレクトで一致するが、
-ダンプ変換は運用側の作業)。
+### 既存の SQLite データを移す
+
+新規配備ではなく既存インスタンスの切り替えなら、`DATABASE_URL` を差し替える前に
+同梱の移行ツールでデータを移す(2026-08-27 に追加。手順と設計は
+[docs/design/db-dialects.md](../../docs/design/db-dialects.md)「SQLite → PostgreSQL のデータ移行」)。
+
+```sh
+# 1. api / worker を止める(移行中に SQLite へ書かれた分はコピーされない)
+kubectl -n kizami scale deploy/kizami --replicas=0
+
+# 2. PVC を付けた一時 Pod(api イメージ)から移行ツールを走らせる。
+#    移行先の DB は空でなければならない — 空でなければツールが拒否する
+kubectl -n kizami run kizami-migrate-data --rm -it --restart=Never \
+  --image=ghcr.io/sasagar/kizami-api:latest \
+  --overrides='{"spec":{"containers":[{"name":"kizami-migrate-data","image":"ghcr.io/sasagar/kizami-api:latest","stdin":true,"tty":true,"command":["node_modules/.bin/tsx","../../packages/db/src/migrate-data-cli.ts","--from","file:/data/kizami.db","--to","$(TARGET_DATABASE_URL)","--i-stopped-the-app"],"env":[{"name":"TARGET_DATABASE_URL","valueFrom":{"secretKeyRef":{"name":"kizami-database","key":"url"}}}],"volumeMounts":[{"name":"data","mountPath":"/data"}]}],"volumes":[{"name":"data","persistentVolumeClaim":{"claimName":"kizami-data"}}]}}'
+
+# 3. 検証レポート(テーブルごとの行数一致 + 中核テーブルのチェックサム)が
+#    すべて ok であることを確認してから DATABASE_URL を差し替えて起動する
+```
+
+移行ツールはコピー元(SQLite)を**読むだけ**なので、**ロールバックは PVC の SQLite ファイルが
+そのまま残っていること自体**で足りる — 問題が出たら `DATABASE_URL` を `file:/data/kizami.db` に
+戻して起動する(移行後に PostgreSQL 側へ書かれた分は戻らないので、新配備の確認が済むまで
+PVC は消さないこと)。
 
 ## 既知の制約 / 将来課題
 
 - API コンテナは `tsx` でソース(TypeScript)を直接実行している(ビルド済み JS を実行する本来のパイプラインは未整備)。`tsx` は `apps/api/package.json` の `dependencies` に含めてある(詳細は `docker/api.Dockerfile` 冒頭コメント参照)
 - Helm chart 化、HPA/PDB、Ingress 化(NodePort → ClusterIP + Ingress Controller)は v1.0 以降の検討事項
-- SQLite → PostgreSQL のデータ移行ツールは未提供(スキーマは一致するのでダンプ変換で移せる)
+- SQLite → PostgreSQL のデータ移行は同梱ツール(`pnpm --filter @kizami/db migrate-data`)で行う。**移行先が空であることが前提**でマージ(既存データへの追記)は行わない — 追記専用テーブルの整合(supersedes 連鎖)を壊さないための制約(上記「既存の SQLite データを移す」)

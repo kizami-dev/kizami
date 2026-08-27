@@ -148,6 +148,24 @@ volumes:
 #
 # マイグレーションは起動時に自動適用される(migrations-pg/)。追加設定は不要。
 #
+# 既存の SQLite 運用からの切り替えなら、DATABASE_URL を差し替える前にデータを移す
+# (docs/design/db-dialects.md「SQLite → PostgreSQL のデータ移行」)。
+# api / worker を止めてから、data ボリュームを付けた使い捨てコンテナで:
+#
+#   docker compose stop api worker
+#   docker compose up -d db
+#   docker compose run --rm -v <compose プロジェクト名>_data:/data api \
+#     node_modules/.bin/tsx ../../packages/db/src/migrate-data-cli.ts \
+#       --from file:/data/kizami.db \
+#       --to postgres://kizami:${KIZAMI_DB_PASSWORD}@db:5432/kizami \
+#       --i-stopped-the-app
+#
+# (-v が要るのは、上の 3. で api から data ボリュームを外しているため。
+#  ボリューム名は `docker volume ls` で確認できる)
+#
+# 移行先は空でなければならない(空でなければツールが拒否する)。コピー元の SQLite は
+# 読むだけなので、切り戻しは DATABASE_URL を file:/data/kizami.db に戻すだけでよい。
+#
 #   db:
 #     image: postgres:17-alpine
 #     environment:

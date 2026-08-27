@@ -6,9 +6,14 @@
  * (src/migrate.ts)を公開する。これらは node:net / node:fs に依存するため workerd では
  * 読み込めない — だからエントリを分けている(2026-08-27、要件 §8。docs/design/workers-d1.md)。
  *
+ * SQLite → PostgreSQL のデータ移行ツール(src/migrate-data.ts)もここから公開する。
+ * 配備時に1回だけ使う CLI(`pnpm --filter @kizami/db migrate-data`)で、
+ * アプリの実行経路からは呼ばない(docs/design/db-dialects.md「SQLite → PostgreSQL のデータ移行」)。
+ *
  * Node 側の呼び出し元: apps/api/src/node.ts・worker.ts・seed.ts・create-tenant.ts、
  * および packages/db・apps/api のテスト。
  */
 
 export * from "./index.js";
 export * from "./migrate.js";
+export * from "./migrate-data.js";

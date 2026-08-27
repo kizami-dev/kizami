@@ -178,3 +178,90 @@ CI は `.github/workflows/ci.yml` の `test-postgres` ジョブが postgres サ�
   `deploy/compose/compose.yaml` 末尾にコメントアウトで置いてある
 - **Kubernetes**: `deploy/k8s/README.md` の「PostgreSQL を使う」節を参照。
   `DATABASE_URL` を Secret で差し替え、SQLite 用の PVC を外すだけ
+
+## SQLite → PostgreSQL のデータ移行
+
+既存の SQLite 運用を PostgreSQL へ移すためのツールを同梱している(2026-08-27)。
+
+```sh
+# アプリ(api / worker)を止めてから実行する
+pnpm --filter @kizami/db migrate-data -- \
+  --from file:/data/kizami.db \
+  --to postgres://kizami:***@postgres:5432/kizami \
+  --i-stopped-the-app
+```
+
+| 引数 | 環境変数 | 既定 | 意味 |
+| --- | --- | --- | --- |
+| `--from` | `SOURCE_DATABASE_URL` | `file:./kizami.db` | コピー元。**読むだけ**(マイグレーションも流さない) |
+| `--to` | `TARGET_DATABASE_URL` | (必須) | コピー先の `postgres://…`。**空でなければならない** |
+| `--pg-schema` | `TARGET_PG_SCHEMA` | — | 専用スキーマ運用のとき(`search_path`)。 |
+| `--batch-size` | — | 500 | 1回の INSERT にまとめる行数 |
+| `--i-stopped-the-app` | — | — | 停止済みの明示。無い場合、対話端末なら確認を促し、非対話なら実行しない |
+
+コンテナ内(api イメージ、`WORKDIR=/app/apps/api`)から実行する場合:
+
+```sh
+node_modules/.bin/tsx ../../packages/db/src/migrate-data-cli.ts \
+  --from file:/data/kizami.db --to "$DATABASE_URL" --i-stopped-the-app
+```
+
+実装は [`packages/db/src/migrate-data.ts`](https://github.com/sasagar/kizami/blob/main/packages/db/src/migrate-data.ts)
+(CLI は `src/migrate-data-cli.ts`)。Node 専用で、アプリの実行経路からは呼ばない。
+
+### 行がそのまま移せる理由
+
+上の §3「型マッピング — SQLite に寄せる」がそのまま前提になっている。boolean は
+両ダイアレクトとも integer の 0/1、JSON は text、日付は `"YYYY-MM-DD"` の text、
+時刻は UTC エポック分の integer、REAL は double precision(8 バイトのまま)。
+**値の表現が完全に一致する**ので、行は変換なしでコピーできる。読み書きは
+`src/queries/` と同じく sqlite-core のテーブルオブジェクトを通すため、drizzle の
+値マッピング(boolean ⇄ 0/1 など)も同一の経路を通る。
+
+### ツールが守る手順
+
+1. **移行先は空**でなければならない(`__drizzle_migrations` と KIZAMI のテーブルだけ、全テーブル 0 行)。
+   **マージ(既存データへの追記)は実装しない** — 打刻・修正申請といった中核テーブルは追記専用で、
+   「有効な行 = 他の行の `supersedes_id` に参照されていないもの」という形で現在の状態を持つ。
+   別々の DB の追記列を混ぜると supersedes の連鎖が両系統に分岐し、「有効な打刻」の判定そのものが
+   壊れる(しかも UNIQUE 制約では検出できない)。空の移行先へ移す限り、この整合はコピー元のまま保たれる
+2. 移行先に **`migrations-pg/` を先に適用**する(`migrateDb` をそのまま使う)
+3. **両者が同じスキーマ版であること**を確認する。通し番号はダイアレクトごとに別系統
+   (sqlite `0000`〜 / pg `0000`〜)で比較できないため、(a) 各ダイアレクトの journal を
+   **全件適用済み**であること、(b) 実 DB を introspect したテーブル集合・列集合が
+   drizzle スキーマと**両側で一致**すること、の2点で判定する。
+   コピー元が古い場合は「現行版の KIZAMI を SQLite に対して一度起動して落とす」ことで揃う
+4. **FK 依存順にテーブル単位でコピー**する(順序は drizzle スキーマの FK グラフから Kahn 法で導出。
+   循環があれば実行前に落とす)。500 行ずつの INSERT を、テーブルごとの PostgreSQL 側
+   トランザクションで実行する。自己参照 FK の列(`punch_events.supersedes_id`・
+   `shift_days.supersedes_id`・`departments.parent_id`)は一旦 null で入れ、同じトランザクションの
+   最後に UPDATE で埋める(行の並びや UUIDv7 の単調性に依存せず FK を満たすため)
+5. **コピー後に検証**する。全テーブルの行数を両側で数え直して突き合わせ、さらに中核テーブル
+   (`punch_events` / `leave_grants` / `closing_snapshots`)のチェックサム(件数・整数列の合計・
+   `id` の最小と最大)を比較して、検証レポートを出力する
+6. **シーケンスは無い**(PK はアプリ生成の UUIDv7)。serial / identity 列が存在しないことを
+   表明しているので、将来この前提が崩れたら移行前に落ちる
+
+### 停止必須とロールバック
+
+- **移行中はアプリを止めること**。libSQL のクライアントに読み取り専用オープンの指定が無いため、
+  「コピー元に書かない」ことはツール側の実装(SELECT のみ)で守っている。止め忘れると、
+  移行中に SQLite へ書かれた打刻が PostgreSQL に載らない。CLI は `--i-stopped-the-app`
+  (または対話での確認)を要求する
+- **ロールバックは「元の SQLite ファイルがそのまま残っている」こと自体**。ツールはコピー元を
+  1バイトも変更しない。切り替え後に問題が出たら `DATABASE_URL` を `file:…` に戻して起動すれば
+  移行前の状態に戻る(**移行後に PostgreSQL 側へ書かれた分は戻らない**ので、SQLite ファイルは
+  新配備の確認が終わるまで消さないこと)
+- 途中で失敗した場合、移行先には途中までのテーブルが残る。**移行先の DB(またはスキーマ)を
+  作り直して空にしてから**やり直す — 「空でなければ拒否」がここでも効く
+
+### テスト
+
+[`packages/db/test/migrate-data.test.ts`](https://github.com/sasagar/kizami/blob/main/packages/db/test/migrate-data.test.ts)。
+コピー元(libSQL in-memory)とコピー先(PostgreSQL)を**同時に**要求するので、
+このファイルだけは `test/support/db.ts` の分岐に乗らず、コピーの検証は
+**PostgreSQL レグ(`TEST_PG_URL` 設定時)でだけ**走る(SQLite レグではコピー順の検証だけ)。
+打刻の supersedes 連鎖・締めスナップショット・通知・暗号化列("enc:v1:…")・真偽値・
+GPS 座標(REAL)・日本語テキストを含む代表データを移し、行数一致・チェックサム・値の一致に加えて、
+「空でない移行先を拒否する」「コピー元に知らないテーブルがあれば何もコピーせずに拒否する」
+「列が欠けたコピー元を拒否する」ことを見ている。
