@@ -10,7 +10,7 @@
 <meta property="og:url" content="https://kizami.dev/">
 <meta property="og:image" content="https://kizami.dev/assets/dashboard-light.png">
 <meta name="twitter:card" content="summary_large_image">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%231A1A1A'/%3E%3Ctext x='16' y='23' font-size='18' text-anchor='middle' fill='%2300A3D9' font-family='serif' font-weight='bold'%3E刻%3C/text%3E%3C/svg%3E">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho+B1:wght@600;800&family=Zen+Kaku+Gothic+New:wght@400;500;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
@@ -26,7 +26,21 @@
 
 <header class="masthead">
   <div class="wrap masthead__row">
-    <span class="wordmark">KIZAMI<span class="wordmark__mark">刻</span></span>
+    <span class="wordmark">
+      <!-- 本体と同じロゴマーク(見当トンボ+時計の針)。確定ソース: apps/web/public/icons/source/kizami-mark.svg — 座標・色・針の角度は変更禁止 -->
+      <svg class="wordmark__mark" viewBox="0 0 64 64" width="22" height="22" aria-hidden="true">
+        <g stroke-width="5" fill="none" stroke-linecap="square">
+          <line x1="32" y1="2" x2="32" y2="18" stroke="currentColor"/>
+          <line x1="62" y1="32" x2="46" y2="32" stroke="#00A3D9"/>
+          <line x1="32" y1="62" x2="32" y2="46" stroke="#E5007E"/>
+          <line x1="2" y1="32" x2="18" y2="32" stroke="#FFD400"/>
+          <circle cx="32" cy="32" r="16" stroke="currentColor"/>
+        </g>
+        <g stroke="currentColor" stroke-width="5" stroke-linecap="round">
+          <line x1="32" y1="32" x2="41.5" y2="26.5"/>
+          <line x1="32" y1="32" x2="41.5" y2="37.5"/>
+        </g>
+      </svg>KIZAMI</span>
     <nav class="nav">
       <a href="#features">機能</a>
       <a href="#screens">画面</a>

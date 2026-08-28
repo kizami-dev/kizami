@@ -26,8 +26,8 @@ a{color:inherit}
 /* masthead */
 .masthead{border-bottom:1px solid var(--line);position:sticky;top:0;background:color-mix(in srgb,var(--paper) 92%,transparent);backdrop-filter:blur(8px);z-index:10}
 .masthead__row{display:flex;align-items:center;justify-content:space-between;padding-top:.8rem;padding-bottom:.8rem}
-.wordmark{font-family:var(--mono);font-weight:600;letter-spacing:.34em;font-size:1.05rem}
-.wordmark__mark{display:inline-grid;place-items:center;width:1.55em;height:1.55em;margin-left:.45em;background:var(--ink);color:var(--cyan);font-family:var(--serif);letter-spacing:0;font-size:.95em;border-radius:4px;vertical-align:-.35em}
+.wordmark{display:inline-flex;align-items:center;gap:.55em;font-family:var(--mono);font-weight:600;letter-spacing:.34em;font-size:1.05rem;color:var(--ink)}
+.wordmark__mark{flex:none}
 .nav{display:flex;gap:1.4rem;font-size:.92rem}
 .nav a{text-decoration:none;color:var(--soft)}
 .nav a:hover{color:var(--ink)}
