@@ -1,7 +1,7 @@
 # KIZAMI API (apps/api) container image.
 #
 # Build context MUST be the repository root, e.g.:
-#   docker build -f docker/api.Dockerfile -t ghcr.io/sasagar/kizami-api:latest .
+#   docker build -f docker/api.Dockerfile -t ghcr.io/kizami-dev/kizami-api:latest .
 #
 # NOTE: apps/api and the workspace packages ship as
 # TypeScript source (their package.json "exports" point directly at

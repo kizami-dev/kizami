@@ -1,7 +1,7 @@
 # KIZAMI Web (apps/web, Waku/React) container image.
 #
 # Build context MUST be the repository root, e.g.:
-#   docker build -f docker/web.Dockerfile -t ghcr.io/sasagar/kizami-web:latest .
+#   docker build -f docker/web.Dockerfile -t ghcr.io/kizami-dev/kizami-web:latest .
 #
 # WAKU_PUBLIC_API_URL is a build-time value (inlined into the client bundle
 # by Vite/Waku's static env replacement), so it must be set at `waku build`

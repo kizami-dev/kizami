@@ -1,7 +1,7 @@
 name: Container Images
 
 # Builds & pushes the multi-arch (linux/amd64 + linux/arm64) KIZAMI images
-# to GHCR: ghcr.io/sasagar/kizami-api and ghcr.io/sasagar/kizami-web.
+# to GHCR: ghcr.io/kizami-dev/kizami-api and ghcr.io/kizami-dev/kizami-web.
 #
 # See docker/api.Dockerfile and docker/web.Dockerfile for build details.
 
@@ -61,7 +61,7 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            ${{ env.REGISTRY }}/sasagar/${{ matrix.image }}:latest
-            ${{ env.REGISTRY }}/sasagar/${{ matrix.image }}:${{ steps.meta.outputs.sha_short }}
+            ${{ env.REGISTRY }}/kizami-dev/${{ matrix.image }}:latest
+            ${{ env.REGISTRY }}/kizami-dev/${{ matrix.image }}:${{ steps.meta.outputs.sha_short }}
           cache-from: type=gha,scope=${{ matrix.image }}
           cache-to: type=gha,mode=max,scope=${{ matrix.image }}

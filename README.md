@@ -4,7 +4,7 @@
 
 **[kizami.dev](https://kizami.dev/)** — プロダクト紹介 / **[docs.kizami.dev](https://docs.kizami.dev/)** — ドキュメント / **[demo.kizami.dev](https://demo.kizami.dev/)** — デモ(`demo@kizami.dev` / `kizami-demo`、毎晩リセット)
 
-**Status: beta — [v0.7.0](https://github.com/sasagar/kizami/releases/tag/v0.7.0)(最初の公開リリース)**
+**Status: beta — [v0.7.0](https://github.com/kizami-dev/kizami/releases/tag/v0.7.0)(最初の公開リリース)**
 フレックスタイム制・固定時間制・1ヶ月単位の変形労働時間制(シフト制)、
 有給休暇(法定・基準日・比例付与、付与の予告→承認→本人通知)、月次締め、監査ログ、
 権限プリセット、4言語 UI(日英韓中)、MCP サーバーまで実装済み。作者環境で実運用中。
@@ -52,7 +52,7 @@
 ## クイックスタート(Docker Compose)
 
 ```sh
-git clone https://github.com/sasagar/kizami.git && cd kizami/deploy/compose
+git clone https://github.com/kizami-dev/kizami.git && cd kizami/deploy/compose
 cp .env.example .env    # KIZAMI_ENCRYPTION_KEY(openssl rand -base64 32)と初期管理者を設定
 docker compose up -d
 docker compose run --rm seed   # 初回のみ: 初期管理者を作成(冪等)

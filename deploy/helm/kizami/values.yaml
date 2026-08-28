@@ -9,10 +9,10 @@
 # アップグレードが起きる。使い分けは docs/design/release-process.md を参照。
 image:
   api:
-    repository: ghcr.io/sasagar/kizami-api
+    repository: ghcr.io/kizami-dev/kizami-api
     tag: latest
   web:
-    repository: ghcr.io/sasagar/kizami-web
+    repository: ghcr.io/kizami-dev/kizami-web
     tag: latest
   valkey:
     repository: valkey/valkey

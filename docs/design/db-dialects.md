@@ -12,7 +12,7 @@ KIZAMI は **SQLite(libSQL)を既定**とし、**PostgreSQL を選択式**でサ
 | `file:./kizami.db` / `:memory:` / `libsql://…` | SQLite | `@libsql/client` | `packages/db/migrations/` |
 | `postgres://…` / `postgresql://…` | PostgreSQL | `pg`(node-postgres) | `packages/db/migrations-pg/` |
 
-判定は [`packages/db/src/dialect.ts`](https://github.com/sasagar/kizami/blob/main/packages/db/src/dialect.ts) の
+判定は [`packages/db/src/dialect.ts`](https://github.com/kizami-dev/kizami/blob/main/packages/db/src/dialect.ts) の
 `resolveDialect()`。未知のスキームは SQLite 扱いにする(既定が SQLite であること自体が要件のため)。
 
 接続の生成は **Node 専用のサブパス** `@kizami/db/node` にある(`@libsql/client` と `pg` が
@@ -51,7 +51,7 @@ sqlite-core のテーブルオブジェクトを読んで実行時に組み立�
 PK・index・FK すべて)。二重管理は必ずズレるため、そもそもズレようがない形にした。
 
 生成器そのもののバグ(型の取りこぼし・index/FK の欠落・default 変換ミス)は
-[`test/schema-drift.test.ts`](https://github.com/sasagar/kizami/blob/main/packages/db/test/schema-drift.test.ts)
+[`test/schema-drift.test.ts`](https://github.com/kizami-dev/kizami/blob/main/packages/db/test/schema-drift.test.ts)
 が両者を突き合わせて検出する(help-content の locale 差分テストと同じ役割)。
 
 `src/schema-pg/` の用途は次の2つだけで、アプリケーションコードからは参照しない。
@@ -77,7 +77,7 @@ SQL を組み立てる。ダイアレクトごとに実装を分けたり、テ�
   ON CONFLICT ターゲットの修飾有無)で、いずれも意味は同じ
 
 この前提が崩れていないことは
-[`test/dialect-portability.test.ts`](https://github.com/sasagar/kizami/blob/main/packages/db/test/dialect-portability.test.ts)
+[`test/dialect-portability.test.ts`](https://github.com/kizami-dev/kizami/blob/main/packages/db/test/dialect-portability.test.ts)
 が、実 DB を使わずに **生成 SQL 文字列そのものを両ダイアレクトで突き合わせて**守っている。
 
 **唯一の例外が JOIN の別名**。drizzle の `PgDialect` は JOIN 句だけ `is(table, PgTable)` で
@@ -110,7 +110,7 @@ SQL を組み立てる。ダイアレクトごとに実装を分けたり、テ�
 - PostgreSQL: `pnpm --filter @kizami/db generate:pg`
 
 `generate:pg` は drizzle-kit を呼んだあと、FK 句の `REFERENCES "public"."tenants"("id")` から
-**public 決め打ちを剥がす**([`scripts/generate-pg.mjs`](https://github.com/sasagar/kizami/blob/main/packages/db/scripts/generate-pg.mjs))。理由は2つ:
+**public 決め打ちを剥がす**([`scripts/generate-pg.mjs`](https://github.com/kizami-dev/kizami/blob/main/packages/db/scripts/generate-pg.mjs))。理由は2つ:
 
 1. **配備**: PostgreSQL 運用では KIZAMI 専用スキーマに入れて `search_path` で切り替えるのが
    普通で、public 決め打ちだとそれができない。非修飾なら `search_path` に従う
@@ -124,7 +124,7 @@ SQL を組み立てる。ダイアレクトごとに実装を分けたり、テ�
 ## テスト
 
 `packages/db` の**全テストが両ダイアレクトで走る**。テストファイル自体はダイアレクトを知らず、
-分岐は [`test/support/db.ts`](https://github.com/sasagar/kizami/blob/main/packages/db/test/support/db.ts) 1 箇所に閉じている。
+分岐は [`test/support/db.ts`](https://github.com/kizami-dev/kizami/blob/main/packages/db/test/support/db.ts) 1 箇所に閉じている。
 vitest の projects 機能で同じテストファイルを 2 レグ走らせる構成:
 
 ```bash
@@ -144,7 +144,7 @@ PostgreSQL レグは `migrateDb()` 呼び出しごとに専用スキーマ(`kiza
 (`test/support/pg-global-setup.ts`)。
 
 **apps/api 側は SQLite のまま**で、PostgreSQL は
-[`test/postgres-smoke.test.ts`](https://github.com/sasagar/kizami/blob/main/apps/api/test/postgres-smoke.test.ts)
+[`test/postgres-smoke.test.ts`](https://github.com/kizami-dev/kizami/blob/main/apps/api/test/postgres-smoke.test.ts)
 の 1 本だけが「マイグレーション適用 → ログイン → 打刻 → 集計」を通す。API 層はダイアレクトに
 一切依存せず(依存するのは packages/db だけ)、そちらは全テストが両ダイアレクトで走っているため、
 apps/api では起動経路の疎通確認で足りるという判断(2026-08-24)。
@@ -206,7 +206,7 @@ node_modules/.bin/tsx ../../packages/db/src/migrate-data-cli.ts \
   --from file:/data/kizami.db --to "$DATABASE_URL" --i-stopped-the-app
 ```
 
-実装は [`packages/db/src/migrate-data.ts`](https://github.com/sasagar/kizami/blob/main/packages/db/src/migrate-data.ts)
+実装は [`packages/db/src/migrate-data.ts`](https://github.com/kizami-dev/kizami/blob/main/packages/db/src/migrate-data.ts)
 (CLI は `src/migrate-data-cli.ts`)。Node 専用で、アプリの実行経路からは呼ばない。
 
 ### 行がそのまま移せる理由
@@ -257,7 +257,7 @@ node_modules/.bin/tsx ../../packages/db/src/migrate-data-cli.ts \
 
 ### テスト
 
-[`packages/db/test/migrate-data.test.ts`](https://github.com/sasagar/kizami/blob/main/packages/db/test/migrate-data.test.ts)。
+[`packages/db/test/migrate-data.test.ts`](https://github.com/kizami-dev/kizami/blob/main/packages/db/test/migrate-data.test.ts)。
 コピー元(libSQL in-memory)とコピー先(PostgreSQL)を**同時に**要求するので、
 このファイルだけは `test/support/db.ts` の分岐に乗らず、コピーの検証は
 **PostgreSQL レグ(`TEST_PG_URL` 設定時)でだけ**走る(SQLite レグではコピー順の検証だけ)。

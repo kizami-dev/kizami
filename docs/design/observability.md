@@ -269,7 +269,7 @@ DSN はサブパス配下の受け口(`https://key@relay.example.com/sentry/inge
 
 ## 4. 配備
 
-- k8s: [`deploy/k8s/README.md`](https://github.com/sasagar/kizami/blob/main/deploy/k8s/README.md) の
+- k8s: [`deploy/k8s/README.md`](https://github.com/kizami-dev/kizami/blob/main/deploy/k8s/README.md) の
   「メトリクスとエラー報告(監視、任意)」節。`kizami-metrics` / `kizami-sentry` Secret を
   `optional: true` で参照する
 - Helm: `values.yaml` の `observability.metricsSecret` / `observability.sentrySecret`

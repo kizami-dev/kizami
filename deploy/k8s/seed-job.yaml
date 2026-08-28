@@ -22,7 +22,7 @@ spec:
         fsGroup: 1001
       containers:
         - name: seed
-          image: ghcr.io/sasagar/kizami-api:latest
+          image: ghcr.io/kizami-dev/kizami-api:latest
           command: ["node_modules/.bin/tsx", "src/seed.ts"]
           env:
             - name: DATABASE_URL

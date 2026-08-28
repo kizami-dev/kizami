@@ -90,7 +90,7 @@ jobs:
         run: |
           version="$VERSION"
           for image in kizami-api kizami-web; do
-            ref="${REGISTRY}/sasagar/${image}:${version}"
+            ref="${REGISTRY}/kizami-dev/${image}:${version}"
             if docker buildx imagetools inspect "$ref" >/dev/null 2>&1; then
               echo "::error::${ref} は既に存在します。版タグはイミュータブルです — 打ち直さず次のパッチ版で仕切り直してください。"
               exit 1
@@ -143,8 +143,8 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            ${{ env.REGISTRY }}/sasagar/${{ matrix.image }}:${{ needs.verify.outputs.version }}
-            ${{ env.REGISTRY }}/sasagar/${{ matrix.image }}:latest
+            ${{ env.REGISTRY }}/kizami-dev/${{ matrix.image }}:${{ needs.verify.outputs.version }}
+            ${{ env.REGISTRY }}/kizami-dev/${{ matrix.image }}:latest
           cache-from: type=gha,scope=${{ matrix.image }}
           cache-to: type=gha,mode=max,scope=${{ matrix.image }}
 
@@ -182,12 +182,12 @@ jobs:
             echo "## コンテナイメージ"
             echo ""
             echo '```'
-            echo "ghcr.io/sasagar/kizami-api:${version}"
-            echo "ghcr.io/sasagar/kizami-web:${version}"
+            echo "ghcr.io/kizami-dev/kizami-api:${version}"
+            echo "ghcr.io/kizami-dev/kizami-web:${version}"
             echo '```'
             echo ""
             echo "セルフホストでは版タグの固定を推奨します(\`KIZAMI_TAG=${version}\`)。"
-            echo "アップグレード手順は [docs/design/release-process.md](https://github.com/sasagar/kizami/blob/${GITHUB_REF_NAME}/docs/design/release-process.md) を参照してください。"
+            echo "アップグレード手順は [docs/design/release-process.md](https://github.com/kizami-dev/kizami/blob/${GITHUB_REF_NAME}/docs/design/release-process.md) を参照してください。"
           } >> release-notes.md
 
       - name: Create GitHub Release

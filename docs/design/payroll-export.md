@@ -3,8 +3,8 @@
 KIZAMI の締めの出口である**区分別時間数**を、freee人事労務 / マネーフォワード クラウド給与の
 勤怠インポートに合わせた形で出す機能の設計です(2026-08-27 実装)。
 
-実装: [`apps/api/src/lib/payroll-export.ts`](https://github.com/sasagar/kizami/blob/main/apps/api/src/lib/payroll-export.ts) /
-[`apps/api/src/routes/exports.ts`](https://github.com/sasagar/kizami/blob/main/apps/api/src/routes/exports.ts)
+実装: [`apps/api/src/lib/payroll-export.ts`](https://github.com/kizami-dev/kizami/blob/main/apps/api/src/lib/payroll-export.ts) /
+[`apps/api/src/routes/exports.ts`](https://github.com/kizami-dev/kizami/blob/main/apps/api/src/routes/exports.ts)
 
 ## 原則: 金額は計算しない
 

@@ -5,7 +5,7 @@ KIZAMI のリリースは **版タグの push だけ** で完結する。タグ�
 リリースを止める。
 
 - バージョンの正: リポジトリルートの `package.json` の `version`
-- 変更履歴の正: [CHANGELOG.md](https://github.com/sasagar/kizami/blob/main/CHANGELOG.md)([Keep a Changelog](https://keepachangelog.com/ja/1.1.0/) 形式)
+- 変更履歴の正: [CHANGELOG.md](https://github.com/kizami-dev/kizami/blob/main/CHANGELOG.md)([Keep a Changelog](https://keepachangelog.com/ja/1.1.0/) 形式)
 - 自動化: `.github/workflows/release.yml`(タグ `v*` の push で起動)
 
 ## バージョン番号
@@ -67,7 +67,7 @@ git push origin v0.7.1
 | --- | --- |
 | `verify` | タグ / `package.json` / CHANGELOG 先頭の3点一致。Release と GHCR の版タグが未使用であることの確認 |
 | `test` | `ci.yml` をそのまま呼ぶ(typecheck / test / docs:build / PostgreSQL レグ / workerd レグ) |
-| `build-push` | GHCR へ `ghcr.io/sasagar/kizami-{api,web}` の `:<version>` と `:latest` を multi-arch push |
+| `build-push` | GHCR へ `ghcr.io/kizami-dev/kizami-{api,web}` の `:<version>` と `:latest` を multi-arch push |
 | `release` | CHANGELOG の該当節を本文に GitHub Release を作成 |
 
 テストが1つでも落ちればイメージは push されない。
@@ -153,7 +153,7 @@ sqlite3 /data/kizami.db ".backup /backup/kizami-$(date +%Y%m%d).db"
 
 ## 参考
 
-- [CHANGELOG.md](https://github.com/sasagar/kizami/blob/main/CHANGELOG.md)
+- [CHANGELOG.md](https://github.com/kizami-dev/kizami/blob/main/CHANGELOG.md)
 - `.github/workflows/release.yml` — リリースパイプライン
 - `.github/workflows/ci.yml` — テスト定義(リリースからも `workflow_call` で呼ばれる)
 - `scripts/release-check.mjs` — 3点一致の検証と Release 本文の抽出

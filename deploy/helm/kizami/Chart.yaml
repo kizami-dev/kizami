@@ -4,6 +4,6 @@ description: 日本の労働法制に準拠したセルフホスト勤怠管理�
 type: application
 version: 0.1.0
 appVersion: "0.7"
-home: https://github.com/sasagar/kizami
+home: https://github.com/kizami-dev/kizami
 sources:
-  - https://github.com/sasagar/kizami
+  - https://github.com/kizami-dev/kizami

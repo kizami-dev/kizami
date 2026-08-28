@@ -3,7 +3,7 @@
 ## 脆弱性の報告 / Reporting a Vulnerability
 
 脆弱性を発見した場合は、公開 Issue ではなく GitHub の
-[Private vulnerability reporting](https://github.com/sasagar/kizami/security/advisories/new)
+[Private vulnerability reporting](https://github.com/kizami-dev/kizami/security/advisories/new)
 から報告してください。
 Please report vulnerabilities via GitHub's private vulnerability reporting,
 not public issues.

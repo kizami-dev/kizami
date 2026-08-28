@@ -30,7 +30,7 @@ spec:
         fsGroup: 1001
       containers:
         - name: api
-          image: ghcr.io/sasagar/kizami-api:latest
+          image: ghcr.io/kizami-dev/kizami-api:latest
           ports:
             - name: api-http
               containerPort: 3001
@@ -112,7 +112,7 @@ spec:
             limits:
               memory: 512Mi
         - name: web
-          image: ghcr.io/sasagar/kizami-web:latest
+          image: ghcr.io/kizami-dev/kizami-web:latest
           ports:
             - name: web-http
               containerPort: 3000
@@ -131,7 +131,7 @@ spec:
         - name: worker
           # api と同じイメージ(tsx でソースを直接実行する構成は api と共通、
           # docker/api.Dockerfile 参照)。エントリポイントだけ worker.ts に差し替える。
-          image: ghcr.io/sasagar/kizami-api:latest
+          image: ghcr.io/kizami-dev/kizami-api:latest
           command: ["node_modules/.bin/tsx", "src/worker.ts"]
           env:
             # api コンテナと同じ PVC 上の SQLite ファイルを見る(打刻忘れ検知は

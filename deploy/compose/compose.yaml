@@ -34,10 +34,10 @@ services:
     depends_on: [web, api]
     restart: unless-stopped
   web:
-    image: ghcr.io/sasagar/kizami-web:${KIZAMI_TAG:-latest}
+    image: ghcr.io/kizami-dev/kizami-web:${KIZAMI_TAG:-latest}
     restart: unless-stopped
   api:
-    image: ghcr.io/sasagar/kizami-api:${KIZAMI_TAG:-latest}
+    image: ghcr.io/kizami-dev/kizami-api:${KIZAMI_TAG:-latest}
     environment:
       DATABASE_URL: file:/data/kizami.db
       KIZAMI_ENCRYPTION_KEY: ${KIZAMI_ENCRYPTION_KEY:?openssl rand -base64 32 で生成して .env に設定してください}
@@ -65,7 +65,7 @@ services:
       - data:/data
     restart: unless-stopped
   worker:
-    image: ghcr.io/sasagar/kizami-api:${KIZAMI_TAG:-latest}
+    image: ghcr.io/kizami-dev/kizami-api:${KIZAMI_TAG:-latest}
     command: ["node_modules/.bin/tsx", "src/worker.ts"]
     environment:
       DATABASE_URL: file:/data/kizami.db
@@ -94,7 +94,7 @@ services:
   # 何もしない冪等実装なので、誤って再実行しても安全。権限カタログに項目が増えた
   # バージョンアップ後に再実行すると、システムプリセットへ新権限が追加同期される。
   seed:
-    image: ghcr.io/sasagar/kizami-api:${KIZAMI_TAG:-latest}
+    image: ghcr.io/kizami-dev/kizami-api:${KIZAMI_TAG:-latest}
     profiles: [setup]
     command: ["node_modules/.bin/tsx", "src/seed.ts"]
     environment:
@@ -108,7 +108,7 @@ services:
   # 唯一の作成経路で、セルフサインアップは提供しない(docs/design/multi-tenancy.md)。
   # TENANT_NAME のテナントに ADMIN_EMAIL のユーザーが既に居れば何もしない(冪等)。
   create-tenant:
-    image: ghcr.io/sasagar/kizami-api:${KIZAMI_TAG:-latest}
+    image: ghcr.io/kizami-dev/kizami-api:${KIZAMI_TAG:-latest}
     profiles: [setup]
     command: ["node_modules/.bin/tsx", "src/create-tenant.ts"]
     environment:

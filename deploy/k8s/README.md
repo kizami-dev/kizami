@@ -5,7 +5,7 @@
 前提:
 
 - StorageClass `local-path` が既定で使えること(k3s 同梱の Local Path Provisioner)
-- イメージは `.github/workflows/images.yml`(main への push)と `release.yml`(版タグの push)で `ghcr.io/sasagar/kizami-api` / `kizami-web` に `linux/amd64,linux/arm64` マルチアーチ push 済みであること。
+- イメージは `.github/workflows/images.yml`(main への push)と `release.yml`(版タグの push)で `ghcr.io/kizami-dev/kizami-api` / `kizami-web` に `linux/amd64,linux/arm64` マルチアーチ push 済みであること。
   ここのマニフェストは `:latest` を追う(作者環境の方針 — 壊れたら即座に気づける前提)。**セルフホストでは `:0.7.0` のような版タグへの固定を推奨**する(`deployment.yaml` の `image:` を書き換える)。使い分けとアップグレード手順は [../../docs/design/release-process.md](../../docs/design/release-process.md) を参照
 - SQLite ファイル DB を PVC(RWO)に置くため **replicas は 1 固定**。水平スケールは不可(PostgreSQL 構成にすればこの制約は外れる — 下記「PostgreSQL を使う」節)
 
@@ -426,8 +426,8 @@ kubectl -n kizami scale deploy/kizami --replicas=0
 # 2. PVC を付けた一時 Pod(api イメージ)から移行ツールを走らせる。
 #    移行先の DB は空でなければならない — 空でなければツールが拒否する
 kubectl -n kizami run kizami-migrate-data --rm -it --restart=Never \
-  --image=ghcr.io/sasagar/kizami-api:latest \
-  --overrides='{"spec":{"containers":[{"name":"kizami-migrate-data","image":"ghcr.io/sasagar/kizami-api:latest","stdin":true,"tty":true,"command":["node_modules/.bin/tsx","../../packages/db/src/migrate-data-cli.ts","--from","file:/data/kizami.db","--to","$(TARGET_DATABASE_URL)","--i-stopped-the-app"],"env":[{"name":"TARGET_DATABASE_URL","valueFrom":{"secretKeyRef":{"name":"kizami-database","key":"url"}}}],"volumeMounts":[{"name":"data","mountPath":"/data"}]}],"volumes":[{"name":"data","persistentVolumeClaim":{"claimName":"kizami-data"}}]}}'
+  --image=ghcr.io/kizami-dev/kizami-api:latest \
+  --overrides='{"spec":{"containers":[{"name":"kizami-migrate-data","image":"ghcr.io/kizami-dev/kizami-api:latest","stdin":true,"tty":true,"command":["node_modules/.bin/tsx","../../packages/db/src/migrate-data-cli.ts","--from","file:/data/kizami.db","--to","$(TARGET_DATABASE_URL)","--i-stopped-the-app"],"env":[{"name":"TARGET_DATABASE_URL","valueFrom":{"secretKeyRef":{"name":"kizami-database","key":"url"}}}],"volumeMounts":[{"name":"data","mountPath":"/data"}]}],"volumes":[{"name":"data","persistentVolumeClaim":{"claimName":"kizami-data"}}]}}'
 
 # 3. 検証レポート(テーブルごとの行数一致 + 中核テーブルのチェックサム)が
 #    すべて ok であることを確認してから DATABASE_URL を差し替えて起動する

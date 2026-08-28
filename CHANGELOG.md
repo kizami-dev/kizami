@@ -500,11 +500,11 @@ API・DB スキーマの互換方針とアップグレード手順は
   タグ名ではなくマイルストーン末尾のコミット SHA で範囲を示している。
 -->
 
-[Unreleased]: https://github.com/sasagar/kizami/compare/v0.7.0...HEAD
-[0.7.0]: https://github.com/sasagar/kizami/compare/ece25ba...v0.7.0
-[0.6.0]: https://github.com/sasagar/kizami/compare/2599955...ece25ba
-[0.5.0]: https://github.com/sasagar/kizami/compare/8845be9...2599955
-[0.4.0]: https://github.com/sasagar/kizami/compare/6c5b9af...8845be9
-[0.3.0]: https://github.com/sasagar/kizami/compare/a4333bb...6c5b9af
-[0.2.0]: https://github.com/sasagar/kizami/compare/01e2e0d...a4333bb
-[0.1.0]: https://github.com/sasagar/kizami/commits/01e2e0d
+[Unreleased]: https://github.com/kizami-dev/kizami/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/kizami-dev/kizami/compare/ece25ba...v0.7.0
+[0.6.0]: https://github.com/kizami-dev/kizami/compare/2599955...ece25ba
+[0.5.0]: https://github.com/kizami-dev/kizami/compare/8845be9...2599955
+[0.4.0]: https://github.com/kizami-dev/kizami/compare/6c5b9af...8845be9
+[0.3.0]: https://github.com/kizami-dev/kizami/compare/a4333bb...6c5b9af
+[0.2.0]: https://github.com/kizami-dev/kizami/compare/01e2e0d...a4333bb
+[0.1.0]: https://github.com/kizami-dev/kizami/commits/01e2e0d
