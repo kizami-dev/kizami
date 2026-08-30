@@ -27,7 +27,6 @@ spec:
       labels: {app: kizami-demo}
     spec:
       securityContext: {fsGroup: 1001}
-      imagePullSecrets: [{name: ghcr-pull}]  # kizami ns からコピー(リポジトリ public 化後は不要)
       initContainers:
         - name: seed
           image: ghcr.io/kizami-dev/kizami-api:latest
