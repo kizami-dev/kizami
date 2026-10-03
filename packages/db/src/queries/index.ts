@@ -22,6 +22,7 @@ export * from "./push-subscriptions.js";
 export * from "./sessions.js";
 export * from "./settings.js";
 export * from "./shifts.js";
+export * from "./signup.js";
 export * from "./slack.js";
 export * from "./tenants.js";
 export * from "./totp.js";
