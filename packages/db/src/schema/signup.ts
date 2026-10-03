@@ -53,12 +53,10 @@ export const pendingSignups = sqliteTable(
     email: text("email").notNull(),
     organizationName: text("organization_name").notNull(),
     adminName: text("admin_name").notNull(),
-    /**
-     * パスワードのハッシュ(登録時点で auth/password.ts の hashPassword 済み)。平文は保持しない。
-     * 確認されないまま残る行にハッシュを長く置かないよう、期限切れから7日経った未消費行は
-     * ワーカーが削除する(apps/api/src/signup-cleanup.ts)。
-     */
-    passwordHash: text("password_hash").notNull(),
+    // パスワード列は**意図的に持たない**。登録時にパスワードを受け取ると、他人のメールアドレスと
+    // 自分で決めたパスワードで登録され、本人が確認リンクを踏んだ時点で「攻撃者がパスワードを知る
+    // テナント」が本人名義で作られてしまう(アカウント乗っ取り)。パスワードは確認時(リンクを踏んだ
+    // 本人が画面で設定)に受け取り、招待受諾(schema/invitations.ts)と同じ作法にしてある。
     /** 確認トークンの SHA-256(hex)。平文は確認メールのリンクにだけ載せる */
     tokenHash: text("token_hash").notNull(),
     /** 登録時に使った招待コード(SIGNUP_MODE=invite のとき)。消費は確認完了時 */

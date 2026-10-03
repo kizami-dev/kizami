@@ -7,11 +7,36 @@
  *
  * ## フロー
  *
- * 1. `POST /signup`: 入力検証 → Turnstile → (invite モードなら)招待コードの**有効性チェックのみ**
- *    → `pending_signups` に保存(パスワードはこの時点でハッシュ化)→ 確認メール送信。
+ * 1. `POST /signup`(組織名・氏名・メール・招待コード・Turnstile): 入力検証 → Turnstile →
+ *    (invite モードなら)招待コードの**有効性チェックのみ** → `pending_signups` に保存 → 確認メール送信。
+ *    **パスワードはここでは受け取らない**(下記「アカウント乗っ取り対策」)。
  * 2. `GET /signup/verify/:token`: 確認画面の表示用(組織名・氏名・メール)。
- * 3. `POST /signup/verify/:token`: 確認。1トランザクションで pending 消費・招待コード消費・
- *    テナント作成(`bootstrapTenant`)・監査ログを行い、セッションを発行してログイン済みで返す。
+ * 3. `POST /signup/verify/:token`(body `{ password }`): パスワードを検証・ハッシュ化したうえで、
+ *    1トランザクションで pending 消費・招待コード消費・テナント作成(`bootstrapTenant`)・監査ログを行い、
+ *    セッションを発行してログイン済みで返す。
+ *
+ * ## アカウント乗っ取り対策: パスワードは確認時に設定させる(判断点)
+ *
+ * 登録時にパスワードを受け取ると、攻撃者が「被害者のメール+攻撃者が決めたパスワード」で登録でき、
+ * 被害者が(心当たりのない確認メールのリンクでも)踏んだ時点で、攻撃者がパスワードを知るテナントが
+ * 被害者名義で作られてしまう。そこでパスワードはリンクを踏んだ本人が確認画面で設定する
+ * (招待受諾 routes/invitations.ts と同じ作法)。pending_signups にパスワード列は無い。
+ * 攻撃者が登録時に決められるのは組織名・氏名だけで、確認画面に表示されるので本人が見て判断できる。
+ *
+ * ## メール本文にユーザー入力を入れない(判断点)
+ *
+ * 確認メールは未認証で誰でも任意の宛先に出させられる。本文に組織名のような自由入力を入れると、
+ * KIZAMI(運用者)名義で任意の文面・URL をフィッシングとして送れてしまう。そのため本文は
+ * **固定文面+確認 URL だけ**にし、組織名は確認画面(GET /verify)で見せる。
+ *
+ * ## ログイン CSRF 対策(判断点)
+ *
+ * POST /verify/:token は成功時にセッション Cookie を発行する。攻撃者が自分の確認トークンを使った
+ * フォームを被害者のブラウザから自動送信させると、被害者が攻撃者のテナントにログインさせられる。
+ * そこで signup の全 POST に (1) `Content-Type: application/json` の必須化(クロスオリジンからの
+ * JSON POST はプリフライトが要るため、フォームの自動送信では送れない)と (2) Origin ヘッダの検証
+ * (あれば APP_BASE_URL のオリジンと一致すること。ブラウザはクロスオリジンの POST に必ず Origin を付ける。
+ * 無いのは curl 等の非ブラウザ)を掛ける。既存の POST /auth/login 等には無い(今回は signup だけ)。
  *
  * **テナントは確認後に作る**(判断点): 未確認の空テナントを作ると、メールを間違えた登録や
  * ボットの登録がテナントとして残り続ける。確認前は pending_signups の1行だけで、掃除ジョブが消す。
@@ -26,6 +51,9 @@
  * 登録してもテナントは作れない。応答時間も揃うよう、パスワードのハッシュ化は常に行い、
  * メール送信は応答を待たない(失敗はログに残す)。
  * 同一メールの未消費 pending がある場合は新しいトークンで置き換える(古いリンクは無効になる)。
+ * ただし**直近5分以内に同じメール宛の申請があれば何もしない**(202 は同じ。メールも出さない):
+ * 他人のメール宛に確認メールを連打して迷惑をかけたり、本人が受け取った直後のリンクを置き換えて
+ * 無効にする妨害を、IP を変えながらでも1回/5分に抑える(IP レート制限だけでは受信者単位の上限が無い)。
  * 招待コード不正・Turnstile 失敗は列挙に関係しないので 400 で明示する。
  *
  * ## トークン経路のステータス(招待受諾 routes/invitations.ts と同じ作法)
@@ -46,6 +74,7 @@
 import {
   consumePendingSignup,
   consumeSignupInviteCode,
+  findLatestUnconsumedPendingSignupByEmail,
   findPendingSignupByTokenHash,
   findSignupInviteCodeByHash,
   getUserById,
@@ -55,7 +84,7 @@ import {
   setPendingSignupTenant,
   type Database,
 } from "@kizami/db";
-import { Hono } from "hono";
+import { Hono, type MiddlewareHandler } from "hono";
 import { sha256Hex } from "../auth/api-key.js";
 import { generateInvitationToken } from "../auth/invitation-token.js";
 import { hashPassword } from "../auth/password.js";
@@ -73,6 +102,8 @@ export const SIGNUP_TOKEN_TTL_MINUTES = 24 * 60;
 
 const MAX_EMAIL_LENGTH = 255;
 const MAX_NAME_LENGTH = 200;
+/** 同一メール宛の登録(確認メール送信)を受け付ける最小間隔(分)。 */
+export const SIGNUP_RESEND_THROTTLE_MINUTES = 5;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /** createApp に渡す、有効化されたサインアップの設定(無効なら渡さない)。 */
@@ -112,23 +143,45 @@ async function resolvePending(db: Database, token: string) {
   return { status: "valid" as const, now, pending };
 }
 
-/** 確認メールの本文(日本語。KIZAMI のメール通知と同じく平文テキスト)。 */
-export function buildSignupVerificationMail(params: { to: string; organizationName: string; verifyUrl: string }) {
+/**
+ * 確認メールの本文(日本語の平文テキスト)。**ユーザー入力を一切含めない**(宛先 `to` は送信先で
+ * あって本文ではない)。組織名・氏名は確認画面で見せる(このファイル冒頭「メール本文に…」)。
+ */
+export function buildSignupVerificationMail(params: { to: string; verifyUrl: string }) {
   return {
     to: params.to,
     subject: "【KIZAMI】メールアドレスの確認",
     text: [
-      "KIZAMI にご登録いただきありがとうございます。",
+      "KIZAMI への新規登録を受け付けました。",
       "",
-      `組織名: ${params.organizationName}`,
-      "",
-      "次のリンクを開いて、メールアドレスの確認を完了してください(24時間有効)。",
-      "確認が完了すると、組織(テナント)が作成されます。",
+      "次のリンクを開いて、メールアドレスの確認と登録の完了をしてください(24時間有効)。",
+      "確認画面で登録内容を確認し、パスワードを設定すると、組織(テナント)が作成されます。",
       "",
       params.verifyUrl,
       "",
       "このメールに心当たりがない場合は、何もせずに破棄してください。リンクを開かない限り、何も作成されません。",
     ].join("\n"),
+  };
+}
+
+/**
+ * signup の POST 全般に掛けるログイン CSRF 対策(このファイル冒頭「ログイン CSRF 対策」)。
+ * Content-Type が application/json でなければ 415、Origin ヘッダがあって許可オリジンと
+ * 一致しなければ 403。
+ */
+function postGuard(appBaseUrl: string): MiddlewareHandler {
+  const allowedOrigin = new URL(appBaseUrl).origin;
+  return async (c, next) => {
+    if (c.req.method === "POST") {
+      const origin = c.req.header("origin");
+      if (origin !== undefined && origin !== allowedOrigin) {
+        return c.json({ error: "forbidden_origin" }, 403);
+      }
+      if (!(c.req.header("content-type") ?? "").toLowerCase().startsWith("application/json")) {
+        return c.json({ error: "unsupported_media_type" }, 415);
+      }
+    }
+    await next();
   };
 }
 
@@ -149,6 +202,8 @@ export function createSignupRoutes(db: Database, options: SignupRoutesOptions) {
     return app;
   }
 
+  app.use("*", postGuard(signup.appBaseUrl));
+
   app.post("/", async (c) => {
     let body: unknown;
     try {
@@ -159,14 +214,11 @@ export function createSignupRoutes(db: Database, options: SignupRoutesOptions) {
     if (typeof body !== "object" || body === null) {
       return c.json({ error: "invalid_body" }, 400);
     }
-    const { email, password, organizationName, adminName, inviteCode, turnstileToken } = body as Record<string, unknown>;
+    const { email, organizationName, adminName, inviteCode, turnstileToken } = body as Record<string, unknown>;
 
     // ---- 入力検証(招待・メンバー追加と同じ検証の流儀)----
     if (typeof email !== "string" || email.trim().length > MAX_EMAIL_LENGTH || !EMAIL_RE.test(email.trim())) {
       return c.json({ error: "invalid_email" }, 400);
-    }
-    if (!isAcceptablePassword(password)) {
-      return c.json({ error: "invalid_password", minLength: MIN_PASSWORD_LENGTH }, 400);
     }
     if (typeof organizationName !== "string" || organizationName.trim() === "" || organizationName.length > MAX_NAME_LENGTH) {
       return c.json({ error: "invalid_organization_name" }, 400);
@@ -203,29 +255,31 @@ export function createSignupRoutes(db: Database, options: SignupRoutesOptions) {
     }
 
     // ---- pending 作成 → 確認メール ----
-    // パスワードのハッシュ化は常に行う(応答時間を既存メール・新規メールで揃える意味もある)。
-    const passwordHash = await hashPassword(password);
-    const { token, hash } = await generateInvitationToken();
     const now = nowMinutes();
     const normalizedEmail = email.trim();
-    const trimmedOrganizationName = organizationName.trim();
+
+    // 直近の申請から間もなければ何もしない(メール連打・他人のリンクの置き換え妨害の抑止。
+    // 応答は通常と同一の 202 で、区別できない)。
+    const latest = await findLatestUnconsumedPendingSignupByEmail(db, normalizedEmail);
+    if (latest && latest.createdAt > now - SIGNUP_RESEND_THROTTLE_MINUTES) {
+      return c.json({ status: "verification_sent" }, 202);
+    }
+
+    const { token, hash } = await generateInvitationToken();
     await replacePendingSignup(db, {
       email: normalizedEmail,
-      organizationName: trimmedOrganizationName,
+      organizationName: organizationName.trim(),
       adminName: adminName.trim(),
-      passwordHash,
       tokenHash: hash,
       inviteCodeId,
       expiresAt: now + SIGNUP_TOKEN_TTL_MINUTES,
       createdAt: now,
     });
 
-    // 送信は応答を待たない(SMTP の遅さ・失敗が応答に出ると、列挙の手掛かりにも、利用者への
-    // 不可解な 500 にもなるため)。失敗はログに残す。メールが届かなければ利用者は再登録できる
-    // (同一メールの pending は置き換わる)。
+    // 送信は応答を待たない(SMTP の遅さ・失敗が応答に出ると、利用者への不可解な 500 になるため)。
+    // 失敗はログに残す。メールが届かなければ、5分後に再登録できる(同一メールの pending は置き換わる)。
     const mail = buildSignupVerificationMail({
       to: normalizedEmail,
-      organizationName: trimmedOrganizationName,
       verifyUrl: `${signup.appBaseUrl}/signup/verify/${token}`,
     });
     void signup.sendMail(mail).catch((err: unknown) => {
@@ -251,11 +305,30 @@ export function createSignupRoutes(db: Database, options: SignupRoutesOptions) {
     if (resolved.status === "expired") return c.json({ error: "expired" }, 410);
     const { pending, now } = resolved;
 
+    // パスワードは確認時に受け取る(このファイル冒頭「アカウント乗っ取り対策」)。トークンの検証の後・
+    // pending の消費の前に検証するので、入力ミス(400)でトークンが消費されることはない。
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "invalid_body" }, 400);
+    }
+    if (typeof body !== "object" || body === null) {
+      return c.json({ error: "invalid_body" }, 400);
+    }
+    const { password } = body as { password?: unknown };
+    if (!isAcceptablePassword(password)) {
+      return c.json({ error: "invalid_password", minLength: MIN_PASSWORD_LENGTH }, 400);
+    }
+
     // invite モードで運用中に、open で受け付けた(= 招待コードの無い)pending が確認されても
     // テナントは作らない。モードを絞ったあとに古い申請で作れてしまうのを防ぐ。
     if (signup.mode === "invite" && pending.inviteCodeId === null) {
       return c.json({ error: "invite_code_unavailable" }, 409);
     }
+
+    // PBKDF2(重い)は書き込みロックを持つトランザクションの外で済ませる。
+    const passwordHash = await hashPassword(password);
 
     let created: { tenantId: string; userId: string };
     try {
@@ -276,7 +349,7 @@ export function createSignupRoutes(db: Database, options: SignupRoutesOptions) {
           tenantName: pending.organizationName,
           adminEmail: pending.email,
           adminName: pending.adminName,
-          adminPasswordHash: pending.passwordHash,
+          adminPasswordHash: passwordHash,
           now,
         });
         await setPendingSignupTenant(tx, { id: pending.id, tenantId: boot.tenantId });
