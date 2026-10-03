@@ -8,6 +8,7 @@
     "build:workers": "wrangler deploy --dry-run --outdir dist-workers",
     "seed": "tsx src/seed.ts",
     "create-tenant": "tsx src/create-tenant.ts",
+    "operator": "tsx src/operator.ts",
     "dev:seed-screenshots": "tsx src/dev-screenshot-seed.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
