@@ -116,8 +116,6 @@ export interface NewPendingSignupInput {
   email: string;
   organizationName: string;
   adminName: string;
-  /** hashPassword 済み。平文は受け取らない */
-  passwordHash: string;
   /** 確認トークンの SHA-256(hex) */
   tokenHash: string;
   inviteCodeId: string | null;
@@ -129,7 +127,7 @@ export interface NewPendingSignupInput {
 /**
  * 同一メールの**未消費**の pending を消してから新規発行する(1トランザクション)。
  * 再登録・メール再送のたびに行が積み上がらず、古い確認リンクは無効になる(最新のメールだけ有効)。
- * パスワードハッシュを持つ行を不必要に残さない意味もある。
+ * 申請者のメールアドレス・組織名を不必要に残さない意味もある。
  */
 export async function replacePendingSignup(db: Database, input: NewPendingSignupInput): Promise<PendingSignup> {
   return db.transaction(async (tx) => {
@@ -141,7 +139,6 @@ export async function replacePendingSignup(db: Database, input: NewPendingSignup
         email: input.email,
         organizationName: input.organizationName,
         adminName: input.adminName,
-        passwordHash: input.passwordHash,
         tokenHash: input.tokenHash,
         inviteCodeId: input.inviteCodeId,
         expiresAt: input.expiresAt,
@@ -155,6 +152,20 @@ export async function replacePendingSignup(db: Database, input: NewPendingSignup
     }
     return row;
   });
+}
+
+/**
+ * 同一メールの未消費 pending のうち最新の1件(登録の再送スロットルの判定用)。期限切れも含む —
+ * 呼び出し側が created_at だけを見る。
+ */
+export async function findLatestUnconsumedPendingSignupByEmail(db: Database | Transaction, email: string): Promise<PendingSignup | null> {
+  const rows = await db
+    .select()
+    .from(pendingSignups)
+    .where(and(eq(pendingSignups.email, email), isNull(pendingSignups.consumedAt)))
+    .orderBy(desc(pendingSignups.createdAt), desc(pendingSignups.id))
+    .limit(1);
+  return rows[0] ?? null;
 }
 
 /** トークンのハッシュから1件探す。有効性(期限・消費済み)の判定は呼び出し側。 */

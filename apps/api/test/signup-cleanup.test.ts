@@ -16,7 +16,6 @@ async function pendingExpiringAt(db: Database, email: string, expiresAt: number)
     email,
     organizationName: "X",
     adminName: "Y",
-    passwordHash: "hash",
     tokenHash: `token-${email}`,
     inviteCodeId: null,
     expiresAt,

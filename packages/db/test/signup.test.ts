@@ -8,6 +8,7 @@ import {
   consumeSignupInviteCode,
   createSignupInviteCode,
   deleteStalePendingSignups,
+  findLatestUnconsumedPendingSignupByEmail,
   findPendingSignupByTokenHash,
   findSignupInviteCodeByHash,
   isSignupInviteCodeUsable,
@@ -44,7 +45,6 @@ describe.skipIf(!supportsTransactions)("signup system tables", () => {
     email: "a@example.com",
     organizationName: "A社",
     adminName: "管理者A",
-    passwordHash: "pw",
     tokenHash: `t-${uuidv7()}`,
     inviteCodeId: null,
     expiresAt: 1000,
@@ -92,6 +92,14 @@ describe.skipIf(!supportsTransactions)("signup system tables", () => {
     // 別メールは影響を受けない
     await replacePendingSignup(db, pending({ email: "b@example.com", tokenHash: "t3" }));
     expect(await findPendingSignupByTokenHash(db, "t2")).not.toBeNull();
+  });
+
+  it("findLatestUnconsumedPendingSignupByEmail は未消費の最新だけを返す", async () => {
+    expect(await findLatestUnconsumedPendingSignupByEmail(db, "a@example.com")).toBeNull();
+    const row = await replacePendingSignup(db, pending({ createdAt: 7 }));
+    expect((await findLatestUnconsumedPendingSignupByEmail(db, "a@example.com"))?.id).toBe(row.id);
+    await consumePendingSignup(db, { id: row.id, nowMinutes: 8 });
+    expect(await findLatestUnconsumedPendingSignupByEmail(db, "a@example.com")).toBeNull();
   });
 
   it("consumePendingSignup は1回だけ成功し、期限切れは失敗する", async () => {

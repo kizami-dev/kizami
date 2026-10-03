@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "45539b09-1e12-44af-8f96-67109cf3e628",
+  "id": "12c01b39-f9db-4b17-bdcf-6eb28e913663",
   "prevId": "29550089-8672-48ab-96cb-d1aad91a77a6",
   "tables": {
     "allowance_definition_versions": {
@@ -2808,13 +2808,6 @@
         },
         "admin_name": {
           "name": "admin_name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "password_hash": {
-          "name": "password_hash",
           "type": "text",
           "primaryKey": false,
           "notNull": true,

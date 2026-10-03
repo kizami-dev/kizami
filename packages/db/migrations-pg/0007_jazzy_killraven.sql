@@ -3,7 +3,6 @@ CREATE TABLE "pending_signups" (
 	"email" text NOT NULL,
 	"organization_name" text NOT NULL,
 	"admin_name" text NOT NULL,
-	"password_hash" text NOT NULL,
 	"token_hash" text NOT NULL,
 	"invite_code_id" text,
 	"expires_at" integer NOT NULL,
