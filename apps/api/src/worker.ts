@@ -59,6 +59,7 @@ import { runOvertimeAlertScan } from "./overtime-alerts.js";
 import { nodemailerSendFn } from "./lib/smtp.js";
 import { runReminderScan } from "./reminders.js";
 import { runShiftVarianceAlertScan } from "./shift-variance-alerts.js";
+import { runPendingSignupCleanup } from "./signup-cleanup.js";
 import { buildVapidFromEnv } from "./lib/web-push.js";
 
 const QUEUE_NAME = "kizami-reminders";
@@ -73,6 +74,7 @@ const SCAN_JOBS = {
   leaveAlert: "leave-alert",
   shiftVarianceAlert: "shift-variance-alert",
   leaveGrantProposal: "leave-grant-proposal",
+  signupCleanup: "signup-cleanup",
 } as const;
 // このジョブは打刻忘れリマインドと36協定アラートの両方のスキャンを担う(周期は共通)。
 const SCHEDULER_ID = "kizami-notification-scan";
@@ -243,6 +245,20 @@ async function main(): Promise<void> {
         await finishScan(SCAN_JOBS.leaveGrantProposal, err);
       }
 
+      // 期限切れから7日以上経った未確認サインアップの掃除(セルフサインアップ、
+      // docs/design/saas.md)。パスワードハッシュを持つ行を長く残さないための削除で、通知は出さない。
+      // SIGNUP_MODE が off の配備でも pending_signups は空なので何も消えず、そのまま走らせてよい。
+      let signupCleanupDeleted = 0;
+      try {
+        const result = await runPendingSignupCleanup(db, { nowMinutes });
+        signupCleanupDeleted = result.deletedCount;
+        console.log(`[kizami-reminders] signup-cleanup: deleted ${result.deletedCount} stale pending signup(s)`);
+        await finishScan(SCAN_JOBS.signupCleanup);
+      } catch (err) {
+        console.error("[kizami-reminders] signup-cleanup failed:", err);
+        await finishScan(SCAN_JOBS.signupCleanup, err);
+      }
+
       return {
         scannedUserCount: reminderScanned,
         createdCount: reminderCreated,
@@ -255,6 +271,7 @@ async function main(): Promise<void> {
         shiftVarianceSelfCreatedCount: shiftVarianceSelfCreated,
         leaveGrantProposalScannedUserCount: grantProposalScanned,
         leaveGrantProposalCreatedCount: grantProposalCreated,
+        signupCleanupDeletedCount: signupCleanupDeleted,
       };
     },
     { connection },
