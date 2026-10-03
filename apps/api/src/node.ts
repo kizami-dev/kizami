@@ -4,7 +4,9 @@ import { migrateDb } from "@kizami/db/node";
 import { createApp } from "./app.js";
 import { buildEncryptorFromEnv } from "./lib/encryption.js";
 import { buildErrorReporterFromEnv } from "./lib/error-report.js";
+import { parseSignupEnv } from "./lib/signup-config.js";
 import { nodemailerSendFn } from "./lib/smtp.js";
+import { createSystemMailSender } from "./lib/system-mail.js";
 import { resolveRelease } from "./lib/version.js";
 import { buildVapidFromEnv } from "./lib/web-push.js";
 
@@ -52,6 +54,18 @@ const release = resolveRelease();
 const metricsToken = process.env.METRICS_TOKEN;
 const errorReporter = buildErrorReporterFromEnv(process.env, { release, runtime: "node" });
 
+// セルフサインアップ(KIZAMI Cloud、docs/design/saas.md)。SIGNUP_MODE が off 以外なのに
+// 必須の環境変数(TURNSTILE_SECRET_KEY / TURNSTILE_SITE_KEY / SYSTEM_SMTP_URL /
+// SYSTEM_MAIL_FROM / APP_BASE_URL)が欠けていれば、**起動時に欠けているものを列挙してエラー終了**する
+// (登録フォームは出るのに誰も登録を完了できない、という状態を公開後に発見しないため。
+// 理由は lib/signup-config.ts 冒頭)。off(既定)なら何も変わらない。
+const signupEnv = parseSignupEnv(process.env);
+if (!signupEnv.ok) {
+  for (const message of signupEnv.errors) console.error(`[kizami] invalid signup configuration: ${message}`);
+  process.exit(1);
+}
+const signupConfig = signupEnv.config;
+
 const { db } = await migrateDb({ url: databaseUrl });
 const app = createApp({
   db,
@@ -64,6 +78,17 @@ const app = createApp({
   release,
   errorReporter,
   ...(metricsToken !== undefined ? { metricsToken } : {}),
+  ...(signupConfig !== null
+    ? {
+        signup: {
+          mode: signupConfig.mode,
+          turnstileSecretKey: signupConfig.turnstileSecretKey,
+          turnstileSiteKey: signupConfig.turnstileSiteKey,
+          appBaseUrl: signupConfig.appBaseUrl,
+          sendMail: createSystemMailSender({ smtpUrl: signupConfig.systemSmtpUrl, from: signupConfig.systemMailFrom }),
+        },
+      }
+    : {}),
   oidc: {
     ...(appBaseUrl !== undefined ? { appBaseUrl } : {}),
     ...(oidcRedirectUri !== undefined ? { redirectUri: oidcRedirectUri } : {}),

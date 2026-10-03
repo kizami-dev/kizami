@@ -91,6 +91,11 @@ export function createWorkerApp(env: WorkerEnv) {
     // Workers は常に HTTPS 終端の後ろなので Secure Cookie は既定 ON のままでよい
     secureCookies: env.COOKIE_SECURE !== "false",
     ...(env.CORS_ORIGIN !== undefined ? { corsOrigin: env.CORS_ORIGIN } : {}),
+    // `signup` も渡さない = **セルフサインアップは常に無効**(`GET /signup/config` は
+    // `{ mode: "off" }`、他の /signup/* は 404)。システムメールの送信(nodemailer)が workerd で
+    // 動かず、確認フローが依存する db.transaction() も D1 では使えないため
+    // (docs/design/saas.md の実行基盤の節、docs/design/workers-d1.md)。
+    //
     // `notify` は渡さない: Workers には nodemailer が無い(node:net 依存)ため
     // POST /settings/notifications/test の SMTP テスト送信は 503 になる。fetch ベースの
     // メール API を使う SmtpSendFn を1本書けば差し込めるが v1.0 時点では未実装
