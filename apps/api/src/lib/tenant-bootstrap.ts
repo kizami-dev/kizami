@@ -29,6 +29,7 @@ import {
   type Database,
   type MemberUser,
   type Tenant,
+  type Transaction,
 } from "@kizami/db";
 import { hashPassword } from "../auth/password.js";
 
@@ -108,8 +109,18 @@ export interface BootstrapTenantParams {
   tenantName: string;
   /** 管理者のメールアドレス */
   adminEmail: string;
-  /** 管理者の初期パスワード(平文。ここでハッシュ化する) */
-  adminPassword: string;
+  /**
+   * 管理者の初期パスワード(平文。ここでハッシュ化する)。
+   * `adminPasswordHash` とはどちらか一方だけを渡す。
+   */
+  adminPassword?: string;
+  /**
+   * ハッシュ化済みのパスワード(auth/password.ts の hashPassword の出力)。セルフサインアップは
+   * 登録時点でハッシュ化して pending_signups に保存しており(平文を保持しない)、確認時に
+   * それをそのまま渡す。PBKDF2 600k 回をトランザクション内で再計算しないための経路でもある。
+   * `adminPassword` とはどちらか一方だけを渡す。
+   */
+  adminPasswordHash?: string;
   /** 管理者の表示名(既定 "管理者") */
   adminName?: string;
   /** 作成時刻(UTC エポック分)。省略時は現在時刻。テストが固定値を渡せるようにしてある */
@@ -133,8 +144,19 @@ export interface BootstrapTenantResult {
  *
  * 既存ユーザーの有無は**確認しない**(呼び出し側の責務)。同じメールで2回呼べば
  * (tenant_id, email) が異なるため両方作られてしまうので、CLI 側で必ず冪等判定を行うこと。
+ *
+ * `db` には外側のトランザクション(`tx`)も渡せる(セルフサインアップの確認が「招待コード消費・
+ * テナント作成・監査ログ」を1トランザクションにまとめるため。2026-10-03)。この関数自身は
+ * トランザクションを開始しないので、`Database` を渡した場合は従来どおり文ごとのコミットになる
+ * (seed / create-tenant の既存呼び出しの挙動は変わらない)。
  */
-export async function bootstrapTenant(db: Database, params: BootstrapTenantParams): Promise<BootstrapTenantResult> {
+export async function bootstrapTenant(db: Database | Transaction, params: BootstrapTenantParams): Promise<BootstrapTenantResult> {
+  if ((params.adminPassword === undefined) === (params.adminPasswordHash === undefined)) {
+    throw new Error("bootstrapTenant: pass exactly one of adminPassword or adminPasswordHash");
+  }
+  // ハッシュ化(PBKDF2、重い)は DB へ書き始める前に済ませる。トランザクション内で呼ばれても
+  // 書き込みロックを保持したまま計算しないよう、ハッシュ済みを渡す経路を用意してある。
+  const passwordHash = params.adminPasswordHash ?? (await hashPassword(params.adminPassword!));
   const now = params.now ?? Math.floor(Date.now() / 60_000);
 
   const tenantId = uuidv7();
@@ -175,7 +197,6 @@ export async function bootstrapTenant(db: Database, params: BootstrapTenantParam
     createdAt: now,
   });
 
-  const passwordHash = await hashPassword(params.adminPassword);
   await db.insert(authCredentials).values({
     id: uuidv7(),
     tenantId,

@@ -23,11 +23,9 @@ import {
 import { Hono } from "hono";
 import { sha256Hex } from "../auth/api-key.js";
 import { hashPassword } from "../auth/password.js";
+import { isAcceptablePassword, MIN_PASSWORD_LENGTH } from "../auth/password-policy.js";
 import { createSession, setSessionCookie } from "../auth/session.js";
 import { nowMinutes } from "../lib/time.js";
-
-/** routes/invitations.ts の MIN_PASSWORD_LENGTH と同一の最低ライン(依頼「invitations の検証と同一」)。 */
-const MIN_PASSWORD_LENGTH = 12;
 
 /** トークンからリセットトークンを探し、有効性を判定する。無効の理由まで返すのはこのファイル内部の利用のみ。 */
 async function resolvePasswordReset(db: Database, token: string) {
@@ -80,7 +78,7 @@ export function createPasswordResetsRoutes(db: Database, options: { secureCookie
       return c.json({ error: "invalid_body" }, 400);
     }
     const { password } = body as { password?: unknown };
-    if (typeof password !== "string" || password.length < MIN_PASSWORD_LENGTH) {
+    if (!isAcceptablePassword(password)) {
       return c.json({ error: "invalid_password", minLength: MIN_PASSWORD_LENGTH }, 400);
     }
 
