@@ -8,7 +8,8 @@
 
 import { describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
-import { permissionPresets, presetAssignments, tenantSettingVersions, workPolicyVersions } from "@kizami/db";
+import { authCredentials, permissionPresets, presetAssignments, tenantSettingVersions, tenants, workPolicyVersions } from "@kizami/db";
+import { hashPassword } from "../src/auth/password.js";
 import { createApp } from "../src/app.js";
 import {
   ADMIN_GRANTS,
@@ -49,6 +50,32 @@ describe("bootstrapTenant", () => {
     const cookie = await loginAndGetCookie(app, "admin@example.com", PASSWORD);
     const res = await app.request("/members", { headers: { cookie } });
     expect(res.status).toBe(200);
+  });
+
+  it("adminPasswordHash(ハッシュ済み)を渡すと再ハッシュせずそのまま保存し、その平文でログインできる。両方/どちらも無しは拒否", async () => {
+    const db = await createTestDatabase();
+    const hash = await hashPassword(PASSWORD);
+    const { userId } = await bootstrapTenant(db, { tenantName: "H社", adminEmail: "h@example.com", adminPasswordHash: hash });
+    const [cred] = await db.select().from(authCredentials).where(eq(authCredentials.userId, userId));
+    expect(cred?.passwordHash).toBe(hash);
+    const app = createApp({ db });
+    await loginAndGetCookie(app, "h@example.com", PASSWORD);
+
+    await expect(
+      bootstrapTenant(db, { tenantName: "X", adminEmail: "x@example.com", adminPassword: PASSWORD, adminPasswordHash: hash }),
+    ).rejects.toThrow("exactly one");
+    await expect(bootstrapTenant(db, { tenantName: "X", adminEmail: "x@example.com" })).rejects.toThrow("exactly one");
+  });
+
+  it("トランザクション内から呼べ、失敗すれば全体が巻き戻る", async () => {
+    const db = await createTestDatabase();
+    await expect(
+      db.transaction(async (tx) => {
+        await bootstrapTenant(tx, { tenantName: "T社", adminEmail: "t@example.com", adminPasswordHash: await hashPassword(PASSWORD) });
+        throw new Error("rollback");
+      }),
+    ).rejects.toThrow("rollback");
+    expect(await db.select().from(tenants)).toHaveLength(0);
   });
 
   it("2社作ってもプリセット・設定は互いに独立する", async () => {
