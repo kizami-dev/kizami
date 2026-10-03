@@ -6,8 +6,8 @@
  * テナントがまだ存在しない時点で、運用者の名義で出す必要があるので別系統にする。
  *
  * - 接続先は環境変数 `SYSTEM_SMTP_URL`(`smtp://user:pass@host:587` / `smtps://...:465`)、
- *   差出人は `SYSTEM_MAIL_FROM`。送信先は Amazon SES(SMTP インタフェース)を想定しているが、
- *   汎用の SMTP として書いてあり SES 固有の処理は無い
+ *   差出人は `SYSTEM_MAIL_FROM`。送信先は Cloudflare Email Service や Amazon SES などの
+ *   SMTP 送信を想定しているが、汎用の SMTP として書いてありサービス固有の処理は無い
  * - 送信関数(`SystemMailSendFn`)は注入可能。routes/signup.ts は型だけに依存し、実装
  *   (`createSystemMailSender`)は node.ts が渡す。テストは偽の送信関数を差し込んで実送信しない
  * - nodemailer は node:net 依存で workerd では動かない。このファイルを routes/ から**値として
