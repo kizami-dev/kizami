@@ -134,6 +134,11 @@ export const AUTH_WINDOW_MS = 15 * 60_000;
  *   start は任意の issuer への HTTP 送出、callback は ID トークンの持ち込み、available は
  *   メールアドレスの在籍照会の入口であり、いずれも総当たり・偵察の的になる。
  *   トークン経路と同じ 20回/15分に揃える(SSO ログインは1人あたり1日数回の操作のため十分)。
+ * - `signupPerIp`: セルフサインアップの登録(POST /signup、2026-10-03 追加)。1回ごとに確認メールの
+ *   送信と Turnstile の siteverify という外部への副作用が走り、PBKDF2 のハッシュ化も伴うので
+ *   他より厳しい 5回/15分(正規の利用は「1回登録して確認するだけ」で、打ち間違いの再試行を
+ *   見込んでも十分)。確認リンクの GET/POST(/signup/verify/*)は招待・リセットと同じ
+ *   `tokenPerIp` を使う。判断点(NAT の巻き添え)は app.ts のトークン経路のコメントと同じ。
  */
 export const RATE_LIMITS = {
   loginPerIpEmail: { windowMs: AUTH_WINDOW_MS, max: 10 },
@@ -142,6 +147,7 @@ export const RATE_LIMITS = {
   tokenPerIp: { windowMs: AUTH_WINDOW_MS, max: 20 },
   apiKeyPerIp: { windowMs: 60_000, max: 120 },
   oidcPerIp: { windowMs: AUTH_WINDOW_MS, max: 20 },
+  signupPerIp: { windowMs: AUTH_WINDOW_MS, max: 5 },
 } as const;
 
 /**

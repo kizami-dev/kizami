@@ -28,6 +28,7 @@ import { createPasswordResetsRoutes } from "./routes/password-resets.js";
 import { createPresetsRoutes } from "./routes/presets.js";
 import { createPunchesRoutes } from "./routes/punches.js";
 import { createPushRoutes } from "./routes/push.js";
+import { createSignupRoutes, type SignupDeps } from "./routes/signup.js";
 import { createSettingsRoutes, type SettingsRoutesDeps } from "./routes/settings/index.js";
 import { createShiftsRoutes } from "./routes/shifts.js";
 import { createSlackRoutes } from "./routes/slack.js";
@@ -106,6 +107,13 @@ export interface CreateAppDeps {
    * アプリの挙動には影響しない。省略時は "unknown"(lib/version.ts 参照)。
    */
   release?: string;
+  /**
+   * セルフサインアップ(KIZAMI Cloud、docs/design/saas.md)の設定。**省略 = 無効**(既定)で、
+   * その場合 `GET /signup/config`(`{ mode: "off" }`)以外の /signup/* は 404 を返す。
+   * node.ts が環境変数 SIGNUP_MODE ほかから lib/signup-config.ts の parseSignupEnv で組み立てて渡す。
+   * Workers エントリ(workers.ts)は常に渡さない(= 常に無効。nodemailer が動かないため)。
+   */
+  signup?: SignupDeps;
 }
 
 /**
@@ -129,6 +137,7 @@ export function createApp(deps: CreateAppDeps) {
     metricsToken,
     errorReporter = noopErrorReporter,
     release,
+    signup,
   } = deps;
   const app = new Hono<AppEnv>();
 
@@ -147,6 +156,7 @@ export function createApp(deps: CreateAppDeps) {
     tokenPerIp: createRateLimiter({ ...RATE_LIMITS.tokenPerIp, now }),
     apiKeyPerIp: createRateLimiter({ ...RATE_LIMITS.apiKeyPerIp, now }),
     oidcPerIp: createRateLimiter({ ...RATE_LIMITS.oidcPerIp, now }),
+    signupPerIp: createRateLimiter({ ...RATE_LIMITS.signupPerIp, now }),
   };
 
   // HTTP メトリクスの計測(docs/design/observability.md)。**最初に登録する** —
@@ -240,6 +250,16 @@ export function createApp(deps: CreateAppDeps) {
   // 使用、Tier 0)も同じ理由で認証ミドルウェアの外側に置く(使用前のユーザーはまだ有効なセッションを
   // 張れない・張っていても新しいパスワードを知らないため、この経路自体を未認証で開放する)。
   app.route("/password-resets", createPasswordResetsRoutes(db, { secureCookies }));
+
+  // セルフサインアップ(未認証・公開、docs/design/saas.md)。無効な配備(signup 未指定)では
+  // レート制限も掛けない — 全リクエストが 404 になるだけで、カウンタを消費する意味が無い。
+  // 登録(POST /signup)は外部への副作用(確認メール・Turnstile)があるので専用の厳しい上限、
+  // 確認リンク(/signup/verify/*)は招待・リセットと同じトークン経路の上限を使う。
+  if (signup) {
+    app.use("/signup", ipRateLimitMiddleware(rateLimiters.signupPerIp, { trustProxy, appliesTo: (c) => c.req.method === "POST" }));
+    app.use("/signup/verify/*", tokenRateLimit);
+  }
+  app.route("/signup", createSignupRoutes(db, { signup: signup ?? null, secureCookies, trustProxy }));
 
   // POST /slack/commands(Slackスラッシュコマンド打刻)は認証ミドルウェアの外側に置く。
   // Slackはセッションを持たないため、署名検証(routes/slack.ts)が認証の代わりになる
