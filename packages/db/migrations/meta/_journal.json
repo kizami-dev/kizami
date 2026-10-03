@@ -225,6 +225,13 @@
       "when": 1787842211085,
       "tag": "0031_workable_inhumans",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "6",
+      "when": 1791036924942,
+      "tag": "0032_lazy_randall",
+      "breakpoints": true
     }
   ]
 }

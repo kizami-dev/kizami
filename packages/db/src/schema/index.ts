@@ -23,6 +23,7 @@ export * from "./permissions.js";
 export * from "./punches.js";
 export * from "./push-subscriptions.js";
 export * from "./settings.js";
+export * from "./signup.js";
 export * from "./shifts.js";
 export * from "./slack.js";
 export * from "./tenants.js";
