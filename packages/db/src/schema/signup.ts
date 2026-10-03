@@ -22,6 +22,7 @@
  * 相手へ渡し、DB には SHA-256(hex)だけを保存する(DB が読み出されても有効なものを復元できない)。
  */
 
+import { sql } from "drizzle-orm";
 import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 import { tenants } from "./tenants.js";
 
@@ -50,7 +51,14 @@ export const pendingSignups = sqliteTable(
   "pending_signups",
   {
     id: text("id").primaryKey(),
+    /** 申請者が入力したメールアドレス(trim のみ)。管理者ユーザーの作成にはこれをそのまま使う */
     email: text("email").notNull(),
+    /**
+     * 再送スロットル・置き換えの照合キー(trim + 小文字化)。`Victim@Example.com` と
+     * `victim@example.com` を同一視するための列。users.email は大文字小文字を区別して
+     * 保存・照合する(ログインは完全一致)ので email 列は入力どおりに残し、キーだけ別に持つ。
+     */
+    emailKey: text("email_key").notNull(),
     organizationName: text("organization_name").notNull(),
     adminName: text("admin_name").notNull(),
     // パスワード列は**意図的に持たない**。登録時にパスワードを受け取ると、他人のメールアドレスと
@@ -71,8 +79,15 @@ export const pendingSignups = sqliteTable(
   },
   (table) => [
     uniqueIndex("pending_signups_token_hash_idx").on(table.tokenHash),
-    // 同一メールの未消費行を引く(再登録時のトークン発行し直し)・掃除ジョブの期限走査用
-    index("pending_signups_email_idx").on(table.email),
+    // 「未消費の pending はメール(email_key)ごとに高々1行」を DB で保証する部分 UNIQUE。
+    // 再送スロットルの判定と置き換えを `INSERT ... ON CONFLICT DO UPDATE ... WHERE` の
+    // 1文で原子的に行うための土台(queries/signup.ts の upsertPendingSignupUnlessRecent)。
+    // アプリ層の「SELECT して判定してから書く」では、同時リクエストが全部判定を通り抜ける
+    // (PostgreSQL の既定 READ COMMITTED では tx 内でも同じ)。部分 UNIQUE + ON CONFLICT なら、
+    // SQLite / PostgreSQL のどちらでも競合した側は既存行の更新条件を再評価される。
+    uniqueIndex("pending_signups_email_key_unconsumed_idx")
+      .on(table.emailKey)
+      .where(sql`${table.consumedAt} is null`),
     index("pending_signups_expires_at_idx").on(table.expiresAt),
   ],
 );

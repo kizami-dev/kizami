@@ -1,6 +1,7 @@
 CREATE TABLE "pending_signups" (
 	"id" text PRIMARY KEY NOT NULL,
 	"email" text NOT NULL,
+	"email_key" text NOT NULL,
 	"organization_name" text NOT NULL,
 	"admin_name" text NOT NULL,
 	"token_hash" text NOT NULL,
@@ -25,6 +26,6 @@ CREATE TABLE "signup_invite_codes" (
 ALTER TABLE "pending_signups" ADD CONSTRAINT "pending_signups_invite_code_id_signup_invite_codes_id_fk" FOREIGN KEY ("invite_code_id") REFERENCES "signup_invite_codes"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "pending_signups" ADD CONSTRAINT "pending_signups_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "tenants"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 CREATE UNIQUE INDEX "pending_signups_token_hash_idx" ON "pending_signups" USING btree ("token_hash");--> statement-breakpoint
-CREATE INDEX "pending_signups_email_idx" ON "pending_signups" USING btree ("email");--> statement-breakpoint
+CREATE UNIQUE INDEX "pending_signups_email_key_unconsumed_idx" ON "pending_signups" USING btree ("email_key") WHERE "consumed_at" is null;--> statement-breakpoint
 CREATE INDEX "pending_signups_expires_at_idx" ON "pending_signups" USING btree ("expires_at");--> statement-breakpoint
 CREATE UNIQUE INDEX "signup_invite_codes_code_hash_idx" ON "signup_invite_codes" USING btree ("code_hash");

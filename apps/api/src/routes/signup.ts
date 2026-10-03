@@ -54,6 +54,9 @@
  * ただし**直近5分以内に同じメール宛の申請があれば何もしない**(202 は同じ。メールも出さない):
  * 他人のメール宛に確認メールを連打して迷惑をかけたり、本人が受け取った直後のリンクを置き換えて
  * 無効にする妨害を、IP を変えながらでも1回/5分に抑える(IP レート制限だけでは受信者単位の上限が無い)。
+ * 照合キーは trim + 小文字化したメール(`Victim@Example.com` でもすり抜けられない)。判定と書き込みは
+ * `upsertPendingSignupUnlessRecent` の1文(部分 UNIQUE + ON CONFLICT DO UPDATE ... WHERE)で原子的に
+ * 行うので、同時に何本来てもメールが出るのは1通(判断の背景は packages/db/src/queries/signup.ts)。
  * 招待コード不正・Turnstile 失敗は列挙に関係しないので 400 で明示する。
  *
  * ## トークン経路のステータス(招待受諾 routes/invitations.ts と同じ作法)
@@ -74,14 +77,13 @@
 import {
   consumePendingSignup,
   consumeSignupInviteCode,
-  findLatestUnconsumedPendingSignupByEmail,
   findPendingSignupByTokenHash,
   findSignupInviteCodeByHash,
   getUserById,
   insertAuditLog,
   isSignupInviteCodeUsable,
-  replacePendingSignup,
   setPendingSignupTenant,
+  upsertPendingSignupUnlessRecent,
   type Database,
 } from "@kizami/db";
 import { Hono, type MiddlewareHandler } from "hono";
@@ -258,33 +260,35 @@ export function createSignupRoutes(db: Database, options: SignupRoutesOptions) {
     const now = nowMinutes();
     const normalizedEmail = email.trim();
 
-    // 直近の申請から間もなければ何もしない(メール連打・他人のリンクの置き換え妨害の抑止。
-    // 応答は通常と同一の 202 で、区別できない)。
-    const latest = await findLatestUnconsumedPendingSignupByEmail(db, normalizedEmail);
-    if (latest && latest.createdAt > now - SIGNUP_RESEND_THROTTLE_MINUTES) {
-      return c.json({ status: "verification_sent" }, 202);
-    }
-
     const { token, hash } = await generateInvitationToken();
-    await replacePendingSignup(db, {
-      email: normalizedEmail,
-      organizationName: organizationName.trim(),
-      adminName: adminName.trim(),
-      tokenHash: hash,
-      inviteCodeId,
-      expiresAt: now + SIGNUP_TOKEN_TTL_MINUTES,
-      createdAt: now,
-    });
+    const created = await upsertPendingSignupUnlessRecent(
+      db,
+      {
+        email: normalizedEmail,
+        emailKey: normalizedEmail.toLowerCase(),
+        organizationName: organizationName.trim(),
+        adminName: adminName.trim(),
+        tokenHash: hash,
+        inviteCodeId,
+        expiresAt: now + SIGNUP_TOKEN_TTL_MINUTES,
+        createdAt: now,
+      },
+      { throttleMinutes: SIGNUP_RESEND_THROTTLE_MINUTES },
+    );
 
-    // 送信は応答を待たない(SMTP の遅さ・失敗が応答に出ると、利用者への不可解な 500 になるため)。
-    // 失敗はログに残す。メールが届かなければ、5分後に再登録できる(同一メールの pending は置き換わる)。
-    const mail = buildSignupVerificationMail({
-      to: normalizedEmail,
-      verifyUrl: `${signup.appBaseUrl}/signup/verify/${token}`,
-    });
-    void signup.sendMail(mail).catch((err: unknown) => {
-      console.error("signup: failed to send verification mail:", err);
-    });
+    // 直近の申請から間もなければ何も作られず(created = null)、メールも送らない(メール連打・
+    // 他人のリンクの置き換え妨害の抑止)。応答は通常と同一の 202 で、区別できない。
+    if (created) {
+      // 送信は応答を待たない(SMTP の遅さ・失敗が応答に出ると、利用者への不可解な 500 になるため)。
+      // 失敗はログに残す。メールが届かなければ、5分後に再登録できる(同一メールの pending は置き換わる)。
+      const mail = buildSignupVerificationMail({
+        to: normalizedEmail,
+        verifyUrl: `${signup.appBaseUrl}/signup/verify/${token}`,
+      });
+      void signup.sendMail(mail).catch((err: unknown) => {
+        console.error("signup: failed to send verification mail:", err);
+      });
+    }
 
     return c.json({ status: "verification_sent" }, 202);
   });

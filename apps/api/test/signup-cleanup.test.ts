@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { consumePendingSignup, findPendingSignupByTokenHash, replacePendingSignup, type Database } from "@kizami/db";
+import { consumePendingSignup, findPendingSignupByTokenHash, upsertPendingSignupUnlessRecent, type Database } from "@kizami/db";
 import { PENDING_SIGNUP_RETENTION_AFTER_EXPIRY_MINUTES, runPendingSignupCleanup } from "../src/signup-cleanup.js";
 import { createTestDatabase } from "./support/setup.js";
 
@@ -12,15 +12,22 @@ const DAY = 24 * 60;
 const NOW = 100 * DAY;
 
 async function pendingExpiringAt(db: Database, email: string, expiresAt: number) {
-  return replacePendingSignup(db, {
+  const row = await upsertPendingSignupUnlessRecent(
+    db,
+    {
     email,
+    emailKey: email,
     organizationName: "X",
     adminName: "Y",
     tokenHash: `token-${email}`,
     inviteCodeId: null,
     expiresAt,
     createdAt: expiresAt - DAY,
-  });
+    },
+    { throttleMinutes: 5 },
+  );
+  if (!row) throw new Error("unexpected throttle");
+  return row;
 }
 
 describe("runPendingSignupCleanup", () => {

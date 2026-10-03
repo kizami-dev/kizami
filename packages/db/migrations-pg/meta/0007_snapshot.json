@@ -1,5 +1,5 @@
 {
-  "id": "c9bbd926-3e55-43e1-a9a7-0f6b868b79a7",
+  "id": "8f05a85e-0510-498e-94e6-57e195a47e97",
   "prevId": "a0f19fa1-ea7c-4031-9cf2-2de24cc192df",
   "version": "7",
   "dialect": "postgresql",
@@ -2837,6 +2837,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "email_key": {
+          "name": "email_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
         "organization_name": {
           "name": "organization_name",
           "type": "text",
@@ -2902,17 +2908,18 @@
           "method": "btree",
           "with": {}
         },
-        "pending_signups_email_idx": {
-          "name": "pending_signups_email_idx",
+        "pending_signups_email_key_unconsumed_idx": {
+          "name": "pending_signups_email_key_unconsumed_idx",
           "columns": [
             {
-              "expression": "email",
+              "expression": "email_key",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
             }
           ],
-          "isUnique": false,
+          "isUnique": true,
+          "where": "\"consumed_at\" is null",
           "concurrently": false,
           "method": "btree",
           "with": {}
