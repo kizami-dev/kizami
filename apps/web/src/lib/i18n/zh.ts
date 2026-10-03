@@ -275,6 +275,9 @@ export const zh = {
     passwordLabel: "密码",
     submit: "登录",
     submitting: "登录中…",
+    /** 自助注册(仅当 SIGNUP_MODE 不是 off 时显示,2026-10-03)。 */
+    signupPrompt: "初次使用?",
+    signupLink: "注册新账号",
     errors: {
       invalid_credentials: "邮箱地址或密码错误",
       rate_limited: "尝试次数过多,请稍后再试",
@@ -360,6 +363,77 @@ export const zh = {
     errors: {
       invalid_password: "密码至少需要12位",
       rate_limited: "尝试次数过多,请稍后再试",
+      default: "处理失败,请重试",
+    },
+  },
+
+  /**
+   * 自助注册页面(/signup,无需认证·公开,KIZAMI Cloud,2026-10-03)。
+   * 与登录、邀请接受相同的"纸白色+居中卡片"。SIGNUP_MODE 为 off 的部署中,
+   * GET /signup/config 返回 mode: "off",此页面只显示提示(不显示表单)。
+   * 注册后,点击确认邮件中的链接(/signup/verify/[token])即可创建租户。
+   */
+  signup: {
+    title: "注册新账号",
+    tagline: "创建组织,开始以分钟为单位的考勤管理",
+    loading: "加载中…",
+    closedTitle: "暂不接受新注册",
+    closedMessage: "本服务目前不接受新的注册。",
+    organizationNameLabel: "组织名称(公司名称)",
+    adminNameLabel: "您的姓名",
+    emailLabel: "邮箱地址",
+    inviteCodeLabel: "邀请码",
+    inviteCodeHint: "请输入运营方告知您的邀请码",
+    turnstileRequired: "请完成「我不是机器人」验证",
+    submit: "发送确认邮件",
+    submitting: "发送中…",
+    sentTitle: "已发送确认邮件",
+    sentMessage: (email: string) =>
+      `已向 ${email} 发送确认邮件。打开邮件中的链接即可完成注册(24小时内有效)。如未收到,请检查垃圾邮件文件夹。`,
+    backToLogin: "返回登录页面",
+    haveAccount: "已有账号?",
+    errors: {
+      invalid_email: "邮箱地址格式不正确",
+      invalid_organization_name: "请输入组织名称",
+      invalid_name: "请输入姓名",
+      invalid_invite_code: "邀请码无效,请检查",
+      turnstile_failed: "验证失败,请重试",
+      turnstile_unavailable: "无法连接验证服务,请稍后重试",
+      rate_limited: "尝试次数过多,请稍候再试",
+      default: "注册失败,请重试",
+    },
+  },
+
+  /**
+   * 注册邮件确认页面(/signup/verify/[token],无需认证·公开,2026-10-03)。
+   * 与 inviteAccept 相同的状态机。点击确认按钮后即创建租户,
+   * 并以已登录状态跳转到首页。
+   */
+  signupVerify: {
+    loading: "正在确认注册内容…",
+    intro: "将按以下内容创建组织。请设置密码。",
+    passwordLabel: "密码(12位以上)",
+    passwordConfirmLabel: "密码(确认)",
+    passwordMismatch: "两次输入的密码不一致",
+    passwordTooShort: "密码请输入12位以上",
+    organizationLabel: "组织名称",
+    nameLabel: "姓名",
+    emailLabel: "邮箱地址",
+    submit: "确认并开始",
+    submitting: "创建中…",
+    created: "组织已创建。正在跳转…",
+    invalidTitle: "此确认链接无效",
+    invalidMessage: "此确认链接无效或已被使用。如已注册,请从登录页面登录。",
+    expiredTitle: "此确认链接已过期",
+    expiredMessage: "确认链接(24小时有效)已过期。请重新注册。",
+    sessionIssuanceFailedTitle: "组织已创建",
+    sessionIssuanceFailedMessage: "组织已创建。请从登录页面登录。",
+    goToLogin: "前往登录页面",
+    goToSignup: "前往注册",
+    errors: {
+      invalid_password: "密码请输入12位以上",
+      invite_code_unavailable: "邀请码已无法使用,请联系运营方",
+      rate_limited: "尝试次数过多,请稍候再试",
       default: "处理失败,请重试",
     },
   },

@@ -281,6 +281,9 @@ export const ko = {
     passwordLabel: "비밀번호",
     submit: "로그인",
     submitting: "로그인 중…",
+    /** 셀프 가입(SIGNUP_MODE 가 off 가 아닐 때만 표시, 2026-10-03). */
+    signupPrompt: "처음 오셨나요?",
+    signupLink: "신규 가입",
     errors: {
       invalid_credentials: "이메일 주소 또는 비밀번호가 올바르지 않습니다",
       rate_limited: "시도 횟수가 너무 많습니다. 잠시 기다린 후 다시 시도해 주세요",
@@ -369,6 +372,77 @@ export const ko = {
       invalid_password: "비밀번호는 12자 이상 입력해 주세요",
       rate_limited: "시도 횟수가 너무 많습니다. 잠시 기다린 후 다시 시도해 주세요",
       default: "처리에 실패했습니다. 다시 시도해 주세요",
+    },
+  },
+
+  /**
+   * 셀프 가입 화면(/signup, 인증 가드 없음·공개, KIZAMI Cloud, 2026-10-03).
+   * 로그인·초대 수락과 동일한 "종이 흰색 + 중앙 카드". SIGNUP_MODE 가 off 인 환경에서는
+   * GET /signup/config 가 mode: "off" 를 반환하며, 이 화면은 안내만 표시합니다(폼 없음).
+   * 가입 후 확인 메일의 링크(/signup/verify/[token])로 테넌트가 생성됩니다.
+   */
+  signup: {
+    title: "신규 가입",
+    tagline: "조직을 만들고 1분 단위 근태관리를 시작하세요",
+    loading: "불러오는 중…",
+    closedTitle: "신규 가입을 받지 않습니다",
+    closedMessage: "이 서비스는 현재 신규 가입을 받지 않습니다.",
+    organizationNameLabel: "조직명(회사명)",
+    adminNameLabel: "이름",
+    emailLabel: "이메일 주소",
+    inviteCodeLabel: "초대 코드",
+    inviteCodeHint: "운영팀에서 안내한 초대 코드를 입력하세요",
+    turnstileRequired: "'로봇이 아닙니다' 확인을 완료하세요",
+    submit: "확인 메일 보내기",
+    submitting: "전송 중…",
+    sentTitle: "확인 메일을 보냈습니다",
+    sentMessage: (email: string) =>
+      `${email} 로 확인 메일을 보냈습니다. 메일의 링크를 열면 가입이 완료됩니다(24시간 유효). 메일이 오지 않으면 스팸 폴더를 확인하세요.`,
+    backToLogin: "로그인 화면으로 돌아가기",
+    haveAccount: "이미 계정이 있으신가요?",
+    errors: {
+      invalid_email: "이메일 주소 형식이 올바르지 않습니다",
+      invalid_organization_name: "조직명을 입력하세요",
+      invalid_name: "이름을 입력하세요",
+      invalid_invite_code: "초대 코드가 올바르지 않습니다. 코드를 확인하세요",
+      turnstile_failed: "확인에 실패했습니다. 다시 시도하세요",
+      turnstile_unavailable: "확인 서비스에 연결할 수 없습니다. 잠시 후 다시 시도하세요",
+      rate_limited: "시도 횟수가 너무 많습니다. 잠시 기다린 후 다시 시도하세요",
+      default: "가입에 실패했습니다. 다시 시도하세요",
+    },
+  },
+
+  /**
+   * 가입 메일 확인 화면(/signup/verify/[token], 인증 가드 없음·공개, 2026-10-03).
+   * inviteAccept 와 동일한 상태 머신. 확인 버튼을 누르면 테넌트가 생성되고
+   * 로그인된 상태로 홈으로 이동합니다.
+   */
+  signupVerify: {
+    loading: "가입 내용을 확인하는 중…",
+    intro: "다음 내용으로 조직을 생성합니다. 비밀번호를 설정하세요.",
+    passwordLabel: "비밀번호(12자 이상)",
+    passwordConfirmLabel: "비밀번호(확인)",
+    passwordMismatch: "비밀번호가 일치하지 않습니다",
+    passwordTooShort: "비밀번호는 12자 이상으로 입력하세요",
+    organizationLabel: "조직명",
+    nameLabel: "이름",
+    emailLabel: "이메일 주소",
+    submit: "확인하고 시작하기",
+    submitting: "생성 중…",
+    created: "조직이 생성되었습니다. 이동합니다…",
+    invalidTitle: "이 확인 링크는 유효하지 않습니다",
+    invalidMessage: "이 확인 링크는 유효하지 않거나 이미 사용되었습니다. 이미 가입했다면 로그인 화면에서 들어가세요.",
+    expiredTitle: "이 확인 링크는 만료되었습니다",
+    expiredMessage: "확인 링크의 유효 기간(24시간)이 지났습니다. 번거로우시겠지만 처음부터 다시 가입해 주세요.",
+    sessionIssuanceFailedTitle: "조직이 생성되었습니다",
+    sessionIssuanceFailedMessage: "조직이 생성되었습니다. 로그인 페이지에서 로그인하세요.",
+    goToLogin: "로그인 페이지로",
+    goToSignup: "신규 가입으로",
+    errors: {
+      invalid_password: "비밀번호는 12자 이상으로 입력하세요",
+      invite_code_unavailable: "초대 코드를 더 이상 사용할 수 없습니다. 운영팀에 문의하세요",
+      rate_limited: "시도 횟수가 너무 많습니다. 잠시 기다린 후 다시 시도하세요",
+      default: "처리에 실패했습니다. 다시 시도하세요",
     },
   },
 

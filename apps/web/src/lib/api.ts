@@ -747,6 +747,32 @@ export interface InvitationPreviewDto {
   email: string;
 }
 
+/** GET /signup/config(公開)。off の配備でも 200 で `{ mode: "off" }`。 */
+export interface SignupConfigDto {
+  mode: "off" | "invite" | "open";
+  /** Turnstile のサイトキー(off 以外のときだけ付く) */
+  turnstileSiteKey?: string;
+}
+
+/**
+ * POST /signup の入力。`inviteCode` は invite モードのときだけ必須。
+ * パスワードは含まない(確認リンクを踏んだ本人が確認画面で設定する — apps/api の routes/signup.ts 冒頭)。
+ */
+export interface SignupInput {
+  email: string;
+  organizationName: string;
+  adminName: string;
+  inviteCode?: string;
+  turnstileToken: string;
+}
+
+/** GET /signup/verify/:token(公開)のレスポンス。確認画面の表示用(パスワードは含まない)。 */
+export interface SignupPreviewDto {
+  organizationName: string;
+  adminName: string;
+  email: string;
+}
+
 /**
  * パスワードリセットの管理者発行(2026-08-23 Tier 0 その4 追加、招待と同型)。
  * POST /members/:id/password-resets のレスポンスのみ、平文トークンを含む(この後は二度と
@@ -1797,6 +1823,33 @@ export const api = {
     password: string,
   ): Promise<{ user: AuthUser } | { accountActivated: true; error: "session_issuance_failed" }> {
     return request(`/invitations/${encodeURIComponent(token)}/accept`, { method: "POST", body: JSON.stringify({ password }) });
+  },
+
+  /** GET /signup/config(公開)。ログイン画面の「新規登録」リンク表示と登録フォームの構成に使う。 */
+  async getSignupConfig(): Promise<SignupConfigDto> {
+    return request("/signup/config");
+  },
+
+  /** POST /signup(公開)。202 で確認メールを送った旨だけが返る(既存メールかどうかは区別されない)。 */
+  async signup(input: SignupInput): Promise<{ status: "verification_sent" }> {
+    return request("/signup", { method: "POST", body: JSON.stringify(input) });
+  },
+
+  /** GET /signup/verify/:token(公開)。404 = 無効/使用済み、410 = 期限切れ。 */
+  async getSignupPreview(token: string): Promise<SignupPreviewDto> {
+    return request(`/signup/verify/${encodeURIComponent(token)}`);
+  },
+
+  /**
+   * POST /signup/verify/:token(公開)。body の `password` で管理者アカウントを作り、テナントが作られ、セッション Cookie が発行されてログイン済みになる
+   * (acceptInvitation と同じく、セッション発行だけ失敗した場合は 200 のまま
+   * `{ accountActivated: true, error: "session_issuance_failed" }` が返る)。
+   */
+  async confirmSignup(
+    token: string,
+    password: string,
+  ): Promise<{ user: AuthUser } | { accountActivated: true; error: "session_issuance_failed" }> {
+    return request(`/signup/verify/${encodeURIComponent(token)}`, { method: "POST", body: JSON.stringify({ password }) });
   },
 
   /**

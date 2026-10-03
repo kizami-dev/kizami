@@ -294,6 +294,9 @@ export const ja = {
     passwordLabel: "パスワード",
     submit: "ログイン",
     submitting: "ログイン中…",
+    /** セルフサインアップ(SIGNUP_MODE が off 以外のときだけ表示、2026-10-03)。 */
+    signupPrompt: "はじめての方は",
+    signupLink: "新規登録",
     /**
      * ログイン(POST /auth/login)のエラーマッピング(lib/messages.ts の mapLoginErrorMessage)。
      * 2026-08-24: 総当たり対策のレート制限(429 rate_limited)を API 側に入れたのに合わせ、
@@ -401,6 +404,77 @@ export const ja = {
     errors: {
       invalid_password: "パスワードは12文字以上で入力してください",
       /** トークン推測の総当たり対策(429 rate_limited、2026-08-24 API 側に追加)。 */
+      rate_limited: "試行回数が多すぎます。しばらく待ってからやり直してください",
+      default: "処理に失敗しました。もう一度お試しください",
+    },
+  },
+
+  /**
+   * セルフサインアップ画面(/signup、認証ガード無し・公開、KIZAMI Cloud、2026-10-03)。
+   * ログイン・招待受諾と同じ「紙白+中央カード」。SIGNUP_MODE が off の配備では
+   * GET /signup/config が mode: "off" を返し、この画面は案内だけを出す(フォームは出さない)。
+   * 登録後は確認メールのリンク(/signup/verify/[token])でテナントが作られる。
+   */
+  signup: {
+    title: "新規登録",
+    tagline: "組織を作って、1分単位の勤怠管理をはじめましょう",
+    loading: "読み込んでいます…",
+    closedTitle: "新規登録は受け付けていません",
+    closedMessage: "このサービスでは現在、新規登録を受け付けていません。",
+    organizationNameLabel: "組織名(会社名)",
+    adminNameLabel: "あなたの氏名",
+    emailLabel: "メールアドレス",
+    inviteCodeLabel: "招待コード",
+    inviteCodeHint: "運営からお知らせした招待コードを入力してください",
+    turnstileRequired: "「ロボットではありません」の確認を完了してください",
+    submit: "確認メールを送る",
+    submitting: "送信しています…",
+    sentTitle: "確認メールを送りました",
+    sentMessage: (email: string) =>
+      `${email} 宛に確認メールを送りました。メール内のリンクを開くと登録が完了します(24時間有効)。届かない場合は迷惑メールフォルダをご確認ください。`,
+    backToLogin: "ログイン画面へ戻る",
+    haveAccount: "すでにアカウントをお持ちの方は",
+    errors: {
+      invalid_email: "メールアドレスの形式が正しくありません",
+      invalid_organization_name: "組織名を入力してください",
+      invalid_name: "氏名を入力してください",
+      invalid_invite_code: "招待コードが無効です。コードをご確認ください",
+      turnstile_failed: "確認に失敗しました。もう一度お試しください",
+      turnstile_unavailable: "確認サービスに接続できませんでした。しばらくしてからやり直してください",
+      rate_limited: "試行回数が多すぎます。しばらく待ってからやり直してください",
+      default: "登録に失敗しました。もう一度お試しください",
+    },
+  },
+
+  /**
+   * サインアップのメール確認画面(/signup/verify/[token]、認証ガード無し・公開、2026-10-03)。
+   * 招待受諾(inviteAccept)と同型の状態機械。確認ボタンを押した時点でテナントが作られ、
+   * そのままログイン状態でホームへ移動する。
+   */
+  signupVerify: {
+    loading: "登録内容を確認しています…",
+    intro: "次の内容で組織を作成します。パスワードを設定してください。",
+    passwordLabel: "パスワード(12文字以上)",
+    passwordConfirmLabel: "パスワード(確認)",
+    passwordMismatch: "パスワードが一致しません",
+    passwordTooShort: "パスワードは12文字以上で入力してください",
+    organizationLabel: "組織名",
+    nameLabel: "氏名",
+    emailLabel: "メールアドレス",
+    submit: "確認して始める",
+    submitting: "作成しています…",
+    created: "組織を作成しました。移動しています…",
+    invalidTitle: "この確認リンクは無効です",
+    invalidMessage: "この確認リンクは無効か、すでに使用済みです。登録済みの場合はログイン画面からお入りください。",
+    expiredTitle: "この確認リンクは期限切れです",
+    expiredMessage: "確認リンクの有効期限(24時間)が切れました。お手数ですが、もう一度新規登録からやり直してください。",
+    sessionIssuanceFailedTitle: "組織を作成しました",
+    sessionIssuanceFailedMessage: "組織は作成されました。ログインページからサインインしてください。",
+    goToLogin: "ログインページへ",
+    goToSignup: "新規登録へ",
+    errors: {
+      invalid_password: "パスワードは12文字以上で入力してください",
+      invite_code_unavailable: "招待コードが使えなくなっています。運営にお問い合わせください",
       rate_limited: "試行回数が多すぎます。しばらく待ってからやり直してください",
       default: "処理に失敗しました。もう一度お試しください",
     },

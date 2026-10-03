@@ -83,6 +83,10 @@ export const mapTwoFactorErrorMessage = makeErrorMapper(() => messages.settingsS
  * 404/410 は画面全体の状態(無効・期限切れ)へ分岐するため、呼び出し側で先に処理する。
  */
 export const mapInviteAcceptErrorMessage = makeErrorMapper(() => messages.inviteAccept.errors);
+/** セルフサインアップ(POST /signup、2026-10-03 追加)のエラーマッピング。 */
+export const mapSignupErrorMessage = makeErrorMapper(() => messages.signup.errors);
+/** サインアップの確認(POST /signup/verify/:token)のエラーマッピング。404/410 は画面状態へ分岐するため呼び出し側で先に処理する。 */
+export const mapSignupVerifyErrorMessage = makeErrorMapper(() => messages.signupVerify.errors);
 /** パスワードリセット受諾(POST /password-resets/:token/use)のエラーマッピング(2026-08-24 追加)。 */
 export const mapPasswordResetAcceptErrorMessage = makeErrorMapper(() => messages.passwordResetAccept.errors);
 /** 打刻修正申請(POST /corrections・:id/approve・reject・withdraw)のエラーマッピング。 */
