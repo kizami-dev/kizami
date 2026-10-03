@@ -56,6 +56,22 @@ kubectl -n kizami-cloud rollout status deploy/kizami-cloud
 
 マイグレーション(`migrations-pg/`)は api 起動時に自動適用される。
 
+### 適用後のネットワーク分離の確認
+
+`cloud.yaml` 末尾の NetworkPolicy(既定全拒否)が意図どおり効いているかを、公開前に確かめる:
+
+```sh
+# 1. 正規経路: samurai-watch(10.10.0.2)からは届く
+ssh samurai-watch 'curl -s -o /dev/null -w "%{http_code}\n" http://10.10.0.3:30098/healthz'   # 200
+# 2. 直接到達: samurai-matrix 自身の VCN アドレスなど、他の送信元からは届かない(タイムアウト)
+# 3. 横移動: 他 namespace の Pod から postgres.kizami-cloud.svc:5432 に届かない
+kubectl -n kizami-demo run np-check --rm -it --restart=Never --image=postgres:17-alpine -- \
+  pg_isready -h postgres.kizami-cloud.svc -t 5                                                # no response
+# 4. SSRF: api コンテナからプライベート帯に出られない
+kubectl -n kizami-cloud exec deploy/kizami-cloud -c api -- \
+  node -e 'fetch("http://10.10.0.2:9090").then(()=>console.log("REACHABLE"),()=>console.log("blocked"))'  # blocked
+```
+
 ## 公開経路
 
 Cloudflare Tunnel の ingress(Watcher SV トンネル)に追加する。web イメージは API の
