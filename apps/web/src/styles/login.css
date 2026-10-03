@@ -253,3 +253,27 @@
   padding: var(--space-2) var(--space-3);
   font-size: 0.85rem;
 }
+
+/* セルフサインアップ(2026-10-03): ログイン画面の「新規登録」リンクと、登録フォームの補足。 */
+.login-signup-link {
+  margin-top: var(--space-5);
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--k-ink-soft);
+}
+
+.login-signup-link a {
+  color: var(--k-key);
+  font-weight: 700;
+}
+
+.signup-hint {
+  color: var(--k-ink-soft);
+  font-size: 0.78rem;
+}
+
+.signup-turnstile {
+  display: flex;
+  justify-content: center;
+  min-height: 65px;
+}

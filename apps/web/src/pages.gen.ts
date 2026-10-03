@@ -65,6 +65,10 @@ import type { getConfig as File_SettingsTenantProfile_getConfig } from './pages/
 import type { getConfig as File_Shifts_getConfig } from './pages/shifts';
 // prettier-ignore
 import type { getConfig as File_ShiftsMe_getConfig } from './pages/shifts/me';
+// prettier-ignore
+import type { getConfig as File_SignupVerifyToken_getConfig } from './pages/signup/verify/[token]';
+// prettier-ignore
+import type { getConfig as File_Signup_getConfig } from './pages/signup';
 
 // prettier-ignore
 type Page =
@@ -99,7 +103,9 @@ type Page =
 | ({ path: '/settings/sso' } & GetConfigResponse<typeof File_SettingsSso_getConfig>)
 | ({ path: '/settings/tenant-profile' } & GetConfigResponse<typeof File_SettingsTenantProfile_getConfig>)
 | ({ path: '/shifts' } & GetConfigResponse<typeof File_Shifts_getConfig>)
-| ({ path: '/shifts/me' } & GetConfigResponse<typeof File_ShiftsMe_getConfig>);
+| ({ path: '/shifts/me' } & GetConfigResponse<typeof File_ShiftsMe_getConfig>)
+| ({ path: '/signup/verify/[token]' } & GetConfigResponse<typeof File_SignupVerifyToken_getConfig>)
+| ({ path: '/signup' } & GetConfigResponse<typeof File_Signup_getConfig>);
 
 // prettier-ignore
 type Layout =

@@ -297,6 +297,9 @@ export const en = {
     passwordLabel: "Password",
     submit: "Log in",
     submitting: "Logging in…",
+    /** Self-service sign-up (shown only when SIGNUP_MODE is not off, 2026-10-03). */
+    signupPrompt: "New here?",
+    signupLink: "Create an account",
     errors: {
       invalid_credentials: "Incorrect email address or password",
       rate_limited: "Too many attempts. Please wait a while before trying again",
@@ -385,6 +388,77 @@ export const en = {
     errors: {
       invalid_password: "Password must be at least 12 characters",
       rate_limited: "Too many attempts. Please wait a while before trying again",
+      default: "Something went wrong. Please try again",
+    },
+  },
+
+  /**
+   * Self-service sign-up screen (/signup, no auth guard, public, KIZAMI Cloud, 2026-10-03).
+   * Same "paper-white centered card" as login / invite acceptance. When SIGNUP_MODE is off,
+   * GET /signup/config returns mode: "off" and this screen shows only a notice (no form).
+   * After registering, the link in the confirmation email (/signup/verify/[token]) creates the tenant.
+   */
+  signup: {
+    title: "Create an account",
+    tagline: "Set up your organization and start tracking time by the minute",
+    loading: "Loading…",
+    closedTitle: "Sign-up is closed",
+    closedMessage: "This service is not accepting new sign-ups right now.",
+    organizationNameLabel: "Organization (company) name",
+    adminNameLabel: "Your name",
+    emailLabel: "Email address",
+    inviteCodeLabel: "Invite code",
+    inviteCodeHint: "Enter the invite code you received from us",
+    turnstileRequired: "Please complete the human verification",
+    submit: "Send confirmation email",
+    submitting: "Sending…",
+    sentTitle: "Confirmation email sent",
+    sentMessage: (email: string) =>
+      `We sent a confirmation email to ${email}. Open the link in it to finish signing up (valid for 24 hours). If it does not arrive, check your spam folder.`,
+    backToLogin: "Back to login",
+    haveAccount: "Already have an account?",
+    errors: {
+      invalid_email: "The email address is not valid",
+      invalid_organization_name: "Enter an organization name",
+      invalid_name: "Enter your name",
+      invalid_invite_code: "The invite code is not valid. Please check it",
+      turnstile_failed: "Verification failed. Please try again",
+      turnstile_unavailable: "Could not reach the verification service. Please try again later",
+      rate_limited: "Too many attempts. Please wait a while and try again",
+      default: "Sign-up failed. Please try again",
+    },
+  },
+
+  /**
+   * Sign-up email confirmation screen (/signup/verify/[token], no auth guard, public, 2026-10-03).
+   * Same state machine as inviteAccept. Pressing the confirm button creates the tenant and
+   * moves to the home screen, already signed in.
+   */
+  signupVerify: {
+    loading: "Checking your registration…",
+    intro: "An organization will be created with the following details. Please set a password.",
+    passwordLabel: "Password (12+ characters)",
+    passwordConfirmLabel: "Password (confirm)",
+    passwordMismatch: "Passwords do not match",
+    passwordTooShort: "Password must be at least 12 characters",
+    organizationLabel: "Organization",
+    nameLabel: "Name",
+    emailLabel: "Email address",
+    submit: "Confirm and get started",
+    submitting: "Creating…",
+    created: "Your organization has been created. Redirecting…",
+    invalidTitle: "This confirmation link is not valid",
+    invalidMessage: "This confirmation link is invalid or has already been used. If you have already registered, please log in.",
+    expiredTitle: "This confirmation link has expired",
+    expiredMessage: "The confirmation link (valid for 24 hours) has expired. Please sign up again.",
+    sessionIssuanceFailedTitle: "Your organization has been created",
+    sessionIssuanceFailedMessage: "Your organization was created. Please sign in from the login page.",
+    goToLogin: "Go to login",
+    goToSignup: "Go to sign-up",
+    errors: {
+      invalid_password: "Password must be at least 12 characters",
+      invite_code_unavailable: "The invite code can no longer be used. Please contact us",
+      rate_limited: "Too many attempts. Please wait a while and try again",
       default: "Something went wrong. Please try again",
     },
   },

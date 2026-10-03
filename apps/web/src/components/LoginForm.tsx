@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
-import { useRouter } from "waku";
+import { Link, useRouter } from "waku";
 import { api, ApiError, MultipleTenantsError, type LoginTenantOption, type SsoAvailableTenant } from "../lib/api";
 import { mapLoginErrorMessage, mapLoginTotpErrorMessage, messages } from "../lib/messages";
 import { KizamiMark } from "./KizamiMark";
@@ -28,6 +28,12 @@ export function LoginForm() {
   /** 直近に照会したメールアドレス(同じ値で二重に叩かないため)。 */
   const [ssoLookedUpEmail, setSsoLookedUpEmail] = useState<string | null>(null);
   const [ssoStarting, setSsoStarting] = useState(false);
+  /**
+   * 「新規登録」リンクを出すか(セルフサインアップ、2026-10-03)。GET /signup/config の mode が
+   * off 以外のときだけ true。照会に失敗しても黙って false のまま(セルフホストでは常に off で、
+   * ログイン画面の見た目は従来と一切変わらない)。
+   */
+  const [signupEnabled, setSignupEnabled] = useState(false);
 
   /**
    * 二要素認証(TOTP)の2段目(2026-08-27 追加)。POST /auth/login が **200 のまま**
@@ -66,6 +72,21 @@ export function LoginForm() {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .getSignupConfig()
+      .then((config) => {
+        if (!cancelled) setSignupEnabled(config.mode !== "off");
+      })
+      .catch(() => {
+        // 通信エラー等はリンクを出さないだけ
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   /** メール欄の blur で「この人が SSO を使える会社」を照会する(失敗しても黙って諦める)。 */
@@ -369,6 +390,12 @@ export function LoginForm() {
             ) : null}
           </form>
         )}
+
+        {signupEnabled && !awaitingTotp && !selectingTenant ? (
+          <p className="login-signup-link">
+            {messages.login.signupPrompt} <Link to="/signup">{messages.login.signupLink}</Link>
+          </p>
+        ) : null}
       </div>
     </div>
   );
