@@ -1,0 +1,256 @@
+# app.kizami.dev — KIZAMI Cloud(hosted mode)Phase 1 = Closed Beta。
+#
+# 設計: docs/design/saas.md。手順と前提: 同ディレクトリの README.md。
+#
+# - 自分用本番(ns kizami)・デモ(ns kizami-demo)とは完全分離した専用 namespace。
+# - DB は PostgreSQL(単一 StatefulSet + local-path PVC)。HA は現段階では過剰。
+# - 全 Pod を samurai-matrix に固定する。local-path の PV はノードにピン留めされるうえ、
+#   このクラスタはノードをまたぐ Pod 間通信を前提にしない方針のため、
+#   api/worker → postgres を同一ノード内で完結させる。
+# - SQLite 構成と違い PVC を掴まないので、api+web は RollingUpdate で無停止更新できる。
+#   worker は日次スキャンの二重実行を避けるため別 Deployment に分けて 1 固定・Recreate。
+# - Secret はすべて事前作成が必要(README.md「Secret の作成」)。
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kizami-cloud
+---
+# ---------------------------------------------------------------- PostgreSQL
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: kizami-cloud
+spec:
+  selector: {app: postgres}
+  ports: [{port: 5432, targetPort: 5432}]
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: kizami-cloud
+spec:
+  serviceName: postgres
+  replicas: 1
+  # namespace や StatefulSet を消しても勤怠データの PVC は残す(法定保存義務のある記録)
+  persistentVolumeClaimRetentionPolicy: {whenDeleted: Retain, whenScaled: Retain}
+  selector:
+    matchLabels: {app: postgres}
+  template:
+    metadata:
+      labels: {app: postgres}
+    spec:
+      nodeSelector: {kubernetes.io/hostname: samurai-matrix}
+      containers:
+        - name: postgres
+          # CI の PG レグと同じメジャー(docs/design/db-dialects.md)
+          image: postgres:17-alpine
+          ports: [{containerPort: 5432}]
+          env:
+            - name: POSTGRES_USER
+              valueFrom: {secretKeyRef: {name: kizami-cloud-postgres, key: user}}
+            - name: POSTGRES_PASSWORD
+              valueFrom: {secretKeyRef: {name: kizami-cloud-postgres, key: password}}
+            - name: POSTGRES_DB
+              valueFrom: {secretKeyRef: {name: kizami-cloud-postgres, key: db}}
+            # マウント直下は lost+found 等が混ざりうるため1段下げる(公式イメージの推奨)
+            - {name: PGDATA, value: /var/lib/postgresql/data/pgdata}
+          readinessProbe:
+            exec:
+              command: ["sh", "-c", "pg_isready -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\""]
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests: {cpu: 50m, memory: 256Mi}
+            limits: {memory: 1Gi}
+          volumeMounts: [{name: data, mountPath: /var/lib/postgresql/data}]
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        storageClassName: local-path
+        resources:
+          requests: {storage: 10Gi}
+---
+# ---------------------------------------------------------------- api + web
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kizami-cloud
+  namespace: kizami-cloud
+  labels: {app: kizami-cloud}
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: {maxSurge: 1, maxUnavailable: 0}
+  selector:
+    matchLabels: {app: kizami-cloud}
+  template:
+    metadata:
+      labels: {app: kizami-cloud}
+    spec:
+      nodeSelector: {kubernetes.io/hostname: samurai-matrix}
+      containers:
+        - name: api
+          image: ghcr.io/kizami-dev/kizami-api:latest
+          imagePullPolicy: Always
+          ports: [{name: api-http, containerPort: 3001}]
+          env:
+            # postgres:// を渡すだけで PG ダイアレクトで起動し、migrations-pg が自動適用される
+            - name: DATABASE_URL
+              valueFrom: {secretKeyRef: {name: kizami-cloud-database, key: url}}
+            # hosted 専用に新規発行した鍵。自分用本番・デモと共有しない(saas.md「実行基盤」)
+            - name: KIZAMI_ENCRYPTION_KEY
+              valueFrom: {secretKeyRef: {name: kizami-cloud-encryption, key: key}}
+            - {name: APP_BASE_URL, value: "https://app.kizami.dev"}
+            - {name: CORS_ORIGIN, value: "https://app.kizami.dev"}
+            # Closed Beta は招待コード制。Public Launch で "open" に切り替える
+            - {name: SIGNUP_MODE, value: "invite"}
+            - name: TURNSTILE_SITE_KEY
+              valueFrom: {secretKeyRef: {name: kizami-cloud-turnstile, key: siteKey}}
+            - name: TURNSTILE_SECRET_KEY
+              valueFrom: {secretKeyRef: {name: kizami-cloud-turnstile, key: secretKey}}
+            # サインアップ確認メール(システムメール)。Amazon SES 東京の SMTP インターフェース
+            - name: SYSTEM_SMTP_URL
+              valueFrom: {secretKeyRef: {name: kizami-cloud-mail, key: smtpUrl}}
+            - {name: SYSTEM_MAIL_FROM, value: "KIZAMI <no-reply@kizami.dev>"}
+            - name: METRICS_TOKEN
+              valueFrom: {secretKeyRef: {name: kizami-cloud-metrics, key: token, optional: true}}
+            - name: SENTRY_DSN
+              valueFrom: {secretKeyRef: {name: kizami-cloud-sentry, key: dsn, optional: true}}
+          readinessProbe:
+            httpGet: {path: /healthz, port: 3001}
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          resources:
+            requests: {cpu: 50m, memory: 192Mi}
+            limits: {memory: 512Mi}
+        - name: web
+          image: ghcr.io/kizami-dev/kizami-web:latest
+          imagePullPolicy: Always
+          ports: [{name: web-http, containerPort: 3000}]
+          readinessProbe:
+            httpGet: {path: /, port: 3000}
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          resources:
+            requests: {cpu: 25m, memory: 96Mi}
+            limits: {memory: 256Mi}
+---
+# ---------------------------------------------------------------- worker
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kizami-cloud-worker
+  namespace: kizami-cloud
+  labels: {app: kizami-cloud-worker}
+spec:
+  # 日次スキャン(リマインド・36協定アラート・有給予告・pending_signups 掃除)の二重実行を
+  # 避けるため 1 固定。更新時も新旧が並ばないよう Recreate
+  replicas: 1
+  strategy: {type: Recreate}
+  selector:
+    matchLabels: {app: kizami-cloud-worker}
+  template:
+    metadata:
+      labels: {app: kizami-cloud-worker}
+    spec:
+      nodeSelector: {kubernetes.io/hostname: samurai-matrix}
+      containers:
+        - name: worker
+          image: ghcr.io/kizami-dev/kizami-api:latest
+          imagePullPolicy: Always
+          command: ["node_modules/.bin/tsx", "src/worker.ts"]
+          env:
+            - name: DATABASE_URL
+              valueFrom: {secretKeyRef: {name: kizami-cloud-database, key: url}}
+            - name: KIZAMI_ENCRYPTION_KEY
+              valueFrom: {secretKeyRef: {name: kizami-cloud-encryption, key: key}}
+            # キューは同一 Pod 内のサイドカー(deploy/k8s と同じ理由: 起動トリガーでしかなく、
+            # 正しさは DB の定期スキャンが担保する)
+            - {name: REDIS_URL, value: "redis://127.0.0.1:6379"}
+            - name: SENTRY_DSN
+              valueFrom: {secretKeyRef: {name: kizami-cloud-sentry, key: dsn, optional: true}}
+          resources:
+            requests: {cpu: 25m, memory: 128Mi}
+            limits: {memory: 384Mi}
+        - name: valkey
+          image: valkey/valkey:8-alpine
+          args: ["--save", "", "--appendonly", "no"]
+          resources:
+            requests: {cpu: 10m, memory: 32Mi}
+            limits: {memory: 128Mi}
+---
+# ---------------------------------------------------------------- 公開(Cloudflare Tunnel から WireGuard 経由で到達)
+# externalTrafficPolicy: Local — samurai-matrix(10.10.0.3)の NodePort に来た通信を
+# 同ノードの Pod へ直接渡す(ノードをまたぐ転送をしない)。トンネルの ingress は
+# 10.10.0.3:<nodePort> を指すこと。
+apiVersion: v1
+kind: Service
+metadata:
+  name: kizami-cloud-web
+  namespace: kizami-cloud
+spec:
+  type: NodePort
+  externalTrafficPolicy: Local
+  selector: {app: kizami-cloud}
+  ports: [{name: http, port: 3000, targetPort: 3000, nodePort: 30097}]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kizami-cloud-api
+  namespace: kizami-cloud
+spec:
+  type: NodePort
+  externalTrafficPolicy: Local
+  selector: {app: kizami-cloud}
+  ports: [{name: http, port: 3001, targetPort: 3001, nodePort: 30098}]
+---
+# ---------------------------------------------------------------- バックアップ(dump までを担当)
+# JST 3:20 に pg_dump -Fc をノードの /var/backups/kizami-cloud へ書き出す。
+# R2 への転送はホスト側の r2-backup.sh(infra リポジトリ ansible 管理、JST 3:45)が行う —
+# R2 の認証情報をクラスタに持ち込まないための分担。
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: pg-dump
+  namespace: kizami-cloud
+spec:
+  schedule: "20 3 * * *"
+  timeZone: Asia/Tokyo
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: Never
+          nodeSelector: {kubernetes.io/hostname: samurai-matrix}
+          containers:
+            - name: pg-dump
+              image: postgres:17-alpine
+              command: ["/bin/sh", "-c"]
+              args:
+                - |
+                  set -eu
+                  # 書き途中のファイルをホスト側が拾わないよう、一時名で書いてから rename する
+                  pg_dump -Fc -f /backup/kizami-cloud.dump.tmp
+                  mv /backup/kizami-cloud.dump.tmp /backup/kizami-cloud.dump
+              env:
+                - {name: PGHOST, value: postgres}
+                - name: PGUSER
+                  valueFrom: {secretKeyRef: {name: kizami-cloud-postgres, key: user}}
+                - name: PGPASSWORD
+                  valueFrom: {secretKeyRef: {name: kizami-cloud-postgres, key: password}}
+                - name: PGDATABASE
+                  valueFrom: {secretKeyRef: {name: kizami-cloud-postgres, key: db}}
+              volumeMounts: [{name: backup, mountPath: /backup}]
+          volumes:
+            - name: backup
+              hostPath: {path: /var/backups/kizami-cloud, type: DirectoryOrCreate}
