@@ -19,6 +19,7 @@ import {
   workPolicyVersions,
   type Database,
 } from "@kizami/db";
+import { Hono } from "hono";
 import { createApp } from "../src/app.js";
 import { RATE_LIMITS } from "../src/lib/rate-limit.js";
 import { hashSignupInviteCode } from "../src/lib/signup-invite-code.js";
@@ -547,6 +548,29 @@ describe("セルフサインアップ", () => {
       expect(await h.db.select().from(tenants)).toHaveLength(0);
     });
 
+    it("再送スロットル: 大文字小文字だけ違うメールでも同じ宛先として抑止される(メールは出ず、既存の pending も1件のまま)", async () => {
+      const h = await harness("open");
+      await register(h, { email: "victim@example.com" });
+      for (const variant of ["Victim@Example.com", "VICTIM@EXAMPLE.COM", "  victim@example.com  "]) {
+        const res = await post(h.app, "/signup", signupBody({ email: variant }));
+        expect(res.status).toBe(202);
+      }
+      expect(h.mails).toHaveLength(1);
+      expect(await h.db.select().from(pendingSignups)).toHaveLength(1);
+    });
+
+    it("再送スロットル: 同じメールで同時に登録が来ても、pending は1件・メールは1通", async () => {
+      const h = await harness("open");
+      const results = await Promise.all(
+        Array.from({ length: 6 }, (_, i) =>
+          post(h.app, "/signup", signupBody({ email: i % 2 === 0 ? "race@example.com" : "RACE@example.com" }), { "cf-connecting-ip": `203.0.113.${i + 1}` }),
+        ),
+      );
+      expect(results.map((r) => r.status)).toEqual([202, 202, 202, 202, 202, 202]);
+      expect(await h.db.select().from(pendingSignups)).toHaveLength(1);
+      expect(h.mails).toHaveLength(1);
+    });
+
     it("再送スロットル: 同じメールへの5分以内の再登録は 202 のまま何もしない(メールも出さず、最初のリンクも有効のまま)。5分後は再発行できる", async () => {
       const h = await harness("open");
       const first = await register(h);
@@ -576,6 +600,40 @@ describe("セルフサインアップ", () => {
       expect(Number(blocked.headers.get("retry-after"))).toBeGreaterThan(0);
 
       expect((await post(h.app, "/signup", signupBody(), { "cf-connecting-ip": "203.0.113.2" })).status).toBe(202);
+    });
+
+    it("登録処理に到達する全経路(/signup と、node.ts と同じ二重マウントの /api/signup)が同じバケツで 429 になる。末尾スラッシュは登録処理に到達しない", async () => {
+      const h = await harness("open");
+      const root = new Hono();
+      root.route("/api", h.app);
+      root.route("/", h.app);
+      const ip = { "cf-connecting-ip": "203.0.113.77" };
+      const send = (path: string, email: string) =>
+        root.request(path, {
+          method: "POST",
+          headers: { "content-type": "application/json", ...ip },
+          body: JSON.stringify(signupBody({ email })),
+        });
+
+      // 末尾スラッシュ付きは Hono の厳密なパス照合で登録ハンドラに到達しない(認証ミドルウェアで
+      // 401 になる)。到達しない = 登録もメールも起きず、レート制限の迂回路にもならない。
+      for (const path of ["/signup/", "/api/signup/"]) {
+        const res = await send(path, "slash@example.com");
+        expect([401, 404], path).toContain(res.status);
+      }
+      expect(h.mails).toHaveLength(0);
+      expect(await h.db.select().from(pendingSignups)).toHaveLength(0);
+
+      // 到達する経路は /signup と /api/signup で、合わせて同じバケツを消費する
+      const reachable = ["/signup", "/api/signup", "/signup", "/api/signup", "/signup"];
+      expect(reachable).toHaveLength(RATE_LIMITS.signupPerIp.max);
+      for (const [i, path] of reachable.entries()) {
+        expect((await send(path, `u${i}@example.com`)).status, path).toBe(202);
+      }
+      for (const path of ["/signup", "/api/signup"]) {
+        expect((await send(path, "extra@example.com")).status, path).toBe(429);
+      }
+      expect(h.mails).toHaveLength(RATE_LIMITS.signupPerIp.max);
     });
 
     it("確認リンクは招待・リセットと同じトークン経路の上限(20回/15分)で 429 になり、GET /signup/config は対象外", async () => {

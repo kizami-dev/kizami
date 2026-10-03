@@ -7,7 +7,7 @@
  *
  * - 招待コード: create / list / revoke / ハッシュ検索 / 有効性判定(消費はしない)/
  *   `consumeSignupInviteCode`(条件付き UPDATE で +1。同時確認でも max_uses を超えない)
- * - pending_signups: `replacePendingSignup`(同一メールの未消費行を消して新規発行、1トランザクション)/
+ * - pending_signups: `upsertPendingSignupUnlessRecent`(同一メールの未消費行を原子的に置き換え、直近なら抑止)/
  *   ハッシュ検索 / `consumePendingSignup`(未消費・未期限を条件にした UPDATE。二重確認の排他)/
  *   `deleteStalePendingSignups`(掃除)
  * - `listTenantsWithActiveUserCount`: 運用者 CLI の `tenant list` 用の唯一のテナント横断読み取り
@@ -113,7 +113,10 @@ export async function consumeSignupInviteCode(
 // ---- pending_signups -------------------------------------------------------
 
 export interface NewPendingSignupInput {
+  /** 申請者が入力したメール(trim 済み)。管理者ユーザーの作成にそのまま使う */
   email: string;
+  /** 照合キー(trim + 小文字化)。再送スロットル・置き換えの単位 */
+  emailKey: string;
   organizationName: string;
   adminName: string;
   /** 確認トークンの SHA-256(hex) */
@@ -125,47 +128,47 @@ export interface NewPendingSignupInput {
 }
 
 /**
- * 同一メールの**未消費**の pending を消してから新規発行する(1トランザクション)。
- * 再登録・メール再送のたびに行が積み上がらず、古い確認リンクは無効になる(最新のメールだけ有効)。
- * 申請者のメールアドレス・組織名を不必要に残さない意味もある。
+ * pending を作る。ただし**同じメール(emailKey)の未消費 pending が `throttleMinutes` 分以内に
+ * 作られていれば何もしない**(null を返す。呼び出し側はメールを送らない)。それより古い
+ * (期限切れを含む)未消費行があれば、その行を新しい内容に置き換える(古いリンクは無効になる)。
+ *
+ * 「判定してから書く」を **1本の `INSERT ... ON CONFLICT (email_key) WHERE consumed_at IS NULL
+ * DO UPDATE ... WHERE created_at <= 閾値 RETURNING`** で行う。部分 UNIQUE(schema/signup.ts)が
+ * 競合を検出し、更新条件(閾値)は競合時に最新の行に対して評価されるので、同時に N 本来ても
+ * 行を得る(= メールを送る)のは1本だけで、残りは null になる。SQLite でも PostgreSQL
+ * (READ COMMITTED でも、ON CONFLICT DO UPDATE は競合行をロックして再評価する)でも成り立つ。
+ * トランザクションは要らない(1文で原子的)。
  */
-export async function replacePendingSignup(db: Database, input: NewPendingSignupInput): Promise<PendingSignup> {
-  return db.transaction(async (tx) => {
-    await tx.delete(pendingSignups).where(and(eq(pendingSignups.email, input.email), isNull(pendingSignups.consumedAt)));
-    const [row] = await tx
-      .insert(pendingSignups)
-      .values({
-        id: uuidv7(),
-        email: input.email,
-        organizationName: input.organizationName,
-        adminName: input.adminName,
-        tokenHash: input.tokenHash,
-        inviteCodeId: input.inviteCodeId,
-        expiresAt: input.expiresAt,
-        consumedAt: null,
-        tenantId: null,
-        createdAt: input.createdAt,
-      })
-      .returning();
-    if (!row) {
-      throw new Error("replacePendingSignup: insert returned no row");
-    }
-    return row;
-  });
-}
-
-/**
- * 同一メールの未消費 pending のうち最新の1件(登録の再送スロットルの判定用)。期限切れも含む —
- * 呼び出し側が created_at だけを見る。
- */
-export async function findLatestUnconsumedPendingSignupByEmail(db: Database | Transaction, email: string): Promise<PendingSignup | null> {
-  const rows = await db
-    .select()
-    .from(pendingSignups)
-    .where(and(eq(pendingSignups.email, email), isNull(pendingSignups.consumedAt)))
-    .orderBy(desc(pendingSignups.createdAt), desc(pendingSignups.id))
-    .limit(1);
-  return rows[0] ?? null;
+export async function upsertPendingSignupUnlessRecent(
+  db: Database | Transaction,
+  input: NewPendingSignupInput,
+  options: { throttleMinutes: number },
+): Promise<PendingSignup | null> {
+  const values = {
+    id: uuidv7(),
+    email: input.email,
+    emailKey: input.emailKey,
+    organizationName: input.organizationName,
+    adminName: input.adminName,
+    tokenHash: input.tokenHash,
+    inviteCodeId: input.inviteCodeId,
+    expiresAt: input.expiresAt,
+    consumedAt: null,
+    tenantId: null,
+    createdAt: input.createdAt,
+  };
+  const [row] = await db
+    .insert(pendingSignups)
+    .values(values)
+    .onConflictDoUpdate({
+      // 部分 UNIQUE の述語は非修飾の列名で書く(PostgreSQL は推論述語での修飾付き参照を拒否する)
+      target: pendingSignups.emailKey,
+      targetWhere: sql`consumed_at is null`,
+      set: values,
+      setWhere: sql`${pendingSignups.createdAt} <= ${input.createdAt - options.throttleMinutes}`,
+    })
+    .returning();
+  return row ?? null;
 }
 
 /** トークンのハッシュから1件探す。有効性(期限・消費済み)の判定は呼び出し側。 */

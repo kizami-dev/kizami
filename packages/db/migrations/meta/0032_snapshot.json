@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "12c01b39-f9db-4b17-bdcf-6eb28e913663",
+  "id": "9dfbd5d0-931b-4e6c-a1f7-f264e73af2a4",
   "prevId": "29550089-8672-48ab-96cb-d1aad91a77a6",
   "tables": {
     "allowance_definition_versions": {
@@ -2799,6 +2799,13 @@
           "notNull": true,
           "autoincrement": false
         },
+        "email_key": {
+          "name": "email_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
         "organization_name": {
           "name": "organization_name",
           "type": "text",
@@ -2864,12 +2871,13 @@
           ],
           "isUnique": true
         },
-        "pending_signups_email_idx": {
-          "name": "pending_signups_email_idx",
+        "pending_signups_email_key_unconsumed_idx": {
+          "name": "pending_signups_email_key_unconsumed_idx",
           "columns": [
-            "email"
+            "email_key"
           ],
-          "isUnique": false
+          "isUnique": true,
+          "where": "\"pending_signups\".\"consumed_at\" is null"
         },
         "pending_signups_expires_at_idx": {
           "name": "pending_signups_expires_at_idx",

@@ -8,13 +8,12 @@ import {
   consumeSignupInviteCode,
   createSignupInviteCode,
   deleteStalePendingSignups,
-  findLatestUnconsumedPendingSignupByEmail,
   findPendingSignupByTokenHash,
   findSignupInviteCodeByHash,
   isSignupInviteCodeUsable,
   listSignupInviteCodes,
   listTenantsWithActiveUserCount,
-  replacePendingSignup,
+  upsertPendingSignupUnlessRecent,
   revokeSignupInviteCode,
 } from "../src/queries/index.js";
 import { tenants, users } from "../src/schema/index.js";
@@ -41,8 +40,9 @@ describe.skipIf(!supportsTransactions)("signup system tables", () => {
     });
   }
 
-  const pending = (overrides: Partial<Parameters<typeof replacePendingSignup>[1]> = {}) => ({
+  const pending = (overrides: Partial<Parameters<typeof upsertPendingSignupUnlessRecent>[1]> = {}) => ({
     email: "a@example.com",
+    emailKey: overrides.email?.toLowerCase() ?? "a@example.com",
     organizationName: "A社",
     adminName: "管理者A",
     tokenHash: `t-${uuidv7()}`,
@@ -51,6 +51,13 @@ describe.skipIf(!supportsTransactions)("signup system tables", () => {
     createdAt: 0,
     ...overrides,
   });
+
+  /** 抑止なし(throttle 0 分)で作る。置き換え・消費・掃除のテスト用。 */
+  async function upsert(input: ReturnType<typeof pending>) {
+    const row = await upsertPendingSignupUnlessRecent(db, input, { throttleMinutes: 0 });
+    if (!row) throw new Error("unexpected throttle");
+    return row;
+  }
 
   it("招待コード: 作成・ハッシュ検索・一覧", async () => {
     const code = await newCode({ codeHash: "h1", note: "友人A" });
@@ -84,36 +91,65 @@ describe.skipIf(!supportsTransactions)("signup system tables", () => {
   });
 
   it("同一メールの未消費 pending は発行し直しで置き換わる", async () => {
-    const first = await replacePendingSignup(db, pending({ tokenHash: "t1" }));
-    const second = await replacePendingSignup(db, pending({ tokenHash: "t2" }));
+    const first = await upsert(pending({ tokenHash: "t1" }));
+    const second = await upsert(pending({ tokenHash: "t2" }));
     expect(await findPendingSignupByTokenHash(db, "t1")).toBeNull();
     expect((await findPendingSignupByTokenHash(db, "t2"))?.id).toBe(second.id);
     expect(first.id).not.toBe(second.id);
     // 別メールは影響を受けない
-    await replacePendingSignup(db, pending({ email: "b@example.com", tokenHash: "t3" }));
+    await upsert(pending({ email: "b@example.com", tokenHash: "t3" }));
     expect(await findPendingSignupByTokenHash(db, "t2")).not.toBeNull();
   });
 
-  it("findLatestUnconsumedPendingSignupByEmail は未消費の最新だけを返す", async () => {
-    expect(await findLatestUnconsumedPendingSignupByEmail(db, "a@example.com")).toBeNull();
-    const row = await replacePendingSignup(db, pending({ createdAt: 7 }));
-    expect((await findLatestUnconsumedPendingSignupByEmail(db, "a@example.com"))?.id).toBe(row.id);
-    await consumePendingSignup(db, { id: row.id, nowMinutes: 8 });
-    expect(await findLatestUnconsumedPendingSignupByEmail(db, "a@example.com")).toBeNull();
+  it("upsertPendingSignupUnlessRecent: 直近(throttle 以内)の未消費があれば何もせず null、古ければ置き換える", async () => {
+    const first = await upsertPendingSignupUnlessRecent(db, pending({ tokenHash: "t1", createdAt: 100 }), { throttleMinutes: 5 });
+    expect(first).not.toBeNull();
+    // 5分以内(境界の手前)は抑止され、既存行は変わらない
+    expect(await upsertPendingSignupUnlessRecent(db, pending({ tokenHash: "t2", createdAt: 104 }), { throttleMinutes: 5 })).toBeNull();
+    expect(await findPendingSignupByTokenHash(db, "t1")).not.toBeNull();
+    expect(await findPendingSignupByTokenHash(db, "t2")).toBeNull();
+    // ちょうど5分経てば置き換わる(古いリンクは無効)
+    const replaced = await upsertPendingSignupUnlessRecent(db, pending({ tokenHash: "t3", createdAt: 105 }), { throttleMinutes: 5 });
+    expect(replaced?.tokenHash).toBe("t3");
+    expect(await findPendingSignupByTokenHash(db, "t1")).toBeNull();
+  });
+
+  it("照合キー(emailKey)が同じなら大文字小文字違いでも同一扱い。email は入力どおり残る", async () => {
+    await upsertPendingSignupUnlessRecent(db, pending({ email: "Victim@Example.com", tokenHash: "t1", createdAt: 100 }), { throttleMinutes: 5 });
+    const second = await upsertPendingSignupUnlessRecent(db, pending({ email: "victim@example.com", tokenHash: "t2", createdAt: 101 }), {
+      throttleMinutes: 5,
+    });
+    expect(second).toBeNull();
+    expect((await findPendingSignupByTokenHash(db, "t1"))?.email).toBe("Victim@Example.com");
+  });
+
+  it("消費済みの行は部分 UNIQUE の対象外: 同じメールで新しい pending を作れる", async () => {
+    const first = await upsert(pending({ tokenHash: "t1" }));
+    await consumePendingSignup(db, { id: first.id, nowMinutes: 1 });
+    const second = await upsertPendingSignupUnlessRecent(db, pending({ tokenHash: "t2", createdAt: 1 }), { throttleMinutes: 5 });
+    expect(second?.tokenHash).toBe("t2");
+    expect(await findPendingSignupByTokenHash(db, "t1")).not.toBeNull();
+  });
+
+  it("同時に呼んでも行を得るのは1本だけ(原子的)", async () => {
+    const results = await Promise.all(
+      Array.from({ length: 8 }, (_, i) => upsertPendingSignupUnlessRecent(db, pending({ tokenHash: `race-${i}`, createdAt: 100 }), { throttleMinutes: 5 })),
+    );
+    expect(results.filter((r) => r !== null)).toHaveLength(1);
   });
 
   it("consumePendingSignup は1回だけ成功し、期限切れは失敗する", async () => {
-    const row = await replacePendingSignup(db, pending());
+    const row = await upsert(pending());
     expect(await consumePendingSignup(db, { id: row.id, nowMinutes: 10 })).not.toBeNull();
     expect(await consumePendingSignup(db, { id: row.id, nowMinutes: 11 })).toBeNull();
-    const expired = await replacePendingSignup(db, pending({ email: "c@example.com", expiresAt: 50 }));
+    const expired = await upsert(pending({ email: "c@example.com", expiresAt: 50 }));
     expect(await consumePendingSignup(db, { id: expired.id, nowMinutes: 50 })).toBeNull();
   });
 
   it("deleteStalePendingSignups は期限切れの未消費だけを消す", async () => {
-    const stale = await replacePendingSignup(db, pending({ email: "s@example.com", expiresAt: 10 }));
-    const fresh = await replacePendingSignup(db, pending({ email: "f@example.com", expiresAt: 500 }));
-    const consumed = await replacePendingSignup(db, pending({ email: "k@example.com", expiresAt: 10 }));
+    const stale = await upsert(pending({ email: "s@example.com", expiresAt: 10 }));
+    const fresh = await upsert(pending({ email: "f@example.com", expiresAt: 500 }));
+    const consumed = await upsert(pending({ email: "k@example.com", expiresAt: 10 }));
     await consumePendingSignup(db, { id: consumed.id, nowMinutes: 5 });
 
     expect(await deleteStalePendingSignups(db, { expiredBefore: 100 })).toBe(1);
