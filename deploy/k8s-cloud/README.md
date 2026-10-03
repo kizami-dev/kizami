@@ -35,9 +35,11 @@ kubectl -n kizami-cloud create secret generic kizami-cloud-encryption \
 kubectl -n kizami-cloud create secret generic kizami-cloud-turnstile \
   --from-literal=siteKey='<site key>' --from-literal=secretKey='<secret key>'
 
-# システムメール(Amazon SES 東京、kizami.dev をドメイン検証済みであること)
+# システムメール(Cloudflare Email Service の SMTP 送信。kizami.dev を Email Sending の送信ドメインに
+# 登録済みであること)。ユーザー名は固定で api_token、パスワードは「Email Sending: Edit」だけを持つ
+# API トークン。トークンを変数で受けて echo しないこと
 kubectl -n kizami-cloud create secret generic kizami-cloud-mail \
-  --from-literal=smtpUrl='smtp://<SES SMTP user>:<SES SMTP password>@email-smtp.ap-northeast-1.amazonaws.com:587'
+  --from-literal=smtpUrl="smtps://api_token:${CF_EMAIL_TOKEN}@smtp.mx.cloudflare.net:465"
 
 # 任意: メトリクス・エラー報告
 kubectl -n kizami-cloud create secret generic kizami-cloud-metrics \
@@ -45,7 +47,10 @@ kubectl -n kizami-cloud create secret generic kizami-cloud-metrics \
 kubectl -n kizami-cloud create secret generic kizami-cloud-sentry --from-literal=dsn='<DSN>'
 ```
 
-SES SMTP のパスワードは URL に埋め込むため、`/` `+` `=` などはパーセントエンコードすること。
+トークンは URL に埋め込むため、`/` `+` `=` などが含まれる場合はパーセントエンコードすること。
+
+送信元を Amazon SES に替える場合も `smtpUrl` を差し替えるだけでよい(アプリは汎用 SMTP として送る)。
+kizami.dev は SES 側でもドメイン検証(Easy DKIM)済みで、予備の経路として残してある。
 
 ## 適用
 

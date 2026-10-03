@@ -100,7 +100,7 @@ SaaS 専用のコードは「登録・課金・テナント運用」の薄い制
 - **レート制限**: `POST /signup` は IP ごとに 5回/15分(`signupPerIp`)、確認リンクの GET/POST は招待・リセットと
   同じトークン経路の上限(`tokenPerIp`、20回/15分)。
 - **システムメール**: 既存の SMTP はテナント単位の通知チャネル設定なので使えない。運用者名義の
-  `SYSTEM_SMTP_URL` / `SYSTEM_MAIL_FROM`(送信先は Amazon SES の SMTP インタフェースを想定した汎用 SMTP)を別に持つ。
+  `SYSTEM_SMTP_URL` / `SYSTEM_MAIL_FROM`(汎用 SMTP。運用者環境では Cloudflare Email Service の SMTP 送信 `smtp.mx.cloudflare.net:465` を使う)を別に持つ。
 - **起動時 fail-fast**: `SIGNUP_MODE` が off 以外なのに必須の環境変数が欠けていれば、`node.ts` が起動時に
   欠けている変数名を列挙してエラー終了する(登録フォームは出るのに誰も完了できない状態を公開後に発見しないため)。
   `SIGNUP_MODE` の綴り間違いも黙って off にせずエラーにする。

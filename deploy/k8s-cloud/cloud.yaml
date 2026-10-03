@@ -113,7 +113,8 @@ spec:
               valueFrom: {secretKeyRef: {name: kizami-cloud-turnstile, key: siteKey}}
             - name: TURNSTILE_SECRET_KEY
               valueFrom: {secretKeyRef: {name: kizami-cloud-turnstile, key: secretKey}}
-            # サインアップ確認メール(システムメール)。Amazon SES 東京の SMTP インターフェース
+            # サインアップ確認メール(システムメール)。Cloudflare Email Service の SMTP 送信
+            # (smtps://api_token:<トークン>@smtp.mx.cloudflare.net:465、kizami.dev を送信ドメインに登録済み)
             - name: SYSTEM_SMTP_URL
               valueFrom: {secretKeyRef: {name: kizami-cloud-mail, key: smtpUrl}}
             - {name: SYSTEM_MAIL_FROM, value: "KIZAMI <no-reply@kizami.dev>"}
@@ -272,7 +273,7 @@ spec:
 # - 出口: api / worker は DNS・postgres・インターネットのみ。プライベートアドレス帯は塞ぐ —
 #   テナントが設定できる Webhook・SMTP・OIDC issuer の URL を踏み台に、クラスタ内部
 #   (apiserver・他 namespace・kubelet)や LAN の管理系へ到達させない(SSRF)。
-#   SES・Turnstile・Sentry relay(relay.bktsk.com)はいずれも公開アドレスなので影響しない。
+#   Cloudflare の SMTP 送信・Turnstile・Sentry relay(relay.bktsk.com)はいずれも公開アドレスなので影響しない。
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
