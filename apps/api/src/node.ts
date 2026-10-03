@@ -38,7 +38,8 @@ const trustProxy = process.env.TRUST_PROXY !== "false";
 //   それを流用する(未設定なら相対パスのまま = 同一オリジン配信とみなす)。
 // - OIDC_REDIRECT_URI: IdP に登録した戻り先。未設定ならリクエスト URL から導出する
 //   (前段でホスト名を書き換えている配備では明示すること)。
-const appBaseUrl = process.env.APP_BASE_URL ?? process.env.CORS_ORIGIN;
+// `||`(空文字も未設定扱い): compose が未設定の APP_BASE_URL を空文字で渡してくるため。
+const appBaseUrl = process.env.APP_BASE_URL || process.env.CORS_ORIGIN;
 const oidcRedirectUri = process.env.OIDC_REDIRECT_URI;
 
 // ブラウザプッシュ通知(Web Push、docs/design/web-push.md)。VAPID_PUBLIC_KEY /
