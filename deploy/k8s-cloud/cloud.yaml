@@ -229,6 +229,8 @@ spec:
     spec:
       backoffLimit: 2
       template:
+        metadata:
+          labels: {app: pg-dump}
         spec:
           restartPolicy: Never
           nodeSelector: {kubernetes.io/hostname: samurai-matrix}
@@ -239,6 +241,9 @@ spec:
               args:
                 - |
                   set -eu
+                  # dump は全テナントの勤怠・個人情報そのもの。ホスト上で root 以外に読ませない
+                  umask 077
+                  chmod 700 /backup
                   # 書き途中のファイルをホスト側が拾わないよう、一時名で書いてから rename する
                   pg_dump -Fc -f /backup/kizami-cloud.dump.tmp
                   mv /backup/kizami-cloud.dump.tmp /backup/kizami-cloud.dump
@@ -254,3 +259,90 @@ spec:
           volumes:
             - name: backup
               hostPath: {path: /var/backups/kizami-cloud, type: DirectoryOrCreate}
+---
+# ---------------------------------------------------------------- ネットワーク分離(NetworkPolicy)
+# k3s 同梱の kube-router が NetworkPolicy を強制する。方針は「既定で全拒否 → 必要な経路だけ開ける」。
+#
+# - 入口: api/web へは cloudflared と Prometheus が載る samurai-watch(WireGuard 10.10.0.2)からだけ。
+#   NodePort は samurai-matrix の全アドレスで待ち受けるため、これが無いと Cloudflare を経由しない
+#   直接到達で CF-Connecting-IP を偽装でき、認証系のレート制限を素通りされる(TRUST_PROXY は既定 true)。
+#   externalTrafficPolicy: Local なので送信元 IP は保たれ、ipBlock で判定できる。
+#   readinessProbe(kubelet)は kube-router がノード自身からの通信として許可する。
+# - postgres へは同じ namespace の api / worker / pg-dump からだけ(他 namespace の Pod からの横移動を塞ぐ)。
+# - 出口: api / worker は DNS・postgres・インターネットのみ。プライベートアドレス帯は塞ぐ —
+#   テナントが設定できる Webhook・SMTP・OIDC issuer の URL を踏み台に、クラスタ内部
+#   (apiserver・他 namespace・kubelet)や LAN の管理系へ到達させない(SSRF)。
+#   SES・Turnstile・Sentry relay(relay.bktsk.com)はいずれも公開アドレスなので影響しない。
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+  namespace: kizami-cloud
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: app-ingress
+  namespace: kizami-cloud
+spec:
+  podSelector:
+    matchLabels: {app: kizami-cloud}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - ipBlock: {cidr: 10.10.0.2/32}
+      ports:
+        - {protocol: TCP, port: 3000}
+        - {protocol: TCP, port: 3001}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: postgres-ingress
+  namespace: kizami-cloud
+spec:
+  podSelector:
+    matchLabels: {app: postgres}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchExpressions:
+              - {key: app, operator: In, values: [kizami-cloud, kizami-cloud-worker, pg-dump]}
+      ports:
+        - {protocol: TCP, port: 5432}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: app-egress
+  namespace: kizami-cloud
+spec:
+  podSelector:
+    matchExpressions:
+      - {key: app, operator: In, values: [kizami-cloud, kizami-cloud-worker, pg-dump]}
+  policyTypes: [Egress]
+  egress:
+    # DNS(CoreDNS)
+    - to:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: kube-system}
+          podSelector:
+            matchLabels: {k8s-app: kube-dns}
+      ports:
+        - {protocol: UDP, port: 53}
+        - {protocol: TCP, port: 53}
+    # 同じ namespace の PostgreSQL
+    - to:
+        - podSelector:
+            matchLabels: {app: postgres}
+      ports:
+        - {protocol: TCP, port: 5432}
+    # インターネット(プライベート・リンクローカル・CGNAT 帯を除く)
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16, 100.64.0.0/10, 127.0.0.0/8]
