@@ -1,6 +1,6 @@
 # KIZAMI Cloud(hosted mode)
 
-対象: ロードマップ「SaaS トラック」(app.kizami.dev)。2026-08-31 設計、未着手。
+対象: ロードマップ「SaaS トラック」(app.kizami.dev)。2026-08-31 設計。サインアップは Phase 1 実装中(2026-10-03)。
 要件は [要件定義書 §7](../requirements.md)(マルチテナント)と
 [マルチテナントとテナント分離](./multi-tenancy.md) を前提とする。
 
@@ -48,17 +48,109 @@ SaaS 専用のコードは「登録・課金・テナント運用」の薄い制
 
 ## サインアップ
 
-1. 登録フォーム(メール+パスワード+組織名)。CAPTCHA(Turnstile 等)必須、
-   既存のレート制限基盤に signup 用バケットを追加。
-2. メール確認: セッションと同じトークン作法(乱数+SHA-256 保存)。送信は通知基盤の
-   SMTP 経路を流用。
-3. テナント作成: `create-tenant` CLI の中身(`tenant-bootstrap`)を API 化して呼ぶ。
-   システムプリセット・既定 work policy・初期管理者まで一括。slug は自動採番とし
-   ユーザーに選ばせない(衝突・商標問題の回避)。
+状態: **Phase 1 実装中**(2026-10-03)。環境変数 `SIGNUP_MODE` で有効化する。未設定/`off`(既定)なら
+`GET /signup/config`(`{ "mode": "off" }`)以外のサインアップ系エンドポイントはすべて 404 で、
+セルフホストの体験を一切変えない。Workers エントリ(`workers.ts`)では常に off。
+
+| `SIGNUP_MODE` | 動作 |
+| --- | --- |
+| 未設定 / `off` | 無効(既定)。Web のログイン画面に「新規登録」リンクも出ない |
+| `invite` | 招待コード必須(Closed Beta)。運用者が `pnpm operator invite-code create` で発行する |
+| `open` | 自由登録(Public Launch 以降。セルフホスト派が自由登録制を敷くのにも使える) |
+
+### フロー
+
+1. `POST /signup` — 組織名・氏名・メール・(invite のとき)招待コード・Turnstile トークン。
+   入力検証 → Turnstile 検証(サーバー側 siteverify、`remoteip` 付き)→ 招待コードの**有効性チェックのみ**
+   (消費はしない)→ `pending_signups` に保存 → 確認メール送信。応答は常に `202 { "status": "verification_sent" }`。
+   **パスワードはここでは受け取らない**(下記「設計判断」)。
+2. `GET /signup/verify/:token` — 確認画面の表示用(組織名・氏名・メール)。
+3. `POST /signup/verify/:token` — body `{ "password": "..." }`。パスワードを検証・ハッシュ化したうえで
+   **1トランザクション**で「pending 消費 → 招待コードの `used_count` を条件付き UPDATE で +1 →
+   `bootstrapTenant`(テナント・同梱プリセット・既定 work policy・管理者)→ 監査ログ `tenant.signup`」を行い、
+   セッションを発行してログイン済みで返す(既存のログイン応答と同形)。
 4. 初回ログイン後は既存のオンボーディングツアーがそのまま動く。
 
-Closed Beta の間は招待コード制(コードが無ければ signup は 403)。公開時にコード要求を
-外すだけの作りにしておく。
+テナント識別子(slug)はこのリポジトリのスキーマに存在しないので採番の対象は無い(`tenants` は UUIDv7 の id と名前のみ)。
+将来 slug を導入する場合は自動採番とし、ユーザーに選ばせない(衝突・商標問題の回避)。
+
+### 設計判断
+
+- **テナントはメール確認後に作る**: 未確認の空テナント(誤入力・ボット)を残さない。確認前は
+  `pending_signups` の1行だけで、期限切れから7日経った未消費行はワーカーが削除する(`signup-cleanup.ts`)。
+- **パスワードは確認時に設定する**: 登録時に受け取ると「被害者のメール+攻撃者が決めたパスワード」で登録でき、
+  被害者が確認リンクを踏んだ時点で攻撃者がパスワードを知るテナントが被害者名義で作られる(乗っ取り)。
+  招待受諾と同じ作法で、リンクを踏んだ本人が確認画面で決める。`pending_signups` にパスワード列は無い。
+- **確認メールにユーザー入力を入れない**: 未認証で任意の宛先に出せるメールなので、組織名などを本文に入れると
+  運用者名義のフィッシングに使える。本文は固定文面+確認 URL のみ。組織名は確認画面で表示する。
+- **ユーザー列挙対策**: `POST /signup` は既存ユーザーを引かず、応答は常に同一の 202。KIZAMI は同一メールの
+  複数テナント所属を許容している([マルチテナント](./multi-tenancy.md))ので「既存メールは登録不可」にしない
+  (確認メールは本人にしか読めない)。招待コード不正・Turnstile 失敗は列挙に関係しないので 400 で明示する。
+- **再送スロットル**: 同じメール(trim + 小文字化)宛の登録は**5分に1回**まで。直近の申請があれば何もせず
+  (応答は同じ 202、メールも出さない)、それより古ければ未消費 pending を新しいトークンで置き換える
+  (古いリンクは無効)。受信者単位の迷惑メール抑止と、他人の確認リンクを置き換えて無効にする妨害の抑止が目的。
+  判定と書き込みは部分 UNIQUE(未消費はメールごとに高々1行)+ `INSERT ... ON CONFLICT DO UPDATE ... WHERE` の
+  1文で原子的に行う(SQLite / PostgreSQL 共通。アプリ層の SELECT→INSERT は同時リクエストで抜ける)。
+- **ログイン CSRF 対策**: `POST /signup` 系は成功時にセッション Cookie を発行するため、全 POST に
+  `Content-Type: application/json` を必須(415)とし、`Origin` ヘッダがあれば `APP_BASE_URL` のオリジンと一致を
+  要求する(403)。
+- **トークン経路のステータス**(招待受諾と同じ): 存在しない・消費済み(二重送信の2回目、同時確認の敗者を含む)は
+  404、期限切れ(24時間)は 410。招待コードが確認時点で使えなくなっていたら 409 `invite_code_unavailable`
+  (トランザクション全体が巻き戻り、pending は未消費のまま)。
+- **レート制限**: `POST /signup` は IP ごとに 5回/15分(`signupPerIp`)、確認リンクの GET/POST は招待・リセットと
+  同じトークン経路の上限(`tokenPerIp`、20回/15分)。
+- **システムメール**: 既存の SMTP はテナント単位の通知チャネル設定なので使えない。運用者名義の
+  `SYSTEM_SMTP_URL` / `SYSTEM_MAIL_FROM`(送信先は Amazon SES の SMTP インタフェースを想定した汎用 SMTP)を別に持つ。
+- **起動時 fail-fast**: `SIGNUP_MODE` が off 以外なのに必須の環境変数が欠けていれば、`node.ts` が起動時に
+  欠けている変数名を列挙してエラー終了する(登録フォームは出るのに誰も完了できない状態を公開後に発見しないため)。
+  `SIGNUP_MODE` の綴り間違いも黙って off にせずエラーにする。
+
+### 環境変数
+
+| 変数 | 必須 | 内容 |
+| --- | --- | --- |
+| `SIGNUP_MODE` | — | `off`(既定)/ `invite` / `open` |
+| `TURNSTILE_SECRET_KEY` | off 以外で必須 | Cloudflare Turnstile のシークレットキー(サーバー側 siteverify) |
+| `TURNSTILE_SITE_KEY` | off 以外で必須 | Turnstile のサイトキー(`GET /signup/config` で Web へ渡す) |
+| `SYSTEM_SMTP_URL` | off 以外で必須 | システムメールの接続先(`smtp://user:pass@host:587` / `smtps://...:465`) |
+| `SYSTEM_MAIL_FROM` | off 以外で必須 | システムメールの差出人(`KIZAMI <noreply@example.com>`) |
+| `APP_BASE_URL` | off 以外で必須 | Web のベース URL(`https://app.example.com`)。確認リンクの組み立てと Origin 検証に使う。開発時は Web の URL(`http://localhost:3000`) |
+
+開発・テストの Turnstile は Cloudflare 公式のテスト用ダミーキーを使う(実際のチャレンジは出ず、結果が固定される):
+
+| 用途 | キー |
+| --- | --- |
+| サイトキー(常に通る) | `1x00000000000000000000AA` |
+| シークレットキー(常に成功) | `1x0000000000000000000000000000000AA` |
+| シークレットキー(常に失敗) | `2x0000000000000000000000000000000AA` |
+
+自動テストは siteverify の fetch とメール送信関数を注入した偽実装で行うので、これらのキーも SMTP も不要。
+
+### 運用者 CLI
+
+```sh
+pnpm --filter @kizami/api operator invite-code create [--max-uses N] [--expires-days D] [--note TEXT]
+pnpm --filter @kizami/api operator invite-code list
+pnpm --filter @kizami/api operator invite-code revoke <id>
+pnpm --filter @kizami/api operator tenant list
+```
+
+- 招待コードは `XXXX-XXXX-XXXX-XXXX`(紛らわしい文字を除いた32文字・80ビットの乱数)。**平文は `create` の
+  出力に1度だけ**表示され、DB には SHA-256 のみ保存される(`list` に平文は出ない)。既定は1回限り・無期限。
+- 消費は確認完了のトランザクション内の条件付き UPDATE(失効・期限・上限を WHERE に含める)なので、
+  同じコードを持つ pending が複数あっても、作られるテナント数は `max_uses` を超えない。
+- `tenant list` は id・名前・作成日・有効ユーザー数。suspend・プラン上書きは Phase 2(課金)で作る。
+
+### システム表
+
+`signup_invite_codes` / `pending_signups` は `tenant_id` を持たない**システム表**
+([マルチテナントの「システム表の例外」](./multi-tenancy.md))。
+
+### 公開前に残っていること
+
+- 同一メールで確認済みの既存アカウントへの「すでに登録があります」通知メール(現状は常に同じ確認メールを出す)
+- 規約・プライバシーポリシーへの同意チェック(法務ページ、フェーズ計画の Phase 2)
+- 既存の `POST /auth/login` 等には Origin 検証が無い(今回の対策は signup のみ)
 
 ## 課金 — Stripe Checkout + Customer Portal + Webhook
 
@@ -103,7 +195,7 @@ Closed Beta の間は招待コード制(コードが無ければ signup は 403)
 ## フェーズ計画
 
 1. **Closed Beta(課金なし・招待コード制)** — PG デプロイ+バックアップ/復旧手順、
-   self-serve signup、監視配線。出口条件: 運用者以外のテナントが実勤怠を1ヶ月回して
+   self-serve signup(実装中、上記「サインアップ」)、監視配線。出口条件: 運用者以外のテナントが実勤怠を1ヶ月回して
    締めまで通ること。
 2. **Billing** — `packages/billing`(Checkout / Portal / Webhook / シート同期 / 執行)、
    法務ページ、トライアル・無料枠。

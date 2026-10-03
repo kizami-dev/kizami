@@ -58,7 +58,7 @@ KIZAMI は「1社1インスタンスのセルフホスト」を前提にした�
 | `kizami_worker_runs_total` | counter | `job`, `result` | 定期スキャンの実行回数(`result` は success / failure) |
 
 `job` ラベルの値は `reminder` / `overtime-alert` / `leave-alert` / `shift-variance-alert` /
-`leave-grant-proposal` の5つ(`apps/api/src/worker.ts` の `SCAN_JOBS`)。
+`leave-grant-proposal` / `signup-cleanup`(期限切れの未確認サインアップの掃除)の6つ(`apps/api/src/worker.ts` の `SCAN_JOBS`)。
 
 ### 1.4 カーディナリティの方針(重要)
 

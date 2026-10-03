@@ -61,6 +61,15 @@ services:
       SENTRY_DSN: ${KIZAMI_SENTRY_DSN:-}
       SENTRY_SERVER_NAME: ${KIZAMI_SENTRY_SERVER_NAME:-}
       SENTRY_ENVIRONMENT: ${KIZAMI_SENTRY_ENVIRONMENT:-}
+      # セルフサインアップ(任意、KIZAMI Cloud 向け。../../docs/design/saas.md)。既定は空 = 無効で、
+      # セルフホストでは設定しない。SIGNUP_MODE が invite / open のときは以下5つがすべて必須
+      # (欠けていれば api が起動時にエラー終了する)。
+      SIGNUP_MODE: ${KIZAMI_SIGNUP_MODE:-}
+      TURNSTILE_SECRET_KEY: ${KIZAMI_TURNSTILE_SECRET_KEY:-}
+      TURNSTILE_SITE_KEY: ${KIZAMI_TURNSTILE_SITE_KEY:-}
+      SYSTEM_SMTP_URL: ${KIZAMI_SYSTEM_SMTP_URL:-}
+      SYSTEM_MAIL_FROM: ${KIZAMI_SYSTEM_MAIL_FROM:-}
+      APP_BASE_URL: ${KIZAMI_APP_BASE_URL:-}
     volumes:
       - data:/data
     restart: unless-stopped

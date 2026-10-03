@@ -15,6 +15,18 @@ API・DB スキーマの互換方針とアップグレード手順は
 
 ### Added
 
+- **セルフサインアップ(KIZAMI Cloud、Phase 1 実装中)**([docs/design/saas.md](docs/design/saas.md))
+  - 環境変数 `SIGNUP_MODE`(`off` 既定 / `invite` / `open`)でゲート。off では
+    `GET /signup/config` 以外の `/signup/*` はすべて 404 で、セルフホストの体験は変わらない
+  - `POST /signup` → 確認メール → `POST /signup/verify/:token`(パスワードはここで設定)で
+    テナント・同梱プリセット・既定 work policy・管理者を作り、ログイン済みで返す。
+    テナントはメール確認後にだけ作る。Turnstile 必須、IP レート制限、同一メール5分スロットル、
+    ユーザー列挙対策、Origin 検証
+  - システム表 `signup_invite_codes` / `pending_signups`(migration 0032 / PG 0007)。
+    運用者 CLI `pnpm operator`(招待コードの発行・一覧・失効、テナント一覧)
+  - 起動時 fail-fast(必須の環境変数が欠けていれば `node.ts` がエラー終了)。
+    日次ワーカーが期限切れから7日経った未確認の申請を削除
+
 - **退職者データの保持と消去**([docs/design/data-retention.md](docs/design/data-retention.md))
   - 労働基準法109条の保存義務(原則5年・附則143条2項の経過措置により当分の間3年)と、
     個人情報保護法22条の「遅滞なき消去」(努力義務)の衝突を、
