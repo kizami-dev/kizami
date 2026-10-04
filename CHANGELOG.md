@@ -13,6 +13,19 @@ API・DB スキーマの互換方針とアップグレード手順は
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-10-05
+
+KIZAMI Cloud(PostgreSQL 構成)の入れ替え時の安定化。
+
+### Fixed
+
+- **起動直後の DB 接続失敗で api が一度落ちる問題**。Pod の起動直後はクラスタ DNS の名前解決が
+  一時的に失敗(`EAI_AGAIN`)することがあり、マイグレーションに失敗した api が終了して k8s の
+  再起動を待っていた。api と worker は、名前解決の一時失敗・接続拒否・タイムアウト・PostgreSQL の
+  起動中応答に限って、最大約30秒まで待って再試行する(認証失敗や SQL エラーは即座に失敗)
+- **入れ替えの瞬間に 502 が返る問題**(`deploy/k8s-cloud/cloud.yaml`)。api と web のコンテナに
+  `preStop` の5秒待機を足し、Service の振り分けから外れてから終了するようにした
+
 ## [0.8.0] - 2026-10-05
 
 セルフサインアップ(KIZAMI Cloud の入口)、本人によるパスワード変更と本人用の再設定、
@@ -605,7 +618,8 @@ API・DB スキーマの互換方針とアップグレード手順は
   タグ名ではなくマイルストーン末尾のコミット SHA で範囲を示している。
 -->
 
-[Unreleased]: https://github.com/kizami-dev/kizami/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/kizami-dev/kizami/compare/v0.8.1...HEAD
+[0.8.1]: https://github.com/kizami-dev/kizami/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/kizami-dev/kizami/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/kizami-dev/kizami/compare/ece25ba...v0.7.0
 [0.6.0]: https://github.com/kizami-dev/kizami/compare/2599955...ece25ba
