@@ -761,6 +761,9 @@ export const ko = {
     tagline: "출퇴근 기록의 추가·정정·취소를 신청합니다. 승인되면 근태 기록에 반영됩니다.",
 
     formTitle: " 수정 신청",
+    newRequestAction: "수정 신청",
+    tabOwn: "내 신청",
+    tabQueue: (n: number) => `승인 대기 (${n})`,
     formHint: "신청이 승인되면 출퇴근 기록에 반영되고, 월간 집계에도 반영됩니다.",
     close: "닫기",
     cancel: "취소",

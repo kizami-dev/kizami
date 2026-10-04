@@ -804,6 +804,9 @@ export const ja = {
     tagline: "打刻の追加・訂正・取消を申請します。承認されると勤怠記録に反映されます。",
 
     formTitle: "の修正申請",
+    newRequestAction: "修正を申請",
+    tabOwn: "自分の申請",
+    tabQueue: (n: number) => `承認待ち(${n})`,
     formHint: "申請は承認されると打刻に反映され、月次集計に反映されます。",
     close: "閉じる",
     cancel: "キャンセル",

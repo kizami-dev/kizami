@@ -634,3 +634,40 @@ select.input {
   font-size: var(--text-sm);
   color: var(--k-ink-soft);
 }
+
+/* ---- タブ(画面内の切り替え。Tabs コンポーネント) ---- */
+
+.tabs {
+  display: flex;
+  gap: var(--space-1);
+  border-bottom: var(--border-hair);
+  margin-bottom: var(--space-5);
+}
+
+.tabs__tab {
+  min-height: var(--control-md, 2.75rem);
+  padding: 0 var(--space-4);
+  border: none;
+  border-bottom: 3px solid transparent;
+  margin-bottom: -1px;
+  background: transparent;
+  color: var(--k-ink-soft);
+  font-family: var(--font-body);
+  font-size: var(--text-md);
+  cursor: pointer;
+}
+
+.tabs__tab:hover {
+  color: var(--k-key);
+}
+
+.tabs__tab--selected {
+  color: var(--k-key);
+  font-weight: var(--weight-bold);
+  border-bottom-color: var(--k-key);
+}
+
+.tabs__tab:focus-visible {
+  outline: 2px solid var(--k-key);
+  outline-offset: -2px;
+}

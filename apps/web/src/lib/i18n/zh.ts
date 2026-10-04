@@ -752,6 +752,9 @@ export const zh = {
     tagline: "申请新增、更正或撤销打卡记录。审批通过后将反映到考勤记录中。",
 
     formTitle: "的修正申请",
+    newRequestAction: "申请修正",
+    tabOwn: "我的申请",
+    tabQueue: (n: number) => `待审批(${n})`,
     formHint: "申请审批通过后将反映到打卡记录及月度统计中。",
     close: "关闭",
     cancel: "取消",

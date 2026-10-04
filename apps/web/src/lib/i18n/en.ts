@@ -786,6 +786,9 @@ export const en = {
     tagline: "Request additions, corrections, or cancellations of punches. Approved requests are reflected in the attendance record.",
 
     formTitle: " correction request",
+    newRequestAction: "Request a correction",
+    tabOwn: "My requests",
+    tabQueue: (n: number) => `Awaiting approval (${n})`,
     formHint: "Once approved, this request updates the punches and is reflected in the monthly totals.",
     close: "Close",
     cancel: "Cancel",

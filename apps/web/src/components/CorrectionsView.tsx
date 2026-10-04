@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "waku";
+import { Link, useRouter } from "waku";
 import {
   api,
   ApiError,
@@ -24,6 +24,9 @@ import { HelpTip } from "./HelpTip";
 import { requestStatusTone } from "./ui/Badge";
 import { StateView } from "./ui/StateView";
 import { PageHeader } from "./ui/PageHeader";
+import { Tabs, tabId, tabPanelId } from "./ui/Tabs";
+import { buttonClass } from "./ui/Button";
+import { dateStrFromEpochMinutesJst, nowMinutes } from "../lib/time";
 
 /**
  * 打刻修正申請の承認(POST /corrections/:id/approve・reject)が要求する権限
@@ -85,6 +88,9 @@ export function CorrectionsView() {
   const router = useRouter();
   const guard = useAuthGuard();
   const { permissions: effectivePermissions } = useEffectivePermissions();
+
+  // 「自分の申請」と「承認待ち」の切り替え。承認待ちは承認権限のある人にだけ出る。
+  const [tab, setTab] = useState<"own" | "queue">("own");
 
   const [requests, setRequests] = useState<CorrectionRequestDto[] | null>(null);
   const [loading, setLoading] = useState(true);
@@ -437,14 +443,14 @@ export function CorrectionsView() {
               <>
                 <button
                   type="button"
-                  className="correction-card__btn correction-card__btn--approve"
+                  className={buttonClass("primary", "sm")}
                   onClick={() => openWaiverConfirm(w.id, "approve")}
                 >
                   {messages.autoBreakWaiver.approve}
                 </button>
                 <button
                   type="button"
-                  className="correction-card__btn correction-card__btn--reject"
+                  className={buttonClass("secondary", "sm")}
                   onClick={() => openWaiverConfirm(w.id, "reject")}
                 >
                   {messages.autoBreakWaiver.reject}
@@ -454,7 +460,7 @@ export function CorrectionsView() {
             {options.showWithdraw ? (
               <button
                 type="button"
-                className="correction-card__btn correction-card__btn--withdraw"
+                className={buttonClass("secondary", "sm")}
                 onClick={() => openWaiverConfirm(w.id, "withdraw")}
               >
                 {messages.autoBreakWaiver.withdraw}
@@ -533,14 +539,14 @@ export function CorrectionsView() {
               <>
                 <button
                   type="button"
-                  className="correction-card__btn correction-card__btn--approve"
+                  className={buttonClass("primary", "sm")}
                   onClick={() => openConfirm(req.id, "approve")}
                 >
                   {messages.corrections.approve}
                 </button>
                 <button
                   type="button"
-                  className="correction-card__btn correction-card__btn--reject"
+                  className={buttonClass("secondary", "sm")}
                   onClick={() => openConfirm(req.id, "reject")}
                 >
                   {messages.corrections.reject}
@@ -550,7 +556,7 @@ export function CorrectionsView() {
             {options.showWithdraw ? (
               <button
                 type="button"
-                className="correction-card__btn correction-card__btn--withdraw"
+                className={buttonClass("secondary", "sm")}
                 onClick={() => openConfirm(req.id, "withdraw")}
               >
                 {messages.corrections.withdraw}
@@ -566,69 +572,97 @@ export function CorrectionsView() {
     <div className="corrections">
       <AppHeader displayName={guard.user.displayName} email={guard.user.email} tenantName={guard.tenant?.name ?? null} active="corrections" />
       <main className="page">
-        <PageHeader title={messages.nav.corrections} lead={messages.corrections.tagline} />
-
-        <section className="corrections__section" data-tour="corrections-own">
-          <h2 className="corrections__section-title">{messages.corrections.title}</h2>
-
-          {loading ? <StateView kind="loading">{messages.loading}</StateView> : null}
-          {loadError ? <StateView kind="error">{loadError}</StateView> : null}
-
-          {requests && ownCorrections.length === 0 ? <p className="corrections__empty">{messages.corrections.empty}</p> : null}
-
-          {ownCorrections.length > 0 ? (
-            <ul className="corrections__list">
-              {ownCorrections.map((req) => renderCorrectionCard(req, { showApproveReject: hasApprovePermission, showWithdraw: true }))}
-            </ul>
-          ) : null}
-        </section>
+        <PageHeader
+          title={messages.nav.corrections}
+          lead={messages.corrections.tagline}
+          actions={
+            // 修正申請のフォームは月次画面にあるため、今日の日付で開いた状態の月次へ遷移する。
+            <Link to={`/monthly?date=${dateStrFromEpochMinutesJst(nowMinutes())}`} className={buttonClass("primary")}>
+              {messages.corrections.newRequestAction}
+            </Link>
+          }
+        />
 
         {hasApprovePermission ? (
-          <section className="corrections__section">
-            <h2 className="corrections__section-title">{messages.corrections.queueSectionTitle}</h2>
-            <p className="section-lead">{messages.corrections.queueSectionTagline}</p>
-
-            {queueCorrections.length === 0 ? <p className="corrections__empty">{messages.corrections.queueEmpty}</p> : null}
-
-            {queueCorrections.length > 0 ? (
-              <ul className="corrections__list">
-                {queueCorrections.map((req) => renderCorrectionCard(req, { showApproveReject: true, showWithdraw: false }))}
-              </ul>
-            ) : null}
-          </section>
+          <Tabs
+            idPrefix="corrections"
+            ariaLabel={messages.corrections.title}
+            value={tab}
+            onChange={setTab}
+            tabs={[
+              { id: "own", label: messages.corrections.tabOwn },
+              { id: "queue", label: messages.corrections.tabQueue(queueCorrections.length + queueWaivers.length) },
+            ]}
+          />
         ) : null}
 
-        <section className="corrections__section">
-          <h2 className="corrections__section-title">
-            {messages.autoBreakWaiver.ownSectionTitle}
-            <HelpTip helpKey="attendance.auto-break" />
-          </h2>
-          <p className="section-lead">{messages.autoBreakWaiver.ownSectionTagline}</p>
+        {tab === "own" || !hasApprovePermission ? (
+          <div
+            role={hasApprovePermission ? "tabpanel" : undefined}
+            id={tabPanelId("corrections", "own")}
+            aria-labelledby={hasApprovePermission ? tabId("corrections", "own") : undefined}
+          >
+            <section className="corrections__section" data-tour="corrections-own">
+              <h2 className="corrections__section-title">{messages.corrections.title}</h2>
 
-          {waiverLoadError ? <StateView kind="error">{waiverLoadError}</StateView> : null}
-          {waivers && ownWaivers.length === 0 ? <p className="corrections__empty">{messages.autoBreakWaiver.empty}</p> : null}
+              {loading ? <StateView kind="loading">{messages.loading}</StateView> : null}
+              {loadError ? <StateView kind="error">{loadError}</StateView> : null}
 
-          {ownWaivers.length > 0 ? (
-            <ul className="corrections__list">
-              {ownWaivers.map((w) => renderWaiverCard(w, { showApproveReject: false, showWithdraw: true }))}
-            </ul>
-          ) : null}
-        </section>
+              {requests && ownCorrections.length === 0 ? <p className="corrections__empty">{messages.corrections.empty}</p> : null}
 
-        {hasApprovePermission ? (
-          <section className="corrections__section">
-            <h2 className="corrections__section-title">{messages.autoBreakWaiver.queueSectionTitle}</h2>
-            <p className="section-lead">{messages.autoBreakWaiver.queueSectionTagline}</p>
+              {ownCorrections.length > 0 ? (
+                <ul className="corrections__list">
+                  {ownCorrections.map((req) => renderCorrectionCard(req, { showApproveReject: false, showWithdraw: true }))}
+                </ul>
+              ) : null}
+            </section>
 
-            {queueWaivers.length === 0 ? <p className="corrections__empty">{messages.autoBreakWaiver.queueEmpty}</p> : null}
+            <section className="corrections__section">
+              <h2 className="corrections__section-title">
+                {messages.autoBreakWaiver.ownSectionTitle}
+                <HelpTip helpKey="attendance.auto-break" />
+              </h2>
+              <p className="section-lead">{messages.autoBreakWaiver.ownSectionTagline}</p>
 
-            {queueWaivers.length > 0 ? (
-              <ul className="corrections__list">
-                {queueWaivers.map((w) => renderWaiverCard(w, { showApproveReject: true, showWithdraw: false }))}
-              </ul>
-            ) : null}
-          </section>
-        ) : null}
+              {waiverLoadError ? <StateView kind="error">{waiverLoadError}</StateView> : null}
+              {waivers && ownWaivers.length === 0 ? <p className="corrections__empty">{messages.autoBreakWaiver.empty}</p> : null}
+
+              {ownWaivers.length > 0 ? (
+                <ul className="corrections__list">
+                  {ownWaivers.map((w) => renderWaiverCard(w, { showApproveReject: false, showWithdraw: true }))}
+                </ul>
+              ) : null}
+            </section>
+          </div>
+        ) : (
+          <div role="tabpanel" id={tabPanelId("corrections", "queue")} aria-labelledby={tabId("corrections", "queue")}>
+            <section className="corrections__section">
+              <h2 className="corrections__section-title">{messages.corrections.queueSectionTitle}</h2>
+              <p className="section-lead">{messages.corrections.queueSectionTagline}</p>
+
+              {queueCorrections.length === 0 ? <p className="corrections__empty">{messages.corrections.queueEmpty}</p> : null}
+
+              {queueCorrections.length > 0 ? (
+                <ul className="corrections__list">
+                  {queueCorrections.map((req) => renderCorrectionCard(req, { showApproveReject: true, showWithdraw: false }))}
+                </ul>
+              ) : null}
+            </section>
+
+            <section className="corrections__section">
+              <h2 className="corrections__section-title">{messages.autoBreakWaiver.queueSectionTitle}</h2>
+              <p className="section-lead">{messages.autoBreakWaiver.queueSectionTagline}</p>
+
+              {queueWaivers.length === 0 ? <p className="corrections__empty">{messages.autoBreakWaiver.queueEmpty}</p> : null}
+
+              {queueWaivers.length > 0 ? (
+                <ul className="corrections__list">
+                  {queueWaivers.map((w) => renderWaiverCard(w, { showApproveReject: true, showWithdraw: false }))}
+                </ul>
+              ) : null}
+            </section>
+          </div>
+        )}
       </main>
 
       {confirmState && confirmContent ? (
