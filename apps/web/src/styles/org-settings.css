@@ -253,6 +253,7 @@
 .org-table__link-btn {
   background: none;
   border: none;
+  white-space: nowrap;
   font-size: var(--text-sm);
   color: var(--k-cyan-ink);
   text-decoration: underline;
