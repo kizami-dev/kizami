@@ -3,7 +3,7 @@
  */
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { chromium, type Browser, type BrowserContext } from "playwright";
+import { chromium, type Browser, type BrowserContext, type Page } from "playwright";
 import { OUTPUT_DIR, WEB_BASE_URL } from "./config.js";
 import { SCREENS, type Screen } from "./screens.js";
 
@@ -56,6 +56,27 @@ async function newAuthedContext(browser: Browser, sessionCookie: string, viewpor
 
 const ADMIN_SESSION_KEY = "admin";
 
+/**
+ * Turnstile のスクリプトの代わり。外部(challenges.cloudflare.com)へ出さず、撮影で空白に
+ * ならないよう、枠だけのプレースホルダを描く。
+ */
+const TURNSTILE_STUB = `window.turnstile = {
+  render(el) {
+    el.innerHTML = '<div style="box-sizing:border-box;width:300px;height:65px;border:1px dashed #76777b;display:flex;align-items:center;justify-content:center;font:12px sans-serif;color:#76777b">Turnstile</div>';
+    return "stub";
+  },
+  remove() {},
+};`;
+
+/** 公開 API の設定応答を「システムメールもサインアップも無い配備(セルフホスト)」に差し替える。 */
+async function stubSelfHosted(page: Page): Promise<void> {
+  const headers = { "access-control-allow-origin": WEB_BASE_URL, "access-control-allow-credentials": "true" };
+  await page.route("**/signup/config", (route) => route.fulfill({ status: 200, headers, contentType: "application/json", body: JSON.stringify({ mode: "off" }) }));
+  await page.route("**/password-resets/config", (route) =>
+    route.fulfill({ status: 200, headers, contentType: "application/json", body: JSON.stringify({ selfService: false }) }),
+  );
+}
+
 export interface CaptureParams {
   sessionCookie: string;
   vars: Record<string, string>;
@@ -75,7 +96,9 @@ export async function captureAll(params: CaptureParams): Promise<CapturedShot[]>
 
   try {
     for (const viewport of ["desktop", "mobile"] as const) {
-      const screensForViewport = SCREENS.filter((s) => viewport === "desktop" || s.mobile);
+      // SCREENSHOT_ONLY=slug,slug で一部の画面だけ撮り直せる(確認用)。
+      const only = process.env.SCREENSHOT_ONLY?.split(",");
+      const screensForViewport = SCREENS.filter((s) => (viewport === "desktop" || s.mobile) && (!only || only.includes(s.slug)));
       for (const theme of ["light", "dark"] as const) {
         // ログイン画面用に Cookie 無しのコンテキストも1つ用意する(同じ browser インスタンス内、
         // 新しい newContext は既定で Cookie を持たないため別プロセスを立てる必要は無い)。
@@ -123,6 +146,10 @@ async function captureOne(
   vars: Record<string, string>,
 ): Promise<CapturedShot> {
   const page = await context.newPage();
+  await page.route("**/challenges.cloudflare.com/**", (route) =>
+    route.fulfill({ status: 200, contentType: "application/javascript", body: TURNSTILE_STUB }),
+  );
+  if (screen.selfHosted) await stubSelfHosted(page);
   // 画面単位の言語上書き(多言語UIのデモ用)。localStorage を初期スクリプトで仕込む —
   // アプリは kizami-locale を navigator.language より優先するため確実に効く。
   if (screen.locale) {
@@ -158,6 +185,8 @@ async function captureOne(
   await page.goto(url, { waitUntil: "networkidle", timeout: 30_000 });
   // ハイドレーション後の useEffect フェッチ・カードのフェードイン等が落ち着くのを軽く待つ。
   await page.waitForTimeout(400);
+  // Turnstile の代役(登録・再設定フォーム)が描かれるのを待つ。無い画面では何もしない。
+  await page.locator(".signup-turnstile > div").first().waitFor({ timeout: 1500 }).catch(() => undefined);
 
   if (screen.tour) {
     // 実効権限の取得 → 対象要素の出現待ち → 実寸を測っての吹き出し配置、と数段構えのため、
@@ -168,12 +197,19 @@ async function captureOne(
 
   // モバイルの下部タブバー(.k-tabbar)は position: fixed のため、fullPage 撮影では
   // 「ビューポート基準の位置」がページ全体の途中に写り込んでしまう(Playwright の既知の挙動)。
-  // 撮影時だけ absolute + ページ末尾に付け替え、実ブラウザでの見た目(常に画面下部)に
-  // 最も近い「ページの一番下に1回だけ写る」形にする。実アプリの CSS は変更しない。
-  // viewportOnly の画面はビューポート1枚をそのまま撮るため、この付け替えは不要
+  // 以前の「absolute + bottom: 0」は、位置の基準がビューポート1枚分の初期包含ブロックになり、
+  // 長いページでは途中(1画面目の下端)に残っていた。撮影時だけ、ページ全体の高さから
+  // タブバーの高さを引いた位置(top)に絶対配置し、ページの一番下に1回だけ写るようにする。
+  // 実アプリの CSS は変更しない。viewportOnly の画面はビューポート1枚をそのまま撮るため不要
   // (むしろ実際の見た目=画面下部固定 から遠ざかる)。
   if (viewport === "mobile" && screen.viewportOnly !== true) {
-    await page.addStyleTag({ content: ".k-tabbar { position: absolute !important; bottom: 0 !important; }" });
+    await page.evaluate(() => {
+      const bar = document.querySelector<HTMLElement>(".k-tabbar");
+      if (!bar) return;
+      bar.style.setProperty("position", "absolute", "important");
+      bar.style.setProperty("bottom", "auto", "important");
+      bar.style.setProperty("top", `${document.documentElement.scrollHeight - bar.offsetHeight}px`, "important");
+    });
   }
 
   const file = `${screen.slug}--${viewport}--${theme}.png`;

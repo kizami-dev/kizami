@@ -15,6 +15,7 @@
 }
 
 .audit-logs__detail summary {
+  white-space: nowrap;
   cursor: pointer;
   font-size: var(--text-sm);
   color: var(--k-key);
@@ -34,4 +35,9 @@
   padding: var(--space-2);
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+/* 列が多い表は、狭い画面で列を潰さず、枠(.org-settings__table-wrap)の横スクロールで読む。 */
+.audit-logs__table {
+  min-width: 44rem;
 }

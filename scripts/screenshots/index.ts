@@ -50,6 +50,19 @@ async function main(): Promise<void> {
     CORS_ORIGIN: WEB_BASE_URL,
     COOKIE_SECURE: "false",
     KIZAMI_ENCRYPTION_KEY: randomEncryptionKey(),
+    /*
+     * 「パスワードを忘れた」リンクと新規登録フォームを撮るため、システムメールとサインアップを
+     * 有効にして起動する。送信先は何も待ち受けていない 127.0.0.1:9(discard)で、そもそも撮影中は
+     * 送信の POST を一切行わないため、実際にメールが出ることはない。Turnstile のキーは
+     * ダミー(ウィジェットは capture.ts が差し替えるので外部へも出ない)。
+     * ログイン前の画面でリンクが出ない配備(セルフホスト)の見た目は、Screen.selfHosted で再現する。
+     */
+    SYSTEM_SMTP_URL: "smtp://127.0.0.1:9",
+    SYSTEM_MAIL_FROM: "noreply@kizami.example",
+    APP_BASE_URL: WEB_BASE_URL,
+    SIGNUP_MODE: "open",
+    TURNSTILE_SITE_KEY: "screenshot-site-key",
+    TURNSTILE_SECRET_KEY: "screenshot-secret-key",
   };
 
   const managed: ManagedProcess[] = [];

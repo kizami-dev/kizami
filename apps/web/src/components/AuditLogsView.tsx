@@ -311,7 +311,7 @@ export function AuditLogsView() {
               ) : (
                 <>
                   <div className="org-settings__table-wrap">
-                    <table className="org-table">
+                    <table className="org-table audit-logs__table">
                       <thead>
                         <tr>
                           <th>{messages.settingsAuditLogs.columnOccurredAt}</th>

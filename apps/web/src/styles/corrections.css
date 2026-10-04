@@ -283,10 +283,13 @@
   border-color: color-mix(in srgb, var(--k-key) 30%, transparent);
 }
 
-/* タッチ端末にはホバーが無いので、枠を常に出す */
+/* タッチ端末にはホバーが無い。枠は警告日だけに残し(下の --warn)、ほかの日は枠なしの
+   下線つきの文字にして、押せることだけ示す(30 日分の枠が並んで賑やかにならないように)。 */
 @media (hover: none) {
-  .monthly-table__correct-btn {
-    border-color: color-mix(in srgb, var(--k-key) 30%, transparent);
+  .monthly-table__correct-btn:not(.monthly-table__correct-btn--warn) {
+    color: var(--k-key);
+    text-decoration: underline;
+    text-underline-offset: 3px;
   }
 }
 

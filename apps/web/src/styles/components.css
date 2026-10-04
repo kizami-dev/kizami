@@ -801,3 +801,12 @@ select.input {
 .menu-button__item:disabled {
   color: var(--k-disabled-text);
 }
+
+/* 日本語の説明文を文節で折り返す(「…くださ/い」のような語の途中の改行を避ける)。 */
+.notice,
+.field__hint,
+.section-lead,
+.card__lead,
+.page-header__lead {
+  word-break: auto-phrase;
+}

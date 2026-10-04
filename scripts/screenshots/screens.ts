@@ -43,6 +43,12 @@ export interface Screen {
    * 固定層がページ途中に写り込み、実際の見え方と食い違うため(モバイルのタブバーと同じ事情)。
    */
   viewportOnly?: boolean;
+  /**
+   * システムメールもサインアップも無い配備(セルフホスト)の見た目で撮るか(既定 false)。
+   * 撮影用の API はシステムメールとサインアップを有効にして起動しているため、ログイン画面に
+   * 「パスワードを忘れた」「新規登録」のリンクが出る。出ない版を撮るときだけ立てる。
+   */
+  selfHosted?: boolean;
 }
 
 export const SCREENS: Screen[] = [
@@ -50,7 +56,32 @@ export const SCREENS: Screen[] = [
     slug: "login",
     path: "/login",
     title: "ログイン",
-    caption: "紙白の上に中央カード1枚。ロゴマークと文字ロゴのみで演出はしない。右上に控えめな言語切り替えがある。",
+    caption: "紙白の上に中央カード1枚。ロゴマークと文字ロゴのみで演出はしない。右上に控えめな言語切り替えがある。(システムメールのないセルフホスト版)",
+    requiresAuth: false,
+    mobile: true,
+    selfHosted: true,
+  },
+  {
+    slug: "login-cloud",
+    path: "/login",
+    title: "ログイン(パスワードを忘れた・新規登録つき)",
+    caption: "システムメールとサインアップがある配備では、ログインの下に「パスワードを忘れた場合」と「新規登録」のリンクが出る。",
+    requiresAuth: false,
+    mobile: true,
+  },
+  {
+    slug: "forgot-password",
+    path: "/forgot-password",
+    title: "パスワードを忘れた場合",
+    caption: "メールアドレスを送ると、該当するアカウントがあれば再設定のメールが届く(該当の有無は画面に出さない)。",
+    requiresAuth: false,
+    mobile: true,
+  },
+  {
+    slug: "signup",
+    path: "/signup",
+    title: "新規登録",
+    caption: "組織名・管理者名・メールアドレスを入れると確認メールが届く。パスワードは確認リンクの先で本人が決める。",
     requiresAuth: false,
     mobile: true,
   },
@@ -194,7 +225,7 @@ export const SCREENS: Screen[] = [
     title: "設定: 勤怠・フレックス",
     caption: "日界・法定休日・GPS取得の可否と、フレックス清算期間の設定(版の履歴つき)。",
     requiresAuth: true,
-    mobile: false,
+    mobile: true,
   },
   {
     slug: "settings-leave",
@@ -211,6 +242,47 @@ export const SCREENS: Screen[] = [
     caption: "部署の木構造(本社/営業部/開発部)を作成・編集する。",
     requiresAuth: true,
     mobile: false,
+  },
+  {
+    slug: "settings-security",
+    path: "/settings/security",
+    title: "設定: ログインとセキュリティ",
+    caption: "本人によるパスワード変更(表示切替つき)と、二要素認証(TOTP)の状態。",
+    requiresAuth: true,
+    mobile: false,
+  },
+  {
+    slug: "settings-approval-flow",
+    path: "/settings/approval-flow",
+    title: "設定: 多段承認",
+    caption: "修正・休暇の申請を一次承認だけにするか、二次承認まで必要にするかを決める。",
+    requiresAuth: true,
+    mobile: false,
+  },
+  {
+    slug: "settings-audit-logs",
+    path: "/settings/audit-logs",
+    title: "設定: 監査ログ",
+    caption: "誰がいつ何を変えたかの記録。絞り込みと、詳細の展開ができる(改ざんできない一覧)。",
+    requiresAuth: true,
+    mobile: true,
+  },
+  {
+    slug: "settings-slack-link",
+    path: "/settings/slack-link",
+    title: "設定: Slack連携(本人)",
+    caption: "Slackで発行したトークンを入力して、自分のSlackアカウントと連携する。権限は不要。",
+    requiresAuth: true,
+    mobile: false,
+  },
+  {
+    slug: "shifts-me-empty",
+    path: "/shifts/me",
+    title: "自分のシフト(確定前・空の状態)",
+    caption: "シフト表がまだ確定していない人の画面。空の状態はトンボの線画と一言で案内する。",
+    requiresAuth: true,
+    mobile: true,
+    authAs: "fixed-member",
   },
   {
     slug: "invite-accept",
@@ -243,7 +315,7 @@ export const SCREENS: Screen[] = [
     title: "設定: メンバー",
     caption: "所属部署・入社日・権限プリセットをメンバーごとに確認する。",
     requiresAuth: true,
-    mobile: false,
+    mobile: true,
   },
   {
     slug: "settings-presets",
@@ -251,7 +323,7 @@ export const SCREENS: Screen[] = [
     title: "設定: 権限プリセット",
     caption: "標準3種(管理者/マネージャー/メンバー)とカスタムプリセットの一覧。",
     requiresAuth: true,
-    mobile: false,
+    mobile: true,
   },
   {
     slug: "settings-tenant-profile",
