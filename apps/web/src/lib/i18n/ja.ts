@@ -1891,6 +1891,7 @@ export const ja = {
     nextMonth: "翌月",
     empty: "この月のシフトはまだ登録されていません。",
     manageLink: "シフト表を管理する →",
+    todayLabel: "今日",
   },
 
   departments: {

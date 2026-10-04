@@ -218,3 +218,88 @@
   color: var(--k-cyan-ink);
   font-size: var(--text-sm);
 }
+
+/* ---- 自分のシフト: 640px 以下は週ごとの縦リスト(グリッドは横スクロールで木〜土が見えないため) ---- */
+
+.shifts-me__list {
+  display: none;
+}
+
+@media (max-width: 640px) {
+  .shifts-me__grid {
+    display: none;
+  }
+
+  .shifts-me__list {
+    display: block;
+  }
+}
+
+.shifts-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.shifts-list__week-title {
+  margin: 0 0 var(--space-1);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-bold);
+  color: var(--k-ink-soft);
+}
+
+.shifts-list__days {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: var(--border-hair);
+  border-radius: var(--radius-m);
+  overflow: hidden;
+}
+
+.shifts-list__day {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-left: 3px solid transparent;
+  background: var(--k-surface);
+}
+
+.shifts-list__day + .shifts-list__day {
+  border-top: 1px solid color-mix(in srgb, var(--k-key) 8%, transparent);
+}
+
+.shifts-list__day--today {
+  border-left-color: var(--k-cyan);
+  background: color-mix(in srgb, var(--k-cyan) 8%, var(--k-surface));
+}
+
+.shifts-list__day--off .shifts-list__value {
+  color: var(--k-ink-soft);
+}
+
+.shifts-list__date {
+  min-width: 4.5rem;
+  font-size: var(--text-md);
+  font-weight: var(--weight-bold);
+}
+
+.shifts-list__weekday {
+  margin-left: 2px;
+  font-size: var(--text-xs);
+  font-weight: 400;
+  color: var(--k-ink-soft);
+}
+
+.shifts-list__value {
+  flex: 1;
+  font-family: var(--font-mono);
+  font-size: var(--text-md);
+}
+
+.shifts-list__today {
+  font-size: var(--text-xs);
+  font-weight: var(--weight-bold);
+  color: var(--k-cyan-ink);
+}
