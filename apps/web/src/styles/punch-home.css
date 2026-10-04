@@ -212,13 +212,6 @@
   color: var(--k-paper);
 }
 
-.punch-button:disabled {
-  background: var(--k-disabled-bg);
-  color: var(--k-ink-soft);
-  box-shadow: none;
-  opacity: 0.75;
-}
-
 /*
  * ダークでは CMY 原色塗り(--k-cyan/--k-yellow/--k-magenta)が変わらないまま
  * --k-key が反転(暗→明)するため、既定のテキスト色(親の color: var(--k-key)、
@@ -246,6 +239,18 @@
 
 :root[data-theme="dark"] .punch-button--out {
   color: var(--k-fill-text-light);
+}
+
+/*
+ * 無効状態: opacity は使わず、専用トークンの文字色と破線の枠で「押せない」ことを形でも示す。
+ * ダークの色上書き(上の :root[data-theme] 系、詳細度 0,3,0)に負けないよう、
+ * 同じ詳細度でそれらより後ろに置く。
+ */
+:root .punch-button:disabled {
+  background: var(--k-disabled-bg);
+  color: var(--k-disabled-text);
+  border: 2px dashed var(--k-disabled-border);
+  box-shadow: none;
 }
 
 .punch-pad__hint {
