@@ -293,7 +293,10 @@ async function main(): Promise<void> {
   console.log(`kizami reminder worker started (interval=${reminderIntervalMinutes}min, redis=${redisUrl})`);
 }
 
+// 起動失敗(DB 未起動でのマイグレーション失敗など)は明示的に終了する。exitCode を立てるだけだと、
+// 先に開いた Redis 接続がイベントループを生かし続けてプロセスが居座り、Pod は Running のまま
+// 何もしない(再起動もされない)状態になる(2026-10-04 KIZAMI Cloud 初回展開で発生)。
 main().catch((err: unknown) => {
   console.error(err);
-  process.exitCode = 1;
+  process.exit(1);
 });
