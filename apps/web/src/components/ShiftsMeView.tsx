@@ -10,6 +10,7 @@ import { useAuthGuard } from "../lib/useAuthGuard";
 import { useEffectivePermissions } from "../lib/useEffectivePermissions";
 import { AppHeader } from "./AppHeader";
 import { ShiftWeekGrid } from "./shifts/ShiftWeekGrid";
+import { ShiftWeekList } from "./shifts/ShiftWeekList";
 import { StateView } from "./ui/StateView";
 import { PageHeader } from "./ui/PageHeader";
 
@@ -98,7 +99,14 @@ export function ShiftsMeView() {
           shifts.length === 0 ? (
             <StateView kind="empty">{messages.shiftsMe.empty}</StateView>
           ) : (
-            <ShiftWeekGrid periodStart={from} periodEnd={to} days={shifts} patterns={[]} />
+            <>
+              <div className="shifts-me__grid">
+                <ShiftWeekGrid periodStart={from} periodEnd={to} days={shifts} patterns={[]} />
+              </div>
+              <div className="shifts-me__list">
+                <ShiftWeekList periodStart={from} periodEnd={to} days={shifts} />
+              </div>
+            </>
           )
         ) : null}
       </main>

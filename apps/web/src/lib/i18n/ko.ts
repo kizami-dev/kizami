@@ -1843,6 +1843,7 @@ export const ko = {
     nextMonth: "다음 달",
     empty: "이번 달의 시프트는 아직 등록되지 않았습니다.",
     manageLink: "시프트표 관리하기 →",
+    todayLabel: "오늘",
   },
 
   departments: {

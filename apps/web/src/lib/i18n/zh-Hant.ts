@@ -1827,6 +1827,7 @@ export const zhHant = {
     nextMonth: "下月",
     empty: "本月尚未登記排班。",
     manageLink: "管理排班表 →",
+    todayLabel: "今天",
   },
 
   departments: {

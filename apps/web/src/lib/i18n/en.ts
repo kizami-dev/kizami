@@ -1877,6 +1877,7 @@ export const en = {
     nextMonth: "Next month",
     empty: "No shifts are registered for this month yet.",
     manageLink: "Manage shift schedules →",
+    todayLabel: "Today",
   },
 
   departments: {

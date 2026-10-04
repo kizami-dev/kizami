@@ -650,3 +650,72 @@
     margin-left: var(--space-1);
   }
 }
+
+/*
+ * モバイルの 1 日 = 2 行カード(段階B-3)。1 行目に日付と「修正」、2 行目に勤務時刻、
+ * 3 行目に実労働・休憩・深夜などを「ラベル 値」で横に並べ、警告は最後に全幅で出す。
+ * 打刻のない日は値のセルが空(:empty で非表示)になるため、日付と「修正」だけの 1 行になる。
+ * 縦に積んでいたラベル(::before)は、数値セルだけ行内に戻し、ほかは隠す。
+ */
+@media (max-width: 640px) {
+  .monthly-table tr {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    column-gap: var(--space-3);
+    row-gap: var(--space-1);
+    padding: var(--space-2) var(--space-3);
+  }
+
+  .monthly-table tbody {
+    gap: var(--space-2);
+  }
+
+  .monthly-table td.monthly-table__date {
+    order: 0;
+    flex: 1 1 auto;
+    margin: 0;
+    padding: 0;
+  }
+
+  .monthly-table td.monthly-table__actions {
+    order: 1;
+    flex: 0 0 auto;
+    padding: 0;
+  }
+
+  .monthly-table td.monthly-table__actions::before,
+  .monthly-table td.monthly-table__stretches::before,
+  .monthly-table td.monthly-table__warning::before {
+    display: none;
+  }
+
+  .monthly-table td.monthly-table__stretches {
+    order: 2;
+    flex: 1 0 100%;
+    font-family: var(--font-mono);
+    font-size: var(--text-md);
+    padding: 0;
+  }
+
+  .monthly-table td.monthly-table__num {
+    order: 3;
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: baseline;
+    gap: var(--space-1);
+    padding: 0;
+    font-size: var(--text-sm);
+  }
+
+  .monthly-table td.monthly-table__num::before {
+    display: inline;
+  }
+
+  .monthly-table td.monthly-table__warning {
+    order: 4;
+    flex: 1 0 100%;
+    min-width: 0;
+    padding: 0;
+  }
+}
