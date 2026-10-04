@@ -15,6 +15,7 @@ import {
   isTourablePath,
   keyToMove,
   moveIndex,
+  needsAlignTop,
   needsScrollIntoView,
   placeTooltip,
   readTourDone,
@@ -231,5 +232,17 @@ describe("位置計算", () => {
     expect(needsScrollIntoView({ top: -200, left: 0, width: 400, height: 1500 }, viewport)).toBe(false);
     // 下端がわずかに覗いているだけなら、まだ見せる必要がある。
     expect(needsScrollIntoView({ top: 870, left: 0, width: 400, height: 1500 }, viewport)).toBe(true);
+  });
+
+  it("上下に置けない縦長の対象は、横に余白があれば脇へ置く", () => {
+    const pos = placeTooltip({ top: 30, left: 80, width: 600, height: 880 }, { width: 320, height: 200 }, viewport, "bottom");
+    expect(pos.left).toBe(692); // 80 + 600 + gap(12)
+    expect(pos.top).toBe(30);
+  });
+
+  it("画面より背の高い対象は、上端が見えていなければ上端を合わせる", () => {
+    expect(needsAlignTop({ top: 400, left: 0, width: 400, height: 1500 }, viewport)).toBe(true);
+    expect(needsAlignTop({ top: 24, left: 0, width: 400, height: 1500 }, viewport)).toBe(false);
+    expect(needsAlignTop({ top: 400, left: 0, width: 400, height: 100 }, viewport)).toBe(false);
   });
 });

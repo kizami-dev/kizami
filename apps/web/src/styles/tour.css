@@ -3,7 +3,7 @@
  *
  * 既存トークンだけで作る(新しい色は足さない):
  *   - 暗幕は --k-scrim(確認ダイアログの幕と同じ。奥を沈める役割はテーマで変えない)
- *   - 切り抜きの縁と「進む」は --k-cyan / --k-cyan-ink(打刻・リンクと同じ主役色)
+ *   - 切り抜きの縁は --k-cyan(「進む」は共通の主ボタン=K 塗り。シアンは出勤の意味色のため塗りに使わない)
  *   - カードは --k-surface + --shadow-card(ダッシュボードのカードと同じ質感)
  * 位置(top/left/width/height)は JS が実測して style 属性で与える — CSS 側は形と色だけを持つ。
  */
@@ -61,6 +61,10 @@
 }
 
 .tour__progress {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
   margin: 0;
   font-family: var(--font-mono);
   font-size: var(--text-xs);
@@ -68,10 +72,43 @@
   letter-spacing: 0.04em;
 }
 
+.tour__dots {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* 進み具合の印。済=塗りの点、今=十字の入った円(トンボ)、先=空の点。形でも区別する。 */
+.tour__dot {
+  box-sizing: border-box;
+  width: 0.5rem;
+  height: 0.5rem;
+  border: 1px solid var(--k-ink-soft);
+  border-radius: 50%;
+}
+
+.tour__dot--done {
+  background: var(--k-ink-soft);
+}
+
+.tour__dot--current {
+  width: 0.875rem;
+  height: 0.875rem;
+  border-color: var(--k-key);
+  background:
+    linear-gradient(var(--k-key), var(--k-key)) center / 1px 100% no-repeat,
+    linear-gradient(var(--k-key), var(--k-key)) center / 100% 1px no-repeat;
+}
+
 .tour__title {
   margin: 0;
+  font-family: var(--font-heading);
+  font-feature-settings: var(--feature-heading);
   font-size: var(--text-md);
-  font-weight: 700;
+  font-weight: var(--weight-bold);
   color: var(--k-key);
 }
 
@@ -109,37 +146,6 @@
   color: var(--k-key);
 }
 
-.tour__prev,
-.tour__next {
-  border-radius: var(--radius-s);
-  padding: var(--space-2) var(--space-4);
-  font-size: var(--text-sm);
-  font-weight: 500;
-  border: var(--border-hair);
-  background: transparent;
-  color: var(--k-key);
-}
-
-.tour__prev:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--k-key) 6%, transparent);
-}
-
-.tour__prev:disabled {
-  color: var(--k-ink-soft);
-  opacity: 0.5;
-}
-
-.tour__next {
-  border-color: transparent;
-  background: var(--k-cyan);
-  /* シアン原色塗りの上のテキストはテーマに関わらず暗色で固定する(tokens.css の判断点参照)。 */
-  color: var(--k-fill-text-dark);
-}
-
-.tour__next:hover {
-  background: color-mix(in srgb, var(--k-cyan) 85%, var(--k-key));
-}
-
 /* 動きを減らす設定では、切り抜きの追従アニメーションを止める(位置は即座に確定させる)。 */
 @media (prefers-reduced-motion: reduce) {
   .tour__cutout {
@@ -158,8 +164,7 @@
     justify-content: space-between;
   }
 
-  .tour__prev,
-  .tour__next {
+  .tour__nav .btn {
     flex: 1;
   }
 }

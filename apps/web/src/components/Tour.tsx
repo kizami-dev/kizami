@@ -11,6 +11,7 @@ import {
   isTourablePath,
   keyToMove,
   moveIndex,
+  needsAlignTop,
   needsScrollIntoView,
   placeTooltip,
   readTourDone,
@@ -24,6 +25,7 @@ import {
   type TourStep,
 } from "../lib/tour";
 import { useEffectivePermissions } from "../lib/useEffectivePermissions";
+import { buttonClass } from "./ui/Button";
 
 /**
  * 初回ログイン時の「使い方ツアー」(2026-08-27 追加、docs/requirements.md §11「以降」)。
@@ -297,7 +299,8 @@ function TourRunner({ path, navigate }: { path: string; navigate: (to: RouteHref
       if (
         stableFrames === STABLE_FRAMES &&
         scrollAttempts < MAX_SCROLL_ATTEMPTS &&
-        needsScrollIntoView(next, { width: window.innerWidth, height: window.innerHeight })
+        (needsScrollIntoView(next, { width: window.innerWidth, height: window.innerHeight }) ||
+          needsAlignTop(next, { width: window.innerWidth, height: window.innerHeight }))
       ) {
         scrollAttempts += 1;
         stableFrames = 0;
@@ -401,9 +404,14 @@ function TourRunner({ path, navigate }: { path: string; navigate: (to: RouteHref
           visibility: tooltip ? "visible" : "hidden",
         }}
       >
-        <p className="tour__progress tabular-nums">
-          {messages.tour.progress(stepNumber(index), steps.length)}
-        </p>
+        <div className="tour__progress tabular-nums">
+          <ol className="tour__dots" aria-hidden="true">
+            {steps.map((s, i) => (
+              <li key={s.id} className={`tour__dot${i === index ? " tour__dot--current" : i < index ? " tour__dot--done" : ""}`} />
+            ))}
+          </ol>
+          <span>{messages.tour.progress(stepNumber(index), steps.length)}</span>
+        </div>
         <h2 id="tour-card-title" className="tour__title">
           {text.title}
         </h2>
@@ -413,10 +421,10 @@ function TourRunner({ path, navigate }: { path: string; navigate: (to: RouteHref
             {messages.tour.skip}
           </button>
           <div className="tour__nav">
-            <button type="button" className="tour__prev" onClick={() => move(-1)} disabled={index === 0}>
+            <button type="button" className={buttonClass("secondary", "sm")} onClick={() => move(-1)} disabled={index === 0}>
               {messages.tour.prev}
             </button>
-            <button type="button" className="tour__next" onClick={() => move(1)}>
+            <button type="button" className={buttonClass("primary", "sm")} onClick={() => move(1)}>
               {isLast ? messages.tour.finish : messages.tour.next}
             </button>
           </div>
