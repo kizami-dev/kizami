@@ -1348,7 +1348,7 @@ export const ja = {
     attendance: "勤怠ルール",
     allowances: "手当対象時間",
     shiftPatterns: "シフトパターン",
-    security: "二要素認証",
+    security: "セキュリティ",
     apiKeys: "APIキー",
     slack: "Slack連携",
     sso: "SSO(OIDC)",
@@ -1388,8 +1388,8 @@ export const ja = {
     helpDesc: "ヘルプに表示する自社のルールと、就業規則へのリンクを設定します。",
     privacyTitle: "個人情報",
     privacyDesc: "従業員向けプライバシー通知・社内利用規約の雛形を、現在の設定から確認します。",
-    securityTitle: "二要素認証",
-    securityDesc: "パスワードに加えて認証アプリの6桁コードを求める設定です。リカバリコードの再生成・無効化もここで行います。",
+    securityTitle: "ログインとセキュリティ",
+    securityDesc: "パスワードの変更と、二要素認証(認証アプリの6桁コード)の設定を行います。",
     apiKeysTitle: "APIキー",
     apiKeysDesc: "ICカードリーダー・Slack bot・MCPサーバーなど外部クライアントから打刻するためのAPIキーを発行・失効します。",
     slackTitle: "Slack連携",
@@ -2699,16 +2699,16 @@ export const ja = {
       },
     },
 
-    title: "二要素認証",
-    tagline: "パスワードに加えて、認証アプリに表示される6桁のコードでログインを守ります。",
+    title: "ログインとセキュリティ",
+    tagline: "パスワードの変更と、二要素認証(認証アプリに表示される6桁のコード)でログインを守る設定を行います。",
     loadFailed: "情報の取得に失敗しました。もう一度お試しください",
 
     /** available=false(運用者が暗号化鍵を設定していない)ときの説明。利用者側では解決できない。 */
-    unavailableTitle: "この環境では利用できません",
+    unavailableTitle: "二要素認証はこの環境では利用できません",
     unavailableDescription:
       "運用者が暗号化鍵(KIZAMI_ENCRYPTION_KEY)を設定していないため、二要素認証は利用できません。認証アプリの秘密鍵を暗号化して保存できないためです。利用したい場合はシステムの運用担当者にご相談ください。",
 
-    statusTitle: "現在の状態",
+    statusTitle: "二要素認証の状態",
     statusEnabled: "有効",
     statusDisabled: "無効",
     enabledAtLabel: "有効にした日時",
