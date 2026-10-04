@@ -58,3 +58,21 @@ export async function verifyTurnstile(params: VerifyTurnstileParams): Promise<Tu
   const success = typeof body === "object" && body !== null && (body as { success?: unknown }).success === true;
   return success ? { ok: true } : { ok: false, reason: "failed" };
 }
+
+export interface TurnstileEnvConfig {
+  secretKey: string;
+  siteKey: string;
+}
+
+/**
+ * 環境変数 `TURNSTILE_SECRET_KEY` / `TURNSTILE_SITE_KEY` の**両方**が設定されていれば設定を返し、
+ * どちらかが欠けていれば null(= Turnstile を使わない)。本人用パスワード再設定(routes/password-resets.ts)が
+ * 「キーが設定されている配備では必須、無ければ不要」の判定に使う。サインアップはこれとは別に、
+ * 有効なのに欠けていれば起動時に落とす(lib/signup-config.ts)。
+ */
+export function parseTurnstileEnv(env: Record<string, string | undefined>): TurnstileEnvConfig | null {
+  const secretKey = env.TURNSTILE_SECRET_KEY?.trim();
+  const siteKey = env.TURNSTILE_SITE_KEY?.trim();
+  if (!secretKey || !siteKey) return null;
+  return { secretKey, siteKey };
+}

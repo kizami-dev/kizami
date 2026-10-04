@@ -86,13 +86,14 @@ import {
   upsertPendingSignupUnlessRecent,
   type Database,
 } from "@kizami/db";
-import { Hono, type MiddlewareHandler } from "hono";
+import { Hono } from "hono";
 import { sha256Hex } from "../auth/api-key.js";
 import { generateInvitationToken } from "../auth/invitation-token.js";
 import { hashPassword } from "../auth/password.js";
 import { isAcceptablePassword, MIN_PASSWORD_LENGTH } from "../auth/password-policy.js";
 import { createSession, setSessionCookie } from "../auth/session.js";
 import { getClientIp } from "../lib/client-ip.js";
+import { jsonPostGuard } from "../lib/json-post-guard.js";
 import { hashSignupInviteCode } from "../lib/signup-invite-code.js";
 import type { SystemMailSendFn } from "../lib/system-mail.js";
 import { bootstrapTenant } from "../lib/tenant-bootstrap.js";
@@ -166,27 +167,6 @@ export function buildSignupVerificationMail(params: { to: string; verifyUrl: str
   };
 }
 
-/**
- * signup の POST 全般に掛けるログイン CSRF 対策(このファイル冒頭「ログイン CSRF 対策」)。
- * Content-Type が application/json でなければ 415、Origin ヘッダがあって許可オリジンと
- * 一致しなければ 403。
- */
-function postGuard(appBaseUrl: string): MiddlewareHandler {
-  const allowedOrigin = new URL(appBaseUrl).origin;
-  return async (c, next) => {
-    if (c.req.method === "POST") {
-      const origin = c.req.header("origin");
-      if (origin !== undefined && origin !== allowedOrigin) {
-        return c.json({ error: "forbidden_origin" }, 403);
-      }
-      if (!(c.req.header("content-type") ?? "").toLowerCase().startsWith("application/json")) {
-        return c.json({ error: "unsupported_media_type" }, 415);
-      }
-    }
-    await next();
-  };
-}
-
 export function createSignupRoutes(db: Database, options: SignupRoutesOptions) {
   const app = new Hono();
   const { signup } = options;
@@ -204,7 +184,7 @@ export function createSignupRoutes(db: Database, options: SignupRoutesOptions) {
     return app;
   }
 
-  app.use("*", postGuard(signup.appBaseUrl));
+  app.use("*", jsonPostGuard(signup.appBaseUrl));
 
   app.post("/", async (c) => {
     let body: unknown;
