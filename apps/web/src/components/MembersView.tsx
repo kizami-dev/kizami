@@ -942,7 +942,7 @@ export function MembersView() {
                                         </button>
                                       </div>
                                       {!member.hireDate ? (
-                                        <p className="member-hire-date__warning" role="alert">
+                                        <p className="notice notice--caution" role="alert">
                                           {messages.members.hireDateWarning}
                                         </p>
                                       ) : null}

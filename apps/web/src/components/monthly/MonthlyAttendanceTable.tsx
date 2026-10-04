@@ -250,7 +250,7 @@ export function MonthlyAttendanceTable({ data, leaveByDate, onCorrect }: Monthly
                     {/* 承認済み休暇のマーカー(2026-08-23)。事前申請した将来の休暇日も
                         「この日は休みの予定」と月次から読めるようにする。時間単位は分数を添える。 */}
                     {(leaveByDate.get(day.date) ?? []).map((req) => (
-                      <span key={req.id} className="monthly-table__leave-badge">
+                      <span key={req.id} className="badge badge--cyan monthly-table__leave-badge">
                         {messages.leave.unitLabelShort[req.unit]}
                         {req.unit === "hourly" && req.minutes ? ` ${formatDurationHm(req.minutes)}` : ""}
                       </span>

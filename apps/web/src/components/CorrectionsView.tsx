@@ -360,7 +360,7 @@ export function CorrectionsView() {
   function renderApprovalStepChip(state: ApprovalFlowStateDto) {
     if (state.requiredSteps < 2 || state.currentStep === null) return null;
     return (
-      <span className="correction-card__step">
+      <span className="badge badge--yellow">
         {state.currentStep === 2 ? messages.approvalSteps.awaitingStep2 : messages.approvalSteps.awaitingStep1}
       </span>
     );

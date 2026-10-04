@@ -41,6 +41,11 @@ const DOCS_BASE_URL: string = import.meta.env.WAKU_PUBLIC_DOCS_URL ?? "/docs";
  * content/*.ja.md からのみ生成しており、多言語サイトにはなっていないため
  * (scripts/sync-help-docs.mjs のコメント参照)。ここでロケール別のパスを作ると 404 になる。
  */
+/** ドキュメントサイト内のページへのリンク(例: `/external-api/slack`)。 */
+export function docsHref(path: string): string {
+  return `${DOCS_BASE_URL}${path}`;
+}
+
 export function helpDocHref(key: HelpKey): string {
   return `${DOCS_BASE_URL}/guide/${key.split(".").join("-")}`;
 }

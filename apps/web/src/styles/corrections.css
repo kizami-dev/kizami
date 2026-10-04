@@ -230,13 +230,6 @@
   color: var(--k-ink-soft);
 }
 
-/* 承認キューの行に出す「一次/二次のどちらの承認待ちか」(2026-08-24 追加)。 */
-.correction-card__step {
-  font-size: var(--text-sm);
-  font-weight: 700;
-  color: var(--k-yellow-ink);
-}
-
 .correction-card__body {
   margin: 0;
   display: flex;

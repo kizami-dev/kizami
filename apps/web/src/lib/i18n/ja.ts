@@ -1182,7 +1182,8 @@ export const ja = {
     title: "Slack連携",
     tagline: "Slackのスラッシュコマンド(/punch)から打刻できるようにする設定です。",
     noPermission: "この設定を変更する権限がありません",
-    setupGuideHint: "導入手順(Slackアプリの作成・Signing Secretの控え方)は docs/external-api/slack.md を参照してください。",
+    setupGuideHint: "導入手順(Slackアプリの作成・Signing Secretの控え方)は次のページを参照してください。",
+    setupGuideLinkLabel: "Slack 連携の導入手順",
 
     teamIdLabel: "Slack ワークスペースID(Team ID)",
     teamIdPlaceholder: "T0123456",
@@ -1224,7 +1225,8 @@ export const ja = {
     title: "SSO(OIDC)",
     tagline: "Google Workspace・Entra ID などの IdP と OIDC で連携し、SSO でログインできるようにします。",
     noPermission: "この設定を変更する権限がありません",
-    setupGuideHint: "IdP 側のアプリ登録手順と、この画面の各項目の意味は docs/design/sso-oidc.md を参照してください。",
+    setupGuideHint: "IdP 側のアプリ登録手順と、この画面の各項目の意味は次のページを参照してください。",
+    setupGuideLinkLabel: "SSO(OIDC)ログインの設計と設定手順",
 
     noAutoProvisioningNote: "SSO は既存メンバーのログイン手段です。IdP にアカウントがあっても、KIZAMI に招待されていない人はログインできません(自動的にメンバーは作られません)。",
 

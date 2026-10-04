@@ -12,6 +12,7 @@ import { ConfirmDialog } from "./ConfirmDialog";
 import { SettingsNav } from "./SettingsNav";
 import { StateView } from "./ui/StateView";
 import { PageHeader } from "./ui/PageHeader";
+import { Badge } from "./ui/Badge";
 
 // モジュールレベルで messages のプロパティを取り出して定数化すると、import 時の言語
 // (通常は既定の日本語)で凍結され、言語切替に追従しない(messages は Proxy 経由で現在ロケールを
@@ -256,7 +257,9 @@ export function HelpSettingsView() {
                         onClick={() => selectKey(entry.key)}
                       >
                         <span>{firstHeading(entry.body)}</span>
-                        {hasOverride ? <span className="badge badge--neutral badge--dashed">{messages.settingsHelp.hasOverrideBadge}</span> : null}
+                        {hasOverride ? <Badge tone="neutral" className="badge--dashed">
+                            {messages.settingsHelp.hasOverrideBadge}
+                          </Badge> : null}
                       </button>
                     </li>
                   );
@@ -352,11 +355,11 @@ export function HelpSettingsView() {
                   <>
                     <section className="help-settings__reference">
                       <h2 className="card__title">{messages.settingsHelp.referenceTitle}</h2>
-                      <span className={`help-tip__badge help-tip__badge--${selectedEntry.origin}`}>
+                      <Badge tone={selectedEntry.origin === "law" ? "key" : "neutral"} className="help-tip__badge">
                         {selectedEntry.origin === "law" && selectedEntry.basis
                           ? `${originLabel("law")} · ${selectedEntry.basis}`
                           : originLabel(selectedEntry.origin)}
-                      </span>
+                      </Badge>
                       <p className="help-settings__reference-summary">{selectedEntry.summary}</p>
                       {translationNotice ? <p className="help-tip__notice">{translationNotice}</p> : null}
                     </section>
@@ -365,7 +368,9 @@ export function HelpSettingsView() {
                       <section className="card">
                         <h2 className="card__title">
                           {messages.settingsHelp.editorTitle}
-                          <span className="help-tip__badge help-tip__badge--company">{messages.settingsNav.help}</span>
+                          <Badge tone="neutral" className="help-tip__badge badge--dashed">
+                            {messages.settingsNav.help}
+                          </Badge>
                         </h2>
                         <p className="field__hint">{messages.settingsHelp.editorPlaceholderNote}</p>
                         <div className="field">

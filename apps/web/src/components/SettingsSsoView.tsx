@@ -5,6 +5,7 @@ import { useRouter } from "waku";
 import { api, API_BASE_URL, ApiError, UnauthorizedError, type SsoSettingsDto, type UpdateSsoSettingsInput } from "../lib/api";
 import { mapSsoSettingsErrorMessage, messages } from "../lib/messages";
 import { useAuthGuard } from "../lib/useAuthGuard";
+import { docsHref } from "../lib/help";
 import { AppHeader } from "./AppHeader";
 import { SettingsNav } from "./SettingsNav";
 import { StateView } from "./ui/StateView";
@@ -139,7 +140,12 @@ export function SettingsSsoView() {
         <SettingsNav active="sso" />
         <PageHeader title={messages.settingsSso.title} lead={messages.settingsSso.tagline} />
         <p className="field__hint">{messages.settingsSso.noAutoProvisioningNote}</p>
-        <p className="field__hint">{messages.settingsSso.setupGuideHint}</p>
+        <p className="field__hint">
+          {messages.settingsSso.setupGuideHint}{" "}
+          <a href={docsHref("/design/sso-oidc")} target="_blank" rel="noreferrer">
+            {messages.settingsSso.setupGuideLinkLabel}
+          </a>
+        </p>
 
         {forbidden ? (
           <p className="notice notice--danger" role="alert">

@@ -1132,7 +1132,8 @@ export const ko = {
     title: "Slack 연동",
     tagline: "Slack 슬래시 커맨드(/punch)로 출퇴근을 기록할 수 있도록 하는 설정입니다.",
     noPermission: "이 설정을 변경할 권한이 없습니다",
-    setupGuideHint: "도입 절차(Slack 앱 생성·Signing Secret 확인 방법)는 docs/external-api/slack.md 를 참조해 주세요.",
+    setupGuideHint: "도입 절차(Slack 앱 생성·Signing Secret 확인 방법)는 다음 페이지를 참조해 주세요.",
+    setupGuideLinkLabel: "Slack 연동 도입 절차",
 
     teamIdLabel: "Slack 워크스페이스 ID(Team ID)",
     teamIdPlaceholder: "T0123456",
@@ -1174,7 +1175,8 @@ export const ko = {
     title: "SSO(OIDC)",
     tagline: "Google Workspace·Entra ID 등의 IdP 와 OIDC 로 연동하여 SSO 로그인을 사용할 수 있게 합니다.",
     noPermission: "이 설정을 변경할 권한이 없습니다",
-    setupGuideHint: "IdP 측 앱 등록 절차와 이 화면 각 항목의 의미는 docs/design/sso-oidc.md 를 참조해 주세요.",
+    setupGuideHint: "IdP 측 앱 등록 절차와 이 화면 각 항목의 의미는 다음 페이지를 참조해 주세요.",
+    setupGuideLinkLabel: "SSO(OIDC) 로그인 설계 및 설정 절차",
 
     noAutoProvisioningNote: "SSO 는 기존 멤버의 로그인 수단입니다. IdP 에 계정이 있어도 KIZAMI 에 초대되지 않은 사람은 로그인할 수 없습니다(멤버가 자동으로 생성되지 않습니다).",
 

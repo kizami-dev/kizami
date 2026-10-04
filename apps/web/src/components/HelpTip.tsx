@@ -5,6 +5,7 @@ import type { HelpKey } from "../lib/help";
 import { helpDocHref, helpEntry, helpNotice } from "../lib/help";
 import { messages } from "../lib/messages";
 import { useHelpOverrides } from "../lib/useHelpOverrides";
+import { Badge } from "./ui/Badge";
 
 export interface HelpTipProps {
   helpKey: HelpKey;
@@ -114,7 +115,9 @@ export function HelpTip({ helpKey, className }: HelpTipProps) {
         role="note"
         style={position ? { position: "fixed", top: position.top, left: position.left } : undefined}
       >
-        <span className={`help-tip__badge help-tip__badge--${entry.origin}`}>{badgeLabel}</span>
+        <Badge tone={entry.origin === "law" ? "key" : "neutral"} className="help-tip__badge">
+          {badgeLabel}
+        </Badge>
         <p className="help-tip__summary">{entry.summary}</p>
         <a className="help-tip__link" href={helpDocHref(helpKey)} target="_blank" rel="noreferrer">
           {messages.helpTip.detailLink}
@@ -128,7 +131,9 @@ export function HelpTip({ helpKey, className }: HelpTipProps) {
         */}
         {companyOverride ? (
           <div className="help-tip__company">
-            <span className="help-tip__badge help-tip__badge--company">{ORIGIN_LABEL.company}</span>
+            <Badge tone="neutral" className="help-tip__badge badge--dashed">
+              {ORIGIN_LABEL.company}
+            </Badge>
             <p className="help-tip__company-body">{companyOverride.bodyMd}</p>
             {workRulesUrl ? (
               <a className="help-tip__link" href={workRulesUrl} target="_blank" rel="noreferrer">
