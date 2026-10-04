@@ -599,14 +599,23 @@ export function DashboardView() {
           <div className="settings-hub__grid">
             <Link to={`/monthly?month=${monthParam}`} className="settings-hub__card">
               <span className="settings-hub__card-title">{messages.dashboard.quickLinkMonthlyTitle}</span>
+              <span className="settings-hub__card-arrow" aria-hidden="true">
+                →
+              </span>
               <span className="settings-hub__card-desc">{messages.dashboard.quickLinkMonthlyDesc}</span>
             </Link>
             <Link to="/corrections" className="settings-hub__card">
               <span className="settings-hub__card-title">{messages.dashboard.quickLinkCorrectionsTitle}</span>
+              <span className="settings-hub__card-arrow" aria-hidden="true">
+                →
+              </span>
               <span className="settings-hub__card-desc">{messages.dashboard.quickLinkCorrectionsDesc}</span>
             </Link>
             <Link to="/leave" className="settings-hub__card">
               <span className="settings-hub__card-title">{messages.dashboard.quickLinkLeaveTitle}</span>
+              <span className="settings-hub__card-arrow" aria-hidden="true">
+                →
+              </span>
               <span className="settings-hub__card-desc">{messages.dashboard.quickLinkLeaveDesc}</span>
             </Link>
           </div>

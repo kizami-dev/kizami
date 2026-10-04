@@ -184,10 +184,10 @@ function ProposalTable({ proposals }: { proposals: LeaveGrantProposalDto[] }) {
                 </td>
                 <td>
                   <div className="org-table__actions">
-                    <button type="button" className="org-table__link-btn">
+                    <button type="button" className="btn btn--ghost btn--sm">
                       {messages.leaveGrantProposals.approve}
                     </button>
-                    <button type="button" className="org-table__link-btn org-table__link-btn--danger">
+                    <button type="button" className="btn btn--danger-ghost btn--sm">
                       {messages.leaveGrantProposals.reject}
                     </button>
                   </div>

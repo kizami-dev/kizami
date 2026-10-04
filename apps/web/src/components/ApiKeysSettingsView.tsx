@@ -311,7 +311,7 @@ export function ApiKeysSettingsView() {
                           {status === "active" ? (
                             <button
                               type="button"
-                              className="org-table__link-btn org-table__link-btn--danger"
+                              className="btn btn--danger-ghost btn--sm"
                               onClick={() => {
                                 setRevokeError(null);
                                 setRevokeTarget(key);

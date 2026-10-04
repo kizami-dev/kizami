@@ -232,17 +232,17 @@ export function PresetsView() {
                         </td>
                         <td>
                           <div className="org-table__actions">
-                            <button type="button" className="org-table__link-btn" onClick={() => openEdit(preset)}>
+                            <button type="button" className="btn btn--ghost btn--sm" onClick={() => openEdit(preset)}>
                               {messages.presets.edit}
                             </button>
                             {preset.isSystem ? (
-                              <button type="button" className="org-table__link-btn" onClick={() => openDuplicate(preset)}>
+                              <button type="button" className="btn btn--ghost btn--sm" onClick={() => openDuplicate(preset)}>
                                 {messages.presets.duplicate}
                               </button>
                             ) : (
                               <button
                                 type="button"
-                                className="org-table__link-btn org-table__link-btn--danger"
+                                className="btn btn--danger-ghost btn--sm"
                                 onClick={() => {
                                   setDeleteError(null);
                                   setDeleteState({ id: preset.id, name: preset.name });

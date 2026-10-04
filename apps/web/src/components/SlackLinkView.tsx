@@ -1,13 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { Link, useRouter } from "waku";
+import { useRouter } from "waku";
 import { api, ApiError, UnauthorizedError } from "../lib/api";
 import { mapSlackLinkErrorMessage, messages } from "../lib/messages";
 import { useAuthGuard } from "../lib/useAuthGuard";
 import { AppHeader } from "./AppHeader";
 import { StateView } from "./ui/StateView";
 import { PageHeader } from "./ui/PageHeader";
+import { SettingsNav } from "./SettingsNav";
 
 /**
  * Slack連携用トークンの入力画面(/settings/slack-link、2026-08-22 追加)。
@@ -62,9 +63,7 @@ export function SlackLinkView() {
     <div className="settings-personal-notif">
       <AppHeader displayName={guard.user.displayName} email={guard.user.email} tenantName={guard.tenant?.name ?? null} active="settings" />
       <main className="page">
-        <Link to="/settings" className="settings-nav__hub-link">
-          <span aria-hidden="true">←</span> {messages.settingsNav.hubLink}
-        </Link>
+        <SettingsNav active="slackLink" />
 
         <PageHeader title={messages.settingsSlackLink.title} lead={messages.settingsSlackLink.tagline} />
 

@@ -790,7 +790,7 @@ export function LeaveSettingsView() {
                               <div className="org-table__actions">
                                 <button
                                   type="button"
-                                  className="org-table__link-btn"
+                                  className="btn btn--ghost btn--sm"
                                   onClick={() => {
                                     setProposalActionError(null);
                                     setProposalSuccess(null);
@@ -802,7 +802,7 @@ export function LeaveSettingsView() {
                                 </button>
                                 <button
                                   type="button"
-                                  className="org-table__link-btn org-table__link-btn--danger"
+                                  className="btn btn--danger-ghost btn--sm"
                                   onClick={() => {
                                     setProposalActionError(null);
                                     setProposalSuccess(null);

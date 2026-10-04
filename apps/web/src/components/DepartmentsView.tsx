@@ -149,18 +149,18 @@ export function DepartmentsView() {
   function renderNode(node: TreeNode, depth: number) {
     return (
       <li key={node.dept.id} className="dept-tree__item">
-        <div className="dept-tree__row" style={{ paddingLeft: `${depth * 1.5}rem` }}>
+        <div className="dept-tree__row" style={{ paddingLeft: `calc(var(--space-4) + ${depth * 1.5}rem)` }}>
           <span className="dept-tree__name">{node.dept.name}</span>
           <div className="dept-tree__actions">
-            <button type="button" className="dept-tree__btn" onClick={() => openCreate(node.dept.id)}>
+            <button type="button" className="btn btn--secondary btn--sm" onClick={() => openCreate(node.dept.id)}>
               {messages.departments.addChild}
             </button>
-            <button type="button" className="dept-tree__btn" onClick={() => openEdit(node.dept)}>
+            <button type="button" className="btn btn--secondary btn--sm" onClick={() => openEdit(node.dept)}>
               {messages.departments.rename}
             </button>
             <button
               type="button"
-              className="dept-tree__btn dept-tree__btn--danger"
+              className="btn btn--danger-ghost btn--sm"
               onClick={() => {
                 setDeleteError(null);
                 setDeleteState({ id: node.dept.id, name: node.dept.name });

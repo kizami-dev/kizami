@@ -1310,6 +1310,10 @@ export const zhHant = {
     /** 明確區分個人設定(全員)與公司設定(面向管理員)的分組標題。 */
     personalGroupTitle: "個人設定",
     tenantGroupTitle: "公司設定",
+    groupOrgTitle: "組織與權限",
+    groupAttendanceTitle: "出勤·休假·津貼",
+    groupIntegrationsTitle: "整合與通知",
+    groupRecordsTitle: "法規與記錄",
     myNotificationsTitle: "個人通知設定",
     myNotificationsDesc: "按通知型別分別設定應用程式內、電子郵件、個人Webhook的接收方式。",
     notificationsTitle: "通知設定(公司全域)",

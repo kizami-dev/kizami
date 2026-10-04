@@ -1323,6 +1323,10 @@ export const ko = {
     /** 개인 설정(전원)과 회사 설정(관리자용)을 카드 그룹으로 명확히 구분하는 제목. */
     personalGroupTitle: "내 설정",
     tenantGroupTitle: "회사 설정",
+    groupOrgTitle: "조직·권한",
+    groupAttendanceTitle: "근태·휴가·수당",
+    groupIntegrationsTitle: "연동·알림",
+    groupRecordsTitle: "법령·기록",
     myNotificationsTitle: "개인 알림 설정",
     myNotificationsDesc: "알림 종류별로 앱 내·이메일·개인 Webhook 수신 방식을 설정합니다.",
     notificationsTitle: "알림 설정(회사 전체)",
