@@ -400,7 +400,7 @@ export function SettingsAllowancesView() {
                 <HelpTip helpKey="law.versioning" />
               </h2>
               <form className="attendance-settings__form" onSubmit={handleCreateSubmit}>
-                <p className="attendance-settings__effective-hint">{messages.settingsAllowances.effectiveFromHint}</p>
+                <p className="notice notice--caution">{messages.settingsAllowances.effectiveFromHint}</p>
 
                 <label className="attendance-settings__field">
                   <span>{messages.settingsAllowances.nameLabel}</span>
@@ -472,7 +472,7 @@ export function SettingsAllowancesView() {
 
                     <h4 className="attendance-settings__form-title">{messages.settingsAllowances.addVersionTitle}</h4>
                     <form className="attendance-settings__form" onSubmit={(e) => handleVersionSubmit(def.id, e)}>
-                      <p className="attendance-settings__effective-hint">{messages.settingsAllowances.effectiveFromHint}</p>
+                      <p className="notice notice--caution">{messages.settingsAllowances.effectiveFromHint}</p>
 
                       <label className="attendance-settings__field">
                         <span>{messages.settingsAllowances.nameLabel}</span>

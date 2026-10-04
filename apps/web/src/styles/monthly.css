@@ -518,24 +518,16 @@
   gap: var(--space-3);
 }
 
-.csv-export__checkbox {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  font-size: var(--text-sm);
-}
-
-.csv-export__checkbox input[type="checkbox"] {
-  accent-color: var(--k-key);
-  width: 1rem;
-  height: 1rem;
-}
-
 .csv-export__format {
   display: flex;
   align-items: center;
   gap: var(--space-2);
   font-size: var(--text-sm);
+}
+
+/* 形式の select は共通の .input(components.css)。行の中では内容の幅にとどめる。 */
+.csv-export__format .input {
+  width: auto;
 }
 
 /*

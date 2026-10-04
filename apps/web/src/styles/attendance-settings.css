@@ -89,18 +89,6 @@
   margin: 0;
 }
 
-.attendance-settings__effective-hint {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  font-size: var(--text-sm);
-  color: var(--k-key);
-  border: 1px solid var(--k-key);
-  background: color-mix(in srgb, var(--k-key) 2%, transparent);
-  border-radius: var(--radius-s);
-  padding: var(--space-3);
-}
-
 .attendance-settings__field {
   display: flex;
   flex-direction: column;
@@ -209,26 +197,6 @@
 .attendance-settings__break-rule-remove:disabled {
   opacity: 0.5;
   cursor: not-allowed;
-}
-
-.attendance-settings__gps-warning {
-  border: 1px solid var(--k-magenta);
-  color: var(--k-magenta-ink);
-  background: color-mix(in srgb, var(--k-magenta) 6%, transparent);
-  border-radius: var(--radius-s);
-  padding: var(--space-3);
-  font-size: var(--text-sm);
-}
-
-.attendance-settings__gps-warning a {
-  color: inherit;
-  font-weight: 700;
-  text-decoration: underline;
-  /* 2026-08-23 SP監査: 文中リンクのタップ領域が文字の実寸(高さ約20px)しかなかった。
-     インライン要素への padding-block は行送りに影響しない(通常フロー)ため、
-     見た目・行間を変えずにタップ領域だけ広げられる。 */
-  padding: 6px 2px;
-  margin: -6px -2px;
 }
 
 .attendance-settings__actions {
