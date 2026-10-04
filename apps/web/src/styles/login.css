@@ -50,6 +50,7 @@
   margin-bottom: var(--space-6);
   /* 「…していま/す」のような1文字だけの折り返しを避ける。 */
   text-wrap: balance;
+  word-break: auto-phrase;
 }
 
 .login-form {
