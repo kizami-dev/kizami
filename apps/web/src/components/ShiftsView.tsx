@@ -430,24 +430,24 @@ export function ShiftsView() {
 
             <section className="shifts-aggregation">
               <h2 className="shifts-panel__title">{messages.shifts.aggregationTitle}</h2>
-              <div className="totals-row">
-                <span className="totals-chip">
-                  <span className="totals-chip__label">{messages.shifts.aggregationScheduledLabel}</span>
-                  <span className="totals-chip__value tabular-nums">{formatDurationHm(scheduledTotalMinutes)}</span>
-                </span>
-                <span className={`totals-chip${scheduledTotalMinutes > frameMinutes ? " totals-chip--overtime" : ""}`}>
-                  <span className="totals-chip__label">{messages.shifts.aggregationStatutoryFrameLabel}</span>
-                  <span className="totals-chip__value tabular-nums">{formatDurationHm(frameMinutes)}</span>
-                </span>
-                <span className="totals-chip">
-                  <span className="totals-chip__label">{messages.shifts.aggregationLegalHolidayLabel}</span>
-                  <span className="totals-chip__value tabular-nums">{legalHolidayCount}</span>
-                </span>
-                <span className="totals-chip">
-                  <span className="totals-chip__label">{messages.shifts.aggregationUnassignedDaysLabel}</span>
-                  <span className="totals-chip__value tabular-nums">{unassignedDays}</span>
-                </span>
-              </div>
+              <dl className="shifts-stats">
+                <div className="shifts-stats__item">
+                  <dt>{messages.shifts.aggregationScheduledLabel}</dt>
+                  <dd className="tabular-nums">{formatDurationHm(scheduledTotalMinutes)}</dd>
+                </div>
+                <div className={`shifts-stats__item${scheduledTotalMinutes > frameMinutes ? " shifts-stats__item--over" : ""}`}>
+                  <dt>{messages.shifts.aggregationStatutoryFrameLabel}</dt>
+                  <dd className="tabular-nums">{formatDurationHm(frameMinutes)}</dd>
+                </div>
+                <div className="shifts-stats__item">
+                  <dt>{messages.shifts.aggregationLegalHolidayLabel}</dt>
+                  <dd className="tabular-nums">{legalHolidayCount}</dd>
+                </div>
+                <div className="shifts-stats__item">
+                  <dt>{messages.shifts.aggregationUnassignedDaysLabel}</dt>
+                  <dd className="tabular-nums">{unassignedDays}</dd>
+                </div>
+              </dl>
               {scheduledTotalMinutes > frameMinutes ? <p className="shifts-aggregation__warning">{messages.shifts.aggregationOverLabel}</p> : null}
               <p className={legalHolidayOk ? "shifts-aggregation__ok" : "shifts-aggregation__warning"}>
                 {legalHolidayOk ? messages.shifts.aggregationLegalHolidayOk : messages.shifts.aggregationLegalHolidayShortage}
