@@ -32,6 +32,7 @@ import {
   minutesToHm,
   nowMinutes,
 } from "../lib/time";
+import { splitMandatoryFiveDays } from "../lib/mandatory-five-days";
 import { useAuthGuard } from "../lib/useAuthGuard";
 import { useOnlineStatus } from "../lib/useOnlineStatus";
 import { AppHeader } from "./AppHeader";
@@ -265,7 +266,10 @@ export function DashboardView() {
   const shownWarningDates = warningDates.slice(0, MAX_WARNING_DAYS_SHOWN);
   const extraWarningDaysCount = Math.max(0, warningDates.length - shownWarningDates.length);
 
-  const mandatoryShortages = leaveBalance ? leaveBalance.mandatoryFiveDays.filter((m) => !m.satisfied) : [];
+  const mandatorySplit = leaveBalance ? splitMandatoryFiveDays(leaveBalance.mandatoryFiveDays, todayDate) : null;
+  // 今の期間の未達だけを個別に出す。期限切れの未達は件数 1 行にまとめる(過去分が何行も並ぶのを避ける)。
+  const mandatoryShortages = mandatorySplit ? mandatorySplit.current.filter((m) => !m.satisfied) : [];
+  const mandatoryExpiredCount = mandatorySplit?.expiredShortages.length ?? 0;
   const expiringSoonCount = (leaveBalance?.annual.expiringSoon.length ?? 0) + (leaveBalance?.stocked.expiringSoon.length ?? 0);
 
   const unreadShown = unread?.slice(0, MAX_NOTIFICATIONS_SHOWN) ?? [];
@@ -281,6 +285,7 @@ export function DashboardView() {
     pendingLeaveProposalCount > 0 ||
     warningDates.length > 0 ||
     mandatoryShortages.length > 0 ||
+    mandatoryExpiredCount > 0 ||
     expiringSoonCount > 0;
 
   return (
@@ -512,7 +517,7 @@ export function DashboardView() {
                 </div>
               ) : null}
 
-              {mandatoryShortages.length > 0 || expiringSoonCount > 0 ? (
+              {mandatoryShortages.length > 0 || mandatoryExpiredCount > 0 || expiringSoonCount > 0 ? (
                 <div className="dashboard-todo__group">
                   <p className="dashboard-todo__group-title">{messages.dashboard.todoDeadlinesTitle}</p>
                   {mandatoryShortages.map((m) => (
@@ -529,6 +534,14 @@ export function DashboardView() {
                       </Link>
                     </p>
                   ))}
+                  {mandatoryExpiredCount > 0 ? (
+                    <p className="dashboard-todo__row">
+                      <span>{messages.dashboard.todoDeadlinesMandatoryExpired(mandatoryExpiredCount)}</span>
+                      <Link to="/leave" className="dashboard-todo__row-link">
+                        {messages.dashboard.todoDeadlinesGoLeave}
+                      </Link>
+                    </p>
+                  ) : null}
                   {expiringSoonCount > 0 ? (
                     <p className="dashboard-todo__row">
                       <span>{messages.dashboard.todoDeadlinesExpiring}</span>

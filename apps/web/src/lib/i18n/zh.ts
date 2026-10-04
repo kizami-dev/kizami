@@ -79,6 +79,7 @@ export const zh = {
     todoDeadlinesMandatorySuffix2: ")",
     todoDeadlinesExpiring: "有即将失效的带薪年假",
     todoDeadlinesGoLeave: "查看带薪年假 →",
+    todoDeadlinesMandatoryExpired: (n: number) => `年5天强制使用义务未达标(已过期)${n}项`,
 
     quickLinksTitle: "常用页面",
     quickLinkMonthlyTitle: "月度",
@@ -2228,6 +2229,9 @@ export const zh = {
     mandatoryShortagePrefix: "还差",
     mandatoryShortageSuffix: "天",
     mandatorySatisfied: "已达标",
+    mandatoryExpiredSummary: (n: number) => `未达标(已过期)${n}项`,
+    mandatoryExpiredLabel: "已过期",
+    mandatoryUpcomingLabel: "下一期间",
 
     requestFormTitle: "申请休假",
     dateLabel: "目标日期",
