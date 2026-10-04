@@ -27,15 +27,20 @@
   max-height: 28rem;
   overflow-y: auto;
   overflow-x: auto;
-  white-space: pre-wrap;
-  word-break: break-word;
   border: var(--border-hair);
   border-radius: var(--radius-m);
   padding: var(--space-4);
-  font-family: var(--font-mono, monospace);
   font-size: var(--text-sm);
   line-height: 1.7;
   background: color-mix(in srgb, var(--k-key) 2%, transparent);
+}
+
+/* 原文(Markdown の生テキスト)は等幅で、折り返して出す。 */
+.privacy-template__body--source {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--font-mono, monospace);
 }
 
 .privacy-template__actions {

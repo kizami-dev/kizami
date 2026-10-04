@@ -17,6 +17,7 @@
  *   .badge     小さなラベル(--neutral / --key / --cyan / --magenta / --yellow / --scope)
  *   .notice    注意書き(--info / --caution / --danger / --success)
  *   .state-*   読み込み中・空・エラー(StateView)
+ *   .md        Markdown の整形表示(MarkdownPreview)
  *   .page*     ページの骨組み(PageHeader)
  */
 
@@ -546,6 +547,66 @@ select.input {
 
 .state-error__action {
   margin-top: var(--space-1);
+}
+
+/* ======================================================================
+ * Markdown の整形表示(MarkdownPreview)
+ * ====================================================================== */
+
+.md {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  overflow-wrap: anywhere;
+}
+
+.md :where(h3, h4, h5) {
+  margin: var(--space-2) 0 0;
+  font-family: var(--font-heading);
+  font-weight: var(--weight-bold);
+  font-feature-settings: var(--feature-heading);
+  line-height: 1.4;
+  color: var(--k-key);
+}
+
+.md h3 {
+  font-size: var(--text-lg);
+}
+
+.md :where(h4, h5) {
+  font-size: var(--text-md);
+}
+
+.md :where(p, ul, ol, blockquote) {
+  margin: 0;
+}
+
+.md :where(ul, ol) {
+  padding-left: 1.4rem;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.md blockquote {
+  padding: var(--space-2) var(--space-3);
+  border-left: 3px solid var(--k-ink-soft);
+  background: color-mix(in srgb, var(--k-key) 4%, transparent);
+  color: var(--k-ink-soft);
+}
+
+.md code {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  padding: 0 0.25em;
+  border-radius: var(--radius-s);
+  background: color-mix(in srgb, var(--k-key) 7%, transparent);
+}
+
+.md hr {
+  width: 100%;
+  border: 0;
+  border-top: var(--border-hair);
 }
 
 /* ======================================================================

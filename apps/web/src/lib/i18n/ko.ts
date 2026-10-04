@@ -2633,6 +2633,8 @@ export const ko = {
     registering: "등록 중…",
     registerSuccess: "사내 규정으로 등록했습니다. 「설정 > 사내 규정」에서 편집할 수 있습니다.",
     registerFailed: "등록에 실패했습니다. 다시 시도해 주세요",
+    viewPreview: "미리보기",
+    viewSource: "Markdown(원문)",
   },
 
   /**

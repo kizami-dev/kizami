@@ -8,7 +8,10 @@ import { invalidateHelpOverridesCache } from "../lib/useHelpOverrides";
 import { useAuthGuard } from "../lib/useAuthGuard";
 import { AppHeader } from "./AppHeader";
 import { SettingsNav } from "./SettingsNav";
+import { buttonClass } from "./ui/Button";
+import { MarkdownPreview } from "./ui/MarkdownPreview";
 import { StateView } from "./ui/StateView";
+import { Tabs, tabId, tabPanelId } from "./ui/Tabs";
 import { PageHeader } from "./ui/PageHeader";
 
 /** privacy.notice-template / privacy.internal-terms-template(packages/help-content 側で定義)。 */
@@ -39,6 +42,7 @@ interface TemplateCardProps {
  * (docs/design/ui-direction.md「個人情報まわりの雛形」§実装・パート3)。
  */
 function TemplateCard({ title, desc, content, filename, helpKey }: TemplateCardProps) {
+  const [view, setView] = useState<"preview" | "source">("preview");
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
   const [registering, setRegistering] = useState(false);
   const [registerResult, setRegisterResult] = useState<{ ok: boolean; message: string } | null>(null);
@@ -74,21 +78,34 @@ function TemplateCard({ title, desc, content, filename, helpKey }: TemplateCardP
       <h2 className="card__title">{title}</h2>
       <p className="field__hint">{desc}</p>
 
-      <pre className="privacy-template__body">{content}</pre>
+      <Tabs
+        idPrefix={helpKey}
+        ariaLabel={title}
+        value={view}
+        onChange={setView}
+        tabs={[
+          { id: "preview", label: messages.settingsPrivacy.viewPreview },
+          { id: "source", label: messages.settingsPrivacy.viewSource },
+        ]}
+      />
+      <div role="tabpanel" id={tabPanelId(helpKey, view)} aria-labelledby={tabId(helpKey, view)}>
+        {view === "preview" ? (
+          <MarkdownPreview className="privacy-template__body" source={content} />
+        ) : (
+          <pre className="privacy-template__body privacy-template__body--source">{content}</pre>
+        )}
+      </div>
 
+      {/* 主操作は「社内規定として登録」の1つ。コピー・ダウンロードは副操作。 */}
       <div className="btn-row privacy-template__actions">
-        <button type="button" className="btn btn--primary" onClick={handleCopy}>
+        <button type="button" className={buttonClass("primary")} disabled={registering} onClick={handleRegister}>
+          {registering ? messages.settingsPrivacy.registering : messages.settingsPrivacy.registerAsCompanyRule}
+        </button>
+        <button type="button" className={buttonClass("secondary")} onClick={handleCopy}>
           {copyState === "copied" ? messages.settingsPrivacy.copied : messages.settingsPrivacy.copy}
         </button>
-        <button
-          type="button"
-          className="btn btn--primary"
-          onClick={() => downloadMarkdown(filename, content)}
-        >
+        <button type="button" className={buttonClass("secondary")} onClick={() => downloadMarkdown(filename, content)}>
           {messages.settingsPrivacy.download}
-        </button>
-        <button type="button" className="btn btn--primary" disabled={registering} onClick={handleRegister}>
-          {registering ? messages.settingsPrivacy.registering : messages.settingsPrivacy.registerAsCompanyRule}
         </button>
       </div>
 
