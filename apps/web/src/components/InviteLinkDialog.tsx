@@ -118,18 +118,18 @@ export function InviteLinkDialog({ memberName, memberEmail, token, expiresAt, on
           <section className="invite-link__reveal" aria-live="polite">
             <p className="invite-link__warning">{copy.warning}</p>
 
-            <div className="correction-field">
+            <div className="field">
               <label htmlFor="invite-link-url">{copy.urlLabel}</label>
               <div className="invite-link__row">
                 <code id="invite-link-url" className="invite-link__url">
                   {url}
                 </code>
-                <button type="button" className="k-modal__confirm k-modal__confirm--neutral" onClick={handleCopy}>
+                <button type="button" className="btn btn--primary" onClick={handleCopy}>
                   {copyState === "copied" ? copy.copied : copy.copy}
                 </button>
               </div>
               {copyState === "failed" ? (
-                <p className="correction-error" role="alert">
+                <p className="notice notice--danger" role="alert">
                   {copy.copyFailed}
                 </p>
               ) : null}
@@ -142,7 +142,7 @@ export function InviteLinkDialog({ memberName, memberEmail, token, expiresAt, on
         </div>
 
         <div className="k-modal__footer">
-          <button type="button" className="k-modal__confirm k-modal__confirm--neutral" onClick={onClose}>
+          <button type="button" className="btn btn--primary" onClick={onClose}>
             {copy.done}
           </button>
         </div>

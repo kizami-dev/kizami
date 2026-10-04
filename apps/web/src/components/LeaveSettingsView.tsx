@@ -24,6 +24,7 @@ import { AppHeader } from "./AppHeader";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { HelpTip } from "./HelpTip";
 import { SettingsNav } from "./SettingsNav";
+import { StateView } from "./ui/StateView";
 
 interface FormState {
   grantMethod: LeaveGrantMethod;
@@ -381,10 +382,10 @@ export function LeaveSettingsView() {
   }
 
   if (guard.status === "loading" || loading) {
-    return <p className="monthly-loading">{messages.loading}</p>;
+    return <StateView kind="loading">{messages.loading}</StateView>;
   }
   if (guard.status === "error" || !guard.user) {
-    return <p className="monthly-error">{messages.errors.network}</p>;
+    return <StateView kind="error">{messages.errors.network}</StateView>;
   }
 
   const convertedTotal = convertResult?.reduce((sum, c) => sum + c.convertedDays, 0) ?? 0;
@@ -395,29 +396,29 @@ export function LeaveSettingsView() {
   const decidedProposals = proposals?.filter((p) => p.status !== "proposed") ?? [];
 
   return (
-    <div className="settings-notif">
+    <div className="page-shell">
       <AppHeader displayName={guard.user.displayName} email={guard.user.email} tenantName={guard.tenant?.name ?? null} active="settings" />
-      <main className="settings-notif__main">
+      <main className="page">
         <SettingsNav active="leave" />
         <h1 className="settings-notif__title">{messages.settingsLeave.title}</h1>
         <p className="settings-notif__tagline">{messages.settingsLeave.tagline}</p>
 
         {forbidden ? (
-          <p className="settings-notif__forbidden" role="alert">
+          <p className="notice notice--danger" role="alert">
             {messages.settingsLeave.noPermission}
           </p>
         ) : null}
-        {loadError ? <p className="monthly-error">{loadError}</p> : null}
+        {loadError ? <StateView kind="error">{loadError}</StateView> : null}
 
         {!forbidden && form && settings ? (
           <>
-            <form className="settings-notif__form" onSubmit={handleSave}>
-              <section className="settings-notif__section">
-                <h2 className="settings-notif__section-title">
+            <form className="page-body page-body--form" onSubmit={handleSave}>
+              <section className="card">
+                <h2 className="card__title">
                   {messages.settingsLeave.grantMethodSectionTitle}
                   <HelpTip helpKey="leave.grant" />
                 </h2>
-                <label className="settings-notif__checkbox">
+                <label className="check">
                   <input
                     type="radio"
                     name="grant-method"
@@ -426,7 +427,7 @@ export function LeaveSettingsView() {
                   />
                   {messages.settingsLeave.grantMethodStatutory}
                 </label>
-                <label className="settings-notif__checkbox">
+                <label className="check">
                   <input
                     type="radio"
                     name="grant-method"
@@ -436,7 +437,7 @@ export function LeaveSettingsView() {
                   {messages.settingsLeave.grantMethodFixedDate}
                 </label>
                 {form.grantMethod === "fixed_date" ? (
-                  <div className="correction-field">
+                  <div className="field">
                     <label htmlFor="fixed-date">{messages.settingsLeave.fixedDateLabel}</label>
                     <input
                       id="fixed-date"
@@ -449,12 +450,12 @@ export function LeaveSettingsView() {
                 ) : null}
               </section>
 
-              <section className="settings-notif__section">
-                <h2 className="settings-notif__section-title">
+              <section className="card">
+                <h2 className="card__title">
                   {messages.settingsLeave.hourlySectionTitle}
                   <HelpTip helpKey="leave.hourly" />
                 </h2>
-                <label className="settings-notif__checkbox">
+                <label className="check">
                   <input
                     type="checkbox"
                     checked={form.hourlyLeaveEnabled}
@@ -462,7 +463,7 @@ export function LeaveSettingsView() {
                   />
                   {messages.settingsLeave.hourlyEnabledLabel}
                 </label>
-                <div className="correction-field">
+                <div className="field">
                   <label htmlFor="hourly-max-days">{messages.settingsLeave.hourlyMaxDaysLabel}</label>
                   <input
                     id="hourly-max-days"
@@ -476,9 +477,9 @@ export function LeaveSettingsView() {
                 </div>
               </section>
 
-              <section className="settings-notif__section">
-                <h2 className="settings-notif__section-title">{messages.settingsLeave.halfDaySectionTitle}</h2>
-                <label className="settings-notif__checkbox">
+              <section className="card">
+                <h2 className="card__title">{messages.settingsLeave.halfDaySectionTitle}</h2>
+                <label className="check">
                   <input
                     type="checkbox"
                     checked={form.halfDayLeaveEnabled}
@@ -488,15 +489,15 @@ export function LeaveSettingsView() {
                 </label>
               </section>
 
-              <section className="settings-notif__section">
-                <h2 className="settings-notif__section-title">{messages.settingsLeave.stockSectionTitle}</h2>
+              <section className="card">
+                <h2 className="card__title">{messages.settingsLeave.stockSectionTitle}</h2>
                 <p className="leave-help">
                   <span className="leave-help__icon" aria-hidden="true">
                     ℹ
                   </span>
                   <span>{messages.settingsLeave.stockHelp}</span>
                 </p>
-                <label className="settings-notif__checkbox">
+                <label className="check">
                   <input
                     type="checkbox"
                     checked={form.stockConversionEnabled}
@@ -504,8 +505,8 @@ export function LeaveSettingsView() {
                   />
                   {messages.settingsLeave.stockEnabledLabel}
                 </label>
-                <div className="correction-field-row">
-                  <div className="correction-field">
+                <div className="field-row">
+                  <div className="field">
                     <label htmlFor="stock-max-days">{messages.settingsLeave.stockMaxDaysLabel}</label>
                     <input
                       id="stock-max-days"
@@ -516,7 +517,7 @@ export function LeaveSettingsView() {
                       onChange={(e) => updateForm({ stockMaxDays: e.target.value })}
                     />
                   </div>
-                  <div className="correction-field">
+                  <div className="field">
                     <label htmlFor="stock-expires-months">{messages.settingsLeave.stockExpiresMonthsLabel}</label>
                     <input
                       id="stock-expires-months"
@@ -531,26 +532,26 @@ export function LeaveSettingsView() {
               </section>
 
               {saveError ? (
-                <p className="correction-error" role="alert">
+                <p className="notice notice--danger" role="alert">
                   {saveError}
                 </p>
               ) : null}
-              {saveSuccess ? <p className="settings-notif__success">{messages.settingsLeave.saveSuccess}</p> : null}
+              {saveSuccess ? <p className="notice notice--success">{messages.settingsLeave.saveSuccess}</p> : null}
 
-              <p className="settings-notif__save-note">{messages.settingsLeave.saveNote}</p>
+              <p className="field__hint">{messages.settingsLeave.saveNote}</p>
 
-              <div className="settings-notif__actions">
-                <button type="submit" className="k-modal__confirm k-modal__confirm--neutral" disabled={saving}>
+              <div className="btn-row">
+                <button type="submit" className="btn btn--primary" disabled={saving}>
                   {saving ? messages.settingsLeave.saving : messages.settingsLeave.save}
                 </button>
               </div>
             </form>
 
             <section className="leave-admin-section">
-              <h2 className="settings-notif__section-title">{messages.settingsLeave.adminSectionTitle}</h2>
+              <h2 className="card__title">{messages.settingsLeave.adminSectionTitle}</h2>
               <p className="leave-admin-section__desc">{messages.settingsLeave.adminSectionTagline}</p>
 
-              <div className="correction-field">
+              <div className="field">
                 <label htmlFor="target-user">{messages.settingsLeave.targetUserLabel}</label>
                 <select id="target-user" value={targetUserId} onChange={(e) => setTargetUserId(e.target.value)}>
                   <option value="" disabled>
@@ -565,12 +566,12 @@ export function LeaveSettingsView() {
               </div>
 
               <div className="leave-admin-section">
-                <h3 className="settings-notif__section-title">{messages.settingsLeave.autoGrantTitle}</h3>
+                <h3 className="card__title">{messages.settingsLeave.autoGrantTitle}</h3>
                 <p className="leave-admin-section__desc">{messages.settingsLeave.autoGrantDesc}</p>
-                <div className="settings-notif__actions">
+                <div className="btn-row">
                   <button
                     type="button"
-                    className="k-modal__confirm k-modal__confirm--neutral"
+                    className="btn btn--primary"
                     disabled={!targetUserId}
                     onClick={() => {
                       setAutoGrantError(null);
@@ -594,11 +595,11 @@ export function LeaveSettingsView() {
               </div>
 
               <div className="leave-admin-section">
-                <h3 className="settings-notif__section-title">{messages.settingsLeave.manualGrantTitle}</h3>
+                <h3 className="card__title">{messages.settingsLeave.manualGrantTitle}</h3>
                 <p className="leave-admin-section__desc">{messages.settingsLeave.manualGrantDesc}</p>
-                <form onSubmit={handleManualGrantSubmit} className="settings-notif__form">
-                  <div className="correction-field-row">
-                    <div className="correction-field">
+                <form onSubmit={handleManualGrantSubmit} className="page-body page-body--form">
+                  <div className="field-row">
+                    <div className="field">
                       <label htmlFor="manual-granted-on">{messages.settingsLeave.grantedOnLabel}</label>
                       <input
                         id="manual-granted-on"
@@ -608,7 +609,7 @@ export function LeaveSettingsView() {
                         required
                       />
                     </div>
-                    <div className="correction-field">
+                    <div className="field">
                       <label htmlFor="manual-days">{messages.settingsLeave.daysLabel}</label>
                       <input
                         id="manual-days"
@@ -621,8 +622,8 @@ export function LeaveSettingsView() {
                       />
                     </div>
                   </div>
-                  <div className="correction-field-row">
-                    <div className="correction-field">
+                  <div className="field-row">
+                    <div className="field">
                       <label htmlFor="manual-expires-on">{messages.settingsLeave.expiresOnLabel}</label>
                       <input
                         id="manual-expires-on"
@@ -631,7 +632,7 @@ export function LeaveSettingsView() {
                         onChange={(e) => setManualForm((f) => ({ ...f, expiresOn: e.target.value }))}
                       />
                     </div>
-                    <div className="correction-field">
+                    <div className="field">
                       <label htmlFor="manual-leave-type">{messages.settingsLeave.leaveTypeLabel}</label>
                       <select
                         id="manual-leave-type"
@@ -643,7 +644,7 @@ export function LeaveSettingsView() {
                       </select>
                     </div>
                   </div>
-                  <div className="correction-field">
+                  <div className="field">
                     <label htmlFor="manual-note">{messages.settingsLeave.noteLabel}</label>
                     <input
                       id="manual-note"
@@ -653,13 +654,13 @@ export function LeaveSettingsView() {
                     />
                   </div>
                   {manualError ? (
-                    <p className="correction-error" role="alert">
+                    <p className="notice notice--danger" role="alert">
                       {manualError}
                     </p>
                   ) : null}
-                  {manualSuccess ? <p className="settings-notif__success">{messages.settingsLeave.manualGrantSuccess}</p> : null}
-                  <div className="settings-notif__actions">
-                    <button type="submit" className="k-modal__confirm k-modal__confirm--neutral" disabled={manualPending || !targetUserId}>
+                  {manualSuccess ? <p className="notice notice--success">{messages.settingsLeave.manualGrantSuccess}</p> : null}
+                  <div className="btn-row">
+                    <button type="submit" className="btn btn--primary" disabled={manualPending || !targetUserId}>
                       {manualPending ? messages.settingsLeave.manualGrantSubmitting : messages.settingsLeave.manualGrantSubmit}
                     </button>
                   </div>
@@ -667,12 +668,12 @@ export function LeaveSettingsView() {
               </div>
 
               <div className="leave-admin-section">
-                <h3 className="settings-notif__section-title">{messages.settingsLeave.convertTitle}</h3>
+                <h3 className="card__title">{messages.settingsLeave.convertTitle}</h3>
                 <p className="leave-admin-section__desc">{messages.settingsLeave.convertDesc}</p>
-                <div className="settings-notif__actions">
+                <div className="btn-row">
                   <button
                     type="button"
-                    className="k-modal__confirm k-modal__confirm--neutral"
+                    className="btn btn--primary"
                     disabled={!targetUserId}
                     onClick={() => {
                       setConvertError(null);
@@ -730,20 +731,20 @@ export function LeaveSettingsView() {
               追加の権限確認は行わない(このファイル冒頭のヘッダコメントと同じ理由)。
             */}
             <section className="leave-admin-section">
-              <h2 className="settings-notif__section-title">{messages.leaveGrantProposals.sectionTitle}</h2>
+              <h2 className="card__title">{messages.leaveGrantProposals.sectionTitle}</h2>
               <p className="leave-admin-section__desc">{messages.leaveGrantProposals.sectionDesc}</p>
 
               {proposalsError ? (
-                <p className="correction-error" role="alert">
+                <p className="notice notice--danger" role="alert">
                   {proposalsError}
                 </p>
               ) : null}
-              {proposalSuccess ? <p className="settings-notif__success">{proposalSuccess}</p> : null}
+              {proposalSuccess ? <p className="notice notice--success">{proposalSuccess}</p> : null}
 
               {proposals === null ? (
-                <p className="org-settings__empty">{messages.loading}</p>
+                <StateView kind="loading">{messages.loading}</StateView>
               ) : proposedProposals.length === 0 ? (
-                <p className="org-settings__empty">{messages.leaveGrantProposals.empty}</p>
+                <StateView kind="empty">{messages.leaveGrantProposals.empty}</StateView>
               ) : (
                 <div className="org-settings__table-wrap">
                   <table className="org-table">
@@ -773,7 +774,7 @@ export function LeaveSettingsView() {
                                 {/* 比例付与(労基法39条3項)のときだけ区分を出す。フルタイムの表と日数が
                                     違う理由をその場で読み取れるようにするため(2026-08-24 追加)。 */}
                                 {p.leaveGrantClass !== null && p.leaveGrantClass !== "full" ? (
-                                  <span className="chip">
+                                  <span className="badge badge--neutral">
                                     {messages.leaveGrantProposals.proportionalChip(
                                       messages.members.leaveGrantClassOption[p.leaveGrantClass],
                                     )}
@@ -786,7 +787,7 @@ export function LeaveSettingsView() {
                                 <span className="tabular-nums">{formatAttendanceRate(rate)}</span>
                                 <span className="leave-proposal-rate__basis">{attendanceBasisLabel(p.attendanceRate.basis)}</span>
                                 {belowThreshold ? (
-                                  <span className="chip chip--warning">{messages.leaveGrantProposals.rateBelowThreshold}</span>
+                                  <span className="badge badge--yellow">{messages.leaveGrantProposals.rateBelowThreshold}</span>
                                 ) : null}
                               </div>
                             </td>

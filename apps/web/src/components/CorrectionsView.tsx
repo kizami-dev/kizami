@@ -21,6 +21,8 @@ import { useEffectivePermissions } from "../lib/useEffectivePermissions";
 import { AppHeader } from "./AppHeader";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { HelpTip } from "./HelpTip";
+import { requestStatusTone } from "./ui/Badge";
+import { StateView } from "./ui/StateView";
 
 /**
  * 打刻修正申請の承認(POST /corrections/:id/approve・reject)が要求する権限
@@ -303,10 +305,10 @@ export function CorrectionsView() {
   }, [waiverConfirmState, waivers, guard.user]);
 
   if (guard.status === "loading") {
-    return <p className="monthly-loading">{messages.loading}</p>;
+    return <StateView kind="loading">{messages.loading}</StateView>;
   }
   if (guard.status === "error" || !guard.user) {
-    return <p className="monthly-error">{messages.errors.network}</p>;
+    return <StateView kind="error">{messages.errors.network}</StateView>;
   }
 
   /**
@@ -401,7 +403,7 @@ export function CorrectionsView() {
     return (
       <li key={w.id} className="correction-card">
         <div className="correction-card__header">
-          <span className={`correction-badge correction-badge--${w.status as AutoBreakWaiverStatus}`}>
+          <span className={`badge badge--${requestStatusTone(w.status as AutoBreakWaiverStatus)}`}>
             {messages.autoBreakWaiver.statusLabel[w.status]}
           </span>
           <span className="correction-card__type">{messages.autoBreakWaiver.typeLabel}</span>
@@ -477,7 +479,7 @@ export function CorrectionsView() {
     return (
       <li key={req.id} className="correction-card">
         <div className="correction-card__header">
-          <span className={`correction-badge correction-badge--${req.status as CorrectionStatus}`}>
+          <span className={`badge badge--${requestStatusTone(req.status as CorrectionStatus)}`}>
             {messages.corrections.statusLabel[req.status]}
           </span>
           <span className="correction-card__type">{describeType(req)}</span>
@@ -569,8 +571,8 @@ export function CorrectionsView() {
         <section className="corrections__section" data-tour="corrections-own">
           <h2 className="corrections__section-title">{messages.corrections.title}</h2>
 
-          {loading ? <p className="monthly-loading">{messages.loading}</p> : null}
-          {loadError ? <p className="monthly-error">{loadError}</p> : null}
+          {loading ? <StateView kind="loading">{messages.loading}</StateView> : null}
+          {loadError ? <StateView kind="error">{loadError}</StateView> : null}
 
           {requests && ownCorrections.length === 0 ? <p className="corrections__empty">{messages.corrections.empty}</p> : null}
 
@@ -603,7 +605,7 @@ export function CorrectionsView() {
           </h2>
           <p className="corrections__tagline">{messages.autoBreakWaiver.ownSectionTagline}</p>
 
-          {waiverLoadError ? <p className="monthly-error">{waiverLoadError}</p> : null}
+          {waiverLoadError ? <StateView kind="error">{waiverLoadError}</StateView> : null}
           {waivers && ownWaivers.length === 0 ? <p className="corrections__empty">{messages.autoBreakWaiver.empty}</p> : null}
 
           {ownWaivers.length > 0 ? (

@@ -6,6 +6,7 @@ import { api, ApiError, UnauthorizedError } from "../lib/api";
 import { mapSlackLinkErrorMessage, messages } from "../lib/messages";
 import { useAuthGuard } from "../lib/useAuthGuard";
 import { AppHeader } from "./AppHeader";
+import { StateView } from "./ui/StateView";
 
 /**
  * Slack連携用トークンの入力画面(/settings/slack-link、2026-08-22 追加)。
@@ -50,10 +51,10 @@ export function SlackLinkView() {
   }
 
   if (guard.status === "loading") {
-    return <p className="monthly-loading">{messages.loading}</p>;
+    return <StateView kind="loading">{messages.loading}</StateView>;
   }
   if (guard.status === "error" || !guard.user) {
-    return <p className="monthly-error">{messages.errors.network}</p>;
+    return <StateView kind="error">{messages.errors.network}</StateView>;
   }
 
   return (
@@ -67,8 +68,8 @@ export function SlackLinkView() {
         <h1 className="settings-personal-notif__title">{messages.settingsSlackLink.title}</h1>
         <p className="settings-personal-notif__tagline">{messages.settingsSlackLink.tagline}</p>
 
-        <section className="settings-notif__section">
-          <h2 className="settings-notif__section-title">{messages.settingsSlackLink.howToTitle}</h2>
+        <section className="card">
+          <h2 className="card__title">{messages.settingsSlackLink.howToTitle}</h2>
           <ol>
             <li>{messages.settingsSlackLink.howTo1}</li>
             <li>{messages.settingsSlackLink.howTo2}</li>
@@ -78,12 +79,12 @@ export function SlackLinkView() {
 
         {linkedSlackUserId ? (
           <section className="api-keys__reveal" aria-live="polite">
-            <h2 className="settings-notif__section-title">{messages.settingsSlackLink.successTitle}</h2>
+            <h2 className="card__title">{messages.settingsSlackLink.successTitle}</h2>
             <p>{messages.settingsSlackLink.successMessage(linkedSlackUserId)}</p>
           </section>
         ) : (
           <form className="settings-personal-notif__form" onSubmit={handleSubmit}>
-            <div className="correction-field">
+            <div className="field">
               <label htmlFor="slack-link-token">{messages.settingsSlackLink.tokenLabel}</label>
               <input
                 id="slack-link-token"
@@ -96,13 +97,13 @@ export function SlackLinkView() {
             </div>
 
             {error ? (
-              <p className="correction-error" role="alert">
+              <p className="notice notice--danger" role="alert">
                 {error}
               </p>
             ) : null}
 
-            <div className="settings-notif__actions">
-              <button type="submit" className="k-modal__confirm k-modal__confirm--neutral" disabled={submitting}>
+            <div className="btn-row">
+              <button type="submit" className="btn btn--primary" disabled={submitting}>
                 {submitting ? messages.settingsSlackLink.submitting : messages.settingsSlackLink.submit}
               </button>
             </div>

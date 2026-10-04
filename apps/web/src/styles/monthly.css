@@ -46,7 +46,7 @@
   letter-spacing: 0.04em;
 }
 
-/* 他人の勤怠閲覧(2026-08-23 追加)。切替セレクトは .correction-field(corrections.css)を流用し、
+/* 他人の勤怠閲覧(2026-08-23 追加)。切替セレクトは .field(components.css)を流用し、
    ここでは幅だけ絞る。 */
 .monthly-member-switcher {
   max-width: 24rem;
@@ -364,14 +364,6 @@
   padding: var(--space-3);
 }
 
-.monthly-loading,
-.monthly-error {
-  color: var(--k-ink-soft);
-  font-size: 0.9rem;
-  padding: var(--space-6) 0;
-  text-align: center;
-}
-
 /**
  * 月次締め・当初値との差分・CSVエクスポート(v0.3)。
  * 意味色は状態のみ: 確定済み=C、修正あり=Y、締めの解除(危険操作)=M。
@@ -380,39 +372,6 @@
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
-}
-
-.closing-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  border: 2px solid var(--badge-color, var(--k-key));
-  color: var(--badge-color, var(--k-key));
-  border-radius: var(--radius-m);
-  padding: var(--space-1) var(--space-3);
-  font-size: 0.82rem;
-  font-weight: 700;
-}
-
-.closing-badge--closed {
-  --badge-color: var(--k-cyan-ink);
-}
-
-.closing-badge--amended {
-  --badge-color: var(--k-yellow-ink);
-}
-
-/* 確定値バッジ(figures.source === "snapshot"、2026-08-23 追加)。確定済み/修正ありバッジより
-   一段控えめにするため --small で縮小する(依頼: 小さく示す)。 */
-.closing-badge--snapshot {
-  --badge-color: var(--k-ink-soft);
-}
-
-.closing-badge--small {
-  border-width: 1px;
-  padding: 2px var(--space-2);
-  font-size: 0.72rem;
-  font-weight: 600;
 }
 
 .closing-diff {

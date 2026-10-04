@@ -9,6 +9,7 @@ import { AppHeader } from "./AppHeader";
 import { LeaveBalancePanel } from "./LeaveBalancePanel";
 import { LeaveRequestForm } from "./LeaveRequestForm";
 import { LeaveRequestsList } from "./LeaveRequestsList";
+import { StateView } from "./ui/StateView";
 
 /**
  * 有給休暇ホーム(/leave)。本人の残高確認・申請・申請一覧(承認/却下/取下げ)をまとめる
@@ -84,10 +85,10 @@ export function LeaveHome() {
   }
 
   if (guard.status === "loading") {
-    return <p className="monthly-loading">{messages.loading}</p>;
+    return <StateView kind="loading">{messages.loading}</StateView>;
   }
   if (guard.status === "error" || !guard.user) {
-    return <p className="monthly-error">{messages.errors.network}</p>;
+    return <StateView kind="error">{messages.errors.network}</StateView>;
   }
 
   // 時間単位年休の当年度消化済み分(概算)。年次・積立の両プールにまたがりうるため両方を合算する
@@ -104,8 +105,8 @@ export function LeaveHome() {
         <h1 className="leave__title">{messages.leave.title}</h1>
         <p className="leave__tagline">{messages.leave.tagline}</p>
 
-        {loading ? <p className="monthly-loading">{messages.loading}</p> : null}
-        {loadError ? <p className="monthly-error">{loadError}</p> : null}
+        {loading ? <StateView kind="loading">{messages.loading}</StateView> : null}
+        {loadError ? <StateView kind="error">{loadError}</StateView> : null}
 
         {balance ? <LeaveBalancePanel balance={balance} /> : null}
 

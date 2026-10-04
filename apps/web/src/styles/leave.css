@@ -20,7 +20,7 @@
   padding: var(--space-5) var(--space-4) var(--space-7);
   /* 2026-08-23: PC表示の余白を狭める依頼。残高カードグリッド(auto-fit)+申請一覧が
      主役のページのためテーブル系の幅トークンを使う(tokens.css 参照)。/settings/leave
-     (制度設定、フォーム中心)は別クラス .settings-notif__main を使うため対象外。 */
+     (制度設定、フォーム中心)は共通の .page を使うため対象外。 */
   max-width: var(--width-content-wide);
   margin: 0 auto;
   width: 100%;
@@ -337,7 +337,7 @@
 /*
  * 表そのものは既存の .org-settings__table-wrap / .org-table を流用する(この画面のためだけに
  * 同じ見た目のテーブルを増やさない)。ここで足すのは「出勤率(参考値)」セルの縦積みと、
- * 8割未満の可能性を示す注意チップ(.chip--warning は org-settings.css)だけ。
+ * 8割未満の可能性を示す注意チップ(.badge--yellow は components.css)だけ。
  */
 .leave-proposal-rate {
   display: flex;

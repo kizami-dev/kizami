@@ -10,6 +10,7 @@ import { useAuthGuard } from "../lib/useAuthGuard";
 import { useEffectivePermissions } from "../lib/useEffectivePermissions";
 import { AppHeader } from "./AppHeader";
 import { ShiftWeekGrid } from "./shifts/ShiftWeekGrid";
+import { StateView } from "./ui/StateView";
 
 /**
  * 本人のシフト閲覧(/shifts/me、全員、v0.7 フェーズ3、2026-08-24 追加)。
@@ -58,10 +59,10 @@ export function ShiftsMeView() {
   }, [guard.status, from, to]);
 
   if (guard.status === "loading") {
-    return <p className="monthly-loading">{messages.loading}</p>;
+    return <StateView kind="loading">{messages.loading}</StateView>;
   }
   if (guard.status === "error" || !guard.user) {
-    return <p className="monthly-error">{messages.errors.network}</p>;
+    return <StateView kind="error">{messages.errors.network}</StateView>;
   }
 
   const prevMonthParam = formatMonthParam(shiftMonth(ym, -1));
@@ -90,12 +91,12 @@ export function ShiftsMeView() {
           </Link>
         ) : null}
 
-        {loading ? <p className="monthly-loading">{messages.loading}</p> : null}
-        {error ? <p className="monthly-error">{error}</p> : null}
+        {loading ? <StateView kind="loading">{messages.loading}</StateView> : null}
+        {error ? <StateView kind="error">{error}</StateView> : null}
 
         {!loading && shifts ? (
           shifts.length === 0 ? (
-            <p className="org-settings__empty">{messages.shiftsMe.empty}</p>
+            <StateView kind="empty">{messages.shiftsMe.empty}</StateView>
           ) : (
             <ShiftWeekGrid periodStart={from} periodEnd={to} days={shifts} patterns={[]} />
           )

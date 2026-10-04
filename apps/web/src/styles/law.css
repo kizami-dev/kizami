@@ -11,15 +11,6 @@
   flex-direction: column;
 }
 
-.tenant-profile__forbidden {
-  border: 1px solid var(--k-magenta);
-  color: var(--k-magenta-ink);
-  background: color-mix(in srgb, var(--k-magenta) 6%, transparent);
-  border-radius: var(--radius-s);
-  padding: var(--space-4);
-  font-size: 0.92rem;
-}
-
 .tenant-profile__main {
   flex: 1;
   padding: var(--space-5) var(--space-4) var(--space-7);
@@ -88,15 +79,6 @@
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-3);
-}
-
-.tenant-profile__success {
-  color: var(--k-cyan-ink);
-  font-size: 0.85rem;
-  border: 1px solid var(--k-cyan);
-  background: color-mix(in srgb, var(--k-cyan) 6%, transparent);
-  border-radius: var(--radius-s);
-  padding: var(--space-3);
 }
 
 /* 現在適用中の主要な値 */

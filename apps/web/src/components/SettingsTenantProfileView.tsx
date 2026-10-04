@@ -11,6 +11,7 @@ import { AppHeader } from "./AppHeader";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { HelpTip } from "./HelpTip";
 import { SettingsNav } from "./SettingsNav";
+import { StateView } from "./ui/StateView";
 
 /** LawRules のトップレベルキーのうち、法改正で変わりうるものの表示順(packages/law/src/types.ts の定義順)。 */
 const RULE_KEY_ORDER = ["weeklyStatutoryMinutes", "lateNight", "overtime60h", "agreement36", "annualLeave"] as const;
@@ -113,10 +114,10 @@ export function SettingsTenantProfileView() {
   }
 
   if (guard.status === "loading" || loading) {
-    return <p className="monthly-loading">{messages.loading}</p>;
+    return <StateView kind="loading">{messages.loading}</StateView>;
   }
   if (guard.status === "error" || !guard.user) {
-    return <p className="monthly-error">{messages.errors.network}</p>;
+    return <StateView kind="error">{messages.errors.network}</StateView>;
   }
 
   const todayDate = dateStrFromEpochMinutesJst(nowMinutes());
@@ -142,11 +143,11 @@ export function SettingsTenantProfileView() {
         <p className="tenant-profile__tagline">{messages.settingsTenantProfile.tagline}</p>
 
         {forbidden ? (
-          <p className="tenant-profile__forbidden" role="alert">
+          <p className="notice notice--danger" role="alert">
             {messages.settingsTenantProfile.noPermission}
           </p>
         ) : null}
-        {loadError ? <p className="monthly-error">{loadError}</p> : null}
+        {loadError ? <StateView kind="error">{loadError}</StateView> : null}
 
         {!forbidden && form ? (
           <>
@@ -196,14 +197,14 @@ export function SettingsTenantProfileView() {
               </div>
 
               {saveError ? (
-                <p className="correction-error" role="alert">
+                <p className="notice notice--danger" role="alert">
                   {saveError}
                 </p>
               ) : null}
-              {saveSuccess ? <p className="tenant-profile__success">{messages.settingsTenantProfile.saveSuccess}</p> : null}
+              {saveSuccess ? <p className="notice notice--success">{messages.settingsTenantProfile.saveSuccess}</p> : null}
 
               <div className="tenant-profile__actions">
-                <button type="submit" className="k-modal__confirm k-modal__confirm--neutral" disabled={saving}>
+                <button type="submit" className="btn btn--primary" disabled={saving}>
                   {saving ? messages.settingsTenantProfile.saving : messages.settingsTenantProfile.save}
                 </button>
               </div>

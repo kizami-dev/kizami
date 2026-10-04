@@ -122,7 +122,7 @@ export function PresetFormDialog({ mode, catalog, readOnly, initial, pending, er
           <div className="k-modal__body">
             {readOnly ? <p className="preset-form__readonly-note">{messages.presets.formReadonlyNote}</p> : null}
 
-            <div className="correction-field">
+            <div className="field">
               <label htmlFor="preset-name">{messages.presets.nameLabel}</label>
               <input
                 id="preset-name"
@@ -137,7 +137,7 @@ export function PresetFormDialog({ mode, catalog, readOnly, initial, pending, er
               />
             </div>
 
-            <div className="correction-field">
+            <div className="field">
               <label htmlFor="preset-description">{messages.presets.descriptionLabel}</label>
               <textarea
                 id="preset-description"
@@ -166,7 +166,7 @@ export function PresetFormDialog({ mode, catalog, readOnly, initial, pending, er
                           <label className="preset-form__entry-header">
                             <input type="checkbox" checked={checked} disabled={readOnly} onChange={() => toggleEntry(entry)} />
                             <span className="preset-form__entry-label">{entry.labelJa}</span>
-                            {entry.dangerous ? <span className="preset-form__dangerous-badge">{messages.presets.dangerousBadge}</span> : null}
+                            {entry.dangerous ? <span className="badge badge--magenta">{messages.presets.dangerousBadge}</span> : null}
                           </label>
                           <p className="preset-form__entry-desc">{entry.descriptionJa}</p>
 
@@ -256,18 +256,18 @@ export function PresetFormDialog({ mode, catalog, readOnly, initial, pending, er
             </div>
 
             {error ? (
-              <p className="correction-error" role="alert">
+              <p className="notice notice--danger" role="alert">
                 {error}
               </p>
             ) : null}
           </div>
 
           <div className="k-modal__footer">
-            <button type="button" className="k-modal__cancel" onClick={onCancel} disabled={pending}>
+            <button type="button" className="btn btn--secondary" onClick={onCancel} disabled={pending}>
               {readOnly ? messages.presets.close : messages.presets.cancel}
             </button>
             {readOnly ? null : (
-              <button type="submit" className="k-modal__confirm k-modal__confirm--neutral" disabled={pending}>
+              <button type="submit" className="btn btn--primary" disabled={pending}>
                 {pending ? messages.presets.saving : messages.presets.save}
               </button>
             )}

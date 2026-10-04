@@ -25,6 +25,7 @@ import { EffectivePermissionsPanel } from "./EffectivePermissionsPanel";
 import { InviteLinkDialog } from "./InviteLinkDialog";
 import { InviteMemberDialog, type InviteMemberFormValue } from "./InviteMemberDialog";
 import { SettingsNav } from "./SettingsNav";
+import { StateView } from "./ui/StateView";
 
 /**
  * 「1日あたりの基準所定時間(有給換算用)」の初期値(分)。8時間 = 480分。
@@ -667,10 +668,10 @@ export function MembersView() {
   }, [presets, selectedPresetIds, catalog]);
 
   if (guard.status === "loading" || loading) {
-    return <p className="monthly-loading">{messages.loading}</p>;
+    return <StateView kind="loading">{messages.loading}</StateView>;
   }
   if (guard.status === "error" || !guard.user) {
-    return <p className="monthly-error">{messages.errors.network}</p>;
+    return <StateView kind="error">{messages.errors.network}</StateView>;
   }
 
   return (
@@ -682,11 +683,11 @@ export function MembersView() {
         <p className="org-settings__tagline">{messages.members.tagline}</p>
 
         {forbidden ? (
-          <p className="org-settings__forbidden" role="alert">
+          <p className="notice notice--danger" role="alert">
             {messages.members.noPermission}
           </p>
         ) : null}
-        {loadError ? <p className="monthly-error">{loadError}</p> : null}
+        {loadError ? <StateView kind="error">{loadError}</StateView> : null}
 
         {!forbidden && members ? (
           <div className="org-settings__toolbar">
@@ -697,7 +698,7 @@ export function MembersView() {
             {canInvite ? (
               <button
                 type="button"
-                className="org-settings__primary-btn"
+                className="btn btn--primary"
                 data-tour="member-invite"
                 onClick={() => {
                   setInviteError(null);
@@ -712,7 +713,7 @@ export function MembersView() {
 
         {!forbidden && visibleMembers ? (
           visibleMembers.length === 0 ? (
-            <p className="org-settings__empty">{messages.members.empty}</p>
+            <StateView kind="empty">{messages.members.empty}</StateView>
           ) : (
             <div className="org-settings__table-wrap">
               <table className="org-table">
@@ -757,7 +758,7 @@ export function MembersView() {
                               <span className="org-table__muted">{member.department?.name ?? messages.members.noDepartment}</span>
                             )}
                             {deptChangeError?.memberId === member.id ? (
-                              <p className="correction-error" role="alert">
+                              <p className="notice notice--danger" role="alert">
                                 {deptChangeError.message}
                               </p>
                             ) : null}
@@ -785,20 +786,20 @@ export function MembersView() {
                                 </p>
                               ) : null}
                               {hireDateError?.memberId === member.id ? (
-                                <p className="correction-error" role="alert">
+                                <p className="notice notice--danger" role="alert">
                                   {hireDateError.message}
                                 </p>
                               ) : null}
                               {hireDateSavedId === member.id ? (
-                                <p className="settings-notif__success">{messages.members.hireDateSaved}</p>
+                                <p className="notice notice--success">{messages.members.hireDateSaved}</p>
                               ) : null}
                             </div>
                           </td>
                           <td>
                             {member.presetNames.length > 0 ? (
-                              <div className="chip-row">
+                              <div className="badge-row">
                                 {member.presetNames.map((name, i) => (
-                                  <span key={`${member.id}-${name}-${i}`} className="chip">
+                                  <span key={`${member.id}-${name}-${i}`} className="badge badge--neutral">
                                     {name}
                                   </span>
                                 ))}
@@ -809,27 +810,27 @@ export function MembersView() {
                           </td>
                           <td>
                             {member.workSystemKind ? (
-                              <span className="chip">{messages.monthly.workSystemValue[member.workSystemKind]}</span>
+                              <span className="badge badge--neutral">{messages.monthly.workSystemValue[member.workSystemKind]}</span>
                             ) : (
                               <span className="org-table__muted">{messages.members.workSystemUnset}</span>
                             )}
                           </td>
                           <td>
-                            <div className="chip-row">
+                            <div className="badge-row">
                               {/* active(通常状態)は無印。招待中・期限切れのみバッジを出す(依頼どおり)。 */}
                               {member.inviteStatus !== "active" ? (
-                                <span className={`invite-status-badge invite-status-badge--${member.inviteStatus}`}>
+                                <span className={`badge ${member.inviteStatus === "invite_expired" ? "badge--magenta" : "badge--cyan"}`}>
                                   {messages.members.inviteStatusBadge[member.inviteStatus]}
                                 </span>
                               ) : null}
                               {member.hasPendingPasswordReset ? (
-                                <span className="invite-status-badge invite-status-badge--invited">
+                                <span className="badge badge--cyan">
                                   {messages.members.passwordResetBadge}
                                 </span>
                               ) : null}
                               {/* 二要素認証(2026-08-27 追加)。有効な人だけ出す(無効は無印)。 */}
                               {member.twoFactorEnabled ? (
-                                <span className="invite-status-badge invite-status-badge--two-factor">
+                                <span className="badge badge--cyan">
                                   {messages.members.twoFactorBadge}
                                 </span>
                               ) : null}
@@ -837,7 +838,7 @@ export function MembersView() {
                           </td>
                           <td>
                             {!member.isActive ? (
-                              <span className="invite-status-badge invite-status-badge--inactive">{messages.members.inactiveBadge}</span>
+                              <span className="badge badge--magenta">{messages.members.inactiveBadge}</span>
                             ) : null}
                             {/*
                              * 退職者データの保持状況(2026-08-27、docs/design/data-retention.md)。
@@ -846,7 +847,7 @@ export function MembersView() {
                              * 「もう消してよい」という状態にすぎず、急かすと誤操作を誘う。
                              */}
                             {member.erasedAt !== null ? (
-                              <span className="invite-status-badge invite-status-badge--inactive">{messages.members.erasedBadge}</span>
+                              <span className="badge badge--magenta">{messages.members.erasedBadge}</span>
                             ) : !member.isActive && member.retention.deactivatedDate !== null ? (
                               <span className="member-retention" title={messages.members.retentionTitle}>
                                 <span className="member-retention__from tabular-nums">
@@ -946,12 +947,12 @@ export function MembersView() {
                               ) : null}
                             </div>
                             {resetIssueError?.memberId === member.id ? (
-                              <p className="correction-error" role="alert">
+                              <p className="notice notice--danger" role="alert">
                                 {resetIssueError.message}
                               </p>
                             ) : null}
                             {reactivateError?.memberId === member.id ? (
-                              <p className="correction-error" role="alert">
+                              <p className="notice notice--danger" role="alert">
                                 {reactivateError.message}
                               </p>
                             ) : null}
@@ -990,17 +991,17 @@ export function MembersView() {
                                     <p className="member-detail__unsaved">{messages.members.presetAssignUnsaved}</p>
                                   ) : null}
                                   {assignError ? (
-                                    <p className="correction-error" role="alert">
+                                    <p className="notice notice--danger" role="alert">
                                       {assignError}
                                     </p>
                                   ) : null}
                                   {assignSaved && !hasUnsavedChange ? (
-                                    <p className="settings-notif__success">{messages.members.presetAssignSaved}</p>
+                                    <p className="notice notice--success">{messages.members.presetAssignSaved}</p>
                                   ) : null}
 
                                   <button
                                     type="button"
-                                    className="k-modal__confirm k-modal__confirm--neutral"
+                                    className="btn btn--primary"
                                     disabled={assignPending}
                                     onClick={() => handleAssignSave(member.id)}
                                   >
@@ -1029,16 +1030,16 @@ export function MembersView() {
                                   </select>
                                   <p className="member-detail__hint">{messages.members.leaveGrantClassNote}</p>
                                   {grantClassError?.memberId === member.id ? (
-                                    <p className="correction-error" role="alert">
+                                    <p className="notice notice--danger" role="alert">
                                       {grantClassError.message}
                                     </p>
                                   ) : null}
                                   {grantClassSavedId === member.id ? (
-                                    <p className="settings-notif__success">{messages.members.leaveGrantClassSaved}</p>
+                                    <p className="notice notice--success">{messages.members.leaveGrantClassSaved}</p>
                                   ) : null}
                                   <button
                                     type="button"
-                                    className="k-modal__confirm k-modal__confirm--neutral"
+                                    className="btn btn--primary"
                                     disabled={grantClassPendingId === member.id}
                                     onClick={() => handleGrantClassSave(member)}
                                   >
@@ -1084,7 +1085,7 @@ export function MembersView() {
                                           className="member-work-policy__form"
                                           onSubmit={(e) => handleWorkPolicySubmit(e, member.id)}
                                         >
-                                          <div className="correction-field">
+                                          <div className="field">
                                             <label htmlFor={`member-work-policy-kind-${member.id}`}>
                                               {messages.members.workPolicyKindLabel}
                                             </label>
@@ -1100,7 +1101,7 @@ export function MembersView() {
                                               <option value="monthly_variable">{messages.monthly.workSystemValue.monthly_variable}</option>
                                             </select>
                                           </div>
-                                          <div className="correction-field">
+                                          <div className="field">
                                             <label htmlFor={`member-work-policy-effective-from-${member.id}`}>
                                               {messages.members.workPolicyEffectiveFromLabel}
                                             </label>
@@ -1114,7 +1115,7 @@ export function MembersView() {
                                               }
                                               required
                                             />
-                                            <span className="settings-notif__field-hint">
+                                            <span className="field__hint">
                                               {messages.members.workPolicyEffectiveFromHint}
                                             </span>
                                           </div>
@@ -1124,7 +1125,7 @@ export function MembersView() {
                                             「シフトが無い日に有給1日を何分として扱うか」だけを意味する。
                                           */}
                                           {workPolicyForm.kind === "monthly_variable" ? (
-                                            <div className="correction-field">
+                                            <div className="field">
                                               <label htmlFor={`member-work-policy-standard-day-minutes-${member.id}`}>
                                                 {messages.members.workPolicyStandardDayMinutesLabel}
                                               </label>
@@ -1141,24 +1142,24 @@ export function MembersView() {
                                                 }
                                                 required
                                               />
-                                              <span className="settings-notif__field-hint">
+                                              <span className="field__hint">
                                                 {messages.members.workPolicyStandardDayMinutesHint}
                                               </span>
                                             </div>
                                           ) : null}
 
                                           {workPolicyError ? (
-                                            <p className="correction-error" role="alert">
+                                            <p className="notice notice--danger" role="alert">
                                               {workPolicyError}
                                             </p>
                                           ) : null}
                                           {workPolicySuccess ? (
-                                            <p className="settings-notif__success">{messages.members.workPolicySubmitSuccess}</p>
+                                            <p className="notice notice--success">{messages.members.workPolicySubmitSuccess}</p>
                                           ) : null}
 
                                           <button
                                             type="submit"
-                                            className="k-modal__confirm k-modal__confirm--neutral"
+                                            className="btn btn--primary"
                                             disabled={workPolicySaving}
                                           >
                                             {workPolicySaving ? messages.members.workPolicySubmitting : messages.members.workPolicySubmit}

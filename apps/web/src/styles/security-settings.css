@@ -1,15 +1,15 @@
 /* /settings/security(二要素認証(TOTP)の設定、2026-08-27 追加)専用のスタイル。
-   フォーム・セクションの本体は settings.css(.settings-notif__*)と corrections.css
-   (.correction-field / .k-modal__confirm)を流用し、ここでは
+   フォーム・セクションの本体は components.css
+   (.page / .card / .field / .btn)を流用し、ここでは
    「暗号化鍵が無い配置の注意書き」「セットアップキー・otpauth URI のコピー枠」
    「1度きりのリカバリコード表示」など、この画面固有の見た目だけを持つ。
    リカバリコードの枠は api-keys-settings.css の .api-keys__reveal(発行直後のトークン表示)と
    同じ意匠にしてある — どちらも「ここでしか見られない秘密」を出す枠であり、
    利用者が同じ重みの画面だと認識できるようにするため。 */
 
-/* 外枠(main)の幅は settings.css の .settings-notif__main(--width-content-wide)のまま。
+/* 外枠(main)の幅は components.css の .page(--width-content-wide)のまま。
    この画面は入力欄と説明文が主体で一覧を持たないため、api-keys-settings.css のような
-   外枠の上書きは不要 — 内側のフォームは .settings-notif__form の --width-form が制約する。 */
+   外枠の上書きは不要 — 内側のフォームは .page-body--form の --width-form が制約する。 */
 
 /* 運用者が KIZAMI_ENCRYPTION_KEY を設定していない配置での説明。操作は何も出さないため、
    エラー(赤)ではなく「今は使えない」ことを落ち着いて伝える枠にする。 */
@@ -31,26 +31,6 @@
 
 .security-settings__status {
   margin: 0 0 var(--space-2);
-}
-
-.security-settings__badge {
-  display: inline-flex;
-  align-items: center;
-  font-size: 0.78rem;
-  font-weight: 700;
-  padding: 2px var(--space-2);
-  border-radius: 999px;
-  white-space: nowrap;
-}
-
-.security-settings__badge--on {
-  border: 1px solid var(--k-cyan-ink);
-  color: var(--k-cyan-ink);
-}
-
-.security-settings__badge--off {
-  border: 1px solid var(--k-ink-soft);
-  color: var(--k-ink-soft);
 }
 
 .security-settings__facts {

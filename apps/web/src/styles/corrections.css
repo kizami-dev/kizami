@@ -79,73 +79,9 @@
   border-top: var(--border-hair);
 }
 
-.k-modal__cancel {
-  background: none;
-  border: var(--border-hair);
-  border-radius: var(--radius-m);
-  padding: var(--space-3) var(--space-4);
-  font-size: 0.9rem;
-  color: var(--k-key);
-}
-
-.k-modal__cancel:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--k-key) 4%, transparent);
-}
-
-.k-modal__confirm {
-  border: none;
-  border-radius: var(--radius-m);
-  padding: var(--space-3) var(--space-5);
-  font-size: 0.9rem;
-  font-weight: 700;
-  color: var(--k-paper);
-}
-
-.k-modal__confirm--neutral {
-  background: var(--k-key);
-}
-
-.k-modal__confirm--neutral:hover:not(:disabled) {
-  background: var(--k-key-strong);
-}
-
-/* --k-magenta-fill は常に濃いマゼンタ固定(tokens.css)。ink 変種と違いダークでも
-   明るくならないため、上の --k-modal__confirm の color: var(--k-paper) は
-   ダークで暗転してしまう(paper が反転するため)。テキスト色をダーク限定で上書きする。 */
-.k-modal__confirm--caution {
-  background: var(--k-magenta-fill);
-}
-
-.k-modal__confirm--caution:hover:not(:disabled) {
-  background: var(--k-magenta-fill-hover);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .k-modal__confirm--caution {
-    color: var(--k-fill-text-light);
-  }
-}
-
-:root[data-theme="dark"] .k-modal__confirm--caution {
-  color: var(--k-fill-text-light);
-}
-
-.k-modal__confirm:disabled,
-.k-modal__cancel:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
 .confirm-dialog__message {
   font-size: 0.95rem;
   line-height: 1.7;
-}
-
-.confirm-dialog__extra-note {
-  font-size: 0.85rem;
-  color: var(--k-ink-soft);
-  border-left: 3px solid var(--k-key);
-  padding-left: var(--space-3);
 }
 
 /* 対象名の再入力(取り返しのつかない操作の確認、2026-08-27。ConfirmDialog の confirmPhrase) */
@@ -228,61 +164,6 @@
   color: var(--k-key);
   font-weight: 700;
   background: color-mix(in srgb, var(--k-key) 4%, transparent);
-}
-
-.correction-field {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  position: relative;
-}
-
-.correction-field label {
-  font-size: 0.82rem;
-  color: var(--k-ink-soft);
-}
-
-.correction-field select,
-.correction-field input,
-.correction-field textarea {
-  border: var(--border-hair);
-  border-radius: var(--radius-s);
-  padding: var(--space-3);
-  font-size: 0.95rem;
-  background: var(--k-surface);
-  font-family: inherit;
-}
-
-.correction-field textarea {
-  min-height: 5.5rem;
-  resize: vertical;
-}
-
-.correction-field__counter {
-  align-self: flex-end;
-  font-size: 0.75rem;
-  color: var(--k-ink-soft);
-}
-
-.correction-field-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--space-3);
-}
-
-@media (max-width: 420px) {
-  .correction-field-row {
-    grid-template-columns: 1fr;
-  }
-}
-
-.correction-error {
-  color: var(--k-magenta-ink);
-  font-size: 0.85rem;
-  border: 1px solid var(--k-magenta);
-  background: color-mix(in srgb, var(--k-magenta) 6%, transparent);
-  border-radius: var(--radius-s);
-  padding: var(--space-3);
 }
 
 /* ---- 申請一覧・承認画面(/corrections) ---- */
@@ -368,47 +249,6 @@
 
 .correction-card__type {
   font-size: 0.85rem;
-  color: var(--k-ink-soft);
-}
-
-.correction-badge {
-  display: inline-flex;
-  align-items: center;
-  border-radius: 999px;
-  padding: var(--space-1) var(--space-3);
-  font-size: 0.75rem;
-  font-weight: 700;
-  border: 2px solid var(--k-key);
-  color: var(--k-key);
-}
-
-.correction-badge--pending {
-  border-color: var(--k-key);
-  color: var(--k-key);
-}
-
-.correction-badge--approved {
-  border-color: var(--k-cyan-ink);
-  color: var(--k-cyan-ink);
-}
-
-/*
- * 一次承認済み・二次承認待ち(多段承認の中間状態、2026-08-24 追加、docs/design/approval-flows.md)。
- * 承認済(cyan)とも申請中(中立の key 色)とも取り違えないよう、「進行中・待ち」を表す黄
- * (leave-target-month-closed の注記と同じ系統)を使う。
- */
-.correction-badge--approved_step1 {
-  border-color: var(--k-yellow-ink);
-  color: var(--k-yellow-ink);
-}
-
-.correction-badge--rejected {
-  border-color: var(--k-magenta-ink);
-  color: var(--k-magenta-ink);
-}
-
-.correction-badge--withdrawn {
-  border-color: var(--k-ink-soft);
   color: var(--k-ink-soft);
 }
 

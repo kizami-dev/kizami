@@ -9,6 +9,7 @@ import { AppHeader } from "./AppHeader";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { SettingsNav } from "./SettingsNav";
 import { formatShiftPatternTime, ShiftPatternFormDialog, type ShiftPatternFormValue } from "./ShiftPatternFormDialog";
+import { StateView } from "./ui/StateView";
 
 /**
  * シフトパターン管理画面(/settings/shift-patterns、v0.7 フェーズ3、2026-08-24 追加)。
@@ -104,10 +105,10 @@ export function SettingsShiftPatternsView() {
   }
 
   if (guard.status === "loading" || loading) {
-    return <p className="monthly-loading">{messages.loading}</p>;
+    return <StateView kind="loading">{messages.loading}</StateView>;
   }
   if (guard.status === "error" || !guard.user) {
-    return <p className="monthly-error">{messages.errors.network}</p>;
+    return <StateView kind="error">{messages.errors.network}</StateView>;
   }
 
   return (
@@ -119,16 +120,16 @@ export function SettingsShiftPatternsView() {
         <p className="org-settings__tagline">{messages.shiftPatterns.tagline}</p>
 
         {forbidden ? (
-          <p className="org-settings__forbidden" role="alert">
+          <p className="notice notice--danger" role="alert">
             {messages.shiftPatterns.noPermission}
           </p>
         ) : null}
-        {loadError ? <p className="monthly-error">{loadError}</p> : null}
+        {loadError ? <StateView kind="error">{loadError}</StateView> : null}
 
         {!forbidden && patterns ? (
           <>
             <div className="org-settings__toolbar">
-              <button type="button" className="org-settings__primary-btn" onClick={() => { setFormError(null); setFormOpen(true); }}>
+              <button type="button" className="btn btn--primary" onClick={() => { setFormError(null); setFormOpen(true); }}>
                 {messages.shiftPatterns.addNew}
               </button>
               <label className="attendance-settings__checkbox">
@@ -138,7 +139,7 @@ export function SettingsShiftPatternsView() {
             </div>
 
             {patterns.length === 0 ? (
-              <p className="org-settings__empty">{messages.shiftPatterns.empty}</p>
+              <StateView kind="empty">{messages.shiftPatterns.empty}</StateView>
             ) : (
               <div className="org-settings__table-wrap">
                 <table className="org-table">
@@ -155,7 +156,7 @@ export function SettingsShiftPatternsView() {
                       <tr key={p.id}>
                         <td>
                           {p.name}
-                          {p.archivedAt !== null ? <span className="chip chip--system">{messages.shiftPatterns.archivedBadge}</span> : null}
+                          {p.archivedAt !== null ? <span className="badge badge--key">{messages.shiftPatterns.archivedBadge}</span> : null}
                         </td>
                         <td>{messages.shiftDayTypeLabel[p.dayType]}</td>
                         <td className="tabular-nums">{formatShiftPatternTime(p.dayType, p.startMinutes, p.endMinutes)}</td>

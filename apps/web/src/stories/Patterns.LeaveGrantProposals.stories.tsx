@@ -163,7 +163,7 @@ function ProposalTable({ proposals }: { proposals: LeaveGrantProposalDto[] }) {
                   <div className="leave-proposal-days">
                     <span className="tabular-nums">{p.days}</span>
                     {p.leaveGrantClass !== null && p.leaveGrantClass !== "full" ? (
-                      <span className="chip">
+                      <span className="badge badge--neutral">
                         {messages.leaveGrantProposals.proportionalChip(messages.members.leaveGrantClassOption[p.leaveGrantClass])}
                       </span>
                     ) : null}
@@ -178,7 +178,7 @@ function ProposalTable({ proposals }: { proposals: LeaveGrantProposalDto[] }) {
                         : messages.leaveGrantProposals.basisCalendarEstimate}
                     </span>
                     {belowThreshold ? (
-                      <span className="chip chip--warning">{messages.leaveGrantProposals.rateBelowThreshold}</span>
+                      <span className="badge badge--yellow">{messages.leaveGrantProposals.rateBelowThreshold}</span>
                     ) : null}
                   </div>
                 </td>
@@ -215,7 +215,7 @@ function LeaveGrantProposalPatterns() {
       </div>
 
       <section className="leave-admin-section">
-        <h2 className="settings-notif__section-title">{messages.leaveGrantProposals.sectionTitle}</h2>
+        <h2 className="card__title">{messages.leaveGrantProposals.sectionTitle}</h2>
         <p className="leave-admin-section__desc">{messages.leaveGrantProposals.sectionDesc}</p>
         <ProposalTable proposals={proposals} />
 
@@ -254,7 +254,7 @@ function LeaveGrantProposalPatterns() {
       </section>
 
       <section className="leave-admin-section">
-        <h2 className="settings-notif__section-title">{messages.leaveGrantProposals.sectionTitle}</h2>
+        <h2 className="card__title">{messages.leaveGrantProposals.sectionTitle}</h2>
         <p className="leave-admin-section__desc">{messages.leaveGrantProposals.sectionDesc}</p>
         <ProposalTable proposals={[]} />
       </section>

@@ -105,7 +105,7 @@ export function SignupForm() {
           <>
             <h2 className="invite-accept__title">{messages.signup.closedTitle}</h2>
             <p className="login-card__tagline">{messages.signup.closedMessage}</p>
-            <button type="button" className="login-submit" onClick={() => router.push("/login")}>
+            <button type="button" className="btn btn--primary btn--lg btn--block" onClick={() => router.push("/login")}>
               {messages.signup.backToLogin}
             </button>
           </>
@@ -115,7 +115,7 @@ export function SignupForm() {
           <>
             <h2 className="invite-accept__title">{messages.signup.sentTitle}</h2>
             <p className="login-card__tagline">{messages.signup.sentMessage(state.email)}</p>
-            <button type="button" className="login-submit" onClick={() => router.push("/login")}>
+            <button type="button" className="btn btn--primary btn--lg btn--block" onClick={() => router.push("/login")}>
               {messages.signup.backToLogin}
             </button>
           </>
@@ -126,7 +126,7 @@ export function SignupForm() {
             <p className="login-card__tagline">{messages.signup.tagline}</p>
 
             <form className="login-form" onSubmit={handleSubmit} noValidate>
-              <div className="login-field">
+              <div className="field">
                 <label htmlFor="signup-organization">{messages.signup.organizationNameLabel}</label>
                 <input
                   id="signup-organization"
@@ -139,7 +139,7 @@ export function SignupForm() {
                 />
               </div>
 
-              <div className="login-field">
+              <div className="field">
                 <label htmlFor="signup-name">{messages.signup.adminNameLabel}</label>
                 <input
                   id="signup-name"
@@ -152,7 +152,7 @@ export function SignupForm() {
                 />
               </div>
 
-              <div className="login-field">
+              <div className="field">
                 <label htmlFor="signup-email">{messages.signup.emailLabel}</label>
                 <input
                   id="signup-email"
@@ -166,7 +166,7 @@ export function SignupForm() {
               </div>
 
               {state.config.mode === "invite" ? (
-                <div className="login-field">
+                <div className="field">
                   <label htmlFor="signup-invite-code">{messages.signup.inviteCodeLabel}</label>
                   <input
                     id="signup-invite-code"
@@ -187,12 +187,12 @@ export function SignupForm() {
               <TurnstileWidget siteKey={state.config.turnstileSiteKey} onToken={setTurnstileToken} resetKey={turnstileResetKey} />
 
               {error ? (
-                <p className="login-error" role="alert">
+                <p className="notice notice--danger" role="alert">
                   {error}
                 </p>
               ) : null}
 
-              <button type="submit" className="login-submit" disabled={submitting}>
+              <button type="submit" className="btn btn--primary btn--lg btn--block" disabled={submitting}>
                 {submitting ? messages.signup.submitting : messages.signup.submit}
               </button>
             </form>

@@ -104,9 +104,9 @@ export function ConfirmDialog({
            * エラーになっていた)。confirm-dialog__message の見た目(corrections.css)は div でも同じ。
            */}
           <div className="confirm-dialog__message">{message}</div>
-          {extraNote ? <p className="confirm-dialog__extra-note">{extraNote}</p> : null}
+          {extraNote ? <p className="notice notice--info">{extraNote}</p> : null}
           {onNoteChange ? (
-            <div className="correction-field">
+            <div className="field">
               <label htmlFor="confirm-dialog-note">{noteLabel}</label>
               <textarea
                 id="confirm-dialog-note"
@@ -118,7 +118,7 @@ export function ConfirmDialog({
             </div>
           ) : null}
           {confirmPhrase ? (
-            <div className="correction-field">
+            <div className="field">
               <label htmlFor="confirm-dialog-phrase">{confirmPhrase.label}</label>
               <input
                 id="confirm-dialog-phrase"
@@ -135,19 +135,19 @@ export function ConfirmDialog({
             </div>
           ) : null}
           {error ? (
-            <p className="correction-error" role="alert">
+            <p className="notice notice--danger" role="alert">
               {error}
             </p>
           ) : null}
         </div>
         <div className="k-modal__footer">
-          <button type="button" className="k-modal__cancel" onClick={onCancel} disabled={pending}>
+          <button type="button" className="btn btn--secondary" onClick={onCancel} disabled={pending}>
             {messages.corrections.cancel}
           </button>
           <button
             type="button"
             ref={confirmButtonRef}
-            className={`k-modal__confirm k-modal__confirm--${tone}`}
+            className={tone === "caution" ? "btn btn--danger" : "btn btn--primary"}
             onClick={onConfirm}
             disabled={pending || !phraseMatches}
           >

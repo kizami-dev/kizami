@@ -55,12 +55,12 @@ export function PasswordChangeSection() {
   }
 
   return (
-    <section className="settings-notif__section">
-      <h2 className="settings-notif__section-title">{messages.settingsSecurity.passwordChange.title}</h2>
-      <p className="settings-notif__field-hint">{messages.settingsSecurity.passwordChange.description}</p>
+    <section className="card">
+      <h2 className="card__title">{messages.settingsSecurity.passwordChange.title}</h2>
+      <p className="field__hint">{messages.settingsSecurity.passwordChange.description}</p>
 
-      <form className="settings-notif__form" onSubmit={handleSubmit} noValidate>
-        <div className="correction-field">
+      <form className="page-body page-body--form" onSubmit={handleSubmit} noValidate>
+        <div className="field">
           <label htmlFor="password-change-current">{messages.settingsSecurity.passwordChange.currentLabel}</label>
           <input
             id="password-change-current"
@@ -73,7 +73,7 @@ export function PasswordChangeSection() {
           />
         </div>
 
-        <div className="correction-field">
+        <div className="field">
           <label htmlFor="password-change-new">{messages.settingsSecurity.passwordChange.newLabel}</label>
           <input
             id="password-change-new"
@@ -87,7 +87,7 @@ export function PasswordChangeSection() {
           />
         </div>
 
-        <div className="correction-field">
+        <div className="field">
           <label htmlFor="password-change-confirm">{messages.settingsSecurity.passwordChange.confirmLabel}</label>
           <input
             id="password-change-confirm"
@@ -102,18 +102,18 @@ export function PasswordChangeSection() {
         </div>
 
         {error ? (
-          <p className="correction-error" role="alert">
+          <p className="notice notice--danger" role="alert">
             {error}
           </p>
         ) : null}
         {success ? (
-          <p className="settings-notif__field-hint" role="status">
+          <p className="field__hint" role="status">
             {messages.settingsSecurity.passwordChange.success}
           </p>
         ) : null}
 
-        <div className="settings-notif__actions">
-          <button type="submit" className="k-modal__confirm k-modal__confirm--neutral" disabled={submitting}>
+        <div className="btn-row">
+          <button type="submit" className="btn btn--primary" disabled={submitting}>
             {submitting ? messages.settingsSecurity.passwordChange.submitting : messages.settingsSecurity.passwordChange.submit}
           </button>
         </div>

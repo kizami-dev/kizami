@@ -17,6 +17,7 @@ import { useAuthGuard } from "../lib/useAuthGuard";
 import { useSettingsAccess } from "../lib/useSettingsAccess";
 import { AppHeader } from "./AppHeader";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { StateView } from "./ui/StateView";
 
 const CATEGORIES: PersonalNotificationCategory[] = [
   "missing_clock_out",
@@ -230,10 +231,10 @@ export function PersonalNotificationSettingsView() {
   const pushColumnVisible = (settings?.pushAvailable ?? false) && pushSupported;
 
   if (guard.status === "loading" || loading) {
-    return <p className="monthly-loading">{messages.loading}</p>;
+    return <StateView kind="loading">{messages.loading}</StateView>;
   }
   if (guard.status === "error" || !guard.user) {
-    return <p className="monthly-error">{messages.errors.network}</p>;
+    return <StateView kind="error">{messages.errors.network}</StateView>;
   }
 
   return (
@@ -247,7 +248,7 @@ export function PersonalNotificationSettingsView() {
         <h1 className="settings-personal-notif__title">{messages.settingsPersonalNotifications.title}</h1>
         <p className="settings-personal-notif__tagline">{messages.settingsPersonalNotifications.tagline}</p>
 
-        <p className="settings-personal-notif__banner">
+        <p className="notice notice--info">
           {settingsAccess.notifications ? (
             <>
               {messages.settingsPersonalNotifications.distinctionBanner}{" "}
@@ -258,13 +259,13 @@ export function PersonalNotificationSettingsView() {
           )}
         </p>
 
-        {loadError ? <p className="monthly-error">{loadError}</p> : null}
+        {loadError ? <StateView kind="error">{loadError}</StateView> : null}
 
         {form && settings ? (
           <form className="settings-personal-notif__form" onSubmit={handleSave}>
-            <section className="settings-notif__section" data-tour="personal-notifications">
-              <h2 className="settings-notif__section-title">{messages.settingsPersonalNotifications.categoriesSectionTitle}</h2>
-              <p className="settings-notif__field-hint">{messages.settingsPersonalNotifications.inappAlwaysOnHint}</p>
+            <section className="card" data-tour="personal-notifications">
+              <h2 className="card__title">{messages.settingsPersonalNotifications.categoriesSectionTitle}</h2>
+              <p className="field__hint">{messages.settingsPersonalNotifications.inappAlwaysOnHint}</p>
 
               <div
                 className={`settings-personal-notif__category-table${pushColumnVisible ? " settings-personal-notif__category-table--with-push" : ""}`}
@@ -318,9 +319,9 @@ export function PersonalNotificationSettingsView() {
               </div>
             </section>
 
-            <section className="settings-notif__section">
-              <h2 className="settings-notif__section-title">{messages.settingsPersonalNotifications.emailSectionTitle}</h2>
-              <div className="correction-field">
+            <section className="card">
+              <h2 className="card__title">{messages.settingsPersonalNotifications.emailSectionTitle}</h2>
+              <div className="field">
                 <label htmlFor="personal-email-address">{messages.settingsPersonalNotifications.emailAddressLabel}</label>
                 <input
                   id="personal-email-address"
@@ -330,15 +331,15 @@ export function PersonalNotificationSettingsView() {
                   placeholder={messages.settingsPersonalNotifications.emailAddressPlaceholder}
                   onChange={(e) => updateField({ emailAddress: e.target.value })}
                 />
-                <p className="settings-notif__field-hint">
+                <p className="field__hint">
                   {messages.settingsPersonalNotifications.emailAddressEffectiveHint(settings.emailAddress.effective)}
                 </p>
               </div>
             </section>
 
-            <section className="settings-notif__section">
-              <h2 className="settings-notif__section-title">{messages.settingsPersonalNotifications.webhookSectionTitle}</h2>
-              <div className="correction-field">
+            <section className="card">
+              <h2 className="card__title">{messages.settingsPersonalNotifications.webhookSectionTitle}</h2>
+              <div className="field">
                 <label htmlFor="personal-webhook-url">{messages.settingsPersonalNotifications.webhookUrlLabel}</label>
                 <input
                   id="personal-webhook-url"
@@ -348,7 +349,7 @@ export function PersonalNotificationSettingsView() {
                   placeholder={messages.settingsPersonalNotifications.webhookUrlPlaceholder}
                   onChange={(e) => updateField({ webhookUrl: e.target.value })}
                 />
-                <p className="settings-notif__field-hint">
+                <p className="field__hint">
                   {settings.webhookUrl.configured
                     ? `${messages.settingsPersonalNotifications.webhookUrlConfigured}(${settings.webhookUrl.preview})`
                     : messages.settingsPersonalNotifications.webhookUrlNotConfigured}
@@ -359,20 +360,20 @@ export function PersonalNotificationSettingsView() {
             </section>
 
             {settings.pushAvailable ? (
-              <section className="settings-notif__section">
-                <h2 className="settings-notif__section-title">{messages.settingsPersonalNotifications.pushSectionTitle}</h2>
+              <section className="card">
+                <h2 className="card__title">{messages.settingsPersonalNotifications.pushSectionTitle}</h2>
                 {pushSupported ? (
                   <>
-                    <p className="settings-notif__field-hint">
+                    <p className="field__hint">
                       {pushSubscribed
                         ? messages.settingsPersonalNotifications.pushSubscribed
                         : messages.settingsPersonalNotifications.pushNotSubscribed}
                       {messages.common.hintSeparator}
                       {messages.settingsPersonalNotifications.pushHint}
                     </p>
-                    <div className="settings-notif__actions">
+                    <div className="btn-row">
                       {pushSubscribed ? (
-                        <button type="button" className="k-modal__cancel" disabled={pushPending} onClick={() => void handleDisablePush()}>
+                        <button type="button" className="btn btn--secondary" disabled={pushPending} onClick={() => void handleDisablePush()}>
                           {pushPending
                             ? messages.settingsPersonalNotifications.pushDisabling
                             : messages.settingsPersonalNotifications.pushDisable}
@@ -380,7 +381,7 @@ export function PersonalNotificationSettingsView() {
                       ) : (
                         <button
                           type="button"
-                          className="k-modal__confirm k-modal__confirm--neutral"
+                          className="btn btn--primary"
                           disabled={pushPending}
                           onClick={() => void handleEnablePush()}
                         >
@@ -391,28 +392,28 @@ export function PersonalNotificationSettingsView() {
                       )}
                     </div>
                     {/* 権限拒否時の案内(ブラウザ設定から許可し直す手順)もここに出る。 */}
-                    {pushMessage ? <p className="settings-notif__field-hint">{pushMessage}</p> : null}
+                    {pushMessage ? <p className="field__hint">{pushMessage}</p> : null}
                   </>
                 ) : (
-                  <p className="settings-notif__field-hint">{messages.settingsPersonalNotifications.pushUnsupported}</p>
+                  <p className="field__hint">{messages.settingsPersonalNotifications.pushUnsupported}</p>
                 )}
               </section>
             ) : null}
 
             {saveError ? (
-              <p className="correction-error" role="alert">
+              <p className="notice notice--danger" role="alert">
                 {saveError}
               </p>
             ) : null}
-            {saveSuccess ? <p className="settings-notif__success">{messages.settingsPersonalNotifications.saveSuccess}</p> : null}
+            {saveSuccess ? <p className="notice notice--success">{messages.settingsPersonalNotifications.saveSuccess}</p> : null}
 
-            <div className="settings-notif__actions">
-              <button type="submit" className="k-modal__confirm k-modal__confirm--neutral" disabled={saving}>
+            <div className="btn-row">
+              <button type="submit" className="btn btn--primary" disabled={saving}>
                 {saving ? messages.settingsPersonalNotifications.saving : messages.settingsPersonalNotifications.save}
               </button>
               <button
                 type="button"
-                className="k-modal__cancel"
+                className="btn btn--secondary"
                 disabled={!settings.webhookUrl.configured}
                 onClick={() => {
                   setTestError(null);
@@ -426,7 +427,7 @@ export function PersonalNotificationSettingsView() {
 
             {testResult !== undefined ? (
               <section className="settings-notif__test-results">
-                <h2 className="settings-notif__section-title">{messages.settingsPersonalNotifications.testSendResultTitle}</h2>
+                <h2 className="card__title">{messages.settingsPersonalNotifications.testSendResultTitle}</h2>
                 {testResult ? (
                   <ul className="test-result-list">
                     <li className={`test-result-item${testResult.ok ? " test-result-item--ok" : " test-result-item--error"}`}>
@@ -442,7 +443,7 @@ export function PersonalNotificationSettingsView() {
                     </li>
                   </ul>
                 ) : (
-                  <p className="settings-notif__field-hint">{messages.settingsPersonalNotifications.errors.not_configured}</p>
+                  <p className="field__hint">{messages.settingsPersonalNotifications.errors.not_configured}</p>
                 )}
               </section>
             ) : null}

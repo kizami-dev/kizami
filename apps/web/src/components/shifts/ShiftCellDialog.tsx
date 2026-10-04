@@ -93,7 +93,7 @@ export function ShiftCellDialog({ date, initial, patterns, pending, error, onSub
         </div>
         <form className="k-modal__body" onSubmit={handleSubmit}>
           {activePatterns.length > 0 ? (
-            <div className="correction-field">
+            <div className="field">
               <label htmlFor="shift-cell-pattern">{messages.shifts.cellDialogPatternLabel}</label>
               <select
                 id="shift-cell-pattern"
@@ -120,7 +120,7 @@ export function ShiftCellDialog({ date, initial, patterns, pending, error, onSub
 
           {!usePattern ? (
             <>
-              <div className="correction-field">
+              <div className="field">
                 <label htmlFor="shift-cell-day-type">{messages.shifts.cellDialogDayTypeLabel}</label>
                 <select id="shift-cell-day-type" value={dayType} onChange={(e) => setDayType(e.target.value as ShiftDayType)}>
                   {DAY_TYPES.map((t) => (
@@ -132,15 +132,15 @@ export function ShiftCellDialog({ date, initial, patterns, pending, error, onSub
               </div>
               {dayType === "work" ? (
                 <>
-                  <div className="correction-field">
+                  <div className="field">
                     <label htmlFor="shift-cell-start">{messages.shifts.cellDialogStartLabel}</label>
                     <input id="shift-cell-start" type="time" value={startHm} onChange={(e) => setStartHm(e.target.value)} required />
                   </div>
-                  <div className="correction-field">
+                  <div className="field">
                     <label htmlFor="shift-cell-end">{messages.shifts.cellDialogEndLabel}</label>
                     <input id="shift-cell-end" type="time" value={endHm} onChange={(e) => setEndHm(e.target.value)} required />
                   </div>
-                  <div className="correction-field">
+                  <div className="field">
                     <label htmlFor="shift-cell-break">{messages.shifts.cellDialogBreakLabel}</label>
                     <input
                       id="shift-cell-break"
@@ -157,16 +157,16 @@ export function ShiftCellDialog({ date, initial, patterns, pending, error, onSub
           ) : null}
 
           {localError || error ? (
-            <p className="correction-error" role="alert">
+            <p className="notice notice--danger" role="alert">
               {localError ?? error}
             </p>
           ) : null}
 
           <div className="k-modal__footer">
-            <button type="button" className="k-modal__cancel" onClick={onCancel} disabled={pending}>
+            <button type="button" className="btn btn--secondary" onClick={onCancel} disabled={pending}>
               {messages.shifts.cellDialogCancel}
             </button>
-            <button type="submit" className="k-modal__confirm k-modal__confirm--neutral" disabled={pending}>
+            <button type="submit" className="btn btn--primary" disabled={pending}>
               {pending ? messages.shifts.cellDialogSaving : messages.shifts.cellDialogSave}
             </button>
           </div>

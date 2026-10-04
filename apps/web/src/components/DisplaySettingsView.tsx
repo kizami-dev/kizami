@@ -6,6 +6,7 @@ import { AppHeader } from "./AppHeader";
 import { LanguageToggle } from "./LanguageToggle";
 import { SettingsNav } from "./SettingsNav";
 import { ThemeToggle } from "./ThemeToggle";
+import { StateView } from "./ui/StateView";
 
 /**
  * 言語と表示の設定画面(/settings/display、2026-10-05 追加)。
@@ -28,30 +29,30 @@ export function DisplaySettingsView() {
   const guard = useAuthGuard();
 
   if (guard.status === "loading") {
-    return <p className="monthly-loading">{messages.loading}</p>;
+    return <StateView kind="loading">{messages.loading}</StateView>;
   }
   if (guard.status === "error" || !guard.user) {
-    return <p className="monthly-error">{messages.errors.network}</p>;
+    return <StateView kind="error">{messages.errors.network}</StateView>;
   }
 
   return (
-    <div className="settings-notif">
+    <div className="page-shell">
       <AppHeader displayName={guard.user.displayName} email={guard.user.email} tenantName={guard.tenant?.name ?? null} active="settings" />
-      <main className="settings-notif__main">
+      <main className="page">
         <SettingsNav active="display" />
         <h1 className="settings-notif__title">{messages.settingsDisplay.title}</h1>
         <p className="settings-notif__tagline">{messages.settingsDisplay.tagline}</p>
 
-        <section className="settings-notif__section display-settings__section" aria-labelledby="display-language-title">
-          <h2 className="settings-notif__section-title" id="display-language-title">
+        <section className="card display-settings__section" aria-labelledby="display-language-title">
+          <h2 className="card__title" id="display-language-title">
             {messages.settingsDisplay.languageTitle}
           </h2>
           <p className="display-settings__desc">{messages.settingsDisplay.languageDesc}</p>
           <LanguageToggle />
         </section>
 
-        <section className="settings-notif__section display-settings__section" aria-labelledby="display-theme-title">
-          <h2 className="settings-notif__section-title" id="display-theme-title">
+        <section className="card display-settings__section" aria-labelledby="display-theme-title">
+          <h2 className="card__title" id="display-theme-title">
             {messages.settingsDisplay.themeTitle}
           </h2>
           <p className="display-settings__desc">{messages.settingsDisplay.themeDesc}</p>

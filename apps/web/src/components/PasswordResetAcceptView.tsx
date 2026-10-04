@@ -133,7 +133,7 @@ export function PasswordResetAcceptView({ token }: { token: string }) {
           <>
             <h2 className="invite-accept__title">{messages.passwordResetAccept.loginRequiredTitle}</h2>
             <p className="login-card__tagline">{messages.passwordResetAccept.loginRequiredMessage}</p>
-            <button type="button" className="login-submit" onClick={() => router.push("/login")}>
+            <button type="button" className="btn btn--primary btn--lg btn--block" onClick={() => router.push("/login")}>
               {messages.passwordResetAccept.goToLogin}
             </button>
           </>
@@ -143,7 +143,7 @@ export function PasswordResetAcceptView({ token }: { token: string }) {
           <>
             <h2 className="invite-accept__title">{messages.passwordResetAccept.sessionIssuanceFailedTitle}</h2>
             <p className="login-card__tagline">{messages.passwordResetAccept.sessionIssuanceFailedMessage}</p>
-            <button type="button" className="login-submit" onClick={() => router.push("/login")}>
+            <button type="button" className="btn btn--primary btn--lg btn--block" onClick={() => router.push("/login")}>
               {messages.passwordResetAccept.goToLogin}
             </button>
           </>
@@ -156,17 +156,17 @@ export function PasswordResetAcceptView({ token }: { token: string }) {
             </p>
 
             <form className="login-form" onSubmit={handleSubmit} noValidate>
-              <div className="login-field">
+              <div className="field">
                 <label htmlFor="reset-accept-name">{messages.passwordResetAccept.nameLabel}</label>
                 <input id="reset-accept-name" type="text" value={state.userName} readOnly />
               </div>
 
-              <div className="login-field">
+              <div className="field">
                 <label htmlFor="reset-accept-email">{messages.passwordResetAccept.emailLabel}</label>
                 <input id="reset-accept-email" type="email" value={state.email} readOnly />
               </div>
 
-              <div className="login-field">
+              <div className="field">
                 <label htmlFor="reset-accept-password">{messages.passwordResetAccept.newPasswordLabel}</label>
                 <input
                   id="reset-accept-password"
@@ -180,7 +180,7 @@ export function PasswordResetAcceptView({ token }: { token: string }) {
                 />
               </div>
 
-              <div className="login-field">
+              <div className="field">
                 <label htmlFor="reset-accept-password-confirm">{messages.passwordResetAccept.newPasswordConfirmLabel}</label>
                 <input
                   id="reset-accept-password-confirm"
@@ -195,12 +195,12 @@ export function PasswordResetAcceptView({ token }: { token: string }) {
               </div>
 
               {error ? (
-                <p className="login-error" role="alert">
+                <p className="notice notice--danger" role="alert">
                   {error}
                 </p>
               ) : null}
 
-              <button type="submit" className="login-submit" disabled={submitting}>
+              <button type="submit" className="btn btn--primary btn--lg btn--block" disabled={submitting}>
                 {submitting ? messages.passwordResetAccept.submitting : messages.passwordResetAccept.submit}
               </button>
             </form>

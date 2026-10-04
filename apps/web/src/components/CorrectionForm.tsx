@@ -212,7 +212,7 @@ export function CorrectionForm({ date, autoDeductedBreakMinutes = 0, onClose, on
 
             <section className="correction-form__section">
               <p className="correction-form__section-title">{messages.corrections.currentPunchesTitle}</p>
-              {loadError ? <p className="correction-error">{messages.errors.loadFailed}</p> : null}
+              {loadError ? <p className="notice notice--danger">{messages.errors.loadFailed}</p> : null}
               {punches === null && !loadError ? <p className="correction-form__loading">{messages.loading}</p> : null}
               {punches !== null && !hasPunches ? (
                 <p className="correction-form__empty">{messages.corrections.currentPunchesEmpty}</p>
@@ -279,7 +279,7 @@ export function CorrectionForm({ date, autoDeductedBreakMinutes = 0, onClose, on
               {mode === "waiver" ? <p className="correction-form__section-title">{messages.autoBreakWaiver.formHint}</p> : null}
 
               {mode === "correct" || mode === "cancel" ? (
-                <div className="correction-field">
+                <div className="field">
                   <label htmlFor="correction-target">{messages.corrections.targetLabel}</label>
                   {hasPunches ? (
                     <select
@@ -304,8 +304,8 @@ export function CorrectionForm({ date, autoDeductedBreakMinutes = 0, onClose, on
               ) : null}
 
               {mode === "add" || mode === "correct" ? (
-                <div className="correction-field-row">
-                  <div className="correction-field">
+                <div className="field-row">
+                  <div className="field">
                     <label htmlFor="correction-kind">{messages.corrections.kindLabel}</label>
                     <select id="correction-kind" value={kind} onChange={(e) => setKind(e.target.value as PunchKind)}>
                       {PUNCH_KIND_OPTIONS.map((k) => (
@@ -315,7 +315,7 @@ export function CorrectionForm({ date, autoDeductedBreakMinutes = 0, onClose, on
                       ))}
                     </select>
                   </div>
-                  <div className="correction-field">
+                  <div className="field">
                     <label htmlFor="correction-time">{messages.corrections.timeLabel}</label>
                     <input
                       id="correction-time"
@@ -328,7 +328,7 @@ export function CorrectionForm({ date, autoDeductedBreakMinutes = 0, onClose, on
                 </div>
               ) : null}
 
-              <div className="correction-field">
+              <div className="field">
                 <label htmlFor="correction-reason">
                   {mode === "waiver" ? messages.autoBreakWaiver.reasonLabel : messages.corrections.reasonLabel}
                 </label>
@@ -340,13 +340,13 @@ export function CorrectionForm({ date, autoDeductedBreakMinutes = 0, onClose, on
                   onChange={(e) => setReason(e.target.value)}
                   required
                 />
-                <span className="correction-field__counter tabular-nums">
+                <span className="field__counter tabular-nums">
                   {reason.length}/{MAX_REASON_LENGTH}
                 </span>
               </div>
 
               {formError ? (
-                <p className="correction-error" role="alert">
+                <p className="notice notice--danger" role="alert">
                   {formError}
                 </p>
               ) : null}
@@ -354,10 +354,10 @@ export function CorrectionForm({ date, autoDeductedBreakMinutes = 0, onClose, on
           </div>
 
           <div className="k-modal__footer">
-            <button type="button" className="k-modal__cancel" onClick={onClose} disabled={submitting}>
+            <button type="button" className="btn btn--secondary" onClick={onClose} disabled={submitting}>
               {messages.corrections.cancel}
             </button>
-            <button type="submit" className="k-modal__confirm k-modal__confirm--neutral" disabled={submitting}>
+            <button type="submit" className="btn btn--primary" disabled={submitting}>
               {mode === "waiver"
                 ? submitting
                   ? messages.autoBreakWaiver.submitting

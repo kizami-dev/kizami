@@ -20,6 +20,7 @@ import { formatTimeJst, jstTodayWindow } from "../lib/time";
 import { useAuthGuard } from "../lib/useAuthGuard";
 import { useOnlineStatus } from "../lib/useOnlineStatus";
 import { AppHeader } from "./AppHeader";
+import { StateView } from "./ui/StateView";
 
 /**
  * 大時計・日付表示のフォーマッタ(2026-08-23 4言語対応: ロケールごとに作り直す)。
@@ -168,10 +169,10 @@ export function PunchHome() {
   }
 
   if (guard.status === "loading") {
-    return <p className="monthly-loading">{messages.loading}</p>;
+    return <StateView kind="loading">{messages.loading}</StateView>;
   }
   if (guard.status === "error" || !guard.user) {
-    return <p className="monthly-error">{messages.errors.network}</p>;
+    return <StateView kind="error">{messages.errors.network}</StateView>;
   }
 
   const state: AttendanceState = status?.state ?? "out";

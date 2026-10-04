@@ -5,6 +5,7 @@ import { Tour } from "../components/Tour";
 import { THEME_INIT_SCRIPT } from "../lib/theme";
 import "../styles/tokens.css";
 import "../styles/base.css";
+import "../styles/components.css";
 import "../styles/header.css";
 import "../styles/login.css";
 import "../styles/dashboard.css";

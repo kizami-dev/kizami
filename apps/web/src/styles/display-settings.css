@@ -3,7 +3,7 @@
    ラジオ群(.display-choice*)は LanguageToggle / ThemeToggle が使う。以前はヘッダーの
    ユーザーメニュー用(.k-header__theme* / .k-header__language*)だったが、ヘッダーから外したため
    設定画面向けに作り直した(メニュー内の狭い縦並びではなく、枠付きの選択肢として出す)。
-   セクションの外枠・見出しは settings.css の .settings-notif__section* を流用する。 */
+   セクションの外枠・見出しは components.css の .card / .card__title を流用する。 */
 
 .display-settings__section {
   max-width: var(--width-form);

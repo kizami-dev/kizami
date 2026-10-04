@@ -93,7 +93,7 @@ export function ShiftPatternFormDialog({ pending, error, onSubmit, onCancel }: S
           </button>
         </div>
         <form className="k-modal__body" onSubmit={handleSubmit}>
-          <div className="correction-field">
+          <div className="field">
             <label htmlFor="shift-pattern-name">{messages.shiftPatterns.nameLabel}</label>
             <input
               id="shift-pattern-name"
@@ -106,7 +106,7 @@ export function ShiftPatternFormDialog({ pending, error, onSubmit, onCancel }: S
             />
           </div>
 
-          <div className="correction-field">
+          <div className="field">
             <label htmlFor="shift-pattern-day-type">{messages.shiftPatterns.dayTypeLabel}</label>
             <select id="shift-pattern-day-type" value={dayType} onChange={(e) => setDayType(e.target.value as ShiftDayType)}>
               {DAY_TYPES.map((t) => (
@@ -119,16 +119,16 @@ export function ShiftPatternFormDialog({ pending, error, onSubmit, onCancel }: S
 
           {dayType === "work" ? (
             <>
-              <div className="correction-field">
+              <div className="field">
                 <label htmlFor="shift-pattern-start">{messages.shiftPatterns.startLabel}</label>
                 <input id="shift-pattern-start" type="time" value={startHm} onChange={(e) => setStartHm(e.target.value)} required />
               </div>
-              <div className="correction-field">
+              <div className="field">
                 <label htmlFor="shift-pattern-end">{messages.shiftPatterns.endLabel}</label>
                 <input id="shift-pattern-end" type="time" value={endHm} onChange={(e) => setEndHm(e.target.value)} required />
                 <span className="attendance-settings__field-hint">{messages.shiftPatterns.endHint}</span>
               </div>
-              <div className="correction-field">
+              <div className="field">
                 <label htmlFor="shift-pattern-break">{messages.shiftPatterns.breakLabel}</label>
                 <input
                   id="shift-pattern-break"
@@ -143,16 +143,16 @@ export function ShiftPatternFormDialog({ pending, error, onSubmit, onCancel }: S
           ) : null}
 
           {localError || error ? (
-            <p className="correction-error" role="alert">
+            <p className="notice notice--danger" role="alert">
               {localError ?? error}
             </p>
           ) : null}
 
           <div className="k-modal__footer">
-            <button type="button" className="k-modal__cancel" onClick={onCancel} disabled={pending}>
+            <button type="button" className="btn btn--secondary" onClick={onCancel} disabled={pending}>
               {messages.shiftPatterns.cancel}
             </button>
-            <button type="submit" className="k-modal__confirm k-modal__confirm--neutral" disabled={pending}>
+            <button type="submit" className="btn btn--primary" disabled={pending}>
               {pending ? messages.shiftPatterns.submitting : messages.shiftPatterns.submit}
             </button>
           </div>

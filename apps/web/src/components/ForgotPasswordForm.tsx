@@ -89,7 +89,7 @@ export function ForgotPasswordForm() {
           <>
             <h2 className="invite-accept__title">{messages.forgotPassword.closedTitle}</h2>
             <p className="login-card__tagline">{messages.forgotPassword.closedMessage}</p>
-            <button type="button" className="login-submit" onClick={() => router.push("/login")}>
+            <button type="button" className="btn btn--primary btn--lg btn--block" onClick={() => router.push("/login")}>
               {messages.forgotPassword.backToLogin}
             </button>
           </>
@@ -99,7 +99,7 @@ export function ForgotPasswordForm() {
           <>
             <h2 className="invite-accept__title">{messages.forgotPassword.sentTitle}</h2>
             <p className="login-card__tagline">{messages.forgotPassword.sentMessage}</p>
-            <button type="button" className="login-submit" onClick={() => router.push("/login")}>
+            <button type="button" className="btn btn--primary btn--lg btn--block" onClick={() => router.push("/login")}>
               {messages.forgotPassword.backToLogin}
             </button>
           </>
@@ -110,7 +110,7 @@ export function ForgotPasswordForm() {
             <p className="login-card__tagline">{messages.forgotPassword.tagline}</p>
 
             <form className="login-form" onSubmit={handleSubmit} noValidate>
-              <div className="login-field">
+              <div className="field">
                 <label htmlFor="forgot-email">{messages.forgotPassword.emailLabel}</label>
                 <input
                   id="forgot-email"
@@ -128,12 +128,12 @@ export function ForgotPasswordForm() {
               ) : null}
 
               {error ? (
-                <p className="login-error" role="alert">
+                <p className="notice notice--danger" role="alert">
                   {error}
                 </p>
               ) : null}
 
-              <button type="submit" className="login-submit" disabled={submitting}>
+              <button type="submit" className="btn btn--primary btn--lg btn--block" disabled={submitting}>
                 {submitting ? messages.forgotPassword.submitting : messages.forgotPassword.submit}
               </button>
             </form>

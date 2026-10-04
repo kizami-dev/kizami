@@ -286,13 +286,6 @@
   gap: var(--space-3);
 }
 
-.notif-list-page__empty {
-  text-align: center;
-  color: var(--k-ink-soft);
-  font-size: 0.9rem;
-  padding: var(--space-6) 0;
-}
-
 .notif-list-page__truncated {
   text-align: center;
   color: var(--k-ink-soft);

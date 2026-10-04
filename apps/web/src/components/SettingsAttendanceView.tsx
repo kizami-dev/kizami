@@ -30,6 +30,7 @@ import { useAuthGuard } from "../lib/useAuthGuard";
 import { AppHeader } from "./AppHeader";
 import { HelpTip } from "./HelpTip";
 import { SettingsNav } from "./SettingsNav";
+import { StateView } from "./ui/StateView";
 
 // モジュールレベルで messages のプロパティを取り出して定数化すると、import 時の言語
 // (通常は既定の日本語)で凍結され、言語切替に追従しない(messages は Proxy 経由で
@@ -401,10 +402,10 @@ export function SettingsAttendanceView() {
   }
 
   if (guard.status === "loading" || loading) {
-    return <p className="monthly-loading">{messages.loading}</p>;
+    return <StateView kind="loading">{messages.loading}</StateView>;
   }
   if (guard.status === "error" || !guard.user) {
-    return <p className="monthly-error">{messages.errors.network}</p>;
+    return <StateView kind="error">{messages.errors.network}</StateView>;
   }
 
   const todayDate = dateStrFromEpochMinutesJst(nowMinutes());
@@ -419,11 +420,11 @@ export function SettingsAttendanceView() {
         <p className="attendance-settings__tagline">{messages.settingsAttendance.tagline}</p>
 
         {showNothing ? (
-          <p className="attendance-settings__forbidden" role="alert">
+          <p className="notice notice--danger" role="alert">
             {messages.settingsAttendance.noPermission}
           </p>
         ) : null}
-        {loadError ? <p className="monthly-error">{loadError}</p> : null}
+        {loadError ? <StateView kind="error">{loadError}</StateView> : null}
 
         {!attendanceForbidden && attendance && attendanceForm ? (
           <section className="attendance-settings__section" data-tour="attendance-rules">
@@ -665,7 +666,7 @@ export function SettingsAttendanceView() {
                     ))}
                     <button
                       type="button"
-                      className="k-modal__cancel"
+                      className="btn btn--secondary"
                       onClick={addBreakRuleRow}
                       disabled={attendanceForm.breakRuleRows.length >= MAX_BREAK_RULE_ROWS}
                     >
@@ -703,14 +704,14 @@ export function SettingsAttendanceView() {
               ) : null}
 
               {attendanceError ? (
-                <p className="correction-error" role="alert">
+                <p className="notice notice--danger" role="alert">
                   {attendanceError}
                 </p>
               ) : null}
-              {attendanceSuccess ? <p className="attendance-settings__success">{messages.settingsAttendance.submitSuccess}</p> : null}
+              {attendanceSuccess ? <p className="notice notice--success">{messages.settingsAttendance.submitSuccess}</p> : null}
 
               <div className="attendance-settings__actions">
-                <button type="submit" className="k-modal__confirm k-modal__confirm--neutral" disabled={attendanceSaving}>
+                <button type="submit" className="btn btn--primary" disabled={attendanceSaving}>
                   {attendanceSaving ? messages.settingsAttendance.submitting : messages.settingsAttendance.submit}
                 </button>
               </div>
@@ -854,14 +855,14 @@ export function SettingsAttendanceView() {
               </fieldset>
 
               {workPolicyError ? (
-                <p className="correction-error" role="alert">
+                <p className="notice notice--danger" role="alert">
                   {workPolicyError}
                 </p>
               ) : null}
-              {workPolicySuccess ? <p className="attendance-settings__success">{messages.settingsAttendance.submitSuccess}</p> : null}
+              {workPolicySuccess ? <p className="notice notice--success">{messages.settingsAttendance.submitSuccess}</p> : null}
 
               <div className="attendance-settings__actions">
-                <button type="submit" className="k-modal__confirm k-modal__confirm--neutral" disabled={workPolicySaving}>
+                <button type="submit" className="btn btn--primary" disabled={workPolicySaving}>
                   {workPolicySaving ? messages.settingsAttendance.submitting : messages.settingsAttendance.submit}
                 </button>
               </div>

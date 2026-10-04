@@ -83,7 +83,7 @@ export function DepartmentFormDialog({
 
         <form onSubmit={handleSubmit}>
           <div className="k-modal__body">
-            <div className="correction-field">
+            <div className="field">
               <label htmlFor="department-name">{messages.departments.nameLabel}</label>
               <input
                 id="department-name"
@@ -97,7 +97,7 @@ export function DepartmentFormDialog({
               />
             </div>
 
-            <div className="correction-field">
+            <div className="field">
               <label htmlFor="department-parent">{messages.departments.parentLabel}</label>
               <select id="department-parent" value={parentId} onChange={(e) => setParentId(e.target.value)}>
                 <option value="">{messages.departments.parentNone}</option>
@@ -110,17 +110,17 @@ export function DepartmentFormDialog({
             </div>
 
             {error ? (
-              <p className="correction-error" role="alert">
+              <p className="notice notice--danger" role="alert">
                 {error}
               </p>
             ) : null}
           </div>
 
           <div className="k-modal__footer">
-            <button type="button" className="k-modal__cancel" onClick={onCancel} disabled={pending}>
+            <button type="button" className="btn btn--secondary" onClick={onCancel} disabled={pending}>
               {messages.departments.cancel}
             </button>
-            <button type="submit" className="k-modal__confirm k-modal__confirm--neutral" disabled={pending}>
+            <button type="submit" className="btn btn--primary" disabled={pending}>
               {pending ? messages.departments.saving : messages.departments.save}
             </button>
           </div>

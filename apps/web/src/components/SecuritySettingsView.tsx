@@ -10,6 +10,7 @@ import { AppHeader } from "./AppHeader";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { PasswordChangeSection } from "./PasswordChangeSection";
 import { SettingsNav } from "./SettingsNav";
+import { StateView } from "./ui/StateView";
 
 /** リカバリコードの残数がこれ以下になったら再生成をすすめる(10本中3本 = 心細くなる目安)。 */
 const RECOVERY_LOW_THRESHOLD = 3;
@@ -211,28 +212,28 @@ export function SecuritySettingsView() {
   }
 
   if (guard.status === "loading" || loading) {
-    return <p className="monthly-loading">{messages.loading}</p>;
+    return <StateView kind="loading">{messages.loading}</StateView>;
   }
   if (guard.status === "error" || !guard.user) {
-    return <p className="monthly-error">{messages.errors.network}</p>;
+    return <StateView kind="error">{messages.errors.network}</StateView>;
   }
 
   return (
-    <div className="settings-notif">
+    <div className="page-shell">
       <AppHeader displayName={guard.user.displayName} email={guard.user.email} tenantName={guard.tenant?.name ?? null} active="settings" />
-      <main className="settings-notif__main">
+      <main className="page">
         <SettingsNav active="security" />
         <h1 className="settings-notif__title">{messages.settingsSecurity.title}</h1>
         <p className="settings-notif__tagline">{messages.settingsSecurity.tagline}</p>
 
         <PasswordChangeSection />
 
-        {loadError ? <p className="monthly-error">{loadError}</p> : null}
+        {loadError ? <StateView kind="error">{loadError}</StateView> : null}
 
         {status && !status.available ? (
           /* 暗号化鍵が未設定の配置。利用者側では解決できないため、操作は一切出さない。 */
           <section className="security-settings__unavailable">
-            <h2 className="settings-notif__section-title">{messages.settingsSecurity.unavailableTitle}</h2>
+            <h2 className="card__title">{messages.settingsSecurity.unavailableTitle}</h2>
             <p className="security-settings__unavailable-desc">{messages.settingsSecurity.unavailableDescription}</p>
           </section>
         ) : null}
@@ -241,9 +242,9 @@ export function SecuritySettingsView() {
           <>
             {recoveryCodes ? (
               <section className="security-settings__reveal" aria-live="polite">
-                <h2 className="settings-notif__section-title">{messages.settingsSecurity.recoveryTitle}</h2>
+                <h2 className="card__title">{messages.settingsSecurity.recoveryTitle}</h2>
                 <p className="security-settings__reveal-warning">{messages.settingsSecurity.recoveryWarning}</p>
-                <p className="settings-notif__field-hint">{messages.settingsSecurity.recoveryDescription}</p>
+                <p className="field__hint">{messages.settingsSecurity.recoveryDescription}</p>
                 <ul className="security-settings__codes">
                   {recoveryCodes.map((code) => (
                     <li key={code}>
@@ -251,32 +252,32 @@ export function SecuritySettingsView() {
                     </li>
                   ))}
                 </ul>
-                <div className="settings-notif__actions">
+                <div className="btn-row">
                   <button
                     type="button"
-                    className="k-modal__confirm k-modal__confirm--neutral"
+                    className="btn btn--primary"
                     onClick={() => void handleCopy("recovery", recoveryCodes.join("\n"))}
                   >
                     {copyState?.target === "recovery" && copyState.state === "copied"
                       ? messages.settingsSecurity.copied
                       : messages.settingsSecurity.recoveryCopyAll}
                   </button>
-                  <button type="button" className="k-modal__confirm k-modal__confirm--neutral" onClick={() => setRecoveryCodes(null)}>
+                  <button type="button" className="btn btn--primary" onClick={() => setRecoveryCodes(null)}>
                     {messages.settingsSecurity.recoveryDone}
                   </button>
                 </div>
                 {copyState?.target === "recovery" && copyState.state === "failed" ? (
-                  <p className="correction-error" role="alert">
+                  <p className="notice notice--danger" role="alert">
                     {messages.settingsSecurity.copyFailed}
                   </p>
                 ) : null}
               </section>
             ) : null}
 
-            <section className="settings-notif__section">
-              <h2 className="settings-notif__section-title">{messages.settingsSecurity.statusTitle}</h2>
+            <section className="card">
+              <h2 className="card__title">{messages.settingsSecurity.statusTitle}</h2>
               <p className="security-settings__status">
-                <span className={`security-settings__badge security-settings__badge--${status.enabled ? "on" : "off"}`}>
+                <span className={`badge ${status.enabled ? "badge--cyan" : "badge--neutral"}`}>
                   {status.enabled ? messages.settingsSecurity.statusEnabled : messages.settingsSecurity.statusDisabled}
                 </span>
               </p>
@@ -297,21 +298,21 @@ export function SecuritySettingsView() {
                   {messages.settingsSecurity.recoveryRemainingWarning}
                 </p>
               ) : null}
-              {disabledNotice ? <p className="settings-notif__success">{messages.settingsSecurity.disabledNotice}</p> : null}
+              {disabledNotice ? <p className="notice notice--success">{messages.settingsSecurity.disabledNotice}</p> : null}
             </section>
 
             {!status.enabled ? (
-              <section className="settings-notif__section">
-                <h2 className="settings-notif__section-title">{messages.settingsSecurity.enableTitle}</h2>
-                <p className="settings-notif__field-hint">{messages.settingsSecurity.enableDescription}</p>
+              <section className="card">
+                <h2 className="card__title">{messages.settingsSecurity.enableTitle}</h2>
+                <p className="field__hint">{messages.settingsSecurity.enableDescription}</p>
 
                 {setup ? (
                   <div className="security-settings__setup">
                     <h3 className="security-settings__setup-title">{messages.settingsSecurity.setupTitle}</h3>
                     {/* QR は出さない(このファイル冒頭の判断点参照)。手動入力の手順を明示する。 */}
-                    <p className="settings-notif__field-hint">{messages.settingsSecurity.setupManualHint}</p>
+                    <p className="field__hint">{messages.settingsSecurity.setupManualHint}</p>
 
-                    <div className="correction-field">
+                    <div className="field">
                       <label htmlFor="totp-secret">{messages.settingsSecurity.setupSecretLabel}</label>
                       <div className="security-settings__copy-row">
                         <code id="totp-secret" className="security-settings__secret">
@@ -319,7 +320,7 @@ export function SecuritySettingsView() {
                         </code>
                         <button
                           type="button"
-                          className="k-modal__confirm k-modal__confirm--neutral"
+                          className="btn btn--primary"
                           onClick={() => void handleCopy("secret", setup.secret)}
                         >
                           {copyState?.target === "secret" && copyState.state === "copied"
@@ -328,13 +329,13 @@ export function SecuritySettingsView() {
                         </button>
                       </div>
                       {copyState?.target === "secret" && copyState.state === "failed" ? (
-                        <p className="correction-error" role="alert">
+                        <p className="notice notice--danger" role="alert">
                           {messages.settingsSecurity.copyFailed}
                         </p>
                       ) : null}
                     </div>
 
-                    <div className="correction-field">
+                    <div className="field">
                       <label htmlFor="totp-uri">{messages.settingsSecurity.setupUriLabel}</label>
                       <div className="security-settings__copy-row">
                         <code id="totp-uri" className="security-settings__uri">
@@ -342,7 +343,7 @@ export function SecuritySettingsView() {
                         </code>
                         <button
                           type="button"
-                          className="k-modal__confirm k-modal__confirm--neutral"
+                          className="btn btn--primary"
                           onClick={() => void handleCopy("uri", setup.otpauthUri)}
                         >
                           {copyState?.target === "uri" && copyState.state === "copied"
@@ -351,14 +352,14 @@ export function SecuritySettingsView() {
                         </button>
                       </div>
                       {copyState?.target === "uri" && copyState.state === "failed" ? (
-                        <p className="correction-error" role="alert">
+                        <p className="notice notice--danger" role="alert">
                           {messages.settingsSecurity.copyFailed}
                         </p>
                       ) : null}
                     </div>
 
-                    <form className="settings-notif__form" onSubmit={handleEnable}>
-                      <div className="correction-field">
+                    <form className="page-body page-body--form" onSubmit={handleEnable}>
+                      <div className="field">
                         <label htmlFor="totp-enable-code">{messages.settingsSecurity.setupCodeLabel}</label>
                         <input
                           id="totp-enable-code"
@@ -373,18 +374,18 @@ export function SecuritySettingsView() {
                       </div>
 
                       {setupError ? (
-                        <p className="correction-error" role="alert">
+                        <p className="notice notice--danger" role="alert">
                           {setupError}
                         </p>
                       ) : null}
 
-                      <div className="settings-notif__actions">
-                        <button type="submit" className="k-modal__confirm k-modal__confirm--neutral" disabled={enabling}>
+                      <div className="btn-row">
+                        <button type="submit" className="btn btn--primary" disabled={enabling}>
                           {enabling ? messages.settingsSecurity.setupSubmitting : messages.settingsSecurity.setupSubmit}
                         </button>
                         <button
                           type="button"
-                          className="k-modal__confirm k-modal__confirm--neutral"
+                          className="btn btn--primary"
                           disabled={enabling}
                           onClick={() => {
                             setSetup(null);
@@ -400,14 +401,14 @@ export function SecuritySettingsView() {
                 ) : (
                   <>
                     {setupError ? (
-                      <p className="correction-error" role="alert">
+                      <p className="notice notice--danger" role="alert">
                         {setupError}
                       </p>
                     ) : null}
-                    <div className="settings-notif__actions">
+                    <div className="btn-row">
                       <button
                         type="button"
-                        className="k-modal__confirm k-modal__confirm--neutral"
+                        className="btn btn--primary"
                         disabled={setupStarting}
                         onClick={() => void handleStartSetup()}
                       >
@@ -418,12 +419,12 @@ export function SecuritySettingsView() {
                 )}
               </section>
             ) : (
-              <section className="settings-notif__section">
-                <h2 className="settings-notif__section-title">{messages.settingsSecurity.verifyTitle}</h2>
-                <p className="settings-notif__field-hint">{messages.settingsSecurity.verifyDescription}</p>
+              <section className="card">
+                <h2 className="card__title">{messages.settingsSecurity.verifyTitle}</h2>
+                <p className="field__hint">{messages.settingsSecurity.verifyDescription}</p>
 
-                <form className="settings-notif__form" onSubmit={handleRegenerate}>
-                  <div className="correction-field">
+                <form className="page-body page-body--form" onSubmit={handleRegenerate}>
+                  <div className="field">
                     <label htmlFor="totp-verify-password">{messages.settingsSecurity.passwordLabel}</label>
                     <input
                       id="totp-verify-password"
@@ -434,7 +435,7 @@ export function SecuritySettingsView() {
                     />
                   </div>
 
-                  <div className="correction-field">
+                  <div className="field">
                     <label htmlFor="totp-verify-code">{messages.settingsSecurity.codeLabel}</label>
                     <input
                       id="totp-verify-code"
@@ -449,7 +450,7 @@ export function SecuritySettingsView() {
                   </div>
 
                   {regenerateError ? (
-                    <p className="correction-error" role="alert">
+                    <p className="notice notice--danger" role="alert">
                       {regenerateError}
                     </p>
                   ) : null}
@@ -459,9 +460,9 @@ export function SecuritySettingsView() {
                       暗黙の Enter で実行させないための割り当て。 */}
                   <div className="security-settings__action-block">
                     <h3 className="security-settings__setup-title">{messages.settingsSecurity.regenerateTitle}</h3>
-                    <p className="settings-notif__field-hint">{messages.settingsSecurity.regenerateDescription}</p>
-                    <div className="settings-notif__actions">
-                      <button type="submit" className="k-modal__confirm k-modal__confirm--neutral" disabled={regenerating || disabling}>
+                    <p className="field__hint">{messages.settingsSecurity.regenerateDescription}</p>
+                    <div className="btn-row">
+                      <button type="submit" className="btn btn--primary" disabled={regenerating || disabling}>
                         {regenerating ? messages.settingsSecurity.regenerateSubmitting : messages.settingsSecurity.regenerateSubmit}
                       </button>
                     </div>
@@ -469,12 +470,12 @@ export function SecuritySettingsView() {
 
                   <div className="security-settings__action-block">
                     <h3 className="security-settings__setup-title">{messages.settingsSecurity.disableTitle}</h3>
-                    <p className="settings-notif__field-hint">{messages.settingsSecurity.disableDescription}</p>
-                    <div className="settings-notif__actions">
+                    <p className="field__hint">{messages.settingsSecurity.disableDescription}</p>
+                    <div className="btn-row">
                       {/* type="button" にして、この中の submit(再生成)と取り違えられないようにする。 */}
                       <button
                         type="button"
-                        className="k-modal__confirm k-modal__confirm--caution"
+                        className="btn btn--danger"
                         disabled={regenerating || disabling}
                         onClick={openDisableConfirm}
                       >

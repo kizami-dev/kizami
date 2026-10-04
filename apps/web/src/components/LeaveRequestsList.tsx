@@ -14,6 +14,7 @@ import { hasEffectivePermission } from "../lib/permissions";
 import { formatDateLabel, formatDateTimeJst } from "../lib/time";
 import { useEffectivePermissions } from "../lib/useEffectivePermissions";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { requestStatusTone } from "./ui/Badge";
 
 /**
  * 休暇申請の承認(POST /leave/requests/:id/approve・reject)が要求する権限
@@ -206,7 +207,7 @@ export function LeaveRequestsList({ requests, currentUserId, closedMonthRequestI
     return (
       <li key={req.id} className="correction-card">
         <div className="correction-card__header">
-          <span className={`correction-badge correction-badge--${req.status as LeaveRequestStatus}`}>
+          <span className={`badge badge--${requestStatusTone(req.status as LeaveRequestStatus)}`}>
             {messages.leave.statusLabel[req.status]}
           </span>
           <span className="correction-card__type">{formatDateLabel(req.leaveDate)}</span>

@@ -261,7 +261,7 @@ export function LoginForm() {
         <p className="login-card__tagline">{messages.login.tagline}</p>
 
         {error ? (
-          <p className="login-error" role="alert">
+          <p className="notice notice--danger" role="alert">
             {error}
           </p>
         ) : null}
@@ -273,7 +273,7 @@ export function LoginForm() {
               {useRecoveryCode ? messages.login.totpRecoveryDescription : messages.login.totpDescription}
             </p>
 
-            <div className="login-field">
+            <div className="field">
               <label htmlFor="login-totp-code">
                 {useRecoveryCode ? messages.login.totpRecoveryLabel : messages.login.totpCodeLabel}
               </label>
@@ -294,7 +294,7 @@ export function LoginForm() {
               />
             </div>
 
-            <button type="submit" className="login-submit" disabled={totpSubmitting}>
+            <button type="submit" className="btn btn--primary btn--lg btn--block" disabled={totpSubmitting}>
               {totpSubmitting ? messages.login.totpSubmitting : messages.login.totpSubmit}
             </button>
 
@@ -360,7 +360,7 @@ export function LoginForm() {
           </div>
         ) : (
           <form className="login-form" onSubmit={handleSubmit} noValidate>
-            <div className="login-field">
+            <div className="field">
               <label htmlFor="login-email">{messages.login.emailLabel}</label>
               <input
                 id="login-email"
@@ -374,7 +374,7 @@ export function LoginForm() {
               />
             </div>
 
-            <div className="login-field">
+            <div className="field">
               <label htmlFor="login-password">{messages.login.passwordLabel}</label>
               <input
                 id="login-password"
@@ -387,7 +387,7 @@ export function LoginForm() {
               />
             </div>
 
-            <button type="submit" className="login-submit" disabled={submitting}>
+            <button type="submit" className="btn btn--primary btn--lg btn--block" disabled={submitting}>
               {submitting ? messages.login.submitting : messages.login.submit}
             </button>
 

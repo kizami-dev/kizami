@@ -1,10 +1,10 @@
 import type { Meta, StoryObj } from "@storybook/react";
+import { Button } from "../components/ui/Button";
 import { messages } from "../lib/messages";
 
 /**
- * 主要ボタン型のカタログ。実クラス(punch-home.css の .punch-button、corrections.css の
- * .k-modal__confirm/.k-modal__cancel)をそのまま使い、マークアップは components/PunchHome.tsx・
- * components/MonthlyView.tsx・components/ConfirmDialog.tsx の実際の JSX と同じ形にする。
+ * 主要ボタン型のカタログ。打刻ボタン(punch-home.css の .punch-button)と、共通ボタン
+ * (components.css の .btn、components/ui/Button.tsx)を実際の JSX と同じ形で並べる。
  */
 function ButtonsCatalog() {
   return (
@@ -12,8 +12,8 @@ function ButtonsCatalog() {
       <div>
         <h1 className="story-section__title">Primitives / Buttons</h1>
         <p className="story-section__lead">
-          打刻ボタン(インキパッド風、CMYK塗り)、通常ボタン(K枠)、危険操作ボタン(締め解除等、
-          M塗り固定)。「意味色は状態のみ」の原則どおり、C/M/Yは打刻の3操作にしか使わない。
+          打刻ボタン(インキパッド風、CMYK塗り)と共通ボタン。主操作は K 塗り、危険操作は M。
+          C/M/Y の塗りは打刻の3操作にしか使わない。無効状態は薄めず、専用の色と破線の枠で示す。
         </p>
       </div>
 
@@ -48,17 +48,41 @@ function ButtonsCatalog() {
       </div>
 
       <div className="story-group">
-        <p className="story-group__title">通常ボタン / 危険操作ボタン(月次の締め・締め解除)</p>
-        <div className="story-row">
-          <button type="button" className="k-modal__confirm k-modal__confirm--neutral">
+        <p className="story-group__title">共通ボタン(.btn)— 種類</p>
+        <div className="btn-row">
+          <Button variant="primary">{messages.closing.closeAction}</Button>
+          <Button variant="secondary">{messages.corrections.cancel}</Button>
+          <Button variant="danger">{messages.closing.reopenAction}</Button>
+          <Button variant="danger-ghost">{messages.closing.reopenAction}</Button>
+          <Button variant="ghost">{messages.corrections.close}</Button>
+        </div>
+      </div>
+
+      <div className="story-group">
+        <p className="story-group__title">大きさ(sm 36px / md 44px / lg 52px)</p>
+        <div className="btn-row">
+          <Button variant="primary" size="sm">
             {messages.closing.closeAction}
-          </button>
-          <button type="button" className="k-modal__confirm k-modal__confirm--caution">
-            {messages.closing.reopenAction}
-          </button>
-          <button type="button" className="k-modal__cancel">
+          </Button>
+          <Button variant="primary">{messages.closing.closeAction}</Button>
+          <Button variant="primary" size="lg">
+            {messages.closing.closeAction}
+          </Button>
+        </div>
+      </div>
+
+      <div className="story-group">
+        <p className="story-group__title">無効(--k-disabled-text と破線の枠)</p>
+        <div className="btn-row">
+          <Button variant="primary" disabled>
+            {messages.closing.closeAction}
+          </Button>
+          <Button variant="secondary" disabled>
             {messages.corrections.cancel}
-          </button>
+          </Button>
+          <Button variant="danger" disabled>
+            {messages.closing.reopenAction}
+          </Button>
         </div>
       </div>
     </div>
