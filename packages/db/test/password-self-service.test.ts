@@ -78,6 +78,20 @@ describe.skipIf(!supportsTransactions)("password self-service queries", () => {
       expect(logs[0]?.target).toBe(`user:${me}`);
     });
 
+    it("revokes every unresolved reset token of the user, admin-issued and self-issued alike (not other users')", async () => {
+      const me = await addUser({ tenantId: tenantA, email: "me@example.com" });
+      const other = await addUser({ tenantId: tenantA, email: "other@example.com" });
+      await createPasswordResetToken(db, { tenantId: tenantA, userId: me, tokenHash: "admin-h", expiresAt: 1440, createdBy: other, createdAt: 0 });
+      await issueSelfServicePasswordResetToken(db, { tenantId: tenantA, userId: me, tokenHash: "self-h", expiresAt: 60, createdAt: 0 });
+      await issueSelfServicePasswordResetToken(db, { tenantId: tenantA, userId: other, tokenHash: "other-h", expiresAt: 60, createdAt: 0 });
+
+      await changeOwnPassword(db, { tenantId: tenantA, userId: me, passwordHash: "new", currentSessionId: "x", nowMinutes: 9 });
+
+      expect((await findPasswordResetTokenByHash(db, "admin-h"))?.revokedAt).toBe(9);
+      expect((await findPasswordResetTokenByHash(db, "self-h"))?.revokedAt).toBe(9);
+      expect((await findPasswordResetTokenByHash(db, "other-h"))?.revokedAt).toBeNull();
+    });
+
     it("returns false and writes nothing when the user has no credential (e.g. SSO only)", async () => {
       const sso = await addUser({ tenantId: tenantA, email: "sso@example.com", withCredential: false });
       await addSession(tenantA, sso, "s1");
@@ -173,6 +187,25 @@ describe.skipIf(!supportsTransactions)("password self-service queries", () => {
       await issueSelfServicePasswordResetToken(db, { tenantId: tenantA, userId: u, tokenHash: "self-h", expiresAt: 60, createdAt: 0 });
       await createPasswordResetToken(db, { tenantId: tenantA, userId: u, tokenHash: "admin-h", expiresAt: 1440, createdBy: u, createdAt: 5 });
       expect((await findPasswordResetTokenByHash(db, "self-h"))?.revokedAt).toBe(5);
+    });
+
+    it("using one token revokes the user's other unresolved tokens, whichever of admin / self was used", async () => {
+      for (const usedKind of ["admin", "self"] as const) {
+        const u = await addUser({ tenantId: tenantA, email: `${usedKind}@example.com` });
+        const adminHash = `${u}-admin`;
+        const selfHash = `${u}-self`;
+        await createPasswordResetToken(db, { tenantId: tenantA, userId: u, tokenHash: adminHash, expiresAt: 1440, createdBy: u, createdAt: 0 });
+        // 本人発行は管理者発行を失効させないので、両方が有効な状態になる
+        await issueSelfServicePasswordResetToken(db, { tenantId: tenantA, userId: u, tokenHash: selfHash, expiresAt: 60, createdAt: 1 });
+        expect((await findPasswordResetTokenByHash(db, adminHash))?.revokedAt).toBeNull();
+        expect((await findPasswordResetTokenByHash(db, selfHash))?.revokedAt).toBeNull();
+
+        const used = usedKind === "admin" ? adminHash : selfHash;
+        const rest = usedKind === "admin" ? selfHash : adminHash;
+        expect(await usePasswordResetToken(db, { tokenHash: used, passwordHash: "n", nowMinutes: 5 })).not.toBeNull();
+        expect((await findPasswordResetTokenByHash(db, rest))?.revokedAt).toBe(5);
+        expect(await usePasswordResetToken(db, { tokenHash: rest, passwordHash: "n2", nowMinutes: 6 })).toBeNull();
+      }
     });
 
     it("a self-issued token is used by usePasswordResetToken like an admin one (all sessions revoked), recording the source", async () => {

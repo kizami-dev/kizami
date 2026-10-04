@@ -181,6 +181,12 @@ export async function usePasswordResetToken(db: Database, input: UsePasswordRese
     // パスワードを変えた = 旧資格情報の疑いがあるため、当該ユーザーの全セッションを失効させる。
     await revokeAllSessionsForUser(tx, { tenantId: token.tenantId, userId: token.userId, revokedAt: input.nowMinutes });
 
+    // 同じユーザーの**ほかの未使用・未失効トークンもすべて失効**させる(発行経路 admin / self を問わない)。
+    // 以前は管理者の再発行が古いトークンを全部失効させていたので有効なトークンは常に1本だったが、
+    // 本人発行と管理者発行が並存しうるようになったため、使った1本以外が有効なまま残らないよう
+    // ここで明示的に閉じる(used_at を立てた自分自身はすでに対象外)。
+    await revokeAllPasswordResetTokensForUser(tx, { tenantId: token.tenantId, userId: token.userId, revokedAt: input.nowMinutes });
+
     await insertAuditLog(tx, {
       tenantId: token.tenantId,
       actorId: token.userId,
