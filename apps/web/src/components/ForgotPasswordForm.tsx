@@ -6,6 +6,7 @@ import { api, ApiError, type PasswordResetConfigDto } from "../lib/api";
 import { mapForgotPasswordErrorMessage, messages } from "../lib/messages";
 import { KizamiMark } from "./KizamiMark";
 import { TurnstileWidget } from "./TurnstileWidget";
+import { PreLoginLanguageSelect } from "./PreLoginLanguageSelect";
 
 type ViewState =
   | { kind: "loading" }
@@ -73,6 +74,7 @@ export function ForgotPasswordForm() {
 
   return (
     <div className="login-screen">
+      <PreLoginLanguageSelect />
       <div className="login-card">
         <div className="login-card__brand">
           <span className="login-card__mark" aria-hidden="true">

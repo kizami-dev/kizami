@@ -1,0 +1,105 @@
+/* /settings/display(言語と表示、2026-10-05 追加)と、ログイン前の画面の小さな言語切り替え
+   (PreLoginLanguageSelect)のスタイル。
+   ラジオ群(.display-choice*)は LanguageToggle / ThemeToggle が使う。以前はヘッダーの
+   ユーザーメニュー用(.k-header__theme* / .k-header__language*)だったが、ヘッダーから外したため
+   設定画面向けに作り直した(メニュー内の狭い縦並びではなく、枠付きの選択肢として出す)。
+   セクションの外枠・見出しは settings.css の .settings-notif__section* を流用する。 */
+
+.display-settings__section {
+  max-width: var(--width-form);
+}
+
+.display-settings__desc {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--k-ink-soft);
+  line-height: 1.7;
+}
+
+.display-settings__note {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--k-ink-soft);
+  line-height: 1.7;
+}
+
+.display-choice__label {
+  /* 見出し(h2)と説明文が既にあるため、ラジオ群のラベルは読み上げ用に視覚的には隠す。 */
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+
+.display-choice__options {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.display-choice__option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: var(--border-hair);
+  padding: var(--space-3);
+  border-radius: var(--radius-s);
+  font-size: 0.9rem;
+  color: var(--k-key);
+  cursor: pointer;
+}
+
+.display-choice__option:hover {
+  background: color-mix(in srgb, var(--k-key) 4%, transparent);
+}
+
+.display-choice__option[aria-checked="true"] {
+  font-weight: 700;
+  border-color: var(--k-cyan-ink);
+}
+
+.display-choice__mark {
+  flex-shrink: 0;
+  width: 1em;
+  color: var(--k-cyan-ink);
+}
+
+/* ---- ログイン前の画面の隅に置く言語切り替え(PreLoginLanguageSelect) ----
+   .login-screen(position: relative)の右上に重ねる。カードの邪魔にならないよう、
+   背景も枠も付けず、地球儀アイコン+小さなセレクトだけにする(控えめであること自体が要件)。 */
+
+.prelogin-language {
+  position: absolute;
+  top: var(--space-3);
+  right: var(--space-3);
+}
+
+.prelogin-language__label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--k-ink-soft);
+}
+
+.prelogin-language__icon {
+  flex-shrink: 0;
+}
+
+.prelogin-language__select {
+  font: inherit;
+  font-size: 0.8rem;
+  color: var(--k-ink-soft);
+  background: transparent;
+  border: none;
+  padding: var(--space-1);
+  cursor: pointer;
+}
+
+.prelogin-language__select:hover {
+  color: var(--k-key);
+}

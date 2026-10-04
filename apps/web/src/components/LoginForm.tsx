@@ -5,6 +5,7 @@ import { Link, useRouter } from "waku";
 import { api, ApiError, MultipleTenantsError, type LoginTenantOption, type SsoAvailableTenant } from "../lib/api";
 import { mapLoginErrorMessage, mapLoginTotpErrorMessage, messages } from "../lib/messages";
 import { KizamiMark } from "./KizamiMark";
+import { PreLoginLanguageSelect } from "./PreLoginLanguageSelect";
 
 export function LoginForm() {
   const router = useRouter();
@@ -249,6 +250,7 @@ export function LoginForm() {
 
   return (
     <div className="login-screen">
+      <PreLoginLanguageSelect />
       <div className="login-card">
         <div className="login-card__brand">
           <span className="login-card__mark" aria-hidden="true">

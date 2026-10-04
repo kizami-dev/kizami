@@ -175,7 +175,7 @@ export const zh = {
     },
   },
 
-  /** 主题切换(页头用户菜单内)。 */
+  /** 主题切换(「语言与显示」设置 /settings/display 内。2026-08-22 为支持深色模式而新增,2026-10-05 从页头用户菜单移至此处)。 */
   theme: {
     label: "主题",
     system: "跟随系统设置",
@@ -184,7 +184,7 @@ export const zh = {
   },
 
   /**
-   * 语言切换(页头用户菜单内)。位置与用法同 ThemeToggle。
+   * 语言切换(「语言与显示」设置内。2026-08-23 为支持4种语言而新增,2026-10-05 从页头用户菜单移至此处)。
    * 选项本身的名称(日本語 / English / 한국어 / 简体中文)是各语言的自称,
    * 因此不随语言变化 — 不在 messages 中维护,而由 lib/i18n/index.ts 的 LOCALE_NATIVE_NAMES 提供。
    */
@@ -1287,6 +1287,7 @@ export const zh = {
     allowances: "津贴对象时间",
     shiftPatterns: "排班模板",
     security: "安全",
+    display: "语言与显示",
     apiKeys: "API密钥",
     slack: "Slack集成",
     sso: "SSO(OIDC)",
@@ -1328,6 +1329,8 @@ export const zh = {
     privacyDesc: "根据当前设置查看面向员工的隐私声明与公司内部使用条款的模板。",
     securityTitle: "登录与安全",
     securityDesc: "修改密码,并设置使用身份验证器应用6位验证码的两步验证。",
+    displayTitle: "语言与显示",
+    displayDesc: "选择界面的显示语言和配色(浅色・深色)。",
     apiKeysTitle: "API密钥",
     apiKeysDesc: "签发和吊销供IC卡读卡器、Slack bot、MCP服务器等外部客户端打卡使用的API密钥。",
     slackTitle: "Slack集成",
@@ -2690,6 +2693,17 @@ export const zh = {
       encryption_unavailable: "当前无法执行此操作,请联系管理员",
       default: "处理失败,请重试",
     },
+  },
+
+  /** 言語と表示の設定(/settings/display、2026-10-05 追加。ヘッダーにあった言語・テーマの切り替えの移設先)。 */
+  settingsDisplay: {
+    title: "语言与显示",
+    tagline: "选择界面的语言和配色。选择后立即生效。",
+    languageTitle: "语言",
+    languageDesc: "界面的显示语言。登录前的页面也会以此处选择的语言显示。",
+    themeTitle: "配色",
+    themeDesc: "固定为浅色或深色,或跟随设备的设置。",
+    storageNote: "此设置保存在当前浏览器中。在其他设备或浏览器上,请分别重新选择。",
   },
 
   settingsApiKeys: {

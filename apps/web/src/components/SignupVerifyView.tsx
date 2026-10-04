@@ -5,6 +5,7 @@ import { useRouter } from "waku";
 import { api, ApiError } from "../lib/api";
 import { mapSignupVerifyErrorMessage, messages } from "../lib/messages";
 import { KizamiMark } from "./KizamiMark";
+import { PreLoginLanguageSelect } from "./PreLoginLanguageSelect";
 
 type ViewState =
   | { kind: "loading" }
@@ -87,6 +88,7 @@ export function SignupVerifyView({ token }: { token: string }) {
 
   return (
     <div className="login-screen">
+      <PreLoginLanguageSelect />
       <div className="login-card">
         <div className="login-card__brand">
           <span className="login-card__mark" aria-hidden="true">

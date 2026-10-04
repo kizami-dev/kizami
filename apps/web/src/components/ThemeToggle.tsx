@@ -7,7 +7,9 @@ import { applyTheme, readStoredThemePreference, type ThemePreference } from "../
 const OPTIONS: readonly ThemePreference[] = ["system", "light", "dark"];
 
 /**
- * ヘッダーのユーザーメニュー内に置くテーマ切り替え(2026-08-22 追加)。
+ * テーマの選択(2026-08-22 追加。2026-10-05 にヘッダーのユーザーメニューから「言語と表示」設定画面
+ * (`DisplaySettingsView`、/settings/display)へ移した)。ログイン前の画面には置かない
+ * (そこは保存済みの設定、無ければ OS 設定に従う — `_layout.tsx` の初期化スクリプトが反映する)。
  *
  * `_layout.tsx` のインラインスクリプトが初期表示の `data-theme` を既に反映しているため、
  * ここでの初期状態(サーバー描画時点)は "system" 固定でよい(ハイドレーション後、
@@ -27,21 +29,21 @@ export function ThemeToggle() {
   }
 
   return (
-    <div className="k-header__theme">
-      <span className="k-header__theme-label" id="theme-toggle-label">
+    <div className="display-choice">
+      <span className="display-choice__label" id="theme-toggle-label">
         {messages.theme.label}
       </span>
-      <div className="k-header__theme-options" role="radiogroup" aria-labelledby="theme-toggle-label">
+      <div className="display-choice__options" role="radiogroup" aria-labelledby="theme-toggle-label">
         {OPTIONS.map((option) => (
           <button
             key={option}
             type="button"
             role="radio"
             aria-checked={pref === option}
-            className="k-header__theme-option"
+            className="display-choice__option"
             onClick={() => handleSelect(option)}
           >
-            <span className="k-header__theme-option-mark" aria-hidden="true">
+            <span className="display-choice__mark" aria-hidden="true">
               {pref === option ? "●" : "○"}
             </span>
             {messages.theme[option]}
