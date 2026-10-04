@@ -89,6 +89,10 @@ export const mapSignupErrorMessage = makeErrorMapper(() => messages.signup.error
 export const mapSignupVerifyErrorMessage = makeErrorMapper(() => messages.signupVerify.errors);
 /** パスワードリセット受諾(POST /password-resets/:token/use)のエラーマッピング(2026-08-24 追加)。 */
 export const mapPasswordResetAcceptErrorMessage = makeErrorMapper(() => messages.passwordResetAccept.errors);
+/** 本人によるパスワード変更(POST /auth/password/change、2026-10-04 追加)のエラーマッピング。 */
+export const mapPasswordChangeErrorMessage = makeErrorMapper(() => messages.settingsSecurity.passwordChange.errors);
+/** 「パスワードを忘れた」(POST /password-resets、2026-10-04 追加)のエラーマッピング。 */
+export const mapForgotPasswordErrorMessage = makeErrorMapper(() => messages.forgotPassword.errors);
 /** 打刻修正申請(POST /corrections・:id/approve・reject・withdraw)のエラーマッピング。 */
 export const mapCorrectionErrorMessage = makeErrorMapper(() => messages.corrections.errors);
 /** 通知設定(会社全体、GET/PUT /settings/notifications・POST /settings/notifications/test)のエラーマッピング。 */

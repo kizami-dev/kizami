@@ -300,6 +300,7 @@ export const en = {
     /** Self-service sign-up (shown only when SIGNUP_MODE is not off, 2026-10-03). */
     signupPrompt: "New here?",
     signupLink: "Create an account",
+    forgotPasswordLink: "Forgot your password?",
     errors: {
       invalid_credentials: "Incorrect email address or password",
       rate_limited: "Too many attempts. Please wait a while before trying again",
@@ -468,6 +469,31 @@ export const en = {
    * public). Mirrors inviteAccept (structure, state machine, tone). Setting a new password from an
    * admin-issued reset link signs you in immediately (routes/password-resets.ts).
    */
+  /**
+   * 「パスワードを忘れた」画面(/forgot-password、認証ガード無し・公開、2026-10-04)。
+   * システムメールがある配備でだけ有効(GET /password-resets/config の selfService)。
+   */
+  forgotPassword: {
+    loading: "Checking…",
+    closedTitle: "Not available in this environment",
+    closedMessage: "Password reset by email is not available in this environment. Please ask your administrator to reset your password.",
+    tagline: "Enter your registered email address. If an account matches, we will email you a link to reset your password.",
+    emailLabel: "Email address",
+    submit: "Send reset email",
+    submitting: "Sending…",
+    turnstileRequired: "Please complete the human verification",
+    sentTitle: "Email sent",
+    sentMessage: "If an account matches, we have sent a password reset email. Use the link in it within 1 hour to set a new password. If it does not arrive, check your spam folder, wait about 5 minutes, and try again.",
+    backToLogin: "Back to sign in",
+    errors: {
+      invalid_email: "The email address is not valid",
+      turnstile_failed: "Verification failed. Please try again",
+      turnstile_unavailable: "Could not reach the verification service. Please try again later",
+      rate_limited: "Too many attempts. Please wait a while and try again",
+      default: "Could not send the request. Please try again",
+    },
+  },
+
   passwordResetAccept: {
     tenantUnnamed: "Your company",
     introSuffix: " — reset your account password",
@@ -484,12 +510,15 @@ export const en = {
     invalidTitle: "This reset link is invalid",
     invalidMessage: "This reset link is invalid. Please check with your administrator.",
     expiredTitle: "This reset link has expired",
-    expiredMessage: "This reset link has expired. Please ask your administrator to issue a new one.",
+    expiredMessage: "This reset link has expired. Start again from \"Forgot your password?\" on the sign-in page, or ask your administrator to issue a new one.",
     acceptedRedirecting: "Your password has been reset. Redirecting…",
 
     sessionIssuanceFailedTitle: "Your password has been updated",
     sessionIssuanceFailedMessage: "Your password has been updated. Please sign in again from the login page.",
     goToLogin: "Go to login",
+    /** 2FA 利用者には使用直後のセッションを発行しない(`status: "login_required"`、routes/password-resets.ts)。 */
+    loginRequiredTitle: "Your password has been reset",
+    loginRequiredMessage: "Because two-factor authentication is enabled, you are not signed in automatically. Sign in with your new password and enter the code from your authenticator app.",
 
     errors: {
       invalid_password: "Password must be at least 12 characters",
@@ -2626,6 +2655,29 @@ export const en = {
    * permission needed since it's for personal use").
    */
   settingsSecurity: {
+    /** ログイン中の本人によるパスワード変更(POST /auth/password/change、2026-10-04 追加)。 */
+    passwordChange: {
+      title: "Change password",
+      description: "Confirm your current password to set a new one. Once changed, every other device will be signed out.",
+      currentLabel: "Current password",
+      newLabel: "New password (at least 12 characters)",
+      confirmLabel: "New password (confirm)",
+      submit: "Change password",
+      submitting: "Changing…",
+      mismatch: "The new passwords do not match",
+      tooShort: "The new password must be at least 12 characters",
+      success: "Your password has been changed. You have been signed out on your other devices.",
+      errors: {
+        invalid_body: "Please check your input",
+        invalid_current_password: "The current password is incorrect",
+        invalid_new_password: "The new password must be at least 12 characters",
+        same_password: "The new password must be different from the current one",
+        no_password_credential: "This account has no password (it signs in with SSO)",
+        rate_limited: "Too many attempts. Please wait a while and try again",
+        default: "Could not change the password. Please try again",
+      },
+    },
+
     title: "Two-factor authentication",
     tagline: "Protect your login with a 6-digit code from your authenticator app, on top of your password.",
     loadFailed: "Failed to load. Please try again",
