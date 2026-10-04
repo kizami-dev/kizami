@@ -5,6 +5,8 @@ import { createApp } from "./app.js";
 import { buildEncryptorFromEnv } from "./lib/encryption.js";
 import { buildErrorReporterFromEnv } from "./lib/error-report.js";
 import { parseSignupEnv } from "./lib/signup-config.js";
+import { parseSystemMailEnv } from "./lib/system-mail-config.js";
+import { parseTurnstileEnv } from "./lib/turnstile.js";
 import { nodemailerSendFn } from "./lib/smtp.js";
 import { createSystemMailSender } from "./lib/system-mail.js";
 import { resolveRelease } from "./lib/version.js";
@@ -67,6 +69,18 @@ if (!signupEnv.ok) {
 }
 const signupConfig = signupEnv.config;
 
+// 本人用の「パスワードを忘れた」(2026-10-04)。**SIGNUP_MODE とは独立**に、システムメール
+// (SYSTEM_SMTP_URL / SYSTEM_MAIL_FROM / APP_BASE_URL)が揃っているときだけ有効にする。揃っていなければ
+// 無効(= セルフホストの体験は変わらない)で、ここでは落とさない。ただし値があるのに形式が不正なら、
+// 「設定したつもりで無効」を黙って放置しないよう警告を出す。Turnstile は両方のキーがあるときだけ必須にする。
+const systemMailEnv = parseSystemMailEnv(process.env);
+for (const message of systemMailEnv.errors) console.warn(`[kizami] password self-service reset disabled: ${message}`);
+const systemMailConfig = systemMailEnv.config;
+const turnstileConfig = parseTurnstileEnv(process.env);
+// 送信関数(transport)は signup とパスワード再設定で1つを共有する。
+const systemMailSender =
+  systemMailConfig !== null ? createSystemMailSender({ smtpUrl: systemMailConfig.systemSmtpUrl, from: systemMailConfig.systemMailFrom }) : null;
+
 const { db } = await migrateDb({ url: databaseUrl });
 const app = createApp({
   db,
@@ -86,7 +100,17 @@ const app = createApp({
           turnstileSecretKey: signupConfig.turnstileSecretKey,
           turnstileSiteKey: signupConfig.turnstileSiteKey,
           appBaseUrl: signupConfig.appBaseUrl,
-          sendMail: createSystemMailSender({ smtpUrl: signupConfig.systemSmtpUrl, from: signupConfig.systemMailFrom }),
+          // signupConfig が非 null なら systemMailConfig も非 null(同じ解析を通っている)
+          sendMail: systemMailSender!,
+        },
+      }
+    : {}),
+  ...(systemMailConfig !== null && systemMailSender !== null
+    ? {
+        selfServiceReset: {
+          appBaseUrl: systemMailConfig.appBaseUrl,
+          sendMail: systemMailSender,
+          ...(turnstileConfig !== null ? { turnstile: turnstileConfig } : {}),
         },
       }
     : {}),

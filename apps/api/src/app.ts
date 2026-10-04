@@ -11,6 +11,7 @@ import { createApiKeysRoutes } from "./routes/api-keys.js";
 import { createAttendanceRoutes } from "./routes/attendance.js";
 import { createAuditLogsRoutes } from "./routes/audit-logs.js";
 import { createAuthRoutes } from "./routes/auth.js";
+import { createPasswordChangeRoutes } from "./routes/auth-password.js";
 import { createTotpRoutes } from "./routes/auth-totp.js";
 import { createOidcRoutes, type OidcRoutesOptions } from "./routes/auth-oidc.js";
 import { createAutoBreakWaiversRoutes } from "./routes/auto-break-waivers.js";
@@ -24,7 +25,7 @@ import { createMeRoutes } from "./routes/me.js";
 import { createMembersRoutes } from "./routes/members.js";
 import { createNotificationsRoutes } from "./routes/notifications.js";
 import { createNotificationPreferencesRoutes } from "./routes/notification-preferences.js";
-import { createPasswordResetsRoutes } from "./routes/password-resets.js";
+import { createPasswordResetsRoutes, type SelfServiceResetDeps } from "./routes/password-resets.js";
 import { createPresetsRoutes } from "./routes/presets.js";
 import { createPunchesRoutes } from "./routes/punches.js";
 import { createPushRoutes } from "./routes/push.js";
@@ -114,6 +115,15 @@ export interface CreateAppDeps {
    * Workers エントリ(workers.ts)は常に渡さない(= 常に無効。nodemailer が動かないため)。
    */
   signup?: SignupDeps;
+  /**
+   * 本人用の「パスワードを忘れた」再設定(docs/design/saas.md「サインアップ」の近く、2026-10-04)。
+   * **省略 = 無効**(既定)で、その場合 `GET /password-resets/config` は `{ selfService: false }`、
+   * `POST /password-resets` は 404 — セルフホストの体験を変えない。SIGNUP_MODE とは独立で、
+   * node.ts がシステムメール(SYSTEM_SMTP_URL / SYSTEM_MAIL_FROM / APP_BASE_URL)が揃っているときだけ
+   * lib/system-mail-config.ts の parseSystemMailEnv から組み立てて渡す。Workers エントリ(workers.ts)は
+   * 常に渡さない(= 常に無効。nodemailer が動かないため)。
+   */
+  selfServiceReset?: SelfServiceResetDeps;
 }
 
 /**
@@ -138,6 +148,7 @@ export function createApp(deps: CreateAppDeps) {
     errorReporter = noopErrorReporter,
     release,
     signup,
+    selfServiceReset,
   } = deps;
   const app = new Hono<AppEnv>();
 
@@ -157,6 +168,8 @@ export function createApp(deps: CreateAppDeps) {
     apiKeyPerIp: createRateLimiter({ ...RATE_LIMITS.apiKeyPerIp, now }),
     oidcPerIp: createRateLimiter({ ...RATE_LIMITS.oidcPerIp, now }),
     signupPerIp: createRateLimiter({ ...RATE_LIMITS.signupPerIp, now }),
+    passwordChangePerIpUser: createRateLimiter({ ...RATE_LIMITS.passwordChangePerIpUser, now }),
+    passwordResetRequestPerIp: createRateLimiter({ ...RATE_LIMITS.passwordResetRequestPerIp, now }),
   };
 
   // HTTP メトリクスの計測(docs/design/observability.md)。**最初に登録する** —
@@ -239,7 +252,16 @@ export function createApp(deps: CreateAppDeps) {
   // Hono は登録順にハンドラを評価するため、この use() は対応する route() より前に置く必要がある。
   const tokenRateLimit = ipRateLimitMiddleware(rateLimiters.tokenPerIp, { trustProxy });
   app.use("/invitations/*", tokenRateLimit);
-  app.use("/password-resets/*", tokenRateLimit);
+  // 本人用の再設定の入口(GET /password-resets/config と POST /password-resets)は、トークン経路とは
+  // 別のバケツにする: config はログイン画面を開くたびに叩かれるので、オフィスの共有 IP から多数の従業員が
+  // ログイン画面を開くだけでトークン経路(受諾リンク)の枠を使い切らないようにし、POST は下の専用上限で絞る。
+  app.use(
+    "/password-resets/*",
+    ipRateLimitMiddleware(rateLimiters.tokenPerIp, {
+      trustProxy,
+      appliesTo: (c) => !/\/password-resets(\/config)?\/?$/.test(c.req.path),
+    }),
+  );
 
   // GET /invitations/:token, POST /invitations/:token/accept(招待受諾)も認証ミドルウェアの
   // 外側に置く。受諾前のユーザーはまだ auth_credentials を持たずセッションも張れないため
@@ -249,7 +271,15 @@ export function createApp(deps: CreateAppDeps) {
   // GET /password-resets/:token, POST /password-resets/:token/use(管理者発行パスワードリセットの
   // 使用、Tier 0)も同じ理由で認証ミドルウェアの外側に置く(使用前のユーザーはまだ有効なセッションを
   // 張れない・張っていても新しいパスワードを知らないため、この経路自体を未認証で開放する)。
-  app.route("/password-resets", createPasswordResetsRoutes(db, { secureCookies }));
+  // 本人用の再設定(POST /password-resets)は外部への副作用(メール・Turnstile)があるので専用の厳しい上限。
+  // 無効な配備(selfServiceReset 未指定)では全リクエストが 404 になるだけなのでカウンタを消費しない。
+  if (selfServiceReset) {
+    app.use(
+      "/password-resets",
+      ipRateLimitMiddleware(rateLimiters.passwordResetRequestPerIp, { trustProxy, appliesTo: (c) => c.req.method === "POST" }),
+    );
+  }
+  app.route("/password-resets", createPasswordResetsRoutes(db, { secureCookies, selfService: selfServiceReset ?? null, trustProxy }));
 
   // セルフサインアップ(未認証・公開、docs/design/saas.md)。無効な配備(signup 未指定)では
   // レート制限も掛けない — 全リクエストが 404 になるだけで、カウンタを消費する意味が無い。
@@ -297,6 +327,12 @@ export function createApp(deps: CreateAppDeps) {
       encryptor: encryptor ?? null,
       rateLimit: { perIpUser: rateLimiters.totpPerIpUser, trustProxy },
     }),
+  );
+  // ログイン中の本人によるパスワード変更(POST /auth/password/change、2026-10-04)。2FA と同じく
+  // 認証済み本人のみ・権限チェック無し・APIキー認証では触れない(許可表に載せていない = 403)。
+  authed.route(
+    "/auth/password",
+    createPasswordChangeRoutes(db, { rateLimit: { perIpUser: rateLimiters.passwordChangePerIpUser, trustProxy } }),
   );
   authed.route("/api-keys", createApiKeysRoutes(db));
   authed.route("/punches", createPunchesRoutes(db));
