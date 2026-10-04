@@ -560,6 +560,7 @@ export const en = {
   today: {
     title: "Today's punches",
     empty: "No punches yet today",
+    nowLabel: "Now",
   },
 
   /**

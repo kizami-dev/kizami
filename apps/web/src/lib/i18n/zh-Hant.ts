@@ -535,6 +535,7 @@ export const zhHant = {
   today: {
     title: "今日打卡紀錄",
     empty: "暫無打卡紀錄",
+    nowLabel: "現在",
   },
 
   /**

@@ -543,6 +543,7 @@ export const ko = {
   today: {
     title: "오늘의 출퇴근 기록",
     empty: "아직 출퇴근 기록이 없습니다",
+    nowLabel: "지금",
   },
 
   /**

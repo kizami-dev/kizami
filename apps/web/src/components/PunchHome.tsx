@@ -16,10 +16,12 @@ import {
 import { getCurrentPositionSafe } from "../lib/geolocation";
 import { INTL_LOCALE, getLocale } from "../lib/i18n";
 import { messages } from "../lib/messages";
-import { formatTimeJst, jstTodayWindow } from "../lib/time";
+import { formatTimeJst, jstTodayWindow, nowMinutes } from "../lib/time";
 import { useAuthGuard } from "../lib/useAuthGuard";
 import { useOnlineStatus } from "../lib/useOnlineStatus";
 import { AppHeader } from "./AppHeader";
+import { PunchTimeline } from "./PunchTimeline";
+import { Notice } from "./ui/Notice";
 import { StateView } from "./ui/StateView";
 
 /**
@@ -202,39 +204,17 @@ export function PunchHome() {
           <span className="stamp__label">{messages.attendanceState[state]}</span>
         </div>
 
-        {loadError ? <p className="punch-error">{messages.errors.loadFailed}</p> : null}
+        {loadError ? <Notice tone="danger">{messages.errors.loadFailed}</Notice> : null}
         {punchError ? (
-          <p className="punch-error" role="alert">
+          <Notice tone="danger" role="alert">
             {punchError}
-          </p>
+          </Notice>
         ) : null}
         {!isOnline ? (
-          <p className="punch-offline-banner" role="status">
+          <Notice tone="info" role="status">
             {messages.offline.banner}
-          </p>
+          </Notice>
         ) : null}
-
-        {/* GPS取得中であることの明示(要件§3: 有効化時は従業員に取得中であることを明示する)。
-            打刻ボタンの近くに常時表示し、詳細(理由・保持期間)は開閉式で添える。 */}
-        {capabilities?.gpsEnabled ? (
-          <div className="punch-gps-notice">
-            <p className="punch-gps-notice__text">
-              {messages.punchGps.noticeAlways}
-              {gpsLocating ? <span className="punch-gps-notice__locating"> {messages.punchGps.locating}</span> : null}
-            </p>
-            <details className="punch-gps-notice__detail">
-              <summary>{messages.punchGps.detailToggle}</summary>
-              <p>{messages.punchGps.reason}</p>
-              <p>
-                {messages.punchGps.retentionPrefix}
-                {capabilities.gpsRetentionDays === null
-                  ? messages.punchGps.retentionSameAsAttendance
-                  : `${capabilities.gpsRetentionDays}${messages.punchGps.retentionDaysSuffix}`}
-              </p>
-            </details>
-          </div>
-        ) : null}
-        {gpsUnavailableNote ? <p className="punch-gps-notice__unavailable">{messages.punchGps.unavailableNote}</p> : null}
 
         <div className="punch-pad">
           <button
@@ -268,8 +248,31 @@ export function PunchHome() {
           </div>
         </div>
 
+        {/* GPS取得中であることの明示(要件§3: 有効化時は従業員に取得中であることを明示する)。
+            主操作を押し下げないよう打刻ボタンの下に置く。常時見える一文+詳細は開閉式。 */}
+        {capabilities?.gpsEnabled ? (
+          <Notice tone="info" className="punch-gps-notice">
+            <p className="punch-gps-notice__text">
+              {messages.punchGps.noticeAlways}
+              {gpsLocating ? <span className="punch-gps-notice__locating"> {messages.punchGps.locating}</span> : null}
+            </p>
+            <details className="punch-gps-notice__detail">
+              <summary>{messages.punchGps.detailToggle}</summary>
+              <p>{messages.punchGps.reason}</p>
+              <p>
+                {messages.punchGps.retentionPrefix}
+                {capabilities.gpsRetentionDays === null
+                  ? messages.punchGps.retentionSameAsAttendance
+                  : `${capabilities.gpsRetentionDays}${messages.punchGps.retentionDaysSuffix}`}
+              </p>
+            </details>
+          </Notice>
+        ) : null}
+        {gpsUnavailableNote ? <Notice tone="caution">{messages.punchGps.unavailableNote}</Notice> : null}
+
         <section className="tombo-row" aria-label={messages.today.title}>
           <p className="tombo-row__title">{messages.today.title}</p>
+          <PunchTimeline punches={punches} dayStart={jstTodayWindow(now.getTime()).from} nowMin={nowMinutes(now.getTime())} />
           {punches.length === 0 ? (
             <p className="tombo-row__empty">{messages.today.empty}</p>
           ) : (

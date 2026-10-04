@@ -584,6 +584,7 @@ export const ja = {
   today: {
     title: "今日の打刻",
     empty: "まだ打刻がありません",
+    nowLabel: "いま",
   },
 
   /**
