@@ -92,6 +92,11 @@
   --dp-state-color: var(--k-yellow-ink);
 }
 
+.dashboard-punch__notice {
+  width: 100%;
+  text-align: left;
+}
+
 .dashboard-punch__gps-note {
   margin: 0;
   font-size: var(--text-xs);

@@ -40,6 +40,7 @@ import { useAuthGuard } from "../lib/useAuthGuard";
 import { useOnlineStatus } from "../lib/useOnlineStatus";
 import { AppHeader } from "./AppHeader";
 import { OnboardingSection } from "./OnboardingSection";
+import { Notice } from "./ui/Notice";
 import { StateView } from "./ui/StateView";
 
 const MAX_WARNING_DAYS_SHOWN = 5;
@@ -323,22 +324,15 @@ export function DashboardView() {
           </div>
 
           {punchError ? (
-            <p className="punch-error" role="alert">
+            <Notice tone="danger" role="alert" className="dashboard-punch__notice">
               {punchError}
-            </p>
+            </Notice>
           ) : null}
           {!isOnline ? (
-            <p className="punch-offline-banner" role="status">
+            <Notice tone="info" role="status" className="dashboard-punch__notice">
               {messages.offline.banner}
-            </p>
+            </Notice>
           ) : null}
-          {capabilities?.gpsEnabled ? (
-            <p className="dashboard-punch__gps-note">
-              {messages.punchGps.noticeAlways}
-              {gpsLocating ? <span className="punch-gps-notice__locating"> {messages.punchGps.locating}</span> : null}
-            </p>
-          ) : null}
-          {gpsUnavailableNote ? <p className="punch-gps-notice__unavailable">{messages.punchGps.unavailableNote}</p> : null}
 
           <div className="dashboard-punch__pad" data-tour="punch-pad">
             <button
@@ -366,6 +360,18 @@ export function DashboardView() {
               <span>{messages.punchButtons.clockOut}</span>
             </button>
           </div>
+
+          {capabilities?.gpsEnabled ? (
+            <p className="dashboard-punch__gps-note">
+              {messages.punchGps.noticeAlways}
+              {gpsLocating ? <span className="punch-gps-notice__locating"> {messages.punchGps.locating}</span> : null}
+            </p>
+          ) : null}
+          {gpsUnavailableNote ? (
+            <Notice tone="caution" className="dashboard-punch__notice">
+              {messages.punchGps.unavailableNote}
+            </Notice>
+          ) : null}
 
           <Link to="/punch" className="dashboard-punch__stamp-link">
             {messages.mobileNav.stampScreenLink}

@@ -535,6 +535,7 @@ export const zh = {
   today: {
     title: "今日打卡记录",
     empty: "暂无打卡记录",
+    nowLabel: "现在",
   },
 
   /**

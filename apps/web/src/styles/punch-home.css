@@ -266,46 +266,18 @@
   color: var(--k-ink-soft);
   text-align: center;
   line-height: 1.3;
+  /* 「ま/す」だけが次の行に落ちないよう、行の長さを均す */
+  text-wrap: balance;
 }
 
-.punch-error {
-  width: 100%;
-  color: var(--k-magenta-ink);
-  font-size: var(--text-sm);
-  border: 1px solid var(--k-magenta);
-  background: color-mix(in srgb, var(--k-magenta) 6%, transparent);
-  border-radius: var(--radius-s);
-  padding: var(--space-3);
-  text-align: center;
-}
-
-/* オフライン時の明示(PWA、v0.4)。打刻には正確な時刻が要るため、
-   オフラインでは打刻できないことを常時バナーで示す(画面自体は開ける)。 */
-.punch-offline-banner {
-  width: 100%;
-  color: var(--k-ink-soft);
-  font-size: var(--text-sm);
-  border: 1px solid var(--k-ink-soft);
-  background: color-mix(in srgb, var(--k-key) 4%, transparent);
-  border-radius: var(--radius-s);
-  padding: var(--space-3);
-  text-align: center;
-}
-
-/* GPS付き打刻の明示(要件§3: 有効化時は従業員に取得中であることを明示する)。
-   打刻ボタンの近くに常時表示する静かな案内(演出は打刻スタンプのみに集中する原則のため、
-   ここは色数を絞り控えめに保つ)。 */
+/* 位置情報の注意は .notice(info)。ボタンの下に置くので小さく静かに保つ。 */
 .punch-gps-notice {
   width: 100%;
-  border-left: 3px solid var(--k-cyan-ink);
-  padding: var(--space-2) var(--space-3);
   font-size: var(--text-sm);
-  color: var(--k-ink-soft);
 }
 
 .punch-gps-notice__text {
   margin: 0;
-  color: var(--k-key);
 }
 
 .punch-gps-notice__locating {
@@ -326,14 +298,6 @@
 .punch-gps-notice__detail p {
   margin: var(--space-1) 0 0;
   color: var(--k-ink-soft);
-}
-
-.punch-gps-notice__unavailable {
-  width: 100%;
-  color: var(--k-ink-soft);
-  font-size: var(--text-xs);
-  text-align: center;
-  margin: 0;
 }
 
 /* 今日のトンボ列 */
@@ -425,4 +389,127 @@
     min-height: 5.25rem;
     font-size: var(--text-md);
   }
+}
+
+/*
+ * 今日の打刻の時間軸(PunchTimeline.tsx)。細い K の罫線を 0〜24 時の軸にし、C/Y/M のトンボを
+ * 時刻の位置に打つ。装飾(aria-hidden)で、時刻はリスト(.tombo-row__list)が読み上げる。
+ * 色は .tombo-chip と同じ ink 系(ライト・ダークとも本文色に対して AA)。
+ */
+.punch-timeline {
+  --tl-lane-h: 1.75rem;
+  --tl-mark: 1.5rem;
+  /* 端のトンボ(半径 = --tl-mark/2)と目盛りラベルが枠からはみ出さない余白 */
+  padding: 0 1.5rem;
+  margin-bottom: var(--space-2);
+}
+
+.punch-timeline__plot {
+  position: relative;
+  /* 上: 「いま」ラベルの行(1.25rem)+ 段数ぶん + 最下段トンボの上半分 */
+  height: calc(1.25rem + var(--tl-lanes) * var(--tl-lane-h) + var(--tl-mark) / 2);
+}
+
+.punch-timeline__axis {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  border-top: 1px solid var(--k-key);
+}
+
+.punch-timeline__tick {
+  position: absolute;
+  bottom: 0;
+  width: 1px;
+  height: 0.4rem;
+  background: var(--k-key);
+  transform: translateY(100%);
+}
+
+.punch-timeline__mark {
+  position: absolute;
+  bottom: calc(var(--tl-lane) * var(--tl-lane-h));
+  width: var(--tl-mark);
+  height: var(--tl-mark);
+  transform: translate(-50%, 50%);
+  color: var(--chip-color, var(--k-key));
+  display: block;
+  line-height: 0;
+}
+
+/* 軸から段をずらしたトンボは、細い支線で軸の時刻に結ぶ */
+.punch-timeline__mark::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 1px;
+  height: calc(var(--tl-lane) * var(--tl-lane-h));
+  background: currentColor;
+}
+
+.punch-timeline__mark svg {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.punch-timeline__mark--in {
+  --chip-color: var(--k-cyan-ink);
+}
+
+.punch-timeline__mark--break {
+  --chip-color: var(--k-yellow-ink);
+}
+
+.punch-timeline__mark--out {
+  --chip-color: var(--k-magenta-ink);
+}
+
+/* いまの時刻: 点線の縦線とラベル */
+.punch-timeline__now {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-left: 1px dashed var(--k-ink-soft);
+}
+
+.punch-timeline__now-label {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform: translateX(-50%);
+  font-size: var(--text-xs);
+  line-height: 1;
+  color: var(--k-ink-soft);
+  white-space: nowrap;
+  background: var(--k-paper);
+  padding: 0 0.25rem;
+}
+
+.punch-timeline__now[data-align="start"] .punch-timeline__now-label {
+  transform: translateX(-0.25rem);
+}
+
+.punch-timeline__now[data-align="end"] .punch-timeline__now-label {
+  transform: translateX(calc(-100% + 0.25rem));
+}
+
+.punch-timeline__scale {
+  position: relative;
+  height: 1.25rem;
+  margin-top: 0.55rem;
+}
+
+.punch-timeline__scale-label {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  line-height: 1;
+  color: var(--k-ink-soft);
+  white-space: nowrap;
 }
