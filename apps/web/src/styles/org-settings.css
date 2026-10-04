@@ -332,7 +332,8 @@
 
 .org-table th,
 .org-table td {
-  padding: var(--space-3);
+  /* 横は詰める(設定ナビのサイドバーで本文が狭いため、列の多い表でも操作列が収まるように) */
+  padding: var(--space-3) var(--space-2);
   text-align: left;
   border-bottom: 1px solid color-mix(in srgb, var(--k-key) 8%, transparent);
   vertical-align: top;
