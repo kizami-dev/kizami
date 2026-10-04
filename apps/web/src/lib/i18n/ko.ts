@@ -1373,7 +1373,7 @@ export const ko = {
     confirmCloseLabel: "마감",
 
     confirmReopenTitle: "마감을 해제하시겠습니까",
-    confirmReopenMessage: "마감을 해제하면 이번 달은 다시 자유롭게 편집할 수 있는 상태가 됩니다.",
+    confirmReopenMessage: "마감을 해제하면 이번 달은 다시 자유롭게 편집할 수 있는 상태가 됩니다. 이미 확정된 수치(CSV 출력이나 급여 계산에 사용한 값)는 수정되면 달라질 수 있습니다.",
     confirmReopenExtraNote: "마감 해제는 영향이 큰 작업입니다. 이 작업은 감사 로그에 기록됩니다.",
     confirmReopenLabel: "해제",
 

@@ -23,6 +23,7 @@ import { MemberSwitcher } from "./monthly/MemberSwitcher";
 import { MonthlyAttendanceTable } from "./monthly/MonthlyAttendanceTable";
 import { MonthlyTotals } from "./monthly/MonthlyTotals";
 import { WorkloadBar } from "./monthly/WorkloadBar";
+import { Badge } from "./ui/Badge";
 import { StateView } from "./ui/StateView";
 
 export function MonthlyView() {
@@ -114,15 +115,13 @@ export function MonthlyView() {
           <>
             {data.closing.closed ? (
               <div className="closing-status">
-                <span className="badge badge--cyan">{messages.closing.closedBadge}</span>
-                {data.closing.amended ? (
-                  <span className="badge badge--yellow">{messages.closing.amendedBadge}</span>
-                ) : null}
-                {data.figures.source === "snapshot" ? (
-                  <span className="badge badge--neutral">
-                    {messages.closing.snapshotBadge}
-                  </span>
-                ) : null}
+                {/* 「確定済み」と「確定値」は同じ事実(確定した値を表示中)なので、1 つのバッジにまとめる。 */}
+                <Badge tone="cyan">
+                  {data.figures.source === "snapshot"
+                    ? `${messages.closing.closedBadge}(${messages.closing.snapshotBadge})`
+                    : messages.closing.closedBadge}
+                </Badge>
+                {data.closing.amended ? <Badge tone="yellow">{messages.closing.amendedBadge}</Badge> : null}
               </div>
             ) : null}
 
