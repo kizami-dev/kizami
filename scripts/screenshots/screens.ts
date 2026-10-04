@@ -22,7 +22,7 @@ export interface Screen {
   /** 撮影前に待つ追加のセレクタ(データ読み込み完了の目印)。省略時は body のみ待つ。 */
   waitForSelector?: string;
   /** 画面単位の言語上書き(既定は日本語)。多言語UIのデモ用。 */
-  locale?: "en" | "ko" | "zh";
+  locale?: "en" | "ko" | "zh" | "zh-Hant";
   /**
    * requiresAuth 画面を、テナント管理者以外のユーザーとして撮る場合のキー。
    * capture.ts の CaptureParams.extraSessionCookies に対応するキーを指定する。
@@ -50,7 +50,7 @@ export const SCREENS: Screen[] = [
     slug: "login",
     path: "/login",
     title: "ログイン",
-    caption: "紙白の上に中央カード1枚。ロゴマークと文字ロゴのみで演出はしない。",
+    caption: "紙白の上に中央カード1枚。ロゴマークと文字ロゴのみで演出はしない。右上に控えめな言語切り替えがある。",
     requiresAuth: false,
     mobile: true,
   },
@@ -100,7 +100,7 @@ export const SCREENS: Screen[] = [
     slug: "monthly-en",
     path: "/monthly?month={prevMonth}",
     title: "月次(英語表示)",
-    caption: "UIは日・英・韓・中(簡体)の4言語。言語切替はテーマ切替の隣にあり、選択は保持される。",
+    caption: "UIは日・英・韓・中(簡体・繁体)の5言語。言語の切り替えは「設定 > 言語と表示」にあり、選択は保持される。",
     requiresAuth: true,
     mobile: false,
     locale: "en",
@@ -258,6 +258,14 @@ export const SCREENS: Screen[] = [
     path: "/settings/tenant-profile",
     title: "設定: テナントプロファイル",
     caption: "36協定の集計に直接影響する企業区分・特別条項の設定。",
+    requiresAuth: true,
+    mobile: false,
+  },
+  {
+    slug: "settings-display",
+    path: "/settings/display",
+    title: "設定: 言語と表示",
+    caption: "表示言語(5言語)と配色(ライト・ダーク・システム)を選ぶ。本人用の設定で権限は不要。",
     requiresAuth: true,
     mobile: false,
   },

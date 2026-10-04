@@ -1,8 +1,8 @@
 /**
- * UI の多言語対応(2026-08-23 追加、日本語・英語・韓国語・簡体中文の4言語)。
+ * UI の多言語対応(2026-08-23 追加、日本語・英語・韓国語・簡体中文の4言語。2026-10-05 に繁体中文(台湾)を加えて5言語)。
  *
  * 設計:
- * - `Messages` 型は `ja`(既定ロケール)から導出する。他ロケール(en/ko/zh)は
+ * - `Messages` 型は `ja`(既定ロケール)から導出する。他ロケール(en/ko/zh/zh-Hant)は
  *   `satisfies Messages` でこの型を満たす形で定義し、キーの過不足をコンパイルエラーに
  *   する(翻訳漏れ・キー名のズレを構造的に防ぐ。ここが今回の最重要の設計判断)。
  * - ロケールの決定は localStorage(`LOCALE_STORAGE_KEY`)→ 無ければ `navigator.language` から
@@ -26,14 +26,21 @@ import { en } from "./en";
 import { ja } from "./ja";
 import { ko } from "./ko";
 import { zh } from "./zh";
+import { zhHant } from "./zh-Hant";
 
 export type Messages = typeof ja;
-export type Locale = "ja" | "en" | "ko" | "zh";
+/**
+ * ロケール値の綴り: 簡体は従来どおり "zh"、繁体(台湾)は BCP47 の文字体系サブタグに合わせた "zh-Hant"。
+ * "zh-TW" や "zh-tw" ではなく "zh-Hant" にしたのは、辞書が「台湾という地域」ではなく「繁体字」を
+ * 単位にしているため(HK・MO の繁体字話者も同じ辞書を使う)。値は HelpLocale(ヘルプ本文)とも
+ * 同一で、localStorage に保存される値・content/*.zh-Hant.md のファイル名の綴りもこれに揃う。
+ */
+export type Locale = "ja" | "en" | "ko" | "zh" | "zh-Hant";
 
 export const LOCALE_STORAGE_KEY = "kizami-locale";
 
 /** 言語切り替え UI(LanguageToggle)に表示する順序。 */
-export const LOCALE_ORDER: readonly Locale[] = ["ja", "en", "ko", "zh"];
+export const LOCALE_ORDER: readonly Locale[] = ["ja", "en", "ko", "zh", "zh-Hant"];
 
 /** 各言語の自称。ロケールに関わらず常にこの表記で出す(要件どおり)。 */
 export const LOCALE_NATIVE_NAMES: Record<Locale, string> = {
@@ -41,6 +48,7 @@ export const LOCALE_NATIVE_NAMES: Record<Locale, string> = {
   en: "English",
   ko: "한국어",
   zh: "简体中文",
+  "zh-Hant": "繁體中文",
 };
 
 /** `<html lang>` に設定する BCP47 タグ。 */
@@ -49,6 +57,7 @@ const HTML_LANG: Record<Locale, string> = {
   en: "en",
   ko: "ko",
   zh: "zh-Hans",
+  "zh-Hant": "zh-Hant",
 };
 
 /** `Intl.DateTimeFormat` 等に渡す BCP47 ロケールタグ(PunchHome の大時計表示用)。 */
@@ -57,9 +66,10 @@ export const INTL_LOCALE: Record<Locale, string> = {
   en: "en-US",
   ko: "ko-KR",
   zh: "zh-Hans-CN",
+  "zh-Hant": "zh-Hant-TW",
 };
 
-const DICTIONARIES: Record<Locale, Messages> = { ja, en, ko, zh };
+const DICTIONARIES: Record<Locale, Messages> = { ja, en, ko, zh, "zh-Hant": zhHant };
 
 const VALID_LOCALES: readonly string[] = LOCALE_ORDER;
 
@@ -67,12 +77,26 @@ function isLocale(value: string | null | undefined): value is Locale {
   return value !== null && value !== undefined && VALID_LOCALES.includes(value);
 }
 
+/**
+ * 中国語のタグを簡体("zh")か繁体("zh-Hant")かに振り分ける。
+ * 繁体: 文字体系が Hant のもの、または地域が TW / HK / MO のもの(`zh-TW`・`zh-HK`・`zh-MO`・`zh-Hant-*`)。
+ * それ以外(`zh`・`zh-CN`・`zh-SG`・`zh-Hans-*` など)は簡体。
+ * 文字体系サブタグが明示されていればそちらを優先する(`zh-Hans-TW` は簡体、`zh-Hant-CN` は繁体)。
+ */
+export function chineseLocaleFromLanguageTag(lower: string): "zh" | "zh-Hant" {
+  const subtags = lower.split("-");
+  if (subtags.includes("hans")) return "zh";
+  if (subtags.includes("hant")) return "zh-Hant";
+  if (subtags.some((s) => s === "tw" || s === "hk" || s === "mo")) return "zh-Hant";
+  return "zh";
+}
+
 /** navigator.language(例: "en-US", "zh-CN")→ サポートするロケールへの粗いマッピング。 */
-function localeFromLanguageTag(tag: string): Locale | null {
+export function localeFromLanguageTag(tag: string): Locale | null {
   const lower = tag.toLowerCase();
   if (lower.startsWith("ja")) return "ja";
   if (lower.startsWith("ko")) return "ko";
-  if (lower.startsWith("zh")) return "zh";
+  if (lower === "zh" || lower.startsWith("zh-")) return chineseLocaleFromLanguageTag(lower);
   if (lower.startsWith("en")) return "en";
   return null;
 }

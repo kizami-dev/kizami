@@ -5,7 +5,7 @@
  * 渡すとコンパイルエラーになる(@kizami/law を workspace 依存として直接 import している既存の
  * 慣行と同じ形)。
  *
- * 多言語(2026-08-24): ヘルプ本文も UI と同じ4言語(ja/en/ko/zh)を持つ。ここの各関数は
+ * 多言語(2026-08-24): ヘルプ本文も UI と同じ5言語(ja/en/ko/zh/zh-Hant)を持つ。ここの各関数は
  * `locale` を省略した場合に **呼び出しのたびに** lib/i18n#getLocale() を評価する
  * (lib/messages.ts の Proxy と同じ理由 — モジュールスコープで一度だけ解決すると、
  * 言語切り替え後も最初の言語に凍結される)。実際の再描画は components/LocaleGate.tsx が
@@ -19,7 +19,7 @@ export { HELP };
 
 /**
  * UI のロケール → ヘルプ本文のロケール。
- * 値は同一(どちらも "ja" | "en" | "ko" | "zh")なので変換は不要だが、片方だけ言語が増えたときに
+ * 値は同一(どちらも "ja" | "en" | "ko" | "zh" | "zh-Hant")なので変換は不要だが、片方だけ言語が増えたときに
  * ここでコンパイルエラーになるよう、明示的な代入で対応関係を固定しておく。
  */
 const localeToHelpLocale: (locale: Locale) => HelpLocale = (locale) => locale;

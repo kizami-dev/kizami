@@ -19,8 +19,8 @@
 import type { Unstable_RouteHref as RouteHref } from "waku/router/client";
 
 /**
- * 手順の識別子。i18n の `messages.tour.steps[<id>]`(4言語)のキーと1対1で対応させる
- * (型でキーの過不足が検出される — CONTRIBUTING.md「UI 文言は4言語すべてに追加」)。
+ * 手順の識別子。i18n の `messages.tour.steps[<id>]`(5言語)のキーと1対1で対応させる
+ * (型でキーの過不足が検出される — CONTRIBUTING.md「UI 文言は5言語すべてに追加」)。
  */
 export type TourStepId =
   | "dashboard"
