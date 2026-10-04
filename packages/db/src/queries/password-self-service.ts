@@ -19,7 +19,7 @@ import type { Database, Transaction } from "../types.js";
 import { authCredentials, passwordResetRequests, passwordResetTokens, users } from "../schema/index.js";
 import { uuidv7 } from "../uuid.js";
 import { insertAuditLog } from "./audit.js";
-import type { PasswordResetToken } from "./password-resets.js";
+import { revokeAllPasswordResetTokensForUser, type PasswordResetToken } from "./password-resets.js";
 import { revokeOtherSessionsForUser } from "./sessions.js";
 
 // ---- 1. ログイン中の本人によるパスワード変更 ----------------------------------
@@ -42,6 +42,13 @@ export interface ChangeOwnPasswordInput {
  * 管理者リセット(`usePasswordResetToken`)は「旧資格情報が漏れている疑い」で全セッションを
  * 失効させるが、本人の変更は今のセッションの持ち主が操作しているので、それだけは残す。
  * API キーには触れない(人のログインとは別系統。判断は apps/api/src/routes/auth-password.ts 冒頭)。
+ *
+ * ## 再設定トークンの失効(auth-token-lifecycle)
+ *
+ * 再設定トークンは「どちらかが使われた時点」(`usePasswordResetToken`)と「本人がパスワードを変えた
+ * 時点」(この関数)で、そのユーザーの未使用・未失効のトークンが**発行経路を問わず全部**失効する。
+ * 一方、`issueSelfServicePasswordResetToken` が失効させるのは本人発行の古いものだけ(管理者が手渡した
+ * リンクを「忘れた」の操作で殺さない)。
  */
 export async function changeOwnPassword(db: Database, input: ChangeOwnPasswordInput): Promise<boolean> {
   return db.transaction(async (tx) => {
@@ -58,6 +65,11 @@ export async function changeOwnPassword(db: Database, input: ChangeOwnPasswordIn
       exceptSessionId: input.currentSessionId,
       revokedAt: input.nowMinutes,
     });
+
+    // 未使用・未失効の再設定トークンも**本人発行・管理者発行を問わず全部失効**させる。乗っ取りを疑って
+    // 本人がパスワードを変えても、攻撃者が持つ(または攻撃者が要求した)再設定リンクが生き残ると、
+    // それでパスワードを上書きされてしまうため。
+    await revokeAllPasswordResetTokensForUser(tx, { tenantId: input.tenantId, userId: input.userId, revokedAt: input.nowMinutes });
 
     await insertAuditLog(tx, {
       tenantId: input.tenantId,
