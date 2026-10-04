@@ -109,6 +109,30 @@ export function formatMonthDayShort(dateStr: string): string {
   return `${date.month}/${date.day}`;
 }
 
+/**
+ * 今日の打刻列から「勤務中の暫定の実労働(分)」を出す(ホームの勤務中表示用)。
+ * 出勤・休憩明けから、休憩入り・退勤までを実労働の区間として足し、いま開いている区間は
+ * `nowMin` までを足す。つまり「出勤からの経過 − 休憩」。休憩の自動控除・丸め・深夜などの
+ * 規則は掛けない概算で、確定値(月次の workedMinutes)とは一致しないことがある。
+ */
+export function provisionalWorkedMinutes(punches: { kind: string; occurredAt: number }[], nowMin: number): number {
+  const sorted = [...punches].sort((a, b) => a.occurredAt - b.occurredAt);
+  let total = 0;
+  let segmentStart: number | null = null;
+  for (const p of sorted) {
+    if (p.kind === "clock_in" || p.kind === "break_end") {
+      if (segmentStart === null) segmentStart = p.occurredAt;
+    } else if (p.kind === "break_start" || p.kind === "clock_out") {
+      if (segmentStart !== null) {
+        total += Math.max(0, p.occurredAt - segmentStart);
+        segmentStart = null;
+      }
+    }
+  }
+  if (segmentStart !== null) total += Math.max(0, nowMin - segmentStart);
+  return total;
+}
+
 /** 分数 → "H:MM" (tabular-nums 表示用)。 */
 export function formatDurationHm(minutes: number): string {
   const sign = minutes < 0 ? "-" : "";

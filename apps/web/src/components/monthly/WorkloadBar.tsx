@@ -104,9 +104,10 @@ export function WorkloadBar({ data }: WorkloadBarProps) {
           {formatDurationHm(flex?.actualMinutes ?? 0)} / {formatDurationHm(flex?.frameMinutes ?? 0)}{" "}
           {messages.monthly.flexBalanceUnit}
         </span>
-        <span className={(flex?.diffMinutes ?? 0) < 0 ? "flex-balance__diff--negative" : "flex-balance__diff--positive"}>
+        <span className={(flex?.diffMinutes ?? 0) < 0 ? "flex-balance__diff--short" : "flex-balance__diff--positive"}>
           {(flex?.diffMinutes ?? 0) >= 0 ? "+" : ""}
           {formatDurationHm(flex?.diffMinutes ?? 0)}
+          {(flex?.diffMinutes ?? 0) < 0 ? ` ${messages.monthly.flexShortLabel}` : ""}
         </span>
       </div>
     </div>

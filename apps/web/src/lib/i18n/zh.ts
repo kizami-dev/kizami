@@ -45,6 +45,8 @@ export const zh = {
     todayWorkedLabel: "今日实际工作时长",
     monthFlexLabel: "本月弹性工作时间收支",
     monthFlexMoreLink: "查看月度 →",
+    todayWorkedProvisional: "工作中(未确定)",
+    todayWorkedProvisionalNote: "自上班起的经过时间减去休息的估算值,下班后确定。",
 
     /** 今天、明天的排班。若完全没有排班,则不显示该卡片。 */
     shiftCardTitle: "今天・明天的排班",
@@ -619,6 +621,7 @@ export const zh = {
 
     flexBalanceLabel: "弹性工作时间收支",
     flexBalanceUnit: "分钟",
+    flexShortLabel: "不足",
     /** 固定工作时间制下替代「弹性工作时间收支条」的展示。相对于36协议月度45小时上限的加班位置。 */
     overtimeBarLabel: "加班(相对于36协议月度45小时上限)",
     overtimeBarUnit: "分钟",

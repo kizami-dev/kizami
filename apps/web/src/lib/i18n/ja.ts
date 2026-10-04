@@ -48,6 +48,8 @@ export const ja = {
     todayWorkedLabel: "今日の実労働",
     monthFlexLabel: "今月のフレックス収支",
     monthFlexMoreLink: "月次を見る →",
+    todayWorkedProvisional: "勤務中(未確定)",
+    todayWorkedProvisionalNote: "出勤からの経過時間から休憩を引いた概算です。退勤後に確定します。",
 
     /** 今日・明日のシフト(2026-08-24 追加、v0.7 フェーズ3)。シフトが1件もなければカード自体を出さない。 */
     shiftCardTitle: "今日・明日のシフト",
@@ -669,6 +671,7 @@ export const ja = {
 
     flexBalanceLabel: "フレックス収支",
     flexBalanceUnit: "分",
+    flexShortLabel: "不足",
     /** 固定時間制での「フレックス収支バー」置き換え(2026-08-23 追加)。36協定の月45時間に対する時間外の位置。 */
     overtimeBarLabel: "時間外(36協定 月45時間の上限に対して)",
     overtimeBarUnit: "分",

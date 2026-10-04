@@ -42,7 +42,8 @@
 
 @media (min-width: 60rem) {
   .dashboard-grid {
-    grid-template-columns: repeat(2, 1fr);
+    /* 左=要対応(主列・幅広)、右=今日・今月(狭い列)。DOM もこの順(スマホでは要対応が先) */
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
     align-items: start;
   }
 }
@@ -207,6 +208,18 @@
   font-size: var(--text-lg);
   font-weight: 600;
   color: var(--k-key);
+}
+
+/* 勤務中の暫定値であることの注記(確定値と取り違えないように) */
+.dashboard-today-note {
+  font-size: var(--text-xs);
+  color: var(--k-ink-soft);
+  line-height: 1.5;
+}
+
+.dashboard-today-note strong {
+  color: var(--k-key);
+  font-weight: var(--weight-bold);
 }
 
 /* このセクション内の .flex-balance はカード枠なしにして、二重の枠にしない */
