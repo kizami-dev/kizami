@@ -69,7 +69,7 @@ describe("HELP辞書の整合性(packages/help-content/README.md の frontmatter
   });
 });
 
-describe("訳文の完全性(ja/en/ko/zh)", () => {
+describe("訳文の完全性(ja/en/ko/zh/zh-Hant)", () => {
   it("どのロケールにも訳文の欠落が無い", () => {
     // 欠落があればロケールごとに一覧で出す。実行時は helpEntryFor が日本語へフォールバックする
     // ので画面は壊れないが、その言語のユーザーには日本語が出ている = 未完了の作業として落とす。
@@ -136,6 +136,30 @@ describe("訳文の完全性(ja/en/ko/zh)", () => {
         docLinkTargets(HELP[key].body),
       );
     }
+  });
+});
+
+describe("繁体中文(zh-Hant)", () => {
+  it("HELP_LOCALES に zh-Hant があり、簡体(zh)の次に並ぶ", () => {
+    expect([...HELP_LOCALES]).toEqual(["ja", "en", "ko", "zh", "zh-Hant"]);
+  });
+
+  it("簡体字・大陸の用語が残っていない(台湾の用語・繁体字で書く)", () => {
+    // 日本語の新字体と重ならない、簡体字だけの字と、台湾では使わない語を拾う。
+    const simplified = /[们这为时间务规则权设击录应开关员发过还对动长门现请认证显个没产从态书买传价众优兴养军农决况净减创办劳协议组织约结统计总编辑选项导读经师变场报换损拟档标构样检测据领页预题类]/;
+    const mainland = ["許可權", "登錄", "默認", "軟件", "網絡", "信息", "數據", "視頻", "屏幕", "服務器", "賬"];
+    const found: string[] = [];
+    for (const key of HELP_KEYS) {
+      const entry = HELP_BY_LOCALE["zh-Hant"][key]!;
+      const text = [entry.summary, entry.basis ?? "", entry.body, entry.companyExample ?? ""].join("\n");
+      if (simplified.test(text)) found.push(`${key}: 簡体字`);
+      for (const w of mainland) if (text.includes(w)) found.push(`${key}: ${w}`);
+    }
+    expect(found).toEqual([]);
+  });
+
+  it("翻訳注記は簡体と別の文面(繁体字)である", () => {
+    expect(helpTranslationNotice("zh-Hant")).toBe("本譯文僅供參考。以日文原文及日本法律為準。");
   });
 });
 
