@@ -18,10 +18,6 @@ API・DB スキーマの互換方針とアップグレード手順は
 セルフサインアップ(KIZAMI Cloud の入口)、本人によるパスワード変更と本人用の再設定、
 繁体中文(台湾)の追加、言語・テーマ切り替えの設定画面への移動。
 
-> 注: 下の「退職者データの保持と消去」「可観測性」「二要素認証」は、コードとしては
-> v0.7.0 のタグに含まれていたが、0.7.0 の節に書き漏れていたものをここに記す
-> (0.7.0 を使っている場合は既に入っている)。
-
 ### Added
 
 - **セルフサインアップ(KIZAMI Cloud、Phase 1)**([docs/design/saas.md](docs/design/saas.md))
@@ -63,68 +59,6 @@ API・DB スキーマの互換方針とアップグレード手順は
     (`localStorage`)で、設定のハブ・サブナビの「個人設定」に並ぶ
   - ログイン前の画面(ログイン・新規登録・登録確認・招待受諾・パスワード再設定・パスワードを忘れた場合)の
     右上に、小さな言語切り替えを置いた(テーマ切り替えは置かない)
-
-- **退職者データの保持と消去**([docs/design/data-retention.md](docs/design/data-retention.md))
-  - 労働基準法109条の保存義務(原則5年・附則143条2項の経過措置により当分の間3年)と、
-    個人情報保護法22条の「遅滞なき消去」(努力義務)の衝突を、
-    **「保持期間の経過後に、行は残したまま匿名化する」**形で解く
-  - `POST /members/:id/erase` — 氏名を「削除済みユーザー」、メールを tombstone
-    (`user_deleted_<id>@invalid`)に置き換え、パスワード・2FA・セッション・プッシュ購読・
-    個人通知設定・APIキー・招待/リセットトークン・Slack連携・本人宛通知を物理削除し、
-    `punch_events` の IP・UA・GPS 列を null 化する。
-    **勤怠記録・締めスナップショット・監査ログの行は1件も消さない**
-  - 実行条件: 退職処理済み × 退職日が記録済み × 退職日 + 保持年数が経過。
-    未経過は 409 `retention_period_active`(残り日数・消去可能日つき)
-  - 新カタログ項目 `member.erase`(テナント全体スコープ・危険フラグ)。
-    `member.deactivate` の流用にしない — 無効化は取り消せるが消去には戻す経路が無い
-  - テナント設定 `GET/PUT /settings/data-retention`(3 or 5 年、**既定5**。
-    3年は経過措置にすぎず、既定を3にすると経過措置終了時に一斉に違反側へ倒れるため)
-  - 消去済みは無効化とは別の**終端状態**。tombstone でログイン不可・再有効化不可
-  - 確認ダイアログは影響の列挙 + **対象者氏名の再入力**(`ConfirmDialog` の `confirmPhrase`)
-  - メンバー一覧に退職日と保持状況(「消去可能まであと N 日」)を表示。
-    日次ワーカーによる通知はしない(急かす性質の操作ではない)
-  - プライバシー通知の雛形に「退職後の取り扱い」節を追加。
-    ヘルプに `privacy.retention-after-leaving`(4言語、origin: law)を追加
-  - migration 0031(`tenants.personal_data_retention_years` /
-    `users.deactivated_at` / `users.erased_at`)
-  - **テナント自体の削除はスコープ外**(SaaS 形態のフェーズで扱う)
-
-- **可観測性: メトリクスとエラー報告**([docs/design/observability.md](docs/design/observability.md))
-  - `GET /metrics`(Prometheus text format 0.0.4)。環境変数 `METRICS_TOKEN` が
-    **未設定なら 404**、設定時は `Authorization: Bearer` 必須(既定で口を開けない)
-  - 公開項目: HTTP リクエスト数・所要時間ヒストグラム・RSS / uptime・
-    テナント数 / ユーザー数 / 直近24時間の打刻数(60秒キャッシュ)・
-    定期スキャンの最終実行時刻と成功/失敗の累計
-  - ラベルは**ルートパターンとステータスクラスまで**。生パス・ユーザーID・テナントIDは
-    付けない(時系列の本数が入力で増えないようにする)
-  - ワーカーの心拍は新テーブル `worker_heartbeats`(migration 0030)経由で api の
-    `/metrics` が出す。ワーカー側に追加のポート・Service は要らない
-  - `kizami_punches_last24h` のために `punch_events(occurred_at)` の索引を1本追加
-  - `prom-client` は入れず自前の最小レジストリ(workerd でも同じコードが動くため)
-- **エラー報告(Sentry プロトコル互換)**。環境変数 `SENTRY_DSN` が未設定なら完全な no-op
-  - 想定外のルート例外(500)と定期スキャンの失敗を store API へ POST。403 / 409 のような
-    想定内の分岐は送らない
-  - **リクエストボディ・クエリ・ヘッダ・Cookie・メールアドレス・ユーザーID は送らない**。
-    テナントIDは SHA-256 の先頭8桁のみをタグにする(テストで固定)
-  - 撃ちっ放し・3秒タイムアウト・60秒の重複除去・窓あたり件数の上限。gzip は使わない
-  - `@sentry/node` は入れない(グローバルへのパッチと依存の重さを避けるため)
-  - 配備の配線: k8s(`kizami-metrics` / `kizami-sentry` Secret、`optional: true`)・
-    Helm(`observability.*`)・Compose(`.env`)・Workers(`wrangler secret put`)。すべて既定 OFF
-
-- **二要素認証(TOTP)**(自前認証の任意オプション、[docs/design/two-factor-auth.md](docs/design/two-factor-auth.md))
-  - RFC 6238(30秒 / 6桁 / SHA-1 / ±1ステップ許容)を依存を増やさず自前実装
-    (`@kizami/crypto`、WebCrypto のみ・RFC 6238 Appendix B と RFC 4648 のテストベクタで固定)
-  - 本人が「設定 → セキュリティ」(`/settings/security`)で有効化。QR は出さず、
-    共有鍵と `otpauth://` URI を手動入力用に表示する(v1)
-  - パスワードログインが2段階になる(`totp_required` → `POST /auth/login/totp`)。
-    第1段階の状態は暗号化 httpOnly Cookie(5分)で運び、サーバー側に中間状態を持たない
-  - リプレイ防止(最後に受理したカウンタ以下を拒否)、コード検証のレート制限(`ip|user` 10回/15分)
-  - 単回使用のリカバリコード10本(発行時に1度だけ表示・SHA-256 で保存・再生成可)
-  - 管理者によるリセット(`member.deactivate` 権限、監査ログ + 本人へアプリ内通知)
-  - 共有鍵は `KIZAMI_ENCRYPTION_KEY` で暗号化して保存。鍵が無い配備では 2FA を使えない
-    (平文フォールバックはしない)
-  - **SSO ログインはバイパスする**(多要素を課すかは IdP 側のポリシーが決めるため)。
-    APIキー認証は影響を受けない
 
 ### Changed
 
@@ -237,6 +171,68 @@ API・DB スキーマの互換方針とアップグレード手順は
 - **kizami.dev / docs.kizami.dev / demo.kizami.dev**: 校正紙モチーフのプロダクトサイト、
   VitePress ドキュメントの配信、毎晩リセットされる公開デモ環境
 - CONTRIBUTING / SECURITY と README の刷新(OSS 公開準備)
+
+- **退職者データの保持と消去**([docs/design/data-retention.md](docs/design/data-retention.md))
+  - 労働基準法109条の保存義務(原則5年・附則143条2項の経過措置により当分の間3年)と、
+    個人情報保護法22条の「遅滞なき消去」(努力義務)の衝突を、
+    **「保持期間の経過後に、行は残したまま匿名化する」**形で解く
+  - `POST /members/:id/erase` — 氏名を「削除済みユーザー」、メールを tombstone
+    (`user_deleted_<id>@invalid`)に置き換え、パスワード・2FA・セッション・プッシュ購読・
+    個人通知設定・APIキー・招待/リセットトークン・Slack連携・本人宛通知を物理削除し、
+    `punch_events` の IP・UA・GPS 列を null 化する。
+    **勤怠記録・締めスナップショット・監査ログの行は1件も消さない**
+  - 実行条件: 退職処理済み × 退職日が記録済み × 退職日 + 保持年数が経過。
+    未経過は 409 `retention_period_active`(残り日数・消去可能日つき)
+  - 新カタログ項目 `member.erase`(テナント全体スコープ・危険フラグ)。
+    `member.deactivate` の流用にしない — 無効化は取り消せるが消去には戻す経路が無い
+  - テナント設定 `GET/PUT /settings/data-retention`(3 or 5 年、**既定5**。
+    3年は経過措置にすぎず、既定を3にすると経過措置終了時に一斉に違反側へ倒れるため)
+  - 消去済みは無効化とは別の**終端状態**。tombstone でログイン不可・再有効化不可
+  - 確認ダイアログは影響の列挙 + **対象者氏名の再入力**(`ConfirmDialog` の `confirmPhrase`)
+  - メンバー一覧に退職日と保持状況(「消去可能まであと N 日」)を表示。
+    日次ワーカーによる通知はしない(急かす性質の操作ではない)
+  - プライバシー通知の雛形に「退職後の取り扱い」節を追加。
+    ヘルプに `privacy.retention-after-leaving`(4言語、origin: law)を追加
+  - migration 0031(`tenants.personal_data_retention_years` /
+    `users.deactivated_at` / `users.erased_at`)
+  - **テナント自体の削除はスコープ外**(SaaS 形態のフェーズで扱う)
+
+- **可観測性: メトリクスとエラー報告**([docs/design/observability.md](docs/design/observability.md))
+  - `GET /metrics`(Prometheus text format 0.0.4)。環境変数 `METRICS_TOKEN` が
+    **未設定なら 404**、設定時は `Authorization: Bearer` 必須(既定で口を開けない)
+  - 公開項目: HTTP リクエスト数・所要時間ヒストグラム・RSS / uptime・
+    テナント数 / ユーザー数 / 直近24時間の打刻数(60秒キャッシュ)・
+    定期スキャンの最終実行時刻と成功/失敗の累計
+  - ラベルは**ルートパターンとステータスクラスまで**。生パス・ユーザーID・テナントIDは
+    付けない(時系列の本数が入力で増えないようにする)
+  - ワーカーの心拍は新テーブル `worker_heartbeats`(migration 0030)経由で api の
+    `/metrics` が出す。ワーカー側に追加のポート・Service は要らない
+  - `kizami_punches_last24h` のために `punch_events(occurred_at)` の索引を1本追加
+  - `prom-client` は入れず自前の最小レジストリ(workerd でも同じコードが動くため)
+- **エラー報告(Sentry プロトコル互換)**。環境変数 `SENTRY_DSN` が未設定なら完全な no-op
+  - 想定外のルート例外(500)と定期スキャンの失敗を store API へ POST。403 / 409 のような
+    想定内の分岐は送らない
+  - **リクエストボディ・クエリ・ヘッダ・Cookie・メールアドレス・ユーザーID は送らない**。
+    テナントIDは SHA-256 の先頭8桁のみをタグにする(テストで固定)
+  - 撃ちっ放し・3秒タイムアウト・60秒の重複除去・窓あたり件数の上限。gzip は使わない
+  - `@sentry/node` は入れない(グローバルへのパッチと依存の重さを避けるため)
+  - 配備の配線: k8s(`kizami-metrics` / `kizami-sentry` Secret、`optional: true`)・
+    Helm(`observability.*`)・Compose(`.env`)・Workers(`wrangler secret put`)。すべて既定 OFF
+
+- **二要素認証(TOTP)**(自前認証の任意オプション、[docs/design/two-factor-auth.md](docs/design/two-factor-auth.md))
+  - RFC 6238(30秒 / 6桁 / SHA-1 / ±1ステップ許容)を依存を増やさず自前実装
+    (`@kizami/crypto`、WebCrypto のみ・RFC 6238 Appendix B と RFC 4648 のテストベクタで固定)
+  - 本人が「設定 → セキュリティ」(`/settings/security`)で有効化。QR は出さず、
+    共有鍵と `otpauth://` URI を手動入力用に表示する(v1)
+  - パスワードログインが2段階になる(`totp_required` → `POST /auth/login/totp`)。
+    第1段階の状態は暗号化 httpOnly Cookie(5分)で運び、サーバー側に中間状態を持たない
+  - リプレイ防止(最後に受理したカウンタ以下を拒否)、コード検証のレート制限(`ip|user` 10回/15分)
+  - 単回使用のリカバリコード10本(発行時に1度だけ表示・SHA-256 で保存・再生成可)
+  - 管理者によるリセット(`member.deactivate` 権限、監査ログ + 本人へアプリ内通知)
+  - 共有鍵は `KIZAMI_ENCRYPTION_KEY` で暗号化して保存。鍵が無い配備では 2FA を使えない
+    (平文フォールバックはしない)
+  - **SSO ログインはバイパスする**(多要素を課すかは IdP 側のポリシーが決めるため)。
+    APIキー認証は影響を受けない
 
 ### Changed
 
