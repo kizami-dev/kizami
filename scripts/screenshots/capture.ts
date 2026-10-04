@@ -69,7 +69,7 @@ export interface CaptureParams {
 export async function captureAll(params: CaptureParams): Promise<CapturedShot[]> {
   mkdirSync(OUTPUT_DIR, { recursive: true });
 
-  const browser = await // ネイティブの日付・時刻入力の表記(yyyy/mm/dd・24時間)は context の locale ではなく起動言語に従うため --lang も合わせる
+  // ネイティブの日付・時刻入力の表記(yyyy/mm/dd・24時間)は context の locale ではなく起動言語に従うため --lang も合わせる
   const browser = await chromium.launch({ args: ["--lang=ja-JP"] });
   const shots: CapturedShot[] = [];
 
