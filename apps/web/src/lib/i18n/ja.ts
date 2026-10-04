@@ -1422,6 +1422,8 @@ export const ja = {
     slackLinkDesc: "Slackで `/punch link` を実行して発行したトークンを入力し、自分のSlackアカウントと連携します。",
     auditLogsTitle: "監査ログ",
     auditLogsDesc: "打刻・修正・承認・締め・権限変更などの不可変な操作記録を閲覧します(読み取り専用)。",
+    /** 設定ナビ(サイドバー)用の短い名前。ハブのタイトルが長く折り返す項目だけ用意する。 */
+    slackLinkNavTitle: "Slack連携(本人)",
   },
 
   /** 月次締め・CSVエクスポート(/monthly 画面、v0.3)。要件 §6(締めと出口)・§10(コンテキストヘルプ)。 */

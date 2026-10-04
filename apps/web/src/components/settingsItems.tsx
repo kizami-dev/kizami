@@ -113,6 +113,8 @@ export interface SettingsItem {
   to: SettingsRoute;
   group: SettingsGroupKey;
   title: string;
+  /** ナビ(サイドバー)での名前。ハブのタイトルが長い項目だけ短くする。 */
+  navTitle: string;
   desc: string;
   icon: string;
 }
@@ -134,6 +136,7 @@ export function visibleSettingsGroups(access: SettingsAccess): SettingsGroup[] {
       to: i.to,
       group: i.group,
       title: hub[`${i.key}Title`] ?? i.key,
+      navTitle: hub[`${i.key}NavTitle`] ?? hub[`${i.key}Title`] ?? i.key,
       desc: hub[`${i.key}Desc`] ?? "",
       icon: i.icon,
     })),

@@ -1399,6 +1399,7 @@ export const en = {
     slackLinkDesc: "Enter the token issued by running `/punch link` in Slack to link your Slack account.",
     auditLogsTitle: "Audit log",
     auditLogsDesc: "View the immutable record of operations such as punches, corrections, approvals, closing, and permission changes (read-only).",
+    slackLinkNavTitle: "Slack link (you)",
   },
 
   /** Monthly close & CSV export (/monthly screen, v0.3). Requirement §6 (closing & data export) & §10 (contextual help). */

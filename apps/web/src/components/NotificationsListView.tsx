@@ -10,6 +10,7 @@ import { useAuthGuard } from "../lib/useAuthGuard";
 import { AppHeader } from "./AppHeader";
 import { NotificationListItem } from "./NotificationListItem";
 import { StateView } from "./ui/StateView";
+import { buttonClass } from "./ui/Button";
 import { PageHeader } from "./ui/PageHeader";
 
 /** GET /notifications が実際に返す最大件数(apps/api/src/routes/notifications.ts の MAX_LIST_LIMIT)。
@@ -225,7 +226,7 @@ export function NotificationsListView() {
             <div className="notif-list-page__bulk">
               <button
                 type="button"
-                className="notif-item__read-btn"
+                className={buttonClass("secondary")}
                 disabled={unreadDisplayedIds.length === 0 || markAllPending}
                 onClick={handleMarkAllVisibleRead}
               >

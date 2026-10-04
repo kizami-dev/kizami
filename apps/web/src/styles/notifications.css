@@ -220,10 +220,6 @@
   justify-content: flex-end;
 }
 
-.notif-list-page__bulk .notif-item__read-btn {
-  font-size: var(--text-sm);
-}
-
 .notif-list-page__list {
   gap: var(--space-3);
 }

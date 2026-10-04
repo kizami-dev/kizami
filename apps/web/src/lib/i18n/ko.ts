@@ -1372,6 +1372,7 @@ export const ko = {
     auditLogsTitle: "감사 로그",
     auditLogsDesc:
       "출퇴근·수정·승인·마감·권한 변경 등 조작 기록을 불변 로그로 열람합니다(읽기 전용).",
+    slackLinkNavTitle: "Slack 연동(본인)",
   },
 
   /** 월간 마감·CSV 내보내기(/monthly 화면, v0.3). 요건 §6(마감과 출구)·§10(컨텍스트 도움말). */
