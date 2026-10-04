@@ -369,7 +369,7 @@ export function ShiftsView() {
               <span className={`badge ${currentPlan.publishedAt !== null ? "badge--key" : "badge--neutral"}`}>
                 {currentPlan.publishedAt !== null ? messages.shifts.publishedBadge : messages.shifts.unpublishedBadge}
               </span>
-              <button type="button" className="org-table__link-btn" onClick={handleHistoryToggle}>
+              <button type="button" className="btn btn--ghost btn--sm" onClick={handleHistoryToggle}>
                 {historyOpen ? messages.shifts.historyToggleClose : messages.shifts.historyToggleOpen}
               </button>
             </div>

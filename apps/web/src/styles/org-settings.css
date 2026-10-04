@@ -6,25 +6,55 @@
  * 意味色は状態と危険表示のみに絞る: 危険=M(--k-magenta-ink)、有効/成功=C(--k-cyan-ink)。
  */
 
-/* ---- 設定サブナビ(/settings/* 共通) ---- */
+/* ---- 設定ナビ(/settings/* 共通) ----
+ * 広い画面(60rem〜)は左のサイドバー、狭い画面はページ上部の横スクロールのタブ。
+ * ナビは .page の最初の子に置かれるので、ナビを持つ .page だけ 2 列のグリッドにし、
+ * ナビを左列(全行にわたって sticky)、残りの子をすべて右列に積む。行間は 0 にして
+ * 子同士の間隔だけ margin で取る(ナビが跨ぐ空の行に隙間が積み上がらないように)。 */
 
 .settings-nav {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-3);
-  padding-bottom: var(--space-3);
+  gap: var(--space-4);
+  overflow-x: auto;
+  scrollbar-width: thin;
+  padding-bottom: var(--space-2);
   border-bottom: var(--border-hair);
   font-size: var(--text-sm);
 }
 
-/* 「一覧に戻る」操作であることが分かるよう、タブ群とは視覚的に分けて薄く表示する
- * (自己批評での改善: 単なる「設定」表記だと他のタブと同格に見えていた)。 */
+.settings-nav__group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: none;
+}
+
+.settings-nav__group + .settings-nav__group {
+  padding-left: var(--space-4);
+  border-left: var(--border-hair);
+}
+
+.settings-nav__group-title {
+  margin: 0;
+  flex: none;
+  font-size: var(--text-xs);
+  color: var(--k-ink-soft);
+  white-space: nowrap;
+}
+
+.settings-nav__items {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+/* 「一覧に戻る」操作であることが分かるよう、項目とは視覚的に分けて薄く表示する。 */
 .settings-nav__hub-link {
+  flex: none;
   color: var(--k-ink-soft);
   text-decoration: none;
-  /* 2026-08-23 SP監査: 縦 padding が var(--space-1)=4px だと高さ約28pxで、設定系画面
-     共通の「戻る」導線としてはタップしづらい。var(--space-2)=8px に広げ約36pxを確保する。 */
+  /* タップ領域: 縦 padding で約36px を確保する。 */
   padding: var(--space-2) 0;
   font-size: var(--text-sm);
   white-space: nowrap;
@@ -35,34 +65,97 @@
   text-decoration: underline;
 }
 
-.settings-nav__divider {
-  width: 1px;
-  align-self: stretch;
-  background: color-mix(in srgb, var(--k-key) 14%, transparent);
-}
-
-.settings-nav__tabs {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-4);
-}
-
 .settings-nav__link {
+  flex: none;
   color: var(--k-ink-soft);
   text-decoration: none;
-  padding: var(--space-1) 0;
+  white-space: nowrap;
+  padding: var(--space-2) var(--space-2);
   border-bottom: 2px solid transparent;
+  border-radius: var(--radius-s) var(--radius-s) 0 0;
 }
 
 .settings-nav__link[aria-current="page"] {
   color: var(--k-key);
-  border-bottom-color: var(--k-cyan);
-  font-weight: 700;
+  border-bottom-color: var(--k-cyan-ink);
+  font-weight: var(--weight-bold);
 }
 
 .settings-nav__link:hover {
   color: var(--k-key);
+  background: color-mix(in srgb, var(--k-key) 4%, transparent);
+}
+
+@media (min-width: 60rem) {
+  .page:has(> .settings-nav) {
+    display: grid;
+    grid-template-columns: 14rem minmax(0, 1fr);
+    column-gap: var(--space-6);
+    row-gap: 0;
+    align-content: start;
+  }
+
+  .page:has(> .settings-nav) > .settings-nav {
+    grid-column: 1;
+    grid-row: 1 / span 60;
+    align-self: start;
+    position: sticky;
+    top: var(--space-4);
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-4);
+    overflow: visible;
+    padding: 0 var(--space-4) 0 0;
+    border-bottom: none;
+    border-right: var(--border-hair);
+  }
+
+  .page:has(> .settings-nav) > :not(.settings-nav) {
+    grid-column: 2;
+  }
+
+  .page:has(> .settings-nav) > :not(.settings-nav) + :not(.settings-nav) {
+    margin-top: var(--space-5);
+  }
+
+  .settings-nav__group {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-1);
+  }
+
+  .settings-nav__group + .settings-nav__group {
+    padding-left: 0;
+    border-left: none;
+  }
+
+  .settings-nav__group-title {
+    font-family: var(--font-heading);
+    font-weight: var(--weight-bold);
+    font-feature-settings: var(--feature-heading);
+    font-size: var(--text-sm);
+    color: var(--k-key);
+    padding: 0 var(--space-2);
+  }
+
+  .settings-nav__items {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+  }
+
+  .settings-nav__link {
+    white-space: normal;
+    line-height: 1.4;
+    border-bottom: none;
+    border-left: 2px solid transparent;
+    border-radius: 0 var(--radius-s) var(--radius-s) 0;
+  }
+
+  .settings-nav__link[aria-current="page"] {
+    border-left-color: var(--k-cyan-ink);
+    background: color-mix(in srgb, var(--k-cyan) 8%, transparent);
+  }
 }
 
 /* ---- 設定ハブ(/settings) ---- */
@@ -91,16 +184,36 @@
   padding-bottom: var(--space-2);
 }
 
+/* 会社の設定の中の小見出し(組織・権限 / 勤怠・休暇・手当 / 連携・通知 / 法令・記録)。 */
+.settings-hub__subgroup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.settings-hub__subgroup + .settings-hub__subgroup {
+  margin-top: var(--space-3);
+}
+
+.settings-hub__subgroup-title {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-bold);
+  color: var(--k-ink-soft);
+}
+
 .settings-hub__grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
   gap: var(--space-4);
 }
 
+/* カード: 左上に線のアイコン、右上に「→」、下に説明(2 行で切る)。高さはグリッドの行でそろう。 */
 .settings-hub__card {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto 1fr;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
   border: var(--border-hair);
   border-radius: var(--radius-m);
   padding: var(--space-4);
@@ -113,6 +226,15 @@
   background: color-mix(in srgb, var(--k-key) 3%, transparent);
 }
 
+.settings-hub__card-icon {
+  display: inline-flex;
+  color: var(--k-ink-soft);
+}
+
+.settings-hub__card:hover .settings-hub__card-icon {
+  color: var(--k-key);
+}
+
 .settings-hub__card-title {
   font-family: var(--font-heading);
   font-weight: var(--weight-bold);
@@ -120,9 +242,32 @@
   font-size: var(--text-md);
 }
 
+.settings-hub__card-arrow {
+  color: var(--k-ink-soft);
+  transition: transform 120ms ease-out;
+}
+
+.settings-hub__card:hover .settings-hub__card-arrow {
+  color: var(--k-key);
+  transform: translateX(2px);
+}
+
 .settings-hub__card-desc {
+  grid-column: 1 / -1;
+  align-self: start;
   font-size: var(--text-sm);
   color: var(--k-ink-soft);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .settings-hub__card-arrow {
+    transition: none;
+  }
 }
 
 /* 使い方ツアーの再実行(2026-08-27 追加)。設定カードと張り合わないよう、
@@ -250,31 +395,6 @@
   font-size: var(--text-xs);
 }
 
-.org-table__link-btn {
-  background: none;
-  border: none;
-  white-space: nowrap;
-  font-size: var(--text-sm);
-  color: var(--k-cyan-ink);
-  text-decoration: underline;
-  text-underline-offset: 2px;
-  /*
-   * 2026-08-23 SP監査: padding:0 のためタップ領域が文字の実寸(高さ約20px)しかなく、
-   * 390px幅の実機で押しにくかった(メンバー管理の「保存」「詳細を開く」等)。
-   * padding + 相殺の負マージンで見た目は変えずタップ領域だけ広げる(約32px)。
-   */
-  padding: 6px 4px;
-  margin: -6px -4px;
-}
-
-.org-table__link-btn:hover {
-  color: var(--k-key);
-}
-
-.org-table__link-btn--danger {
-  color: var(--k-magenta-ink);
-}
-
 /* td.org-table__detail-cell: 上の ".org-table th, .org-table td" と詳細度(0,1,1)を揃え、
    ソース順(このルールの方が後)で勝たせる(!important 廃止、2026-08-23)。 */
 td.org-table__detail-cell {
@@ -386,31 +506,6 @@ td.org-table__detail-cell {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
-}
-
-.dept-tree__btn {
-  border: var(--border-hair);
-  border-radius: var(--radius-s);
-  background: transparent;
-  color: var(--k-ink-soft);
-  /* 2026-08-23 SP監査: 縦 padding が var(--space-1)=4px だと高さ約28pxでタップしづらい。
-     var(--space-2)=8px に広げ約36pxを確保する(操作列は元々 flex-wrap 済み)。 */
-  padding: var(--space-2) var(--space-3);
-  font-size: var(--text-xs);
-}
-
-.dept-tree__btn:hover {
-  background: color-mix(in srgb, var(--k-key) 5%, transparent);
-  color: var(--k-key);
-}
-
-.dept-tree__btn--danger {
-  border-color: var(--k-magenta-ink);
-  color: var(--k-magenta-ink);
-}
-
-.dept-tree__btn--danger:hover {
-  background: color-mix(in srgb, var(--k-magenta) 8%, transparent);
 }
 
 /* ---- チップ(割当プリセット・種別バッジ共通) ---- */
@@ -836,4 +931,9 @@ td.org-table__detail-cell {
 /* 日付・数値の列は途中で折り返さない(「2026-10-/05」のような割れ方を防ぐ)。 */
 .org-table td.tabular-nums {
   white-space: nowrap;
+}
+
+/* アイコンの無いカード(ホームの「よく使う画面」)は、題を左の 2 列にまたがせる。 */
+.settings-hub__card > .settings-hub__card-title:first-child {
+  grid-column: 1 / span 2;
 }

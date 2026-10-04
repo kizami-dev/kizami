@@ -1373,6 +1373,10 @@ export const ja = {
     /** 個人設定(全員)と会社設定(管理者向け)をカード群として明確に分ける見出し。 */
     personalGroupTitle: "自分の設定",
     tenantGroupTitle: "会社の設定",
+    groupOrgTitle: "組織・権限",
+    groupAttendanceTitle: "勤怠・休暇・手当",
+    groupIntegrationsTitle: "連携・通知",
+    groupRecordsTitle: "法令・記録",
     myNotificationsTitle: "個人の通知設定",
     myNotificationsDesc: "通知の種類ごとに、アプリ内・メール・個人Webhookでの受け取り方を設定します。",
     notificationsTitle: "通知設定(会社全体)",

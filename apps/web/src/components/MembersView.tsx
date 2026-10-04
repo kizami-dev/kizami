@@ -1035,7 +1035,7 @@ export function MembersView() {
                                   ) : null}
                                   <button
                                     type="button"
-                                    className="btn btn--primary"
+                                    className="btn btn--secondary"
                                     disabled={grantClassPendingId === member.id}
                                     onClick={() => handleGrantClassSave(member)}
                                   >

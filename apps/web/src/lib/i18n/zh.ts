@@ -1310,6 +1310,10 @@ export const zh = {
     /** 明确区分个人设置(全员)与公司设置(面向管理员)的分组标题。 */
     personalGroupTitle: "个人设置",
     tenantGroupTitle: "公司设置",
+    groupOrgTitle: "组织与权限",
+    groupAttendanceTitle: "考勤·休假·津贴",
+    groupIntegrationsTitle: "集成与通知",
+    groupRecordsTitle: "法规与记录",
     myNotificationsTitle: "个人通知设置",
     myNotificationsDesc: "按通知类型分别设置应用内、邮件、个人Webhook的接收方式。",
     notificationsTitle: "通知设置(公司全局)",

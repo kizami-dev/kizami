@@ -6,190 +6,40 @@ import { restartTour } from "./Tour";
 import { useSettingsAccess } from "../lib/useSettingsAccess";
 import { useAuthGuard } from "../lib/useAuthGuard";
 import { AppHeader } from "./AppHeader";
+import { SettingsItemIcon, visibleSettingsGroups, type SettingsGroup } from "./settingsItems";
 import { StateView } from "./ui/StateView";
 import { PageHeader } from "./ui/PageHeader";
 
 /**
  * /settings のハブ画面。アクセスできる設定項目だけをカードで表示する
  * (AppHeader の「設定」リンクの遷移先。要件: 既存の設定ナビから各画面に辿れること)。
+ * グループ分け・名前は設定ナビ(SettingsNav)と同じ(settingsItems.tsx が出所)。
+ * 「自分の設定」(全員アクセス可)と「会社の設定」(権限が必要)を分け、会社の設定は
+ * 組織・権限 / 勤怠・休暇・手当 / 連携・通知 / 法令・記録 の小見出しで整理する
+ * (依頼: テナント設定と個人設定が混ざらないようにする)。
  */
-type SettingsRoute =
-  | "/settings/notifications/me"
-  | "/settings/notifications"
-  | "/settings/departments"
-  | "/settings/members"
-  | "/settings/presets"
-  | "/settings/approval-flow"
-  | "/settings/tenant-profile"
-  | "/settings/leave"
-  | "/settings/help"
-  | "/settings/privacy"
-  | "/settings/attendance"
-  | "/settings/allowances"
-  | "/settings/shift-patterns"
-  | "/settings/security"
-  | "/settings/display"
-  | "/settings/api-keys"
-  | "/settings/slack"
-  | "/settings/sso"
-  | "/settings/slack-link"
-  | "/settings/audit-logs";
+function HubGrid({ group }: { group: SettingsGroup }) {
+  return (
+    <div className="settings-hub__grid">
+      {group.items.map((c) => (
+        <Link key={c.key} to={c.to} className="settings-hub__card">
+          <span className="settings-hub__card-icon">
+            <SettingsItemIcon path={c.icon} />
+          </span>
+          <span className="settings-hub__card-title">{c.title}</span>
+          <span className="settings-hub__card-arrow" aria-hidden="true">
+            →
+          </span>
+          <span className="settings-hub__card-desc">{c.desc}</span>
+        </Link>
+      ))}
+    </div>
+  );
+}
 
 export function SettingsHubView() {
   const guard = useAuthGuard();
   const access = useSettingsAccess();
-
-  // 「自分の設定」(全員アクセス可)と「会社の設定」(権限が必要)をカード群として分ける
-  // (依頼: テナント設定と個人設定が混ざらないようにする)。
-  const personalCards: { key: string; enabled: boolean; to: SettingsRoute; title: string; desc: string }[] = [
-    // 二要素認証は「アカウントそのものを守る設定」で、他の個人設定(通知の受け取り方・APIキー・
-    // Slack連携)より優先度が高いため先頭に置く(2026-08-27 追加)。
-    {
-      key: "security",
-      enabled: access.security,
-      to: "/settings/security" as const,
-      title: messages.settingsHub.securityTitle,
-      desc: messages.settingsHub.securityDesc,
-    },
-    {
-      key: "myNotifications",
-      enabled: access.myNotifications,
-      to: "/settings/notifications/me" as const,
-      title: messages.settingsHub.myNotificationsTitle,
-      desc: messages.settingsHub.myNotificationsDesc,
-    },
-    // 言語と表示(2026-10-05 追加。ヘッダーにあった言語・テーマの切り替えをここへ移した)。
-    {
-      key: "display",
-      enabled: access.display,
-      to: "/settings/display" as const,
-      title: messages.settingsHub.displayTitle,
-      desc: messages.settingsHub.displayDesc,
-    },
-    {
-      key: "apiKeys",
-      enabled: access.apiKeys,
-      to: "/settings/api-keys" as const,
-      title: messages.settingsHub.apiKeysTitle,
-      desc: messages.settingsHub.apiKeysDesc,
-    },
-    {
-      key: "slackLink",
-      enabled: access.slackLink,
-      to: "/settings/slack-link" as const,
-      title: messages.settingsHub.slackLinkTitle,
-      desc: messages.settingsHub.slackLinkDesc,
-    },
-  ].filter((c) => c.enabled);
-
-  const cards: { key: string; enabled: boolean; to: SettingsRoute; title: string; desc: string }[] = [
-    {
-      key: "notifications",
-      enabled: access.notifications,
-      to: "/settings/notifications" as const,
-      title: messages.settingsHub.notificationsTitle,
-      desc: messages.settingsHub.notificationsDesc,
-    },
-    {
-      key: "departments",
-      enabled: access.departments,
-      to: "/settings/departments" as const,
-      title: messages.settingsHub.departmentsTitle,
-      desc: messages.settingsHub.departmentsDesc,
-    },
-    {
-      key: "members",
-      enabled: access.members,
-      to: "/settings/members" as const,
-      title: messages.settingsHub.membersTitle,
-      desc: messages.settingsHub.membersDesc,
-    },
-    {
-      key: "presets",
-      enabled: access.presets,
-      to: "/settings/presets" as const,
-      title: messages.settingsHub.presetsTitle,
-      desc: messages.settingsHub.presetsDesc,
-    },
-    // 承認体制の設定なので、権限プリセット(誰が承認できるか)の隣に置く。
-    {
-      key: "approvalFlow",
-      enabled: access.approvalFlow,
-      to: "/settings/approval-flow" as const,
-      title: messages.settingsHub.approvalFlowTitle,
-      desc: messages.settingsHub.approvalFlowDesc,
-    },
-    {
-      key: "attendance",
-      enabled: access.attendance,
-      to: "/settings/attendance" as const,
-      title: messages.settingsHub.attendanceTitle,
-      desc: messages.settingsHub.attendanceDesc,
-    },
-    {
-      key: "allowances",
-      enabled: access.allowances,
-      to: "/settings/allowances" as const,
-      title: messages.settingsHub.allowancesTitle,
-      desc: messages.settingsHub.allowancesDesc,
-    },
-    {
-      key: "shiftPatterns",
-      enabled: access.shiftPatterns,
-      to: "/settings/shift-patterns" as const,
-      title: messages.settingsHub.shiftPatternsTitle,
-      desc: messages.settingsHub.shiftPatternsDesc,
-    },
-    {
-      key: "tenantProfile",
-      enabled: access.tenantProfile,
-      to: "/settings/tenant-profile" as const,
-      title: messages.settingsHub.tenantProfileTitle,
-      desc: messages.settingsHub.tenantProfileDesc,
-    },
-    {
-      key: "leave",
-      enabled: access.leave,
-      to: "/settings/leave" as const,
-      title: messages.settingsHub.leaveTitle,
-      desc: messages.settingsHub.leaveDesc,
-    },
-    {
-      key: "help",
-      enabled: access.help,
-      to: "/settings/help" as const,
-      title: messages.settingsHub.helpTitle,
-      desc: messages.settingsHub.helpDesc,
-    },
-    {
-      key: "privacy",
-      enabled: access.privacy,
-      to: "/settings/privacy" as const,
-      title: messages.settingsHub.privacyTitle,
-      desc: messages.settingsHub.privacyDesc,
-    },
-    {
-      key: "slack",
-      enabled: access.slack,
-      to: "/settings/slack" as const,
-      title: messages.settingsHub.slackTitle,
-      desc: messages.settingsHub.slackDesc,
-    },
-    {
-      key: "sso",
-      enabled: access.sso,
-      to: "/settings/sso" as const,
-      title: messages.settingsHub.ssoTitle,
-      desc: messages.settingsHub.ssoDesc,
-    },
-    {
-      key: "auditLogs",
-      enabled: access.auditLogs,
-      to: "/settings/audit-logs" as const,
-      title: messages.settingsHub.auditLogsTitle,
-      desc: messages.settingsHub.auditLogsDesc,
-    },
-  ].filter((c) => c.enabled);
 
   if (guard.status === "loading" || access.loading) {
     return <StateView kind="loading">{messages.loading}</StateView>;
@@ -198,41 +48,36 @@ export function SettingsHubView() {
     return <StateView kind="error">{messages.errors.network}</StateView>;
   }
 
+  const groups = visibleSettingsGroups(access);
+  const personal = groups.find((g) => g.key === "personal");
+  const tenantGroups = groups.filter((g) => g.key !== "personal");
+
   return (
     <div className="settings-hub">
       <AppHeader displayName={guard.user.displayName} email={guard.user.email} tenantName={guard.tenant?.name ?? null} active="settings" />
       <main className="page">
         <PageHeader title={messages.settingsHub.title} lead={messages.settingsHub.tagline} />
 
-        {personalCards.length === 0 && cards.length === 0 ? (
+        {groups.length === 0 ? (
           <StateView kind="empty">{messages.settingsHub.empty}</StateView>
         ) : (
           <>
-            {personalCards.length > 0 ? (
+            {personal ? (
               <section className="settings-hub__group">
-                <h2 className="settings-hub__group-title">{messages.settingsHub.personalGroupTitle}</h2>
-                <div className="settings-hub__grid">
-                  {personalCards.map((c) => (
-                    <Link key={c.key} to={c.to} className="settings-hub__card">
-                      <span className="settings-hub__card-title">{c.title}</span>
-                      <span className="settings-hub__card-desc">{c.desc}</span>
-                    </Link>
-                  ))}
-                </div>
+                <h2 className="settings-hub__group-title">{personal.title}</h2>
+                <HubGrid group={personal} />
               </section>
             ) : null}
 
-            {cards.length > 0 ? (
+            {tenantGroups.length > 0 ? (
               <section className="settings-hub__group" data-tour="settings-hub-tenant">
                 <h2 className="settings-hub__group-title">{messages.settingsHub.tenantGroupTitle}</h2>
-                <div className="settings-hub__grid">
-                  {cards.map((c) => (
-                    <Link key={c.key} to={c.to} className="settings-hub__card">
-                      <span className="settings-hub__card-title">{c.title}</span>
-                      <span className="settings-hub__card-desc">{c.desc}</span>
-                    </Link>
-                  ))}
-                </div>
+                {tenantGroups.map((g) => (
+                  <div key={g.key} className="settings-hub__subgroup">
+                    <h3 className="settings-hub__subgroup-title">{g.title}</h3>
+                    <HubGrid group={g} />
+                  </div>
+                ))}
               </section>
             ) : null}
           </>

@@ -1,126 +1,54 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import { Link } from "waku";
 import { messages } from "../lib/messages";
 import { useSettingsAccess } from "../lib/useSettingsAccess";
+import { visibleSettingsGroups, type SettingsSection } from "./settingsItems";
 
-export type SettingsSection =
-  | "notifications"
-  | "departments"
-  | "members"
-  | "presets"
-  | "approvalFlow"
-  | "tenantProfile"
-  | "leave"
-  | "help"
-  | "privacy"
-  | "attendance"
-  | "allowances"
-  | "shiftPatterns"
-  | "security"
-  | "display"
-  | "apiKeys"
-  | "slack"
-  | "sso"
-  | "auditLogs";
-
-type SettingsRoute =
-  | "/settings/notifications"
-  | "/settings/departments"
-  | "/settings/members"
-  | "/settings/presets"
-  | "/settings/approval-flow"
-  | "/settings/tenant-profile"
-  | "/settings/leave"
-  | "/settings/help"
-  | "/settings/privacy"
-  | "/settings/attendance"
-  | "/settings/allowances"
-  | "/settings/shift-patterns"
-  | "/settings/security"
-  | "/settings/display"
-  | "/settings/api-keys"
-  | "/settings/slack"
-  | "/settings/sso"
-  | "/settings/audit-logs";
+export type { SettingsSection } from "./settingsItems";
 
 /**
- * /settings/* 画面間の行き来用サブナビ(要件: 既存の設定ナビから各画面へ辿れること)。
- * アクセスできる項目のみ表示する(AppHeader と同じ判定を共有)。
+ * /settings/* 画面間の行き来用ナビ。広い画面では左のサイドバー、狭い画面ではページ上部の
+ * 横スクロールのタブになる(配置は components.css 側。.page の直下の最初の子に置く)。
+ * 項目は「自分の設定 / 組織・権限 / 勤怠・休暇・手当 / 連携・通知 / 法令・記録」のグループに並べ、
+ * 名前は設定ハブと同じ(settingsItems.tsx が出所)。アクセスできる項目だけを出す。
  */
 export function SettingsNav({ active }: { active: SettingsSection }) {
   const access = useSettingsAccess();
-  if (access.loading) return null;
+  const navRef = useRef<HTMLElement>(null);
 
-  const items: { key: SettingsSection; to: SettingsRoute; label: string; enabled: boolean }[] = [
-    { key: "notifications", to: "/settings/notifications", label: messages.settingsNav.notifications, enabled: access.notifications },
-    { key: "departments", to: "/settings/departments", label: messages.settingsNav.departments, enabled: access.departments },
-    { key: "members", to: "/settings/members", label: messages.settingsNav.members, enabled: access.members },
-    { key: "presets", to: "/settings/presets", label: messages.settingsNav.presets, enabled: access.presets },
-    // 承認体制の設定なので、権限プリセット(誰が承認できるか)の隣に置く。
-    {
-      key: "approvalFlow",
-      to: "/settings/approval-flow",
-      label: messages.settingsNav.approvalFlow,
-      enabled: access.approvalFlow,
-    },
-    {
-      key: "attendance",
-      to: "/settings/attendance",
-      label: messages.settingsNav.attendance,
-      enabled: access.attendance,
-    },
-    {
-      key: "allowances",
-      to: "/settings/allowances",
-      label: messages.settingsNav.allowances,
-      enabled: access.allowances,
-    },
-    {
-      key: "shiftPatterns",
-      to: "/settings/shift-patterns",
-      label: messages.settingsNav.shiftPatterns,
-      enabled: access.shiftPatterns,
-    },
-    {
-      key: "tenantProfile",
-      to: "/settings/tenant-profile",
-      label: messages.settingsNav.tenantProfile,
-      enabled: access.tenantProfile,
-    },
-    { key: "leave", to: "/settings/leave", label: messages.settingsNav.leave, enabled: access.leave },
-    { key: "help", to: "/settings/help", label: messages.settingsNav.help, enabled: access.help },
-    { key: "privacy", to: "/settings/privacy", label: messages.settingsNav.privacy, enabled: access.privacy },
-    // 二要素認証(2026-08-27 追加)。自分の認証設定なので、同じく権限不要の APIキーの隣に置く。
-    { key: "security", to: "/settings/security", label: messages.settingsNav.security, enabled: access.security },
-    // 言語と表示(2026-10-05 追加)。ヘッダーから移した本人用の設定で、同じく権限不要。
-    { key: "display", to: "/settings/display", label: messages.settingsNav.display, enabled: access.display },
-    { key: "apiKeys", to: "/settings/api-keys", label: messages.settingsNav.apiKeys, enabled: access.apiKeys },
-    { key: "slack", to: "/settings/slack", label: messages.settingsNav.slack, enabled: access.slack },
-    { key: "sso", to: "/settings/sso", label: messages.settingsNav.sso, enabled: access.sso },
-    { key: "auditLogs", to: "/settings/audit-logs", label: messages.settingsNav.auditLogs, enabled: access.auditLogs },
-  ];
-  const visible = items.filter((i) => i.enabled);
-  if (visible.length === 0) return null;
+  // 横スクロールのタブでは、いま開いている項目が見える位置までスクロールしておく。
+  useEffect(() => {
+    const current = navRef.current?.querySelector<HTMLElement>('[aria-current="page"]');
+    const nav = navRef.current;
+    if (!current || !nav || nav.scrollWidth <= nav.clientWidth) return;
+    nav.scrollLeft = Math.max(0, current.offsetLeft - nav.clientWidth / 2 + current.offsetWidth / 2);
+  }, [access.loading, active]);
+
+  if (access.loading) return null;
+  const groups = visibleSettingsGroups(access);
+  if (groups.length === 0) return null;
 
   return (
-    <nav className="settings-nav" aria-label={messages.settingsNav.label}>
+    <nav ref={navRef} className="settings-nav" aria-label={messages.settingsNav.label}>
       <Link to="/settings" className="settings-nav__hub-link">
         <span aria-hidden="true">←</span> {messages.settingsNav.hubLink}
       </Link>
-      <span className="settings-nav__divider" aria-hidden="true" />
-      <div className="settings-nav__tabs">
-        {visible.map((item) => (
-          <Link
-            key={item.key}
-            to={item.to}
-            className="settings-nav__link"
-            aria-current={active === item.key ? "page" : undefined}
-          >
-            {item.label}
-          </Link>
-        ))}
-      </div>
+      {groups.map((group) => (
+        <div key={group.key} className="settings-nav__group" role="group" aria-label={group.title}>
+          <p className="settings-nav__group-title" aria-hidden="true">
+            {group.title}
+          </p>
+          <div className="settings-nav__items">
+            {group.items.map((item) => (
+              <Link key={item.key} to={item.to} className="settings-nav__link" aria-current={active === item.key ? "page" : undefined}>
+                {item.title}
+              </Link>
+            ))}
+          </div>
+        </div>
+      ))}
     </nav>
   );
 }

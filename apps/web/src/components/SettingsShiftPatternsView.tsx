@@ -179,7 +179,7 @@ export function SettingsShiftPatternsView() {
                             <div className="org-table__actions">
                               <button
                                 type="button"
-                                className="org-table__link-btn org-table__link-btn--danger"
+                                className="btn btn--danger-ghost btn--sm"
                                 onClick={() => {
                                   setArchiveError(null);
                                   setArchiveTarget(p);

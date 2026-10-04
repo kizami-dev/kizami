@@ -1351,6 +1351,10 @@ export const en = {
     /** Heading that clearly separates personal settings (everyone) from company settings (admins) as card groups. */
     personalGroupTitle: "Your settings",
     tenantGroupTitle: "Company settings",
+    groupOrgTitle: "Organization & permissions",
+    groupAttendanceTitle: "Attendance, leave & allowances",
+    groupIntegrationsTitle: "Integrations & notifications",
+    groupRecordsTitle: "Legal & records",
     myNotificationsTitle: "Personal notification settings",
     myNotificationsDesc: "Choose in-app, email, and personal webhook delivery for each notification type.",
     notificationsTitle: "Notification settings (company-wide)",
