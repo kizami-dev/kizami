@@ -139,6 +139,15 @@ export const AUTH_WINDOW_MS = 15 * 60_000;
  *   他より厳しい 5回/15分(正規の利用は「1回登録して確認するだけ」で、打ち間違いの再試行を
  *   見込んでも十分)。確認リンクの GET/POST(/signup/verify/*)は招待・リセットと同じ
  *   `tokenPerIp` を使う。判断点(NAT の巻き添え)は app.ts のトークン経路のコメントと同じ。
+ * - `passwordChangePerIpUser`: ログイン中の本人によるパスワード変更(POST /auth/password/change、
+ *   `ip|userId`、2026-10-04 追加)。現在のパスワードの照合を伴うので、盗まれたセッションからの総当たり
+ *   (現在のパスワード当て)の的になる。`totpPerIpUser`(2FA の無効化等も現在のパスワードを要求する)と
+ *   同じ 10回/15分に揃える。別のインスタンスにしてあり(共有しない)、2FA 側の枠を食わない。
+ * - `passwordResetRequestPerIp`: 本人用「パスワードを忘れた」の要求(POST /password-resets、2026-10-04 追加)。
+ *   1回ごとに Turnstile の siteverify・DB 書き込み・システムメール送信という副作用が走るので、
+ *   サインアップの登録(`signupPerIp`)と同じ 5回/15分。メール単位の 5 分スロットルはこれとは別
+ *   (db の password_reset_requests、IP を変えても効く)。受諾画面のリンク(GET/POST /password-resets/:token/*)は
+ *   従来どおり `tokenPerIp`。
  */
 export const RATE_LIMITS = {
   loginPerIpEmail: { windowMs: AUTH_WINDOW_MS, max: 10 },
@@ -148,6 +157,8 @@ export const RATE_LIMITS = {
   apiKeyPerIp: { windowMs: 60_000, max: 120 },
   oidcPerIp: { windowMs: AUTH_WINDOW_MS, max: 20 },
   signupPerIp: { windowMs: AUTH_WINDOW_MS, max: 5 },
+  passwordChangePerIpUser: { windowMs: AUTH_WINDOW_MS, max: 10 },
+  passwordResetRequestPerIp: { windowMs: AUTH_WINDOW_MS, max: 5 },
 } as const;
 
 /**
