@@ -1958,6 +1958,10 @@ export const ja = {
     workSystemUnset: "未設定",
 
     detailToggleOpen: "詳細を開く",
+    detailShortOpen: "詳細",
+    detailShortClose: "閉じる",
+    moreActions: "その他の操作",
+    basicsTitle: "所属と入社日",
     detailToggleClose: "詳細を閉じる",
 
     /** 退職処理(無効化)済みメンバーの状態バッジ(2026-08-23 Tier 0 その4 追加)。 */

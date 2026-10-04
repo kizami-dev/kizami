@@ -1944,6 +1944,10 @@ export const en = {
     workSystemUnset: "Not set",
 
     detailToggleOpen: "Show details",
+    detailShortOpen: "Details",
+    detailShortClose: "Close",
+    moreActions: "More actions",
+    basicsTitle: "Department and hire date",
     detailToggleClose: "Hide details",
 
     /** Status badge for deactivated members (added 2026-08-23 Tier 0 part 4). */

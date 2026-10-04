@@ -671,3 +671,53 @@ select.input {
   outline: 2px solid var(--k-key);
   outline-offset: -2px;
 }
+
+/* ---- 「…」メニュー(MenuButton) ---- */
+
+.menu-button__trigger {
+  min-width: var(--control-sm);
+  padding-inline: var(--space-2);
+  font-size: var(--text-lg);
+  line-height: 1;
+}
+
+.menu-button__menu {
+  position: fixed;
+  z-index: 60;
+  min-width: 12rem;
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-1);
+  background: var(--k-surface);
+  border: var(--border-hair);
+  border-radius: var(--radius-m);
+  box-shadow: var(--shadow-card);
+}
+
+.menu-button__item {
+  min-height: var(--control-sm);
+  padding: 0 var(--space-3);
+  border: none;
+  border-radius: var(--radius-s);
+  background: transparent;
+  color: var(--k-key);
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.menu-button__item:hover:not(:disabled),
+.menu-button__item:focus-visible {
+  background: color-mix(in srgb, var(--k-key) 7%, transparent);
+  outline: none;
+}
+
+.menu-button__item--danger {
+  color: var(--k-magenta-ink);
+}
+
+.menu-button__item:disabled {
+  color: var(--k-disabled-text);
+}

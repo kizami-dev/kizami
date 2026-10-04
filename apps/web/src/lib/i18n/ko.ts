@@ -1910,6 +1910,10 @@ export const ko = {
     workSystemUnset: "미설정",
 
     detailToggleOpen: "상세 열기",
+    detailShortOpen: "상세",
+    detailShortClose: "닫기",
+    moreActions: "기타 작업",
+    basicsTitle: "소속 및 입사일",
     detailToggleClose: "상세 닫기",
 
     /** 퇴직 처리(비활성화)된 멤버의 상태 배지(2026-08-23 Tier 0 4번째 추가). */

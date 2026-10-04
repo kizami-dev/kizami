@@ -1894,6 +1894,10 @@ export const zhHant = {
     workSystemUnset: "未設定",
 
     detailToggleOpen: "展開詳情",
+    detailShortOpen: "詳細",
+    detailShortClose: "關閉",
+    moreActions: "更多操作",
+    basicsTitle: "所屬部門與到職日",
     detailToggleClose: "收起詳情",
 
     /** 已離職處理(停用)成員的狀態徽章(2026-08-23 Tier 0 第4部分新增)。 */
