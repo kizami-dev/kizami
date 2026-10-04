@@ -30,13 +30,14 @@
 }
 
 .leave__title {
-  font-family: var(--font-display);
-  font-size: 1.4rem;
-  letter-spacing: 0.04em;
+  font-family: var(--font-heading);
+  font-weight: var(--weight-bold);
+  font-feature-settings: var(--feature-heading);
+  font-size: var(--text-xl);
 }
 
 .leave__tagline {
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   color: var(--k-ink-soft);
 }
 
@@ -47,9 +48,10 @@
 }
 
 .leave__section-title {
-  font-family: var(--font-display);
-  font-size: 1.05rem;
-  letter-spacing: 0.02em;
+  font-family: var(--font-heading);
+  font-weight: var(--weight-bold);
+  font-feature-settings: var(--feature-heading);
+  font-size: var(--text-md);
 }
 
 /* ---- コンテキストヘルプ(法制度由来の説明。§10) ---- */
@@ -57,7 +59,7 @@
 .leave-help {
   display: flex;
   gap: var(--space-2);
-  font-size: 0.8rem;
+  font-size: var(--text-sm);
   line-height: 1.6;
   color: var(--k-ink-soft);
   border: var(--border-hair);
@@ -88,13 +90,13 @@
 }
 
 .leave-balance-card__type {
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   color: var(--k-ink-soft);
 }
 
 .leave-balance-card__remaining {
   font-family: var(--font-mono);
-  font-size: 1.6rem;
+  font-size: var(--text-xl);
   font-weight: 600;
 }
 
@@ -102,7 +104,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
-  font-size: 0.8rem;
+  font-size: var(--text-sm);
   color: var(--k-ink-soft);
 }
 
@@ -115,7 +117,7 @@
   background: color-mix(in srgb, var(--k-yellow) 12%, transparent);
   border-radius: var(--radius-s);
   padding: var(--space-3);
-  font-size: 0.82rem;
+  font-size: var(--text-sm);
   color: var(--k-yellow-ink);
   display: flex;
   flex-direction: column;
@@ -127,7 +129,7 @@
 }
 
 .leave-grant-details {
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
 }
 
 .leave-grant-details summary {
@@ -146,7 +148,7 @@
 .leave-grant-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   min-width: 28rem;
 }
 
@@ -161,7 +163,7 @@
 .leave-grant-table th {
   color: var(--k-ink-soft);
   font-weight: 400;
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
 }
 
 .leave-grant-table th:first-child,
@@ -198,12 +200,12 @@
   align-items: baseline;
   justify-content: space-between;
   gap: var(--space-2);
-  font-size: 0.88rem;
+  font-size: var(--text-sm);
 }
 
 .leave-mandatory-item__period {
   color: var(--k-ink-soft);
-  font-size: 0.78rem;
+  font-size: var(--text-xs);
   flex-basis: 100%;
 }
 
@@ -250,7 +252,7 @@
   border: var(--border-hair);
   border-radius: var(--radius-m);
   padding: var(--space-3) var(--space-2);
-  font-size: 0.82rem;
+  font-size: var(--text-sm);
   background: transparent;
   color: var(--k-ink-soft);
   text-align: center;
@@ -264,7 +266,7 @@
 }
 
 .leave-hourly-hint {
-  font-size: 0.8rem;
+  font-size: var(--text-sm);
   color: var(--k-ink-soft);
 }
 
@@ -274,7 +276,7 @@
   color: var(--k-yellow-ink);
   border-radius: var(--radius-s);
   padding: var(--space-3);
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
 }
 
 /* ---- 申請一覧 ---- */
@@ -300,12 +302,12 @@
 }
 
 .leave-admin-section__desc {
-  font-size: 0.82rem;
+  font-size: var(--text-sm);
   color: var(--k-ink-soft);
 }
 
 .leave-admin-result {
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   border: 1px solid var(--k-cyan);
   background: color-mix(in srgb, var(--k-cyan) 6%, transparent);
   color: var(--k-cyan-ink);
@@ -316,7 +318,7 @@
 .leave-admin-result-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.82rem;
+  font-size: var(--text-sm);
   margin-top: var(--space-2);
 }
 
@@ -355,7 +357,7 @@
 }
 
 .leave-proposal-rate__basis {
-  font-size: 0.72rem;
+  font-size: var(--text-xs);
   color: var(--k-ink-soft);
 }
 

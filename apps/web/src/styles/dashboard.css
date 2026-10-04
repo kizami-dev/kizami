@@ -74,7 +74,7 @@
 
 .dashboard-punch__state-label {
   font-family: var(--font-display);
-  font-size: 1.1rem;
+  font-size: var(--text-md);
   letter-spacing: 0.06em;
   color: var(--dp-state-color, var(--k-ink-soft));
 }
@@ -93,7 +93,7 @@
 
 .dashboard-punch__gps-note {
   margin: 0;
-  font-size: 0.78rem;
+  font-size: var(--text-xs);
   color: var(--k-ink-soft);
 }
 
@@ -106,11 +106,11 @@
 
 .dashboard-punch__pad .punch-button {
   min-height: 4.5rem;
-  font-size: 0.95rem;
+  font-size: var(--text-md);
 }
 
 .dashboard-punch__stamp-link {
-  font-size: 0.82rem;
+  font-size: var(--text-sm);
   color: var(--k-cyan-ink);
   /* 2026-08-23 SP監査: タップ領域が文字の実寸(高さ約21px)しかなかったため、
      padding + 相殺の負マージンで見た目を変えずにタップ領域だけ広げる。 */
@@ -136,9 +136,10 @@
 }
 
 .dashboard-shift-card__title {
-  font-family: var(--font-display);
-  font-size: 0.85rem;
-  letter-spacing: 0.04em;
+  font-family: var(--font-heading);
+  font-weight: var(--weight-bold);
+  font-feature-settings: var(--feature-heading);
+  font-size: var(--text-sm);
   color: var(--k-ink-soft);
 }
 
@@ -146,7 +147,7 @@
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
 }
 
 .dashboard-shift-card__label {
@@ -171,15 +172,16 @@
 }
 
 .dashboard-card__title {
-  font-family: var(--font-display);
-  font-size: 1rem;
-  letter-spacing: 0.04em;
+  font-family: var(--font-heading);
+  font-weight: var(--weight-bold);
+  font-feature-settings: var(--feature-heading);
+  font-size: var(--text-md);
   color: var(--k-key);
 }
 
 .dashboard-card__link {
   align-self: flex-start;
-  font-size: 0.82rem;
+  font-size: var(--text-sm);
   color: var(--k-cyan-ink);
   /* 2026-08-23 SP監査: タップ領域が文字の実寸(高さ約21px)しかなかったため、
      padding + 相殺の負マージンで見た目を変えずにタップ領域だけ広げる。 */
@@ -196,13 +198,13 @@
 }
 
 .dashboard-today-row__label {
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   color: var(--k-ink-soft);
 }
 
 .dashboard-today-row__value {
   font-family: var(--font-mono);
-  font-size: 1.4rem;
+  font-size: var(--text-lg);
   font-weight: 600;
   color: var(--k-key);
 }
@@ -217,7 +219,7 @@
 
 .dashboard-todo__empty {
   color: var(--k-ink-soft);
-  font-size: 0.9rem;
+  font-size: var(--text-sm);
   text-align: center;
   padding: var(--space-3) 0;
 }
@@ -246,7 +248,7 @@
   align-items: center;
   gap: var(--space-1);
   font-weight: 700;
-  font-size: 0.9rem;
+  font-size: var(--text-sm);
   color: var(--k-key);
   margin: 0 0 var(--space-2);
 }
@@ -254,7 +256,7 @@
 .dashboard-todo__count {
   color: var(--k-ink-soft);
   font-weight: 400;
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
 }
 
 .dashboard-todo__row {
@@ -262,14 +264,14 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--space-2);
-  font-size: 0.88rem;
+  font-size: var(--text-sm);
   margin: 0;
   padding: var(--space-1) 0;
 }
 
 .dashboard-todo__row-link {
   flex-shrink: 0;
-  font-size: 0.8rem;
+  font-size: var(--text-sm);
   color: var(--k-cyan-ink);
   white-space: nowrap;
   /* 2026-08-23 SP監査: タップ領域が文字の実寸(高さ約20px)しかなかったため、
@@ -293,7 +295,7 @@
   flex-wrap: wrap;
   align-items: baseline;
   gap: var(--space-1) var(--space-2);
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
 }
 
 .dashboard-todo__notif-title {
@@ -303,11 +305,11 @@
 .dashboard-todo__notif-time {
   color: var(--k-ink-soft);
   font-family: var(--font-mono);
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
 }
 
 .dashboard-todo__notif-link {
-  font-size: 0.78rem;
+  font-size: var(--text-xs);
   color: var(--k-cyan-ink);
   flex-basis: 100%;
   /* 2026-08-23 SP監査: タップ領域が文字の実寸(高さ約20px)しかなかったため、
@@ -318,7 +320,7 @@
 
 .dashboard-todo__more {
   margin: var(--space-1) 0 0;
-  font-size: 0.78rem;
+  font-size: var(--text-xs);
   color: var(--k-ink-soft);
 }
 
@@ -341,7 +343,7 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  font-size: 0.88rem;
+  font-size: var(--text-sm);
   color: var(--k-key);
   background: color-mix(in srgb, var(--k-yellow) 12%, transparent);
   padding: var(--space-1) var(--space-2);
@@ -354,13 +356,13 @@
 
 .dashboard-todo__load-failed {
   margin: var(--space-2) 0 0;
-  font-size: 0.78rem;
+  font-size: var(--text-xs);
   color: var(--k-ink-soft);
 }
 
 @media (max-width: 420px) {
   .dashboard-punch__pad .punch-button {
     min-height: 3.75rem;
-    font-size: 0.85rem;
+    font-size: var(--text-sm);
   }
 }

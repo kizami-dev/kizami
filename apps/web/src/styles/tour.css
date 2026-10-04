@@ -63,21 +63,21 @@
 .tour__progress {
   margin: 0;
   font-family: var(--font-mono);
-  font-size: 0.72rem;
+  font-size: var(--text-xs);
   color: var(--k-ink-soft);
   letter-spacing: 0.04em;
 }
 
 .tour__title {
   margin: 0;
-  font-size: 1rem;
+  font-size: var(--text-md);
   font-weight: 700;
   color: var(--k-key);
 }
 
 .tour__body {
   margin: 0;
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   line-height: 1.65;
   color: var(--k-ink-soft);
 }
@@ -99,7 +99,7 @@
   border: none;
   background: transparent;
   color: var(--k-ink-soft);
-  font-size: 0.78rem;
+  font-size: var(--text-xs);
   text-decoration: underline;
   text-underline-offset: 2px;
   padding: var(--space-1);
@@ -113,7 +113,7 @@
 .tour__next {
   border-radius: var(--radius-s);
   padding: var(--space-2) var(--space-4);
-  font-size: 0.82rem;
+  font-size: var(--text-sm);
   font-weight: 500;
   border: var(--border-hair);
   background: transparent;

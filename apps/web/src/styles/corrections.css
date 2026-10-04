@@ -44,15 +44,16 @@
 }
 
 .k-modal__title {
-  font-family: var(--font-display);
-  font-size: 1.15rem;
-  letter-spacing: 0.02em;
+  font-family: var(--font-heading);
+  font-weight: var(--weight-bold);
+  font-feature-settings: var(--feature-heading);
+  font-size: var(--text-lg);
 }
 
 .k-modal__close {
   background: none;
   border: none;
-  font-size: 1.4rem;
+  font-size: var(--text-lg);
   line-height: 1;
   color: var(--k-ink-soft);
   padding: var(--space-1) var(--space-2);
@@ -80,20 +81,20 @@
 }
 
 .confirm-dialog__message {
-  font-size: 0.95rem;
+  font-size: var(--text-md);
   line-height: 1.7;
 }
 
 /* 対象名の再入力(取り返しのつかない操作の確認、2026-08-27。ConfirmDialog の confirmPhrase) */
 .confirm-dialog__phrase-hint {
-  font-size: 0.8rem;
+  font-size: var(--text-sm);
   color: var(--k-ink-soft);
 }
 
 /* ---- 申請フォーム(月次画面から開く) ---- */
 
 .correction-form__hint {
-  font-size: 0.82rem;
+  font-size: var(--text-sm);
   color: var(--k-ink-soft);
 }
 
@@ -104,13 +105,13 @@
 }
 
 .correction-form__section-title {
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   color: var(--k-ink-soft);
 }
 
 .correction-form__loading,
 .correction-form__empty {
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   color: var(--k-ink-soft);
 }
 
@@ -129,7 +130,7 @@
   border: var(--border-hair);
   border-radius: var(--radius-s);
   padding: var(--space-2) var(--space-3);
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
 }
 
 .correction-mode {
@@ -153,7 +154,7 @@
   border: var(--border-hair);
   border-radius: var(--radius-m);
   padding: var(--space-3) var(--space-2);
-  font-size: 0.82rem;
+  font-size: var(--text-sm);
   background: transparent;
   color: var(--k-ink-soft);
   text-align: center;
@@ -188,19 +189,20 @@
 }
 
 .corrections__title {
-  font-family: var(--font-display);
-  font-size: 1.4rem;
-  letter-spacing: 0.04em;
+  font-family: var(--font-heading);
+  font-weight: var(--weight-bold);
+  font-feature-settings: var(--feature-heading);
+  font-size: var(--text-xl);
 }
 
 .corrections__tagline {
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   color: var(--k-ink-soft);
 }
 
 .corrections__empty {
   color: var(--k-ink-soft);
-  font-size: 0.9rem;
+  font-size: var(--text-sm);
   padding: var(--space-6) 0;
   text-align: center;
 }
@@ -217,9 +219,10 @@
 }
 
 .corrections__section-title {
-  font-family: var(--font-display);
-  font-size: 1.05rem;
-  letter-spacing: 0.02em;
+  font-family: var(--font-heading);
+  font-weight: var(--weight-bold);
+  font-feature-settings: var(--feature-heading);
+  font-size: var(--text-md);
   margin-bottom: var(--space-2);
 }
 
@@ -248,13 +251,13 @@
 }
 
 .correction-card__type {
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   color: var(--k-ink-soft);
 }
 
 /* 承認キューの行に出す「一次/二次のどちらの承認待ちか」(2026-08-24 追加)。 */
 .correction-card__step {
-  font-size: 0.8rem;
+  font-size: var(--text-sm);
   font-weight: 700;
   color: var(--k-yellow-ink);
 }
@@ -270,7 +273,7 @@
   color: var(--k-yellow-ink);
   border-radius: var(--radius-s);
   padding: var(--space-3);
-  font-size: 0.8rem;
+  font-size: var(--text-sm);
 }
 
 .correction-card__body {
@@ -284,7 +287,7 @@
   display: grid;
   grid-template-columns: 6rem 1fr;
   gap: var(--space-3);
-  font-size: 0.88rem;
+  font-size: var(--text-sm);
 }
 
 .correction-card__row dt {
@@ -306,7 +309,7 @@
 .correction-card__btn {
   border-radius: var(--radius-s);
   padding: var(--space-2) var(--space-4);
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   font-weight: 700;
   border: var(--border-hair);
   background: transparent;
@@ -353,7 +356,7 @@
   /* 2026-08-23 SP監査: 縦 padding が var(--space-1)=4px だと高さ約28pxで、月次表の各行に
      並ぶ「修正」ボタンとしてはタップしづらい。var(--space-2)=8px に広げ約36pxを確保する。 */
   padding: var(--space-2) var(--space-3);
-  font-size: 0.78rem;
+  font-size: var(--text-xs);
 }
 
 .monthly-table__correct-btn:hover {

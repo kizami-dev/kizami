@@ -107,8 +107,14 @@ Google Fonts の **Jost**(Futura の流れを汲む幾何学サンセリフ)を�
 | --- | --- | --- |
 | Display | Shippori Antique B1 | 状態スタンプの文字のみ(「ロゴとアイコン」節参照)。活版の趣。多用禁止 |
 | Logo | Jost(weight 500) | 文字ロゴ「KIZAMI」専用。字間 0.18em(「ロゴとアイコン」節参照) |
+| Heading | Zen Kaku Gothic New 700 + `palt` | 見出し全般(`--font-heading`、2026-10-05 追加)。ページ見出し・節見出し・カード見出し・ダイアログ見出し |
 | Body | Zen Kaku Gothic New | 本文・UI 全般 |
 | Numerals | IBM Plex Mono | 時刻・集計数値。`font-variant-numeric: tabular-nums` |
+
+文字サイズは5段階のトークンに寄せる(2026-10-05): `--text-xs` 0.75rem(補足の下限。これ未満は使わない)/
+`--text-sm` 0.85rem / `--text-md` 1rem / `--text-lg` 1.25rem(節見出し)/ `--text-xl` 1.6rem(ページ見出し)。
+打刻画面の大時計(`--text-clock`)・状態スタンプ(`--text-stamp`)・文字ロゴ(`--text-logo*`)だけは段階の外に置く。
+ボタン・入力欄・注意書き・バッジなどの共通部品は `apps/web/src/styles/components.css` にまとめている。
 
 Google Fonts を利用(セルフホストは v1.0 で検討)。
 

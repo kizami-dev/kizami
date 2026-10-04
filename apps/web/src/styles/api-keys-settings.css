@@ -13,7 +13,7 @@
 .api-keys__status {
   display: inline-flex;
   align-items: center;
-  font-size: 0.78rem;
+  font-size: var(--text-xs);
   font-weight: 700;
   padding: 2px var(--space-2);
   border-radius: 999px;
@@ -63,7 +63,7 @@
 .api-keys__token {
   flex: 1;
   font-family: var(--font-mono);
-  font-size: 0.9rem;
+  font-size: var(--text-sm);
   padding: var(--space-2) var(--space-3);
   border: var(--border-hair);
   border-radius: var(--radius-s);
@@ -79,7 +79,7 @@
 
 .api-keys__usage-example pre {
   font-family: var(--font-mono);
-  font-size: 0.84rem;
+  font-size: var(--text-sm);
   padding: var(--space-3);
   border: var(--border-hair);
   border-radius: var(--radius-s);
@@ -90,5 +90,5 @@
 
 .api-keys__name-muted {
   color: var(--k-ink-soft);
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
 }

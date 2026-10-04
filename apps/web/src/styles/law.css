@@ -27,13 +27,14 @@
 }
 
 .tenant-profile__title {
-  font-family: var(--font-display);
-  font-size: 1.4rem;
-  letter-spacing: 0.04em;
+  font-family: var(--font-heading);
+  font-weight: var(--weight-bold);
+  font-feature-settings: var(--feature-heading);
+  font-size: var(--text-xl);
 }
 
 .tenant-profile__tagline {
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   color: var(--k-ink-soft);
 }
 
@@ -59,7 +60,7 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  font-size: 0.92rem;
+  font-size: var(--text-sm);
   font-weight: 700;
 }
 
@@ -70,7 +71,7 @@
 }
 
 .tenant-profile__hint {
-  font-size: 0.8rem;
+  font-size: var(--text-sm);
   color: var(--k-ink-soft);
 }
 
@@ -96,9 +97,10 @@
 }
 
 .law-rules__title {
-  font-family: var(--font-display);
-  font-size: 1rem;
-  letter-spacing: 0.02em;
+  font-family: var(--font-heading);
+  font-weight: var(--weight-bold);
+  font-feature-settings: var(--feature-heading);
+  font-size: var(--text-md);
 }
 
 .law-rules__grid {
@@ -114,13 +116,13 @@
 }
 
 .law-rules__item-label {
-  font-size: 0.78rem;
+  font-size: var(--text-xs);
   color: var(--k-ink-soft);
 }
 
 .law-rules__item-value {
   font-family: var(--font-mono);
-  font-size: 1.05rem;
+  font-size: var(--text-md);
 }
 
 .law-rules__special {
@@ -132,7 +134,7 @@
 }
 
 .law-rules__special-title {
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   font-weight: 700;
   color: var(--k-magenta-ink);
 }
@@ -156,14 +158,15 @@
 }
 
 .upcoming-laws__title {
-  font-family: var(--font-display);
-  font-size: 1rem;
-  letter-spacing: 0.02em;
+  font-family: var(--font-heading);
+  font-weight: var(--weight-bold);
+  font-feature-settings: var(--feature-heading);
+  font-size: var(--text-md);
 }
 
 .upcoming-laws__empty {
   color: var(--k-ink-soft);
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
 }
 
 .upcoming-laws__list {
@@ -182,7 +185,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
-  font-size: 0.86rem;
+  font-size: var(--text-sm);
 }
 
 .upcoming-laws__effective-from {
@@ -196,5 +199,5 @@
 
 .upcoming-laws__basis {
   color: var(--k-ink-soft);
-  font-size: 0.78rem;
+  font-size: var(--text-xs);
 }
