@@ -6,6 +6,7 @@ import { api, ApiError } from "../lib/api";
 import { mapPasswordResetAcceptErrorMessage, messages } from "../lib/messages";
 import { KizamiMark } from "./KizamiMark";
 import { PreLoginLanguageSelect } from "./PreLoginLanguageSelect";
+import { PasswordInput } from "./ui/PasswordInput";
 
 type ViewState =
   | { kind: "loading" }
@@ -156,22 +157,22 @@ export function PasswordResetAcceptView({ token }: { token: string }) {
             </p>
 
             <form className="login-form" onSubmit={handleSubmit} noValidate>
-              <div className="field">
-                <label htmlFor="reset-accept-name">{messages.passwordResetAccept.nameLabel}</label>
-                <input id="reset-accept-name" type="text" value={state.userName} readOnly />
-              </div>
-
-              <div className="field">
-                <label htmlFor="reset-accept-email">{messages.passwordResetAccept.emailLabel}</label>
-                <input id="reset-accept-email" type="email" value={state.email} readOnly />
-              </div>
+              <dl className="login-readonly">
+                <div>
+                  <dt>{messages.passwordResetAccept.nameLabel}</dt>
+                  <dd>{state.userName}</dd>
+                </div>
+                <div>
+                  <dt>{messages.passwordResetAccept.emailLabel}</dt>
+                  <dd>{state.email}</dd>
+                </div>
+              </dl>
 
               <div className="field">
                 <label htmlFor="reset-accept-password">{messages.passwordResetAccept.newPasswordLabel}</label>
-                <input
+                <PasswordInput
                   id="reset-accept-password"
                   name="new-password"
-                  type="password"
                   autoComplete="new-password"
                   minLength={12}
                   required
@@ -182,10 +183,9 @@ export function PasswordResetAcceptView({ token }: { token: string }) {
 
               <div className="field">
                 <label htmlFor="reset-accept-password-confirm">{messages.passwordResetAccept.newPasswordConfirmLabel}</label>
-                <input
+                <PasswordInput
                   id="reset-accept-password-confirm"
                   name="new-password-confirm"
-                  type="password"
                   autoComplete="new-password"
                   minLength={12}
                   required

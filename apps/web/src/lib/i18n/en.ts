@@ -220,6 +220,8 @@ export const en = {
     /** Loosely separates two short supplementary phrases (e.g. "Configured (…)" / "Leave blank to keep unchanged"). */
     hintSeparator: " · ",
     initialVersion: "Initial setting",
+    showPassword: "Show",
+    hidePassword: "Hide",
   },
 
   /**

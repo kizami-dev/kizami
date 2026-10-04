@@ -48,6 +48,8 @@
   color: var(--k-ink-soft);
   font-size: var(--text-sm);
   margin-bottom: var(--space-6);
+  /* 「…していま/す」のような1文字だけの折り返しを避ける。 */
+  text-wrap: balance;
 }
 
 .login-form {
@@ -119,7 +121,9 @@
 }
 
 .login-tenant-select__item:disabled {
-  opacity: 0.6;
+  background: var(--k-disabled-bg);
+  border: 1px dashed var(--k-disabled-border);
+  color: var(--k-disabled-text);
   cursor: not-allowed;
 }
 
@@ -140,7 +144,7 @@
 }
 
 .login-tenant-select__back:disabled {
-  opacity: 0.6;
+  color: var(--k-disabled-text);
   cursor: not-allowed;
 }
 
@@ -188,7 +192,9 @@
 }
 
 .login-sso__button:disabled {
-  opacity: 0.6;
+  background: var(--k-disabled-bg);
+  border: 1px dashed var(--k-disabled-border);
+  color: var(--k-disabled-text);
   cursor: not-allowed;
 }
 
@@ -221,4 +227,64 @@
   display: flex;
   justify-content: center;
   min-height: 65px;
+}
+
+/* 招待・再設定の受け取り画面で、読み取り専用の氏名とメールを「入力欄」に見せず文字で出す。 */
+.login-readonly {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border-left: 3px solid color-mix(in srgb, var(--k-key) 22%, transparent);
+}
+
+.login-readonly dt {
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  color: var(--k-ink-soft);
+}
+
+.login-readonly dd {
+  margin: 0;
+  font-size: var(--text-md);
+  color: var(--k-key);
+  overflow-wrap: anywhere;
+}
+
+/* パスワード欄の右端に「表示/非表示」を重ねる。 */
+.password-input {
+  position: relative;
+  display: flex;
+}
+
+.password-input input {
+  /* 切り替えボタン(約4.5rem)に文字が潜らないよう右を空ける。 */
+  padding-right: 4.75rem;
+}
+
+.password-input__toggle {
+  position: absolute;
+  top: 50%;
+  right: var(--space-1);
+  transform: translateY(-50%);
+  min-height: var(--control-sm);
+  padding: 0 var(--space-3);
+  border: 0;
+  border-radius: var(--radius-s);
+  background: transparent;
+  color: var(--k-cyan-ink);
+  font-family: inherit;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-bold);
+  cursor: pointer;
+}
+
+.password-input__toggle:hover {
+  color: var(--k-key);
+}
+
+.password-input__toggle:focus-visible {
+  outline: 3px solid var(--k-cyan-ink);
+  outline-offset: 1px;
 }

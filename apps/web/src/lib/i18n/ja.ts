@@ -211,6 +211,9 @@ export const ja = {
     hintSeparator: " ・ ",
     /** 設定の版の適用開始日が番兵値(1970-01-01/02)のとき、日付の代わりに出す表示。 */
     initialVersion: "初期設定",
+    /** パスワード欄の表示切り替え。 */
+    showPassword: "表示",
+    hidePassword: "非表示",
   },
 
   /**
