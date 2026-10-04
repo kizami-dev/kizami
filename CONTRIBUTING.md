@@ -15,7 +15,7 @@ Contributions are welcome, in Japanese or English.
 - 集計エンジン(`packages/engine`)は純関数です。I/O・`Date.now()`・タイムゾーン暗黙依存を持ち込まないでください
 - 法令に関わる挙動は必ず一次情報(e-Gov 法令検索・通達)を根拠にし、コードコメントに判断理由を書いてください。ゴールデンケース(YAML フィクスチャ)の追加を歓迎します
 - 打刻・シフトなどの記録系テーブルは追記専用(supersedes)です。UPDATE で歴史を書き換えない設計を守ってください
-- UI 文言は `apps/web/src/lib/i18n/{ja,en,ko,zh}.ts` の4言語すべてに追加してください(型でキーの過不足が検出されます)
+- UI 文言は `apps/web/src/lib/i18n/{ja,en,ko,zh,zh-Hant}.ts` の5言語すべてに追加してください(型でキーの過不足が検出されます)
 - JSDoc / Markdown 内で `[a, b](注)` のような区間表記はリンクと解釈され docs ビルドが落ちます。`a〜b` かコードスパンで書いてください
 
 ## テスト
