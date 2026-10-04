@@ -6,6 +6,7 @@ import { api, ApiError, MultipleTenantsError, type LoginTenantOption, type SsoAv
 import { mapLoginErrorMessage, mapLoginTotpErrorMessage, messages } from "../lib/messages";
 import { KizamiMark } from "./KizamiMark";
 import { PreLoginLanguageSelect } from "./PreLoginLanguageSelect";
+import { PasswordInput } from "./ui/PasswordInput";
 
 export function LoginForm() {
   const router = useRouter();
@@ -376,10 +377,9 @@ export function LoginForm() {
 
             <div className="field">
               <label htmlFor="login-password">{messages.login.passwordLabel}</label>
-              <input
+              <PasswordInput
                 id="login-password"
                 name="password"
-                type="password"
                 autoComplete="current-password"
                 required
                 value={password}

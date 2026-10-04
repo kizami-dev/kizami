@@ -6,6 +6,7 @@ import { api, ApiError } from "../lib/api";
 import { mapInviteAcceptErrorMessage, messages } from "../lib/messages";
 import { KizamiMark } from "./KizamiMark";
 import { PreLoginLanguageSelect } from "./PreLoginLanguageSelect";
+import { PasswordInput } from "./ui/PasswordInput";
 
 type ViewState =
   | { kind: "loading" }
@@ -140,22 +141,22 @@ export function InviteAcceptView({ token }: { token: string }) {
             </p>
 
             <form className="login-form" onSubmit={handleSubmit} noValidate>
-              <div className="field">
-                <label htmlFor="invite-accept-name">{messages.inviteAccept.nameLabel}</label>
-                <input id="invite-accept-name" type="text" value={state.userName} readOnly />
-              </div>
-
-              <div className="field">
-                <label htmlFor="invite-accept-email">{messages.inviteAccept.emailLabel}</label>
-                <input id="invite-accept-email" type="email" value={state.email} readOnly />
-              </div>
+              <dl className="login-readonly">
+                <div>
+                  <dt>{messages.inviteAccept.nameLabel}</dt>
+                  <dd>{state.userName}</dd>
+                </div>
+                <div>
+                  <dt>{messages.inviteAccept.emailLabel}</dt>
+                  <dd>{state.email}</dd>
+                </div>
+              </dl>
 
               <div className="field">
                 <label htmlFor="invite-accept-password">{messages.inviteAccept.passwordLabel}</label>
-                <input
+                <PasswordInput
                   id="invite-accept-password"
                   name="new-password"
-                  type="password"
                   autoComplete="new-password"
                   minLength={12}
                   required
@@ -166,10 +167,9 @@ export function InviteAcceptView({ token }: { token: string }) {
 
               <div className="field">
                 <label htmlFor="invite-accept-password-confirm">{messages.inviteAccept.passwordConfirmLabel}</label>
-                <input
+                <PasswordInput
                   id="invite-accept-password-confirm"
                   name="new-password-confirm"
-                  type="password"
                   autoComplete="new-password"
                   minLength={12}
                   required

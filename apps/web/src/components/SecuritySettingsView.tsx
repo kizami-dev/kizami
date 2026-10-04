@@ -12,6 +12,7 @@ import { PasswordChangeSection } from "./PasswordChangeSection";
 import { SettingsNav } from "./SettingsNav";
 import { StateView } from "./ui/StateView";
 import { PageHeader } from "./ui/PageHeader";
+import { PasswordInput } from "./ui/PasswordInput";
 
 /** リカバリコードの残数がこれ以下になったら再生成をすすめる(10本中3本 = 心細くなる目安)。 */
 const RECOVERY_LOW_THRESHOLD = 3;
@@ -426,9 +427,8 @@ export function SecuritySettingsView() {
                 <form className="page-body page-body--form" onSubmit={handleRegenerate}>
                   <div className="field">
                     <label htmlFor="totp-verify-password">{messages.settingsSecurity.passwordLabel}</label>
-                    <input
+                    <PasswordInput
                       id="totp-verify-password"
-                      type="password"
                       autoComplete="current-password"
                       value={verifyPassword}
                       onChange={(e) => setVerifyPassword(e.target.value)}

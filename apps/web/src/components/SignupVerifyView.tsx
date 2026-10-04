@@ -6,6 +6,7 @@ import { api, ApiError } from "../lib/api";
 import { mapSignupVerifyErrorMessage, messages } from "../lib/messages";
 import { KizamiMark } from "./KizamiMark";
 import { PreLoginLanguageSelect } from "./PreLoginLanguageSelect";
+import { PasswordInput } from "./ui/PasswordInput";
 
 type ViewState =
   | { kind: "loading" }
@@ -151,10 +152,9 @@ export function SignupVerifyView({ token }: { token: string }) {
 
               <div className="field">
                 <label htmlFor="signup-verify-password">{messages.signupVerify.passwordLabel}</label>
-                <input
+                <PasswordInput
                   id="signup-verify-password"
                   name="new-password"
-                  type="password"
                   autoComplete="new-password"
                   minLength={12}
                   required
@@ -165,10 +165,9 @@ export function SignupVerifyView({ token }: { token: string }) {
 
               <div className="field">
                 <label htmlFor="signup-verify-password-confirm">{messages.signupVerify.passwordConfirmLabel}</label>
-                <input
+                <PasswordInput
                   id="signup-verify-password-confirm"
                   name="new-password-confirm"
-                  type="password"
                   autoComplete="new-password"
                   minLength={12}
                   required

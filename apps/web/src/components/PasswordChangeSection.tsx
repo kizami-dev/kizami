@@ -3,6 +3,7 @@
 import { useState, type FormEvent } from "react";
 import { api, ApiError } from "../lib/api";
 import { mapPasswordChangeErrorMessage, messages } from "../lib/messages";
+import { PasswordInput } from "./ui/PasswordInput";
 
 /** 新しいパスワードの最低文字数(apps/api/src/auth/password-policy.ts の MIN_PASSWORD_LENGTH と同じ)。 */
 const MIN_PASSWORD_LENGTH = 12;
@@ -62,10 +63,9 @@ export function PasswordChangeSection() {
       <form className="page-body page-body--form" onSubmit={handleSubmit} noValidate>
         <div className="field">
           <label htmlFor="password-change-current">{messages.settingsSecurity.passwordChange.currentLabel}</label>
-          <input
+          <PasswordInput
             id="password-change-current"
             name="current-password"
-            type="password"
             autoComplete="current-password"
             required
             value={currentPassword}
@@ -75,10 +75,9 @@ export function PasswordChangeSection() {
 
         <div className="field">
           <label htmlFor="password-change-new">{messages.settingsSecurity.passwordChange.newLabel}</label>
-          <input
+          <PasswordInput
             id="password-change-new"
             name="new-password"
-            type="password"
             autoComplete="new-password"
             minLength={MIN_PASSWORD_LENGTH}
             required
@@ -89,10 +88,9 @@ export function PasswordChangeSection() {
 
         <div className="field">
           <label htmlFor="password-change-confirm">{messages.settingsSecurity.passwordChange.confirmLabel}</label>
-          <input
+          <PasswordInput
             id="password-change-confirm"
             name="new-password-confirm"
-            type="password"
             autoComplete="new-password"
             minLength={MIN_PASSWORD_LENGTH}
             required

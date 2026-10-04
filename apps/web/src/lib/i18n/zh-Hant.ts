@@ -200,6 +200,8 @@ export const zhHant = {
     /** 用於鬆散分隔兩段簡短補充說明的符號(例如「已設定(…)」「不更改時請留空」)。 */
     hintSeparator: " · ",
     initialVersion: "初始設定",
+    showPassword: "顯示",
+    hidePassword: "隱藏",
   },
 
   /**
