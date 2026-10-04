@@ -89,8 +89,8 @@
 @media (min-width: 60rem) {
   .page:has(> .settings-nav) {
     display: grid;
-    grid-template-columns: 14rem minmax(0, 1fr);
-    column-gap: var(--space-6);
+    grid-template-columns: 12.5rem minmax(0, 1fr);
+    column-gap: var(--space-5);
     row-gap: 0;
     align-content: start;
   }
@@ -240,6 +240,8 @@
   font-weight: var(--weight-bold);
   font-feature-settings: var(--feature-heading);
   font-size: var(--text-md);
+  /* 2 行に折り返すときに 1 字だけ落ちない(「ログインとセキュリティ/ィ」) */
+  text-wrap: balance;
 }
 
 .settings-hub__card-arrow {
@@ -936,4 +938,10 @@ td.org-table__detail-cell {
 /* アイコンの無いカード(ホームの「よく使う画面」)は、題を左の 2 列にまたがせる。 */
 .settings-hub__card > .settings-hub__card-title:first-child {
   grid-column: 1 / span 2;
+}
+
+/* サイドバーで本文が狭くなった分、メールアドレスは折り返して列の幅を抑える(操作列が横スクロールの外に出ないように)。 */
+.org-table td.org-table__muted {
+  overflow-wrap: anywhere;
+  min-width: 8rem;
 }

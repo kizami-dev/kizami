@@ -129,7 +129,7 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  min-height: var(--control-md);
+  min-height: 2.25rem;
   font-size: var(--text-sm);
   font-weight: 400;
   color: var(--k-key);
@@ -169,6 +169,7 @@
   font-size: var(--text-md);
   font-variant-numeric: tabular-nums;
   /* 「06:00 AM」が切れない幅 */
+  width: auto;
   min-width: 7.5rem;
 }
 
