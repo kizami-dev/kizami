@@ -47,6 +47,7 @@ export function ShiftBulkAssignPanel({ periodStart, periodEnd, patterns, pending
           <div className="shifts-bulk-assign__row" key={w}>
             <span className="shifts-bulk-assign__weekday">{messages.time.weekdayShort[w]}</span>
             <select
+              className="input"
               aria-label={messages.time.weekdayShort[w]}
               value={selection[w] ?? ""}
               onChange={(e) => setSelection((prev) => ({ ...prev, [w]: e.target.value }))}
@@ -70,7 +71,7 @@ export function ShiftBulkAssignPanel({ periodStart, periodEnd, patterns, pending
 
       <button
         type="button"
-        className="btn btn--primary"
+        className="btn btn--secondary"
         onClick={handleApply}
         disabled={pending || !hasSelection}
       >

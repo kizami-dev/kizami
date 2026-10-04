@@ -149,7 +149,18 @@
 
 .shifts-grid__cell-pattern {
   font-size: var(--text-xs);
+  color: var(--k-ink-soft);
+}
+
+/* 今日のセル: 左の C の罫線(自分のシフトの縦リストの「今日」と同じ記号)。 */
+.shifts-grid__cell--today {
+  box-shadow: inset 3px 0 0 var(--k-cyan);
+  background: color-mix(in srgb, var(--k-cyan) 6%, var(--k-surface));
+}
+
+.shifts-grid__cell--today .shifts-grid__cell-date {
   color: var(--k-cyan-ink);
+  font-weight: var(--weight-bold);
 }
 
 .shifts-grid__cell-empty {
@@ -201,12 +212,38 @@
 
 .shifts-bulk-assign__row select {
   flex: 1;
-  border: var(--border-hair);
-  border-radius: var(--radius-s);
-  padding: var(--space-2);
-  font-size: var(--text-sm);
-  background: var(--k-surface);
-  font-family: inherit;
+  min-width: 0;
+}
+
+/* 集計: 枠なしの数値グリッド(ボタンに見えないよう、ラベルと数値だけで並べる)。 */
+.shifts-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: var(--space-3) var(--space-5);
+  margin: 0;
+}
+
+.shifts-stats__item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.shifts-stats__item dt {
+  font-size: var(--text-xs);
+  color: var(--k-ink-soft);
+}
+
+.shifts-stats__item dd {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-lg);
+  color: var(--k-key);
+}
+
+/* 枠(法定の上限)を超えたときだけ M の文字にする(既存の超過警告文と同じ色)。 */
+.shifts-stats__item--over dd {
+  color: var(--k-magenta-ink);
 }
 
 .shifts-aggregation__warning {

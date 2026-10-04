@@ -2,7 +2,7 @@
 
 import type { ShiftDayDto, ShiftPatternDto } from "../../lib/api";
 import { messages } from "../../lib/messages";
-import { minutesToHm } from "../../lib/time";
+import { dateStrFromEpochMinutesJst, minutesToHm, nowMinutes } from "../../lib/time";
 import { buildWeekGrid, shiftDaysByDate } from "../../lib/shifts";
 
 export interface ShiftWeekGridProps {
@@ -23,6 +23,7 @@ export function ShiftWeekGrid({ periodStart, periodEnd, days, patterns, onCellCl
   const rows = buildWeekGrid(periodStart, periodEnd);
   const dayMap = shiftDaysByDate(days);
   const patternNameById = new Map(patterns.map((p) => [p.id, p.name]));
+  const today = dateStrFromEpochMinutesJst(nowMinutes());
 
   return (
     <div className="shifts-grid">
@@ -41,6 +42,7 @@ export function ShiftWeekGrid({ periodStart, periodEnd, days, patterns, onCellCl
             }
             const shift = dayMap.get(cell.date);
             const dayOfMonth = Number(cell.date.slice(8, 10));
+            const todayClass = cell.date === today ? " shifts-grid__cell--today" : "";
             const content = (
               <>
                 <span className="shifts-grid__cell-date tabular-nums">{dayOfMonth}</span>
@@ -66,13 +68,13 @@ export function ShiftWeekGrid({ periodStart, periodEnd, days, patterns, onCellCl
               <button
                 key={cell.date}
                 type="button"
-                className={`shifts-grid__cell shifts-grid__cell--${shift?.dayType ?? "unset"}`}
+                className={`shifts-grid__cell shifts-grid__cell--${shift?.dayType ?? "unset"}${todayClass}`}
                 onClick={() => onCellClick(cell.date)}
               >
                 {content}
               </button>
             ) : (
-              <div key={cell.date} className={`shifts-grid__cell shifts-grid__cell--${shift?.dayType ?? "unset"} shifts-grid__cell--readonly`}>
+              <div key={cell.date} className={`shifts-grid__cell shifts-grid__cell--${shift?.dayType ?? "unset"} shifts-grid__cell--readonly${todayClass}`}>
                 {content}
               </div>
             );
