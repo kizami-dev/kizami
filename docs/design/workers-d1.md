@@ -16,7 +16,7 @@ KIZAMI の HTTP API は **Node(既定)と Cloudflare Workers(workerd)の両方�
 | 集計エンジン(`@kizami/engine`、Temporal 経由) | ✅ | ✅(polyfill) |
 | 秘密情報の暗号化(`@kizami/crypto`, AES-256-GCM) | ✅ | ✅ |
 | 通知の組み立て(`@kizami/notify`) | ✅ | ✅ |
-| **トランザクションを使う書き込み**(招待・パスワード再設定・修正申請の承認・締め・休暇申請・Slack 連携) | ✅ | ❌ **未対応**(下記) |
+| **トランザクションを使う書き込み**(招待・パスワード再設定・本人によるパスワード変更・修正申請の承認・締め・休暇申請・Slack 連携) | ✅ | ❌ **未対応**(下記) |
 | メール送信(SMTP) | ✅ nodemailer | ❌(node:net 依存) |
 | Webhook / Slack 通知(fetch ベース) | ✅ | ✅ |
 | Web Push | ✅ | ✅(WebCrypto のみ) |

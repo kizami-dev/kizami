@@ -105,6 +105,41 @@ SaaS 専用のコードは「登録・課金・テナント運用」の薄い制
   欠けている変数名を列挙してエラー終了する(登録フォームは出るのに誰も完了できない状態を公開後に発見しないため)。
   `SIGNUP_MODE` の綴り間違いも黙って off にせずエラーにする。
 
+### 本人用のパスワード再設定(システムメールがある配備でだけ有効)
+
+状態: 実装済み(2026-10-04)。**システムメール(`SYSTEM_SMTP_URL` / `SYSTEM_MAIL_FROM` / `APP_BASE_URL`)が
+3つ揃っている配備でだけ有効**で、**`SIGNUP_MODE` とは独立**(サインアップを使わないセルフホストでも、
+システムメールを設定すれば使える)。揃っていなければ `GET /password-resets/config` が
+`{ "selfService": false }`、`POST /password-resets` は 404 で、**セルフホストの体験は変わらない**
+(従来どおり管理者発行+リンク手渡し)。Workers エントリでは常に無効。システムメール設定の解析は
+`lib/system-mail-config.ts` に独立していて、signup はそれを使う(`SIGNUP_MODE` が off 以外で欠けていれば
+起動時に落とす fail-fast は従来のまま。本人用の再設定は落とさず、値が不正なら起動時に警告だけ出す)。
+
+- `GET /password-resets/config` → `{ selfService, turnstileSiteKey? }`(ログイン画面の「パスワードをお忘れの場合」リンクの判定)。
+- `POST /password-resets` — `{ email, turnstileToken? }`。**結果に関係なく常に 202 + 同一ボディ**。
+  Origin 検証・`Content-Type: application/json` 必須は signup と同じ(`lib/json-post-guard.ts`)。
+  Turnstile は `TURNSTILE_SECRET_KEY` / `TURNSTILE_SITE_KEY` の両方がある配備で必須、無ければ不要。
+  IP ごとに 5回/15分(`passwordResetRequestPerIp`)。
+- **応答時間を該当者の有無から独立させる**: 応答の前は、入力検証・ガード・Turnstile・**メール単位スロットルの取得**
+  (全メール共通の1回の書き込み)までで、対象の探索・トークン発行・メール送信はすべて応答の後のバックグラウンド。
+  スロットル行(`password_reset_requests`)は実在しないメールにも作られるので、定期ジョブ(`signup-cleanup.ts`)が1日で掃除する。
+- **メール単位のスロットル**: 同じメール(trim + 小文字化)宛は5分に1回。`INSERT ... ON CONFLICT (email_key) DO UPDATE
+  ... WHERE requested_at <= 閾値` の1文で原子的(同時リクエストでもメールは1通)。signup の pending と同じ方式だが、
+  メール単位・複数テナント横断の上限が要るため、ユーザー単位の `password_reset_tokens` ではなく専用のシステム表にした。
+- **対象**: そのメールを持つ有効な(退職処理されていない)ユーザーで、パスワード資格情報を持つ人を全テナントから探す
+  (`users.email` の完全一致 — ログインと同じ)。該当者がいなければメールは送らない。
+- **トークン**: 管理者発行と同じ `password_reset_tokens` を流用し、`source` 列(`admin` / `self`)で発行経路を区別する
+  (`created_by` は本人)。**TTL は1時間**(管理者発行は24時間): 要求は第三者でも出せ、リンクが宛先のメールボックスに
+  平文で残るため、漂流する時間を短くする。同じユーザーの本人発行の古いトークンは失効し、管理者発行のトークンには触れない。
+  監査ログ `password_reset.self_request`。
+- **メール本文にユーザー入力もテナント名も入れない**: テナント名(組織名)は攻撃者が決められる自由入力で、本文に入れると
+  運用者名義のフィッシングの踏み台になる。固定文面+リンクのみで、複数テナントに該当すれば「アカウント1」「アカウント2」と
+  番号付きでリンクを並べる。どの組織のアカウントかはリンク先の受諾画面(`GET /password-resets/:token` の `tenantName`)で見せる。
+- **受諾**: 既存の `/reset/:token` 画面と `POST /password-resets/:token/use` をそのまま使う。使用すると**全セッションと、
+  そのユーザーの他の未使用・未失効トークン(発行元を問わず)が失効**する。**2FA は解除しない**: 2FA 利用者には使用直後の
+  セッションを発行せず(`{ passwordUpdated: true, status: "login_required" }`)、ログイン画面からパスワード+TOTP で入り直させる
+  (メールを読めるだけでは 2FA を迂回できないようにするため)。
+
 ### 環境変数
 
 | 変数 | 必須 | 内容 |
