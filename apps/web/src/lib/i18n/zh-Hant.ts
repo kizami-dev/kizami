@@ -752,6 +752,9 @@ export const zhHant = {
     tagline: "申請新增、更正或撤銷打卡紀錄。簽核通過後將反映到考勤紀錄中。",
 
     formTitle: "的修正申請",
+    newRequestAction: "申請修正",
+    tabOwn: "我的申請",
+    tabQueue: (n: number) => `待審核(${n})`,
     formHint: "申請簽核通過後將反映到打卡紀錄及月度統計中。",
     close: "關閉",
     cancel: "取消",
