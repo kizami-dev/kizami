@@ -10,8 +10,10 @@
  * - 使用(used_at)で auth_credentials を UPDATE し、**当該ユーザーの全セッションを失効**させる
  *   (パスワードを変えた=旧資格情報の疑いがあるため。apps/api 側の責務)
  *
- * self-serve の forgot-password(メール送信)は SMTP 設定が前提になるため今回は作らない。
- * 管理者発行+リンク手渡しは招待と同じ運用で SMTP 無しでも回る。
+ * 本人用の「パスワードを忘れた」(2026-10-04 追加)は、システムメール(SYSTEM_SMTP_URL ほか)が
+ * ある配備でだけ有効にする。無い配備(セルフホスト)では従来どおり管理者発行+リンク手渡しだけで
+ * 回り、SMTP 無しでも成り立つ。本人発行のトークンも同じ表・同じ使用フローを流用し、
+ * `source` 列(`admin` / `self`)で発行経路を区別する(下記)。
  *
  * 追記専用。再発行は既存の未使用トークンを revoke してから新規作成(invitations と同じ不変条件:
  * 未決着はユーザーごとに高々1本。アプリ層のトランザクションで担保)。
@@ -42,6 +44,15 @@ export const passwordResetTokens = sqliteTable(
     createdBy: text("created_by")
       .notNull()
       .references(() => users.id),
+    /**
+     * 発行経路。`admin` = 管理者が発行(既定。既存の行はすべてこれ)、`self` = 本人が「パスワードを
+     * 忘れた」から発行(created_by は本人の user_id)。
+     *
+     * created_by == user_id で代用しなかった理由: 管理者が自分自身へ発行した場合も同じ形になり、
+     * 本人発行の再発行(古いトークンの失効)が管理者発行のトークンまで巻き込んでしまうため。
+     * 列挙型(CHECK 制約)にはしていない — 値の検証は書き込み側(queries/password-resets.ts)が担う。
+     */
+    source: text("source").notNull().default("admin"),
     createdAt: integer("created_at").notNull(),
   },
   (table) => [
@@ -49,3 +60,23 @@ export const passwordResetTokens = sqliteTable(
     index("password_reset_tokens_tenant_user_idx").on(table.tenantId, table.userId),
   ],
 );
+
+/**
+ * password_reset_requests — 本人用パスワード再設定の**メール単位スロットル**(システム表)。
+ *
+ * 「メールアドレスごとに5分に1回しか再設定メールを出さない」を、同時リクエストでも破れない形で
+ * 担保するための表(判断の背景は queries/password-resets.ts の
+ * `acquirePasswordResetRequestSlot`)。tenant_id を持たない(同じメールが複数テナントに居ても
+ * 1通のメールにまとめて出すため、メール単位で数える)。pending_signups と同じ「システム表」で、
+ * テナント向けのクエリからは触らない。
+ *
+ * 行を作るのは「そのメールを持つ有効なユーザーが実在し、実際にメールを出す」ときだけ。存在しない
+ * メールでは作らないので、攻撃者が任意の文字列を投げてこの表を肥大させることはできない
+ * (行数の上限は実在するメールアドレスの数)。
+ */
+export const passwordResetRequests = sqliteTable("password_reset_requests", {
+  /** 照合キー(trim + 小文字化したメール)。主キー = ON CONFLICT の対象 */
+  emailKey: text("email_key").primaryKey(),
+  /** UTC エポック分。直近にメールを出した時刻 */
+  requestedAt: integer("requested_at").notNull(),
+});

@@ -187,7 +187,8 @@ export async function usePasswordResetToken(db: Database, input: UsePasswordRese
       action: "password_reset.use",
       targetType: "user",
       targetId: token.userId,
-      detail: JSON.stringify({}),
+      // 発行経路(admin / self)を残す。本人用の再設定でも使用側の挙動は同一(全セッション失効)。
+      detail: JSON.stringify({ source: token.source }),
       occurredAt: input.nowMinutes,
     });
 

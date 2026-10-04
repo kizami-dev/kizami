@@ -37,6 +37,7 @@ export const {
   leaveRequests,
   memberships,
   notifications,
+  passwordResetRequests,
   passwordResetTokens,
   pendingSignups,
   permissionPresets,

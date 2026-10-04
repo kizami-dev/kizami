@@ -16,6 +16,7 @@ export * from "./notifications.js";
 export * from "./observability.js";
 export * from "./oidc.js";
 export * from "./password-resets.js";
+export * from "./password-self-service.js";
 export * from "./permissions.js";
 export * from "./punches.js";
 export * from "./push-subscriptions.js";
