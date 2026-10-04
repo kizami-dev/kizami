@@ -234,6 +234,20 @@ export function placeTooltip(
   const spaceAbove = target.top;
   const needed = tooltip.height + gap + margin;
 
+  // 上にも下にも置けない縦長の対象は、横に余白があれば対象の脇へ置く(対象に重ねない)。
+  if (spaceBelow < needed && spaceAbove < needed) {
+    const maxTopSide = Math.max(margin, viewport.height - tooltip.height - margin);
+    const sideTop = Math.min(Math.max(margin, target.top), maxTopSide);
+    const rightLeft = target.left + target.width + gap;
+    if (rightLeft + tooltip.width + margin <= viewport.width) {
+      return { top: sideTop, left: rightLeft, placement: preferred };
+    }
+    const leftLeft = target.left - gap - tooltip.width;
+    if (leftLeft >= margin) {
+      return { top: sideTop, left: leftLeft, placement: preferred };
+    }
+  }
+
   let placement = preferred;
   if (placement === "bottom" && spaceBelow < needed && spaceAbove >= needed) placement = "top";
   else if (placement === "top" && spaceAbove < needed && spaceBelow >= needed) placement = "bottom";
@@ -262,4 +276,13 @@ export function needsScrollIntoView(target: Rect, viewport: Size, margin = 24): 
   const visible = visibleBottom - visibleTop;
   const enough = Math.min(target.height * 0.6, viewport.height * 0.4);
   return visible < enough;
+}
+
+/**
+ * 画面より背の高い対象は、上端が見えていないと「どこから始まる枠か」が分からない。
+ * 上端が画面の上寄り(`margin` 内)に無ければ、上端を合わせるスクロールが要る。
+ */
+export function needsAlignTop(target: Rect, viewport: Size, margin = 56): boolean {
+  const tall = target.height > viewport.height - 48;
+  return tall && (target.top > margin || target.top < 0);
 }
