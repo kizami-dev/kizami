@@ -386,8 +386,8 @@ export function CorrectionsView() {
     const blockedFromStep2 = options.showApproveReject && state.currentStep === 2 && !hasTenantApprovePermission;
     return (
       <>
-        <p className="correction-card__note">{messages.approvalSteps.twoStepNote}</p>
-        {blockedFromStep2 ? <p className="correction-card__note">{messages.approvalSteps.step2NotYours}</p> : null}
+        <p className="notice notice--caution">{messages.approvalSteps.twoStepNote}</p>
+        {blockedFromStep2 ? <p className="notice notice--caution">{messages.approvalSteps.step2NotYours}</p> : null}
       </>
     );
   }

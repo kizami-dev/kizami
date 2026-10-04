@@ -21,12 +21,16 @@
 }
 
 .allowance-settings__date-row input[type="date"] {
-  border: var(--border-hair);
-  border-radius: var(--radius-s);
+  min-height: var(--control-md);
   padding: var(--space-2) var(--space-3);
-  font-size: var(--text-sm);
-  background: var(--k-paper);
-  color: inherit;
+  border: 1px solid color-mix(in srgb, var(--k-key) 22%, transparent);
+  border-radius: var(--radius-s);
+  background: var(--k-surface);
+  color: var(--k-key);
+  font-family: inherit;
+  font-size: var(--text-md);
+  font-variant-numeric: tabular-nums;
+  min-width: 9.5rem;
 }
 
 .allowance-settings__weekdays {
@@ -48,11 +52,15 @@
 }
 
 .allowance-settings__time-band input[type="time"] {
-  border: var(--border-hair);
-  border-radius: var(--radius-s);
+  min-height: var(--control-md);
   padding: var(--space-2) var(--space-3);
-  font-size: var(--text-sm);
-  background: var(--k-paper);
-  color: inherit;
-  width: 7rem;
+  border: 1px solid color-mix(in srgb, var(--k-key) 22%, transparent);
+  border-radius: var(--radius-s);
+  background: var(--k-surface);
+  color: var(--k-key);
+  font-family: inherit;
+  font-size: var(--text-md);
+  font-variant-numeric: tabular-nums;
+  /* 「06:00 AM」が切れない幅 */
+  min-width: 7.5rem;
 }

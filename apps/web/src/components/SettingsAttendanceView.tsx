@@ -494,7 +494,7 @@ export function SettingsAttendanceView() {
                 <HelpTip helpKey="law.versioning" />
               </p>
 
-              <label className="attendance-settings__field">
+              <label className="field attendance-settings__field">
                 <span>{messages.settingsAttendance.effectiveFromLabel}</span>
                 <input
                   type="date"
@@ -505,7 +505,7 @@ export function SettingsAttendanceView() {
                 />
               </label>
 
-              <label className="attendance-settings__field">
+              <label className="field attendance-settings__field">
                 <span>
                   {messages.settingsAttendance.dayBoundaryLabel}
                   <HelpTip helpKey="attendance.day-boundary" />
@@ -519,7 +519,7 @@ export function SettingsAttendanceView() {
                 <span className="attendance-settings__field-hint">{messages.settingsAttendance.dayBoundaryHint}</span>
               </label>
 
-              <label className="attendance-settings__field">
+              <label className="field attendance-settings__field">
                 <span>{messages.settingsAttendance.weekStartWeekdayLabel}</span>
                 <select
                   value={attendanceForm.weekStartWeekday}
@@ -538,7 +538,7 @@ export function SettingsAttendanceView() {
                 <span className="attendance-settings__field-hint">{messages.settingsAttendance.weekStartWeekdayHint}</span>
               </label>
 
-              <label className="attendance-settings__field">
+              <label className="field attendance-settings__field">
                 <span>{messages.settingsAttendance.variablePeriodStartDayLabel}</span>
                 <input
                   type="number"
@@ -551,7 +551,7 @@ export function SettingsAttendanceView() {
                 <span className="attendance-settings__field-hint">{messages.settingsAttendance.variablePeriodStartDayHint}</span>
               </label>
 
-              <fieldset className="attendance-settings__field">
+              <fieldset className="field attendance-settings__field">
                 <legend>
                   {messages.settingsAttendance.legalHolidayLabel}
                   <HelpTip helpKey="attendance.legal-holiday" />
@@ -602,7 +602,7 @@ export function SettingsAttendanceView() {
                 ) : null}
               </fieldset>
 
-              <fieldset className="attendance-settings__field">
+              <fieldset className="field attendance-settings__field">
                 <legend>
                   {messages.settingsAttendance.breakRuleLabel}
                   <HelpTip helpKey="attendance.auto-break" />
@@ -692,7 +692,7 @@ export function SettingsAttendanceView() {
                     {messages.settingsAttendance.gpsWarning}{" "}
                     <Link to="/settings/privacy">{messages.settingsAttendance.gpsWarningLink}</Link>
                   </p>
-                  <label className="attendance-settings__field">
+                  <label className="field attendance-settings__field">
                     <span>{messages.settingsAttendance.gpsRetentionInputLabel}</span>
                     <input
                       type="number"
@@ -774,7 +774,7 @@ export function SettingsAttendanceView() {
                 {messages.settingsAttendance.effectiveFromHint}
                 <HelpTip helpKey="law.versioning" />
               </p>
-              <label className="attendance-settings__field">
+              <label className="field attendance-settings__field">
                 <span>{messages.settingsAttendance.effectiveFromLabel}</span>
                 <input
                   type="date"
@@ -784,7 +784,7 @@ export function SettingsAttendanceView() {
                   required
                 />
               </label>
-              <label className="attendance-settings__field">
+              <label className="field attendance-settings__field">
                 <span>{messages.settingsAttendance.flexStandardDayMinutesLabel}</span>
                 <input
                   type="number"
@@ -798,7 +798,7 @@ export function SettingsAttendanceView() {
               </label>
 
               {/* コアタイム(labor law §32-3)。任意設定なので既定は「設定しない」= スーパーフレックス。 */}
-              <fieldset className="attendance-settings__field">
+              <fieldset className="field attendance-settings__field">
                 <legend>{messages.settingsAttendance.coreTimeLabel}</legend>
                 <p className="attendance-settings__field-hint">{messages.settingsAttendance.coreTimeHint}</p>
                 <label className="attendance-settings__checkbox">
@@ -812,7 +812,7 @@ export function SettingsAttendanceView() {
 
                 {workPolicyForm.coreTimeEnabled ? (
                   <>
-                    <label className="attendance-settings__field">
+                    <label className="field attendance-settings__field">
                       <span>{messages.settingsAttendance.coreTimeStartLabel}</span>
                       <input
                         type="time"
@@ -821,7 +821,7 @@ export function SettingsAttendanceView() {
                         required
                       />
                     </label>
-                    <label className="attendance-settings__field">
+                    <label className="field attendance-settings__field">
                       <span>{messages.settingsAttendance.coreTimeEndLabel}</span>
                       <input
                         type="time"
@@ -830,7 +830,7 @@ export function SettingsAttendanceView() {
                         required
                       />
                     </label>
-                    <fieldset className="attendance-settings__field">
+                    <fieldset className="field attendance-settings__field">
                       <legend>{messages.settingsAttendance.coreTimeWeekdaysLabel}</legend>
                       <div className="attendance-settings__weekdays">
                         {ALL_WEEKDAYS.map((w) => (

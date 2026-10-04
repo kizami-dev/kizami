@@ -16,13 +16,6 @@
   line-height: 1.7;
 }
 
-.display-settings__note {
-  margin: 0;
-  font-size: var(--text-sm);
-  color: var(--k-ink-soft);
-  line-height: 1.7;
-}
-
 .display-choice__label {
   /* 見出し(h2)と説明文が既にあるため、ラジオ群のラベルは読み上げ用に視覚的には隠す。 */
   position: absolute;
