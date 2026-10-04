@@ -1422,7 +1422,7 @@ export const ja = {
     confirmCloseLabel: "締める",
 
     confirmReopenTitle: "確定を解除しますか",
-    confirmReopenMessage: "確定を解除すると、この月は再び自由に編集できる状態になります。",
+    confirmReopenMessage: "確定を解除すると、この月は再び自由に編集できる状態になります。確定済みの数字(CSV 出力や給与計算に使った値)は、修正が入ると変わることがあります。",
     confirmReopenExtraNote: "締めの解除は影響の大きい操作です。この操作は監査ログに記録されます。",
     confirmReopenLabel: "解除する",
 

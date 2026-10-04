@@ -1359,7 +1359,7 @@ export const zhHant = {
     confirmCloseLabel: "結算",
 
     confirmReopenTitle: "確定要解除確定狀態嗎",
-    confirmReopenMessage: "解除確定狀態後,本月將重新變為可自由編輯的狀態。",
+    confirmReopenMessage: "解除確定狀態後,本月將重新變為可自由編輯的狀態。已確定的數字(用於 CSV 匯出或薪資計算的數值)在修改後可能會有所變動。",
     confirmReopenExtraNote: "解除結算是影響較大的操作,此操作將被記錄到稽核日誌中。",
     confirmReopenLabel: "解除",
 

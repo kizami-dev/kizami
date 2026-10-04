@@ -1401,7 +1401,7 @@ export const en = {
     confirmCloseLabel: "Close",
 
     confirmReopenTitle: "Reopen this month?",
-    confirmReopenMessage: "Reopening makes this month freely editable again.",
+    confirmReopenMessage: "Reopening makes this month freely editable again. Figures already finalized (such as values used for CSV export or payroll) may change once edits are made.",
     confirmReopenExtraNote: "Reopening a closed month is a high-impact action. It is recorded in the audit log.",
     confirmReopenLabel: "Reopen",
 

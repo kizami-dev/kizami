@@ -719,3 +719,14 @@
     padding: 0;
   }
 }
+
+/* 締めが済んだ月のパネルは目立たせない(解除は危険操作の入口。枠なしで静かに、履歴と同じ行に置く)。 */
+.closing-panel--closed {
+  border: none;
+  padding: 0;
+  gap: var(--space-1);
+}
+
+.closing-panel--closed .closing-panel__actions {
+  align-items: center;
+}

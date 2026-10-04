@@ -1359,7 +1359,7 @@ export const zh = {
     confirmCloseLabel: "结算",
 
     confirmReopenTitle: "确定要解除确定状态吗",
-    confirmReopenMessage: "解除确定状态后,本月将重新变为可自由编辑的状态。",
+    confirmReopenMessage: "解除确定状态后,本月将重新变为可自由编辑的状态。已确定的数字(用于 CSV 导出或工资计算的数值)在修改后可能会发生变化。",
     confirmReopenExtraNote: "解除结算是影响较大的操作,此操作将被记录到审计日志中。",
     confirmReopenLabel: "解除",
 

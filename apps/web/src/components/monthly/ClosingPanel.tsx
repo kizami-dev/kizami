@@ -127,7 +127,7 @@ export function ClosingPanel({ monthParam, reloadKey, onReload, userId, data }: 
   return (
     <>
       {!closingForbidden && closingState ? (
-        <div className="closing-panel" data-tour="monthly-closing">
+        <div className={`closing-panel${closingState.status === "open" ? "" : " closing-panel--closed"}`} data-tour="monthly-closing">
           <div className="closing-panel__actions">
             {closingState.status === "open" ? (
               <>
@@ -142,9 +142,10 @@ export function ClosingPanel({ monthParam, reloadKey, onReload, userId, data }: 
               </>
             ) : (
               <>
+                {/* 危険操作の入口は枠だけの副ボタン(押すと影響を説明する確認ダイアログが開く)。 */}
                 <button
                   type="button"
-                  className="btn btn--danger"
+                  className="btn btn--danger-ghost btn--sm"
                   onClick={() => setReopenConfirmOpen(true)}
                 >
                   {messages.closing.reopenAction}
