@@ -1358,6 +1358,7 @@ export const zhHant = {
     slackLinkDesc: "輸入在Slack中執行 `/punch link` 後獲得的權杖,關聯你的Slack帳號。",
     auditLogsTitle: "稽核日誌",
     auditLogsDesc: "檢視打卡、修正、簽核、結算、權限變更等不可竄改的操作紀錄(僅供檢視)。",
+    slackLinkNavTitle: "Slack關聯(本人)",
   },
 
   /** 月度結算與CSV匯出(/monthly 頁面)。 */

@@ -43,7 +43,7 @@ export function SettingsNav({ active }: { active: SettingsSection }) {
           <div className="settings-nav__items">
             {group.items.map((item) => (
               <Link key={item.key} to={item.to} className="settings-nav__link" aria-current={active === item.key ? "page" : undefined}>
-                {item.title}
+                {item.navTitle}
               </Link>
             ))}
           </div>

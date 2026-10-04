@@ -1358,6 +1358,7 @@ export const zh = {
     slackLinkDesc: "输入在Slack中执行 `/punch link` 后获得的令牌,关联你的Slack账号。",
     auditLogsTitle: "审计日志",
     auditLogsDesc: "查看打卡、修正、审批、结算、权限变更等不可篡改的操作记录(仅供查看)。",
+    slackLinkNavTitle: "Slack关联(本人)",
   },
 
   /** 月度结算与CSV导出(/monthly 页面)。 */
