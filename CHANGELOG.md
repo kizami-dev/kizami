@@ -13,9 +13,18 @@ API・DB スキーマの互換方針とアップグレード手順は
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-05
+
+セルフサインアップ(KIZAMI Cloud の入口)、本人によるパスワード変更と本人用の再設定、
+繁体中文(台湾)の追加、言語・テーマ切り替えの設定画面への移動。
+
+> 注: 下の「退職者データの保持と消去」「可観測性」「二要素認証」は、コードとしては
+> v0.7.0 のタグに含まれていたが、0.7.0 の節に書き漏れていたものをここに記す
+> (0.7.0 を使っている場合は既に入っている)。
+
 ### Added
 
-- **セルフサインアップ(KIZAMI Cloud、Phase 1 実装中)**([docs/design/saas.md](docs/design/saas.md))
+- **セルフサインアップ(KIZAMI Cloud、Phase 1)**([docs/design/saas.md](docs/design/saas.md))
   - 環境変数 `SIGNUP_MODE`(`off` 既定 / `invite` / `open`)でゲート。off では
     `GET /signup/config` 以外の `/signup/*` はすべて 404 で、セルフホストの体験は変わらない
   - `POST /signup` → 確認メール → `POST /signup/verify/:token`(パスワードはここで設定)で
@@ -26,6 +35,34 @@ API・DB スキーマの互換方針とアップグレード手順は
     運用者 CLI `pnpm operator`(招待コードの発行・一覧・失効、テナント一覧)
   - 起動時 fail-fast(必須の環境変数が欠けていれば `node.ts` がエラー終了)。
     日次ワーカーが期限切れから7日経った未確認の申請を削除
+
+- **本人によるパスワード変更**
+  - 設定の「ログインとセキュリティ」から `POST /auth/password/change`。現在のパスワードを毎回確認し
+    (盗まれたセッションだけでは変更できない)、成功すると**今のセッション以外をすべて失効**させる。
+    APIキーは失効させない。レート制限は15分10回
+  - SSO のみのアカウント(パスワード資格情報なし)は 409 `no_password_credential`
+
+- **「パスワードを忘れた」本人用の再設定**(システムメールがある配備でだけ有効)
+  - `GET /password-resets/config` / `POST /password-resets`、画面は `/forgot-password`(ログイン画面からリンク)。
+    システムメール(`SYSTEM_SMTP_URL`)が無い配備では口ごと閉じ、管理者発行の再設定リンクだけが残る
+  - 有効期限1時間・固定文面のメール・Turnstile。存在しないメールにも同じ 202 を返す(列挙対策)
+
+- **KIZAMI Cloud の k8s 資材**(`deploy/k8s-cloud/`、[docs/design/saas.md](docs/design/saas.md))
+  - 専用 namespace に PostgreSQL 17 StatefulSet・api / web・worker・日次 `pg_dump` CronJob。
+    Secret の作り方・トンネルの振り分け・招待コードの発行・復旧手順とリハーサル方法を README に記載
+
+- **繁体中文(台湾)の UI とヘルプ**
+  - 言語に `zh-Hant`(表示名「繁體中文」、`<html lang="zh-Hant">`、Intl は `zh-Hant-TW`)を追加。
+    既存の `zh`(简体中文)はそのまま。UI 辞書の全キーとヘルプ全24項目を、台湾の用語
+    (登入・登出・帳號・密碼・設定・軟體・檔案・資訊・網路・程式・伺服器・預設・支援・連結・通知・匯出・訊息・電子郵件 など)で訳した
+  - ブラウザの言語からの推定: `zh-TW` / `zh-HK` / `zh-MO` / `zh-Hant*` は繁体、それ以外の `zh*` は簡体
+  - 以後、UI 文言とヘルプは5言語(ja / en / ko / zh / zh-Hant)
+
+- **「言語と表示」の設定画面**(`/settings/display`)
+  - 表示言語(5言語)と配色(ライト・ダーク・システム)を選ぶ。本人の設定で権限は不要。保存先はこのブラウザ
+    (`localStorage`)で、設定のハブ・サブナビの「個人設定」に並ぶ
+  - ログイン前の画面(ログイン・新規登録・登録確認・招待受諾・パスワード再設定・パスワードを忘れた場合)の
+    右上に、小さな言語切り替えを置いた(テーマ切り替えは置かない)
 
 - **退職者データの保持と消去**([docs/design/data-retention.md](docs/design/data-retention.md))
   - 労働基準法109条の保存義務(原則5年・附則143条2項の経過措置により当分の間3年)と、
@@ -88,6 +125,46 @@ API・DB スキーマの互換方針とアップグレード手順は
     (平文フォールバックはしない)
   - **SSO ログインはバイパスする**(多要素を課すかは IdP 側のポリシーが決めるため)。
     APIキー認証は影響を受けない
+
+### Changed
+
+- **2FA 利用者は、パスワード再設定リンクの使用後に自動ログインしない**(既存挙動の変更)。
+  従来は管理者発行の再設定リンクを使うとそのままログイン済みになったが、二要素認証を有効にしている人は、
+  新しいパスワードを設定した後にログイン画面から(TOTP つきで)入り直す。再設定リンクだけで
+  2FA を迂回できないようにするため
+- **言語とテーマの切り替えをヘッダーから設定へ移動**。ヘッダーのユーザーメニュー・モバイルの「その他」から外し、
+  「設定 > 言語と表示」へ集約した
+- **セキュリティ設定の名称を「ログインとセキュリティ」に変更**(設定のハブ・画面タイトル。パスワード変更を
+  含むようになったため)
+- **システムメールの想定送信先を Cloudflare Email Service(SMTP)に変更**(KIZAMI Cloud)。
+  アプリは汎用 SMTP として送るためコードの変更はなく、`SYSTEM_SMTP_URL` の向き先と文書だけの更新
+- `docs/requirements.md` などの「4言語」の記述を5言語へ更新
+
+### Fixed
+
+- **worker が起動失敗時にプロセスを終了せず居座る問題**。DB マイグレーションが失敗しても、先に開いた
+  Redis 接続がイベントループを生かし続け、Pod が Running のまま何も処理せず、k8s も再起動できなかった。
+  `process.exit(1)` で確実に落とし、再起動に任せる
+- KIZAMI Cloud の出口制限が、クラスタノード自身のグローバル IP への到達を許していた
+
+### Security
+
+セルフサインアップと再設定の追加に際して行った対策(いずれも設計時のセキュリティレビューで潰したもの)。
+
+- **乗っ取り**: パスワードは `POST /signup` では受け取らず、メール確認時(`POST /signup/verify/:token`)に設定する
+  (他人のメールで登録 → 被害者が確認すると攻撃者のパスワードでテナントができる、を防ぐ)。
+  パスワード変更・再設定の使用時は、同じユーザーの**未決着の再設定トークンをすべて失効**させ
+  (本人が乗っ取りを疑って変更しても、攻撃者の持つリンクで上書きされない)、変更時は今のセッション以外も失効させる。
+  再設定リンクの使用では 2FA 利用者に使用直後のセッションを発行しない
+- **フィッシング**: 確認メール・再設定メールは固定文面+URL のみで、ユーザー入力(組織名など)を入れない
+- **ログイン CSRF**: signup の POST はすべて `Content-Type: application/json` 必須+Origin 検証(`APP_BASE_URL`)。
+  再設定も同じ POST ガードに共通化した
+- **ユーザー列挙**: 応答は存在の有無によらず同一(202)。本人用再設定の応答時間も該当者の有無から独立
+  (対象の探索・トークン発行・メール送信は応答後のバックグラウンドで行う)
+- **メール爆撃・リンク置き換え妨害**: 同一メール宛は5分に1回まで、IP レート制限、Turnstile 必須
+- **KIZAMI Cloud の分離**: 既定全拒否の NetworkPolicy(入口は cloudflared と監視のみ、postgres へは同 namespace の
+  api / worker / pg-dump だけ、出口はプライベート帯とノードのグローバル IP を除外)で、`CF-Connecting-IP` 偽装と
+  SSRF を塞ぐ。`pg_dump` は umask 077・ディレクトリ 700
 
 ## [0.7.0] - 2026-08-27
 
@@ -512,7 +589,8 @@ API・DB スキーマの互換方針とアップグレード手順は
   タグ名ではなくマイルストーン末尾のコミット SHA で範囲を示している。
 -->
 
-[Unreleased]: https://github.com/kizami-dev/kizami/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/kizami-dev/kizami/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/kizami-dev/kizami/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/kizami-dev/kizami/compare/ece25ba...v0.7.0
 [0.6.0]: https://github.com/kizami-dev/kizami/compare/2599955...ece25ba
 [0.5.0]: https://github.com/kizami-dev/kizami/compare/8845be9...2599955
