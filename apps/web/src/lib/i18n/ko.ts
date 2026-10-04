@@ -201,6 +201,7 @@ export const ko = {
   common: {
     /** 두 개의 짧은 보충 문구를 느슨하게 구분하는 기호(예: 「설정됨(…)」·「변경하지 않으려면 빈칸으로」). */
     hintSeparator: " · ",
+    initialVersion: "초기 설정",
   },
 
   /**

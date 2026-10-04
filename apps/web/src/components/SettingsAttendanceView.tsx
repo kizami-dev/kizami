@@ -16,6 +16,7 @@ import {
   type WorkPolicyVersionDto,
 } from "../lib/api";
 import { mapAttendanceSettingsErrorMessage, messages } from "../lib/messages";
+import { formatEffectiveFrom } from "../lib/effective-from";
 import {
   currentYearMonthJst,
   dateStrFromEpochMinutesJst,
@@ -479,7 +480,7 @@ export function SettingsAttendanceView() {
                   </span>
                 </div>
                 <p className="attendance-settings__current-effective-from tabular-nums">
-                  {messages.settingsAttendance.currentEffectiveFrom}: {attendance.effective.effectiveFrom}
+                  {messages.settingsAttendance.currentEffectiveFrom}: {formatEffectiveFrom(attendance.effective.effectiveFrom)}
                 </p>
               </div>
             ) : (
@@ -732,7 +733,7 @@ export function SettingsAttendanceView() {
                   <tbody>
                     {[...attendance.history].reverse().map((v) => (
                       <tr key={v.effectiveFrom}>
-                        <td className="tabular-nums">{v.effectiveFrom}</td>
+                        <td className="tabular-nums">{formatEffectiveFrom(v.effectiveFrom)}</td>
                         <td>{summarizeAttendanceVersion(v)}</td>
                       </tr>
                     ))}
@@ -760,7 +761,7 @@ export function SettingsAttendanceView() {
                   <span className="attendance-settings__current-value">{summarizeCoreTime(workPolicy.effective.core)}</span>
                 </div>
                 <p className="attendance-settings__current-effective-from tabular-nums">
-                  {messages.settingsAttendance.currentEffectiveFrom}: {workPolicy.effective.effectiveFrom}
+                  {messages.settingsAttendance.currentEffectiveFrom}: {formatEffectiveFrom(workPolicy.effective.effectiveFrom)}
                 </p>
               </div>
             ) : (
@@ -883,7 +884,7 @@ export function SettingsAttendanceView() {
                   <tbody>
                     {[...workPolicy.history].reverse().map((v) => (
                       <tr key={v.effectiveFrom}>
-                        <td className="tabular-nums">{v.effectiveFrom}</td>
+                        <td className="tabular-nums">{formatEffectiveFrom(v.effectiveFrom)}</td>
                         <td>{summarizeWorkPolicyVersion(v)}</td>
                       </tr>
                     ))}
