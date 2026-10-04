@@ -203,7 +203,7 @@
 
   /* タブバーの分だけ、各画面の本文末尾が隠れないように余白を足す。
      :has() でタブバーの存在を検知し、本文側(main)の変更なしに一括対応する
-     (全ページで <main class="…__main"> という共通構造のため成立する。独自判断)。 */
+     (全ページで <main> が本文を包む共通構造のため成立する。多くは components.css の .page。独自判断)。 */
   body:has(.k-tabbar) main {
     padding-bottom: calc(4.75rem + env(safe-area-inset-bottom));
   }

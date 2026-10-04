@@ -31,6 +31,7 @@ import { AppHeader } from "./AppHeader";
 import { HelpTip } from "./HelpTip";
 import { SettingsNav } from "./SettingsNav";
 import { StateView } from "./ui/StateView";
+import { PageHeader } from "./ui/PageHeader";
 
 // モジュールレベルで messages のプロパティを取り出して定数化すると、import 時の言語
 // (通常は既定の日本語)で凍結され、言語切替に追従しない(messages は Proxy 経由で
@@ -414,10 +415,9 @@ export function SettingsAttendanceView() {
   return (
     <div className="attendance-settings">
       <AppHeader displayName={guard.user.displayName} email={guard.user.email} tenantName={guard.tenant?.name ?? null} active="settings" />
-      <main className="attendance-settings__main">
+      <main className="page">
         <SettingsNav active="attendance" />
-        <h1 className="attendance-settings__title">{messages.settingsAttendance.title}</h1>
-        <p className="attendance-settings__tagline">{messages.settingsAttendance.tagline}</p>
+        <PageHeader title={messages.settingsAttendance.title} lead={messages.settingsAttendance.tagline} />
 
         {showNothing ? (
           <p className="notice notice--danger" role="alert">

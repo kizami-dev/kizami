@@ -10,6 +10,7 @@ import { LeaveBalancePanel } from "./LeaveBalancePanel";
 import { LeaveRequestForm } from "./LeaveRequestForm";
 import { LeaveRequestsList } from "./LeaveRequestsList";
 import { StateView } from "./ui/StateView";
+import { PageHeader } from "./ui/PageHeader";
 
 /**
  * 有給休暇ホーム(/leave)。本人の残高確認・申請・申請一覧(承認/却下/取下げ)をまとめる
@@ -101,9 +102,8 @@ export function LeaveHome() {
   return (
     <div className="leave">
       <AppHeader displayName={guard.user.displayName} email={guard.user.email} tenantName={guard.tenant?.name ?? null} active="leave" />
-      <main className="leave__main">
-        <h1 className="leave__title">{messages.leave.title}</h1>
-        <p className="leave__tagline">{messages.leave.tagline}</p>
+      <main className="page">
+        <PageHeader title={messages.leave.title} lead={messages.leave.tagline} />
 
         {loading ? <StateView kind="loading">{messages.loading}</StateView> : null}
         {loadError ? <StateView kind="error">{loadError}</StateView> : null}

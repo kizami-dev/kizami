@@ -9,6 +9,7 @@ import { useAuthGuard } from "../lib/useAuthGuard";
 import { AppHeader } from "./AppHeader";
 import { SettingsNav } from "./SettingsNav";
 import { StateView } from "./ui/StateView";
+import { PageHeader } from "./ui/PageHeader";
 
 /** privacy.notice-template / privacy.internal-terms-template(packages/help-content 側で定義)。 */
 const NOTICE_HELP_KEY = "privacy.notice-template";
@@ -193,10 +194,9 @@ export function PrivacyTemplatesView() {
   return (
     <div className="page-shell">
       <AppHeader displayName={guard.user.displayName} email={guard.user.email} tenantName={guard.tenant?.name ?? null} active="settings" />
-      <main className="page privacy-template__main">
+      <main className="page">
         <SettingsNav active="privacy" />
-        <h1 className="settings-notif__title">{messages.settingsPrivacy.title}</h1>
-        <p className="settings-notif__tagline">{messages.settingsPrivacy.tagline}</p>
+        <PageHeader title={messages.settingsPrivacy.title} lead={messages.settingsPrivacy.tagline} />
 
         <p className="notice notice--info" role="note">
           {messages.settingsPrivacy.disclaimer}
@@ -210,7 +210,7 @@ export function PrivacyTemplatesView() {
         {loadError ? <StateView kind="error">{loadError}</StateView> : null}
 
         {!forbidden && data ? (
-          <>
+          <div className="page-body page-body--form">
             <section className="card privacy-template__generated-from">
               <h2 className="card__title">{messages.settingsPrivacy.generatedFromTitle}</h2>
               <ul className="privacy-template__generated-from-list">
@@ -270,7 +270,7 @@ export function PrivacyTemplatesView() {
               filename="internal-terms.md"
               helpKey={TERMS_HELP_KEY}
             />
-          </>
+          </div>
         ) : null}
       </main>
     </div>

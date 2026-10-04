@@ -10,6 +10,7 @@ import { useAuthGuard } from "../lib/useAuthGuard";
 import { AppHeader } from "./AppHeader";
 import { NotificationListItem } from "./NotificationListItem";
 import { StateView } from "./ui/StateView";
+import { PageHeader } from "./ui/PageHeader";
 
 /** GET /notifications が実際に返す最大件数(apps/api/src/routes/notifications.ts の MAX_LIST_LIMIT)。
  * APIはページングパラメータを持たないため、この件数に達したら「古い通知は表示されません」と
@@ -163,9 +164,8 @@ export function NotificationsListView() {
   return (
     <div className="notif-list-page">
       <AppHeader displayName={guard.user.displayName} email={guard.user.email} tenantName={guard.tenant?.name ?? null} active="notifications" />
-      <main className="notif-list-page__main">
-        <h1 className="notif-list-page__title">{messages.notificationsPage.title}</h1>
-        <p className="notif-list-page__tagline">{messages.notificationsPage.tagline}</p>
+      <main className="page">
+        <PageHeader title={messages.notificationsPage.title} lead={messages.notificationsPage.tagline} />
 
         <div className="notif-list-page__controls">
           <div className="notif-filter-group" role="group" aria-label={messages.notificationsPage.filterStatusGroupLabel}>

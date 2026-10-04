@@ -614,6 +614,13 @@ select.input {
   max-width: var(--width-form);
 }
 
+/* ページ直下の注意書きと補足は読み物なので、フォームと同じ幅で折り返す。 */
+.page > .notice,
+.page > .field__hint,
+.page > .section-lead {
+  max-width: var(--width-form);
+}
+
 /* 節見出し(ページ内の h2)。 */
 .section-title {
   font-family: var(--font-heading);
@@ -622,4 +629,10 @@ select.input {
   font-size: var(--text-lg);
   line-height: 1.4;
   color: var(--k-key);
+}
+
+/* 節の補足(見出しの下の1〜2文)。 */
+.section-lead {
+  font-size: var(--text-sm);
+  color: var(--k-ink-soft);
 }

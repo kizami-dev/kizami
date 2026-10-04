@@ -18,6 +18,7 @@ import { HelpTip } from "./HelpTip";
 import { PresetFormDialog, type PresetFormValue } from "./PresetFormDialog";
 import { SettingsNav } from "./SettingsNav";
 import { StateView } from "./ui/StateView";
+import { PageHeader } from "./ui/PageHeader";
 
 type FormState = { mode: "create" | "edit"; editingId?: string; readOnly: boolean; initial: PresetFormValue };
 type DeleteState = { id: string; name: string };
@@ -173,13 +174,24 @@ export function PresetsView() {
   return (
     <div className="org-settings">
       <AppHeader displayName={guard.user.displayName} email={guard.user.email} tenantName={guard.tenant?.name ?? null} active="settings" />
-      <main className="org-settings__main org-settings__main--wide">
+      <main className="page">
         <SettingsNav active="presets" />
-        <h1 className="org-settings__title">
-          {messages.presets.title}
-          <HelpTip helpKey="permission.presets" />
-        </h1>
-        <p className="org-settings__tagline">{messages.presets.tagline}</p>
+        <PageHeader
+          title={
+            <>
+              {messages.presets.title}
+              <HelpTip helpKey="permission.presets" />
+            </>
+          }
+          lead={messages.presets.tagline}
+          actions={
+            !forbidden && presets ? (
+              <button type="button" className="btn btn--primary" onClick={openCreate}>
+                {messages.presets.addNew}
+              </button>
+            ) : null
+          }
+        />
 
         {forbidden ? (
           <p className="notice notice--danger" role="alert">
@@ -190,12 +202,6 @@ export function PresetsView() {
 
         {!forbidden && presets ? (
           <>
-            <div className="org-settings__toolbar">
-              <button type="button" className="btn btn--primary" onClick={openCreate}>
-                {messages.presets.addNew}
-              </button>
-            </div>
-
             {presets.length === 0 ? (
               <StateView kind="empty">{messages.presets.empty}</StateView>
             ) : (

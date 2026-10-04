@@ -18,6 +18,7 @@ import { useSettingsAccess } from "../lib/useSettingsAccess";
 import { AppHeader } from "./AppHeader";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { StateView } from "./ui/StateView";
+import { PageHeader } from "./ui/PageHeader";
 
 const CATEGORIES: PersonalNotificationCategory[] = [
   "missing_clock_out",
@@ -240,13 +241,12 @@ export function PersonalNotificationSettingsView() {
   return (
     <div className="settings-personal-notif">
       <AppHeader displayName={guard.user.displayName} email={guard.user.email} tenantName={guard.tenant?.name ?? null} active="settings" />
-      <main className="settings-personal-notif__main">
+      <main className="page">
         <Link to="/settings" className="settings-nav__hub-link">
           <span aria-hidden="true">←</span> {messages.settingsNav.hubLink}
         </Link>
 
-        <h1 className="settings-personal-notif__title">{messages.settingsPersonalNotifications.title}</h1>
-        <p className="settings-personal-notif__tagline">{messages.settingsPersonalNotifications.tagline}</p>
+        <PageHeader title={messages.settingsPersonalNotifications.title} lead={messages.settingsPersonalNotifications.tagline} />
 
         <p className="notice notice--info">
           {settingsAccess.notifications ? (

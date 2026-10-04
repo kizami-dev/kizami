@@ -5,18 +5,6 @@
  * テスト送信結果のみ意味色を使う: 成功=C(--k-cyan-ink)、失敗=M(--k-magenta-ink)。
  */
 
-.settings-notif__title {
-  font-family: var(--font-heading);
-  font-weight: var(--weight-bold);
-  font-feature-settings: var(--feature-heading);
-  font-size: var(--text-xl);
-}
-
-.settings-notif__tagline {
-  font-size: var(--text-sm);
-  color: var(--k-ink-soft);
-}
-
 .settings-notif__test-results {
   display: flex;
   flex-direction: column;

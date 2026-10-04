@@ -7,6 +7,7 @@ import { useSettingsAccess } from "../lib/useSettingsAccess";
 import { useAuthGuard } from "../lib/useAuthGuard";
 import { AppHeader } from "./AppHeader";
 import { StateView } from "./ui/StateView";
+import { PageHeader } from "./ui/PageHeader";
 
 /**
  * /settings のハブ画面。アクセスできる設定項目だけをカードで表示する
@@ -200,9 +201,8 @@ export function SettingsHubView() {
   return (
     <div className="settings-hub">
       <AppHeader displayName={guard.user.displayName} email={guard.user.email} tenantName={guard.tenant?.name ?? null} active="settings" />
-      <main className="settings-hub__main">
-        <h1 className="settings-hub__title">{messages.settingsHub.title}</h1>
-        <p className="settings-hub__tagline">{messages.settingsHub.tagline}</p>
+      <main className="page">
+        <PageHeader title={messages.settingsHub.title} lead={messages.settingsHub.tagline} />
 
         {personalCards.length === 0 && cards.length === 0 ? (
           <StateView kind="empty">{messages.settingsHub.empty}</StateView>

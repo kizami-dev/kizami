@@ -11,6 +11,7 @@ import { useEffectivePermissions } from "../lib/useEffectivePermissions";
 import { AppHeader } from "./AppHeader";
 import { ShiftWeekGrid } from "./shifts/ShiftWeekGrid";
 import { StateView } from "./ui/StateView";
+import { PageHeader } from "./ui/PageHeader";
 
 /**
  * 本人のシフト閲覧(/shifts/me、全員、v0.7 フェーズ3、2026-08-24 追加)。
@@ -71,9 +72,8 @@ export function ShiftsMeView() {
   return (
     <div className="shifts-view">
       <AppHeader displayName={guard.user.displayName} email={guard.user.email} tenantName={guard.tenant?.name ?? null} active="shifts" />
-      <main className="shifts-view__main">
-        <h1 className="shifts-view__title">{messages.shiftsMe.title}</h1>
-        <p className="shifts-view__tagline">{messages.shiftsMe.tagline}</p>
+      <main className="page">
+        <PageHeader title={messages.shiftsMe.title} lead={messages.shiftsMe.tagline} />
 
         <div className="monthly__nav">
           <Link to={`/shifts/me?month=${prevMonthParam}`} className="monthly__nav-link">

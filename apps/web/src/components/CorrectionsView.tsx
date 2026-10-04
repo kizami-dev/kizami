@@ -23,6 +23,7 @@ import { ConfirmDialog } from "./ConfirmDialog";
 import { HelpTip } from "./HelpTip";
 import { requestStatusTone } from "./ui/Badge";
 import { StateView } from "./ui/StateView";
+import { PageHeader } from "./ui/PageHeader";
 
 /**
  * 打刻修正申請の承認(POST /corrections/:id/approve・reject)が要求する権限
@@ -564,9 +565,8 @@ export function CorrectionsView() {
   return (
     <div className="corrections">
       <AppHeader displayName={guard.user.displayName} email={guard.user.email} tenantName={guard.tenant?.name ?? null} active="corrections" />
-      <main className="corrections__main">
-        <h1 className="corrections__title">{messages.nav.corrections}</h1>
-        <p className="corrections__tagline">{messages.corrections.tagline}</p>
+      <main className="page">
+        <PageHeader title={messages.nav.corrections} lead={messages.corrections.tagline} />
 
         <section className="corrections__section" data-tour="corrections-own">
           <h2 className="corrections__section-title">{messages.corrections.title}</h2>
@@ -586,7 +586,7 @@ export function CorrectionsView() {
         {hasApprovePermission ? (
           <section className="corrections__section">
             <h2 className="corrections__section-title">{messages.corrections.queueSectionTitle}</h2>
-            <p className="corrections__tagline">{messages.corrections.queueSectionTagline}</p>
+            <p className="section-lead">{messages.corrections.queueSectionTagline}</p>
 
             {queueCorrections.length === 0 ? <p className="corrections__empty">{messages.corrections.queueEmpty}</p> : null}
 
@@ -603,7 +603,7 @@ export function CorrectionsView() {
             {messages.autoBreakWaiver.ownSectionTitle}
             <HelpTip helpKey="attendance.auto-break" />
           </h2>
-          <p className="corrections__tagline">{messages.autoBreakWaiver.ownSectionTagline}</p>
+          <p className="section-lead">{messages.autoBreakWaiver.ownSectionTagline}</p>
 
           {waiverLoadError ? <StateView kind="error">{waiverLoadError}</StateView> : null}
           {waivers && ownWaivers.length === 0 ? <p className="corrections__empty">{messages.autoBreakWaiver.empty}</p> : null}
@@ -618,7 +618,7 @@ export function CorrectionsView() {
         {hasApprovePermission ? (
           <section className="corrections__section">
             <h2 className="corrections__section-title">{messages.autoBreakWaiver.queueSectionTitle}</h2>
-            <p className="corrections__tagline">{messages.autoBreakWaiver.queueSectionTagline}</p>
+            <p className="section-lead">{messages.autoBreakWaiver.queueSectionTagline}</p>
 
             {queueWaivers.length === 0 ? <p className="corrections__empty">{messages.autoBreakWaiver.queueEmpty}</p> : null}
 

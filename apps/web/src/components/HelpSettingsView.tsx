@@ -11,6 +11,7 @@ import { AppHeader } from "./AppHeader";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { SettingsNav } from "./SettingsNav";
 import { StateView } from "./ui/StateView";
+import { PageHeader } from "./ui/PageHeader";
 
 // モジュールレベルで messages のプロパティを取り出して定数化すると、import 時の言語
 // (通常は既定の日本語)で凍結され、言語切替に追従しない(messages は Proxy 経由で現在ロケールを
@@ -237,10 +238,9 @@ export function HelpSettingsView() {
   return (
     <div className="page-shell">
       <AppHeader displayName={guard.user.displayName} email={guard.user.email} tenantName={guard.tenant?.name ?? null} active="settings" />
-      <main className="page help-settings__main">
+      <main className="page">
         <SettingsNav active="help" />
-        <h1 className="settings-notif__title">{messages.settingsHelp.title}</h1>
-        <p className="settings-notif__tagline">{messages.settingsHelp.tagline}</p>
+        <PageHeader title={messages.settingsHelp.title} lead={messages.settingsHelp.tagline} />
 
         {forbidden ? (
           <p className="notice notice--danger" role="alert">

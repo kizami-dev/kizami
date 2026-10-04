@@ -26,6 +26,7 @@ import { InviteLinkDialog } from "./InviteLinkDialog";
 import { InviteMemberDialog, type InviteMemberFormValue } from "./InviteMemberDialog";
 import { SettingsNav } from "./SettingsNav";
 import { StateView } from "./ui/StateView";
+import { PageHeader } from "./ui/PageHeader";
 
 /**
  * 「1日あたりの基準所定時間(有給換算用)」の初期値(分)。8時間 = 480分。
@@ -677,25 +678,13 @@ export function MembersView() {
   return (
     <div className="org-settings">
       <AppHeader displayName={guard.user.displayName} email={guard.user.email} tenantName={guard.tenant?.name ?? null} active="settings" />
-      <main className="org-settings__main org-settings__main--wide">
+      <main className="page">
         <SettingsNav active="members" />
-        <h1 className="org-settings__title">{messages.members.title}</h1>
-        <p className="org-settings__tagline">{messages.members.tagline}</p>
-
-        {forbidden ? (
-          <p className="notice notice--danger" role="alert">
-            {messages.members.noPermission}
-          </p>
-        ) : null}
-        {loadError ? <StateView kind="error">{loadError}</StateView> : null}
-
-        {!forbidden && members ? (
-          <div className="org-settings__toolbar">
-            <label className="org-settings__filter">
-              <input type="checkbox" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} />
-              {messages.members.showInactiveToggle}
-            </label>
-            {canInvite ? (
+        <PageHeader
+          title={messages.members.title}
+          lead={messages.members.tagline}
+          actions={
+            !forbidden && members && canInvite ? (
               <button
                 type="button"
                 className="btn btn--primary"
@@ -707,7 +696,23 @@ export function MembersView() {
               >
                 {messages.members.inviteButton}
               </button>
-            ) : null}
+            ) : null
+          }
+        />
+
+        {forbidden ? (
+          <p className="notice notice--danger" role="alert">
+            {messages.members.noPermission}
+          </p>
+        ) : null}
+        {loadError ? <StateView kind="error">{loadError}</StateView> : null}
+
+        {!forbidden && members ? (
+          <div className="page-toolbar">
+            <label className="check">
+              <input type="checkbox" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} />
+              {messages.members.showInactiveToggle}
+            </label>
           </div>
         ) : null}
 
