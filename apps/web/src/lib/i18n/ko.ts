@@ -46,6 +46,8 @@ export const ko = {
     todayWorkedLabel: "오늘의 실근로",
     monthFlexLabel: "이번 달 플렉스 수지",
     monthFlexMoreLink: "월간 보기 →",
+    todayWorkedProvisional: "근무 중(미확정)",
+    todayWorkedProvisionalNote: "출근 후 경과 시간에서 휴게를 뺀 추정치입니다. 퇴근 후 확정됩니다.",
 
     /** 오늘·내일의 시프트(2026-08-24 추가, v0.7 3단계). 시프트가 하나도 없으면 카드 자체를 표시하지 않습니다. */
     shiftCardTitle: "오늘·내일의 시프트",
@@ -628,6 +630,7 @@ export const ko = {
 
     flexBalanceLabel: "플렉스 수지",
     flexBalanceUnit: "분",
+    flexShortLabel: "부족",
     /** 고정시간제에서의 「플렉스 수지 바」대체(2026-08-23 추가). 36협정의 월 45시간 상한에 대한 연장근로 위치. */
     overtimeBarLabel: "연장근로(36협정 월 45시간 상한 대비)",
     overtimeBarUnit: "분",

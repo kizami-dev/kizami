@@ -109,6 +109,12 @@
   color: var(--k-magenta-ink);
 }
 
+/* フレックスの不足: マゼンタは退勤と危険操作だけなので、不足は墨色+符号+「不足」の文言で示す */
+.flex-balance__diff--short {
+  color: var(--k-ink-soft);
+  font-weight: var(--weight-bold);
+}
+
 .flex-balance__diff--positive {
   color: var(--k-cyan-ink);
 }

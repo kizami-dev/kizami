@@ -61,6 +61,8 @@ export const en = {
     todayWorkedLabel: "Worked today",
     monthFlexLabel: "This month's flex balance",
     monthFlexMoreLink: "View monthly →",
+    todayWorkedProvisional: "On duty (not final)",
+    todayWorkedProvisionalNote: "Estimate: time since clock-in minus breaks. Finalized after you clock out.",
 
     /** Today's and tomorrow's shift (added 2026-08-24, v0.7 phase 3). The card itself is hidden when there is no shift at all. */
     shiftCardTitle: "Today's and tomorrow's shifts",
@@ -649,6 +651,7 @@ export const en = {
 
     flexBalanceLabel: "Flex balance",
     flexBalanceUnit: "min",
+    flexShortLabel: "short",
     /** Replaces the "flex balance bar" under the fixed working-hours system (added 2026-08-23). Position of overtime against the Article 36 agreement's 45-hour monthly cap. */
     overtimeBarLabel: "Overtime (against the Article 36 agreement's 45-hour monthly cap)",
     overtimeBarUnit: "min",

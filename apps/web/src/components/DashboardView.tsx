@@ -15,6 +15,7 @@ import {
   type LeaveRequestDto,
   type MonthlyAttendance,
   type NotificationDto,
+  type Punch,
   type PunchGpsInput,
   type PunchKind,
   type ShiftDayDto,
@@ -29,8 +30,10 @@ import {
   formatDateTimeJst,
   formatDurationHm,
   formatMonthParam,
+  jstTodayWindow,
   minutesToHm,
   nowMinutes,
+  provisionalWorkedMinutes,
 } from "../lib/time";
 import { splitMandatoryFiveDays } from "../lib/mandatory-five-days";
 import { useAuthGuard } from "../lib/useAuthGuard";
@@ -70,6 +73,9 @@ export function DashboardView() {
   // ---- 打刻(最上部、1画面で完結させる) ----
   const [status, setStatus] = useState<AttendanceStatus | null>(null);
   const [monthly, setMonthly] = useState<MonthlyAttendance | null>(null);
+  const [todayPunches, setTodayPunches] = useState<Punch[] | null>(null);
+  /** 勤務中の暫定実労働を1分ごとに進めるための現在時刻(分)。 */
+  const [nowMin, setNowMin] = useState(() => nowMinutes());
   const [capabilities, setCapabilities] = useState<AttendanceCapabilitiesDto | null>(null);
   const [punchDataLoaded, setPunchDataLoaded] = useState(false);
 
@@ -102,9 +108,11 @@ export function DashboardView() {
     if (guard.status !== "authed") return;
     let cancelled = false;
 
-    Promise.allSettled([api.status(), api.monthly(monthParam), api.getAttendanceCapabilities()]).then((results) => {
+    const { from, to } = jstTodayWindow();
+    Promise.allSettled([api.status(), api.monthly(monthParam), api.getAttendanceCapabilities(), api.listPunches(from, to)]).then((results) => {
       if (cancelled) return;
-      const [statusResult, monthlyResult, capsResult] = results;
+      const [statusResult, monthlyResult, capsResult, punchesResult] = results;
+      if (punchesResult.status === "fulfilled") setTodayPunches(punchesResult.value.punches);
       if (statusResult.status === "fulfilled") setStatus(statusResult.value);
       else if (statusResult.reason instanceof UnauthorizedError) {
         router.push("/login");
@@ -124,6 +132,14 @@ export function DashboardView() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [guard.status, monthParam, reloadKey]);
+
+  // 勤務中だけ、暫定の実労働を1分ごとに進める。
+  const working = status?.state === "working" || status?.state === "onBreak";
+  useEffect(() => {
+    if (!working) return;
+    const id = window.setInterval(() => setNowMin(nowMinutes()), 60_000);
+    return () => window.clearInterval(id);
+  }, [working]);
 
   // 要対応の材料(通知・承認待ち申請・有給残高)。打刻では変わらないため1回だけ取得する。
   useEffect(() => {
@@ -258,8 +274,13 @@ export function DashboardView() {
   const breakKind: PunchKind = state === "onBreak" ? "break_end" : "break_start";
   const breakLabel = state === "onBreak" ? messages.punchButtons.breakEnd : messages.punchButtons.breakStart;
 
-  const todayWorkedMinutes = monthly?.days.find((d) => d.date === todayDate)?.workedMinutes ?? 0;
+  // 勤務中は月次の確定値(退勤まで 0)ではなく、出勤からの経過 − 休憩の暫定値を出す。
+  const isWorkingNow = state !== "out";
+  const todayWorkedMinutes = isWorkingNow
+    ? provisionalWorkedMinutes(todayPunches ?? [], nowMin)
+    : (monthly?.days.find((d) => d.date === todayDate)?.workedMinutes ?? 0);
   const flex = monthly?.figures.flexBalance;
+  const flexDiff = flex?.diffMinutes ?? 0;
   const flexPercent = flex && flex.frameMinutes > 0 ? Math.min(100, Math.max(0, (flex.actualMinutes / flex.frameMinutes) * 100)) : 0;
 
   const warningDates = monthly ? Array.from(new Set(monthly.warnings.map((w) => w.date))).sort() : [];
@@ -372,43 +393,6 @@ export function DashboardView() {
         {/* ---- 2〜3. 今日/今月の要点・要対応(2026-08-23: 外枠が wide になった分、
              1カラムを間延びさせず横並びにする。dashboard.css の .dashboard-grid 参照) ---- */}
         <div className="dashboard-grid">
-        {/* ---- 2. 今日/今月の要点 ---- */}
-        <section className="dashboard-card" aria-label={messages.dashboard.todayTitle}>
-          <h2 className="dashboard-card__title">{messages.dashboard.todayTitle}</h2>
-          <div className="dashboard-today-row">
-            <span className="dashboard-today-row__label">{messages.dashboard.todayWorkedLabel}</span>
-            <span className="dashboard-today-row__value tabular-nums">
-              {punchDataLoaded ? formatDurationHm(todayWorkedMinutes) : "—:—"}
-            </span>
-          </div>
-
-          <div className="flex-balance">
-            <span className="flex-balance__label">{messages.dashboard.monthFlexLabel}</span>
-            <div
-              className="flex-balance__track"
-              role="meter"
-              aria-valuemin={0}
-              aria-valuemax={flex?.frameMinutes ?? 0}
-              aria-valuenow={flex?.actualMinutes ?? 0}
-              aria-label={messages.dashboard.monthFlexLabel}
-            >
-              <div className="flex-balance__fill" style={{ width: `${flexPercent}%` }} />
-            </div>
-            <div className="flex-balance__numbers tabular-nums">
-              <span>
-                {formatDurationHm(flex?.actualMinutes ?? 0)} / {formatDurationHm(flex?.frameMinutes ?? 0)}
-              </span>
-              <span className={(flex?.diffMinutes ?? 0) < 0 ? "flex-balance__diff--negative" : "flex-balance__diff--positive"}>
-                {(flex?.diffMinutes ?? 0) >= 0 ? "+" : ""}
-                {formatDurationHm(flex?.diffMinutes ?? 0)}
-              </span>
-            </div>
-          </div>
-          <Link to={`/monthly?month=${monthParam}`} className="dashboard-card__link">
-            {messages.dashboard.monthFlexMoreLink}
-          </Link>
-        </section>
-
         {/* ---- 3. 要対応(あるものだけ) ---- */}
         <section className="dashboard-card" aria-label={messages.dashboard.todoTitle} data-tour="dashboard-todo">
           <h2 className="dashboard-card__title">{messages.dashboard.todoTitle}</h2>
@@ -557,9 +541,53 @@ export function DashboardView() {
 
           {todoLoadFailed ? <p className="dashboard-todo__load-failed">{messages.dashboard.todoLoadFailed}</p> : null}
         </section>
+        {/* ---- 2. 今日/今月の要点 ---- */}
+        <section className="dashboard-card" aria-label={messages.dashboard.todayTitle}>
+          <h2 className="dashboard-card__title">{messages.dashboard.todayTitle}</h2>
+          <div className="dashboard-today-row">
+            <span className="dashboard-today-row__label">{messages.dashboard.todayWorkedLabel}</span>
+            <span className="dashboard-today-row__value tabular-nums">
+              {punchDataLoaded && (!isWorkingNow || todayPunches) ? formatDurationHm(todayWorkedMinutes) : "—:—"}
+            </span>
+          </div>
+          {isWorkingNow ? (
+            <p className="dashboard-today-note">
+              <strong>{messages.dashboard.todayWorkedProvisional}</strong> {messages.dashboard.todayWorkedProvisionalNote}
+            </p>
+          ) : null}
+
+          <div className="flex-balance">
+            <span className="flex-balance__label">{messages.dashboard.monthFlexLabel}</span>
+            <div
+              className="flex-balance__track"
+              role="meter"
+              aria-valuemin={0}
+              aria-valuemax={flex?.frameMinutes ?? 0}
+              aria-valuenow={flex?.actualMinutes ?? 0}
+              aria-label={messages.dashboard.monthFlexLabel}
+            >
+              <div className="flex-balance__fill" style={{ width: `${flexPercent}%` }} />
+            </div>
+            <div className="flex-balance__numbers tabular-nums">
+              <span>
+                {formatDurationHm(flex?.actualMinutes ?? 0)} / {formatDurationHm(flex?.frameMinutes ?? 0)}
+              </span>
+              <span className={flexDiff < 0 ? "flex-balance__diff--short" : "flex-balance__diff--positive"}>
+                {flexDiff >= 0 ? "+" : ""}
+                {formatDurationHm(flexDiff)}
+                {flexDiff < 0 ? ` ${messages.monthly.flexShortLabel}` : ""}
+              </span>
+            </div>
+          </div>
+          <Link to={`/monthly?month=${monthParam}`} className="dashboard-card__link">
+            {messages.dashboard.monthFlexMoreLink}
+          </Link>
+        </section>
+
         </div>
 
-        {/* ---- 4. クイックリンク ---- */}
+        {/* ---- 4. クイックリンク(要対応が空のときだけ。上部ナビと重複するため、要対応があるときは出さない) ---- */}
+        {todoDataLoaded && !hasTodo ? (
         <section className="dashboard-card" aria-label={messages.dashboard.quickLinksTitle}>
           <h2 className="dashboard-card__title">{messages.dashboard.quickLinksTitle}</h2>
           <div className="settings-hub__grid">
@@ -577,6 +605,7 @@ export function DashboardView() {
             </Link>
           </div>
         </section>
+        ) : null}
       </main>
     </div>
   );
