@@ -232,9 +232,9 @@ export function SecuritySettingsView() {
 
         {status && !status.available ? (
           /* 暗号化鍵が未設定の配置。利用者側では解決できないため、操作は一切出さない。 */
-          <section className="security-settings__unavailable">
+          <section className="notice notice--info">
             <h2 className="card__title">{messages.settingsSecurity.unavailableTitle}</h2>
-            <p className="security-settings__unavailable-desc">{messages.settingsSecurity.unavailableDescription}</p>
+            <p>{messages.settingsSecurity.unavailableDescription}</p>
           </section>
         ) : null}
 

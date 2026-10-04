@@ -491,12 +491,7 @@ export function LeaveSettingsView() {
 
               <section className="card">
                 <h2 className="card__title">{messages.settingsLeave.stockSectionTitle}</h2>
-                <p className="leave-help">
-                  <span className="leave-help__icon" aria-hidden="true">
-                    ℹ
-                  </span>
-                  <span>{messages.settingsLeave.stockHelp}</span>
-                </p>
+                <p className="notice notice--info">{messages.settingsLeave.stockHelp}</p>
                 <label className="check">
                   <input
                     type="checkbox"
@@ -583,7 +578,7 @@ export function LeaveSettingsView() {
                   </button>
                 </div>
                 {autoGrantResult ? (
-                  <p className="leave-admin-result">
+                  <p className="notice notice--success" role="status">
                     {autoGrantCreatedTotal > 0
                       ? `${messages.settingsLeave.autoGrantResultCreatedPrefix}${autoGrantCreatedTotal}${messages.settingsLeave.autoGrantResultCreatedSuffix}`
                       : messages.settingsLeave.autoGrantEmpty}
@@ -686,9 +681,9 @@ export function LeaveSettingsView() {
                 </div>
                 {convertResult ? (
                   convertResult.length === 0 ? (
-                    <p className="leave-admin-result">{messages.settingsLeave.convertResultEmpty}</p>
+                    <p className="notice notice--success" role="status">{messages.settingsLeave.convertResultEmpty}</p>
                   ) : (
-                    <div className="leave-admin-result">
+                    <div className="notice notice--success" role="status">
                       <p>
                         {messages.settingsLeave.convertResultConvertedPrefix}
                         <span className="tabular-nums">{convertedTotal}</span>

@@ -237,20 +237,6 @@
   color: var(--k-yellow-ink);
 }
 
-/*
- * 二段承認の申請カードに添える注記(「承認されたのにまだ反映されない」理由の説明・
- * 二次承認は自分では行えない旨)。leave-target-month-closed と同じ見た目に揃える。
- */
-.correction-card__note {
-  margin: 0;
-  border: 1px solid var(--k-yellow-ink);
-  background: color-mix(in srgb, var(--k-yellow) 10%, transparent);
-  color: var(--k-yellow-ink);
-  border-radius: var(--radius-s);
-  padding: var(--space-3);
-  font-size: var(--text-sm);
-}
-
 .correction-card__body {
   margin: 0;
   display: flex;
@@ -324,7 +310,8 @@
 }
 
 .monthly-table__correct-btn {
-  border: var(--border-hair);
+  /* 普段は枠を薄く(30 行並んでも静か)。行ホバー・フォーカス・警告日で枠を出す。 */
+  border: 1px solid transparent;
   border-radius: var(--radius-s);
   background: transparent;
   color: var(--k-ink-soft);
@@ -332,6 +319,18 @@
      並ぶ「修正」ボタンとしてはタップしづらい。var(--space-2)=8px に広げ約36pxを確保する。 */
   padding: var(--space-2) var(--space-3);
   font-size: var(--text-xs);
+}
+
+.monthly-table tr:hover .monthly-table__correct-btn,
+.monthly-table__correct-btn:focus-visible {
+  border-color: color-mix(in srgb, var(--k-key) 30%, transparent);
+}
+
+/* タッチ端末にはホバーが無いので、枠を常に出す */
+@media (hover: none) {
+  .monthly-table__correct-btn {
+    border-color: color-mix(in srgb, var(--k-key) 30%, transparent);
+  }
 }
 
 .monthly-table__correct-btn:hover {

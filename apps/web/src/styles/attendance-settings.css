@@ -30,7 +30,8 @@
 }
 
 .attendance-settings__current {
-  border: var(--border-hair);
+  /* 枠を持たない淡い地(カードの中に角の立った箱を重ねない) */
+  background: color-mix(in srgb, var(--k-key) 4%, transparent);
   border-radius: var(--radius-s);
   padding: var(--space-3);
   display: flex;
@@ -90,27 +91,17 @@
 }
 
 .attendance-settings__field {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
+  /* 骨格・入力欄は共通の .field(components.css)。ここは font-size と、ラベル行(span)の体裁だけ */
   font-size: var(--text-sm);
 }
 
+/* ラベルは .field > label と同じ(0.875rem・500・ink-soft)。HelpTip を並べられるよう flex */
 .attendance-settings__field > span:first-child {
   display: flex;
   align-items: center;
   gap: var(--space-1);
-  font-weight: 700;
-}
-
-.attendance-settings__field input,
-.attendance-settings__field select {
-  border: var(--border-hair);
-  border-radius: var(--radius-s);
-  padding: var(--space-2) var(--space-3);
-  font-size: var(--text-sm);
-  background: var(--k-paper);
-  color: inherit;
+  font-weight: var(--weight-medium);
+  color: var(--k-ink-soft);
 }
 
 .attendance-settings__field-hint {
@@ -122,8 +113,9 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  min-height: var(--control-md);
   font-size: var(--text-sm);
-  font-weight: 700;
+  font-weight: var(--weight-medium);
 }
 
 .attendance-settings__checkbox input[type="checkbox"] {
@@ -132,11 +124,19 @@
   height: 1.05rem;
 }
 
-.attendance-settings__radio {
+.attendance-settings__radio,
+.field > .attendance-settings__radio {
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  min-height: var(--control-md);
   font-size: var(--text-sm);
+  font-weight: 400;
+  color: var(--k-key);
+}
+
+.attendance-settings__radio input[type="radio"] {
+  accent-color: var(--k-key);
 }
 
 /*
@@ -159,23 +159,30 @@
 }
 
 .attendance-settings__break-rule-row input[type="time"] {
-  border: var(--border-hair);
-  border-radius: var(--radius-s);
+  min-height: var(--control-md);
   padding: var(--space-2) var(--space-3);
-  font-size: var(--text-sm);
-  background: var(--k-paper);
-  color: inherit;
-  width: 7rem;
+  border: 1px solid color-mix(in srgb, var(--k-key) 22%, transparent);
+  border-radius: var(--radius-s);
+  background: var(--k-surface);
+  color: var(--k-key);
+  font-family: inherit;
+  font-size: var(--text-md);
+  font-variant-numeric: tabular-nums;
+  /* 「06:00 AM」が切れない幅 */
+  min-width: 7.5rem;
 }
 
 .attendance-settings__break-rule-row input[type="number"] {
-  border: var(--border-hair);
-  border-radius: var(--radius-s);
+  min-height: var(--control-md);
   padding: var(--space-2) var(--space-3);
-  font-size: var(--text-sm);
-  background: var(--k-paper);
-  color: inherit;
-  width: 5rem;
+  border: 1px solid color-mix(in srgb, var(--k-key) 22%, transparent);
+  border-radius: var(--radius-s);
+  background: var(--k-surface);
+  color: var(--k-key);
+  font-family: inherit;
+  font-size: var(--text-md);
+  font-variant-numeric: tabular-nums;
+  width: 6rem;
 }
 
 .attendance-settings__break-rule-remove {

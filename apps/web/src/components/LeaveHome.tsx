@@ -120,7 +120,7 @@ export function LeaveHome() {
               onSubmitted={handleSubmitted}
               onUnauthorized={handleUnauthorized}
             />
-            {submitNotice ? <p className="leave-admin-result">{messages.leave.submitted}</p> : null}
+            {submitNotice ? <p className="notice notice--success" role="status">{messages.leave.submitted}</p> : null}
           </section>
         ) : null}
 

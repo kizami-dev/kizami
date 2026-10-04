@@ -10,6 +10,7 @@ import {
   type MonthlyAttendance,
 } from "../../lib/api";
 import { messages } from "../../lib/messages";
+import { Notice } from "../ui/Notice";
 
 /** セレクタに出す順序。既定(generic)を先頭に置く。 */
 const CSV_FORMATS: readonly AttendanceCsvFormat[] = ["generic", "freee", "mf"];
@@ -112,14 +113,14 @@ export function CsvExport({ monthParam, data }: CsvExportProps) {
         注意書きを出す(依頼: 断定できないなら β・要検証ラベル)。
       */}
       {format === "generic" ? null : (
-        <p className="csv-export__beta" role="note">
+        <Notice tone="caution" className="csv-export__beta">
           {messages.closing.csvFormatBetaNote}
-        </p>
+        </Notice>
       )}
       {csvError ? (
-        <p className="notice notice--danger" role="alert">
+        <Notice tone="danger" role="alert">
           {csvError}
-        </p>
+        </Notice>
       ) : null}
     </div>
   ) : null;

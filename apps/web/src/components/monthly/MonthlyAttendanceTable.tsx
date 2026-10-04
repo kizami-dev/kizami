@@ -9,6 +9,7 @@ import {
   formatDurationHm,
   formatMonthDayShort,
   formatTimeJst,
+  nowMinutes,
 } from "../../lib/time";
 import { HelpTip } from "../HelpTip";
 
@@ -155,6 +156,9 @@ export function MonthlyAttendanceTable({ data, leaveByDate, onCorrect }: Monthly
     warningsByDate.set(w.date, list);
   }
 
+  // 未来の日には「修正」を出さない(まだ打刻できない日を直す必要はない)
+  const todayDate = dateStrFromEpochMinutesJst(nowMinutes());
+
   return (
     <div className="monthly-table-wrap">
       {data.days.length === 0 ? (
@@ -234,6 +238,7 @@ export function MonthlyAttendanceTable({ data, leaveByDate, onCorrect }: Monthly
               const rowClassName =
                 [
                   day.isLegalHoliday ? "monthly-table__row--holiday" : null,
+                  !day.isLegalHoliday && new Date(`${day.date}T00:00:00Z`).getUTCDay() === 6 ? "monthly-table__row--saturday" : null,
                   hasWarning ? "monthly-table__row--warning" : null,
                 ]
                   .filter(Boolean)
@@ -358,6 +363,7 @@ export function MonthlyAttendanceTable({ data, leaveByDate, onCorrect }: Monthly
                   </td>
                   {onCorrect ? (
                     <td className="monthly-table__actions" data-label={messages.monthly.columnActions}>
+                      {day.date <= todayDate ? (
                       <button
                         type="button"
                         className={`monthly-table__correct-btn${hasWarning ? " monthly-table__correct-btn--warn" : ""}`}
@@ -365,6 +371,7 @@ export function MonthlyAttendanceTable({ data, leaveByDate, onCorrect }: Monthly
                       >
                         {messages.monthly.correctionAction}
                       </button>
+                      ) : null}
                     </td>
                   ) : null}
                 </tr>

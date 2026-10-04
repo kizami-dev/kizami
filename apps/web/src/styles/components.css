@@ -163,6 +163,25 @@
   color: var(--k-ink-soft);
 }
 
+/* fieldset+legend(ラジオ群・日付群など)は枠を持たず、legend を .card__title 相当の小見出しにする。
+   中のラベル(.field > label)は通常の .field と同じ体裁に任せる。 */
+fieldset.field {
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+
+fieldset.field > legend {
+  padding: 0;
+  margin-bottom: var(--space-2);
+  font-family: var(--font-heading);
+  font-weight: var(--weight-bold);
+  font-feature-settings: var(--feature-heading);
+  font-size: var(--text-md);
+  line-height: 1.4;
+  color: var(--k-key);
+}
+
 /* 中身のセレクタは :where で詳細度を .field 1つ分に抑える(画面側の幅・配置の上書きを妨げない)。 */
 .field :where(input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"]), select, textarea),
 .input {

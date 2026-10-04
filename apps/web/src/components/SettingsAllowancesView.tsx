@@ -169,7 +169,7 @@ function AllowanceConditionsEditor({
     <div className="allowance-settings__conditions">
       <p className="attendance-settings__field-hint">{messages.settingsAllowances.conditionsSectionHint}</p>
 
-      <fieldset className="attendance-settings__field">
+      <fieldset className="field attendance-settings__field">
         <legend>{messages.settingsAllowances.datesFieldLabel}</legend>
         <p className="attendance-settings__field-hint">{messages.settingsAllowances.datesFieldHint}</p>
         {value.dateRows.map((row, i) => (
@@ -194,7 +194,7 @@ function AllowanceConditionsEditor({
         </button>
       </fieldset>
 
-      <fieldset className="attendance-settings__field">
+      <fieldset className="field attendance-settings__field">
         <legend>{messages.settingsAllowances.weekdaysFieldLabel}</legend>
         <p className="attendance-settings__field-hint">{messages.settingsAllowances.weekdaysFieldHint}</p>
         <div className="allowance-settings__weekdays">
@@ -207,7 +207,7 @@ function AllowanceConditionsEditor({
         </div>
       </fieldset>
 
-      <fieldset className="attendance-settings__field">
+      <fieldset className="field attendance-settings__field">
         <legend>{messages.settingsAllowances.timeBandFieldLabel}</legend>
         <label className="attendance-settings__checkbox">
           <input
@@ -219,11 +219,11 @@ function AllowanceConditionsEditor({
         </label>
         {value.timeBandEnabled ? (
           <div className="allowance-settings__time-band">
-            <label className="attendance-settings__field">
+            <label className="field attendance-settings__field">
               <span>{messages.settingsAllowances.timeBandStartLabel}</span>
               <input type="time" value={value.startHm} onChange={(e) => onChange({ ...value, startHm: e.target.value })} />
             </label>
-            <label className="attendance-settings__field">
+            <label className="field attendance-settings__field">
               <span>{messages.settingsAllowances.timeBandEndLabel}</span>
               <input type="time" value={value.endHm} onChange={(e) => onChange({ ...value, endHm: e.target.value })} />
             </label>
@@ -403,7 +403,7 @@ export function SettingsAllowancesView() {
               <form className="attendance-settings__form" onSubmit={handleCreateSubmit}>
                 <p className="notice notice--caution">{messages.settingsAllowances.effectiveFromHint}</p>
 
-                <label className="attendance-settings__field">
+                <label className="field attendance-settings__field">
                   <span>{messages.settingsAllowances.nameLabel}</span>
                   <input
                     type="text"
@@ -414,7 +414,7 @@ export function SettingsAllowancesView() {
                   />
                 </label>
 
-                <label className="attendance-settings__field">
+                <label className="field attendance-settings__field">
                   <span>{messages.settingsAllowances.effectiveFromLabel}</span>
                   <input
                     type="date"
@@ -475,7 +475,7 @@ export function SettingsAllowancesView() {
                     <form className="attendance-settings__form" onSubmit={(e) => handleVersionSubmit(def.id, e)}>
                       <p className="notice notice--caution">{messages.settingsAllowances.effectiveFromHint}</p>
 
-                      <label className="attendance-settings__field">
+                      <label className="field attendance-settings__field">
                         <span>{messages.settingsAllowances.nameLabel}</span>
                         <input
                           type="text"
@@ -488,7 +488,7 @@ export function SettingsAllowancesView() {
                         />
                       </label>
 
-                      <label className="attendance-settings__field">
+                      <label className="field attendance-settings__field">
                         <span>{messages.settingsAllowances.effectiveFromLabel}</span>
                         <input
                           type="date"

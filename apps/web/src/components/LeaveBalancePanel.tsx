@@ -12,7 +12,7 @@ export interface LeaveBalancePanelProps {
 
 function GrantBreakdownTable({ byGrant, standardDayMinutes }: { byGrant: LeaveGrantAllocationDto[]; standardDayMinutes: number }) {
   if (byGrant.length === 0) {
-    return <p className="leave-help">{messages.leave.noGrants}</p>;
+    return <p className="notice notice--info">{messages.leave.noGrants}</p>;
   }
   return (
     <div className="leave-grant-table-wrap">
@@ -69,10 +69,7 @@ function BalanceCard({
       </dl>
 
       {summary.expiringSoon.length > 0 ? (
-        <p className="leave-expiring">
-          <span className="leave-expiring__mark" aria-hidden="true">
-            ⚠
-          </span>{" "}
+        <p className="notice notice--caution">
           {messages.leave.expiringSoonTitle}: {messages.leave.expiringSoonNote}
         </p>
       ) : null}

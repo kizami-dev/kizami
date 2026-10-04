@@ -30,22 +30,6 @@
 
 /* ---- コンテキストヘルプ(法制度由来の説明。§10) ---- */
 
-.leave-help {
-  display: flex;
-  gap: var(--space-2);
-  font-size: var(--text-sm);
-  line-height: 1.6;
-  color: var(--k-ink-soft);
-  border: var(--border-hair);
-  border-radius: var(--radius-s);
-  padding: var(--space-3);
-  background: color-mix(in srgb, var(--k-key) 2%, transparent);
-}
-
-.leave-help__icon {
-  flex: none;
-}
-
 /* ---- 残高サマリ ---- */
 
 .leave-balance-grid {
@@ -84,22 +68,6 @@
 
 .leave-balance-card__meta .tabular-nums {
   color: var(--k-key);
-}
-
-.leave-expiring {
-  border: 1px solid var(--k-yellow-ink);
-  background: color-mix(in srgb, var(--k-yellow) 12%, transparent);
-  border-radius: var(--radius-s);
-  padding: var(--space-3);
-  font-size: var(--text-sm);
-  color: var(--k-yellow-ink);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-}
-
-.leave-expiring__mark {
-  font-weight: 700;
 }
 
 .leave-grant-details {
@@ -269,15 +237,6 @@
   color: var(--k-ink-soft);
 }
 
-.leave-target-month-closed {
-  border: 1px solid var(--k-yellow-ink);
-  background: color-mix(in srgb, var(--k-yellow) 10%, transparent);
-  color: var(--k-yellow-ink);
-  border-radius: var(--radius-s);
-  padding: var(--space-3);
-  font-size: var(--text-sm);
-}
-
 /* ---- 申請一覧 ---- */
 
 .leave-requests-list {
@@ -303,15 +262,6 @@
 .leave-admin-section__desc {
   font-size: var(--text-sm);
   color: var(--k-ink-soft);
-}
-
-.leave-admin-result {
-  font-size: var(--text-sm);
-  border: 1px solid var(--k-cyan);
-  background: color-mix(in srgb, var(--k-cyan) 6%, transparent);
-  color: var(--k-cyan-ink);
-  border-radius: var(--radius-s);
-  padding: var(--space-3);
 }
 
 .leave-admin-result-table {

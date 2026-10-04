@@ -59,7 +59,7 @@ export function DisplaySettingsView() {
           <ThemeToggle />
         </section>
 
-        <p className="display-settings__note">{messages.settingsDisplay.storageNote}</p>
+        <p className="notice notice--info">{messages.settingsDisplay.storageNote}</p>
       </main>
     </div>
   );
