@@ -278,6 +278,7 @@ export const zh = {
     /** 自助注册(仅当 SIGNUP_MODE 不是 off 时显示,2026-10-03)。 */
     signupPrompt: "初次使用?",
     signupLink: "注册新账号",
+    forgotPasswordLink: "忘记密码?",
     errors: {
       invalid_credentials: "邮箱地址或密码错误",
       rate_limited: "尝试次数过多,请稍后再试",
@@ -443,6 +444,31 @@ export const zh = {
    * 参照 inviteAccept 的结构(构成、状态机、文案基调都沿用)。使用管理员发放的重置链接
    * 设置新密码后会直接进入登录状态(routes/password-resets.ts)。
    */
+  /**
+   * 「パスワードを忘れた」画面(/forgot-password、認証ガード無し・公開、2026-10-04)。
+   * システムメールがある配備でだけ有効(GET /password-resets/config の selfService)。
+   */
+  forgotPassword: {
+    loading: "正在确认…",
+    closedTitle: "当前环境不可用",
+    closedMessage: "当前环境不支持通过邮件重置密码。请联系管理员重置密码。",
+    tagline: "请输入注册时使用的邮箱地址。如果有匹配的账号,我们会通过邮件发送密码重置链接。",
+    emailLabel: "邮箱地址",
+    submit: "发送重置邮件",
+    submitting: "正在发送…",
+    turnstileRequired: "请完成人机验证",
+    sentTitle: "邮件已发送",
+    sentMessage: "如果有匹配的账号,我们已发送密码重置邮件。请在1小时内通过邮件中的链接设置新密码。若未收到,请检查垃圾邮件文件夹,等待约5分钟后重试。",
+    backToLogin: "返回登录",
+    errors: {
+      invalid_email: "邮箱地址格式不正确",
+      turnstile_failed: "验证失败,请重试",
+      turnstile_unavailable: "无法连接验证服务,请稍后再试",
+      rate_limited: "尝试次数过多,请稍后再试",
+      default: "发送失败,请重试",
+    },
+  },
+
   passwordResetAccept: {
     tenantUnnamed: "该公司",
     introSuffix: " 正在重置账户密码",
@@ -459,12 +485,15 @@ export const zh = {
     invalidTitle: "此重置链接无效",
     invalidMessage: "此重置链接无效,请联系管理员确认。",
     expiredTitle: "此重置链接已过期",
-    expiredMessage: "此重置链接已过期,请联系管理员重新发放。",
+    expiredMessage: "此重置链接已过期。请从登录页面的“忘记密码?”重新操作,或请管理员重新发放。",
     acceptedRedirecting: "密码已重置,正在跳转…",
 
     sessionIssuanceFailedTitle: "密码已更新",
     sessionIssuanceFailedMessage: "密码已更新完成。抱歉给您带来不便,请前往登录页面重新登录。",
     goToLogin: "前往登录页面",
+    /** 2FA 利用者には使用直後のセッションを発行しない(`status: "login_required"`、routes/password-resets.ts)。 */
+    loginRequiredTitle: "密码已重置",
+    loginRequiredMessage: "由于已启用双因素认证,不会自动登录。请使用新密码登录,并输入验证器应用中的验证码。",
 
     errors: {
       invalid_password: "密码至少需要12位",
@@ -2564,6 +2593,29 @@ export const zh = {
    * 无需权限(自己的密钥任何人都可以签发、吊销)。
    */
   settingsSecurity: {
+    /** ログイン中の本人によるパスワード変更(POST /auth/password/change、2026-10-04 追加)。 */
+    passwordChange: {
+      title: "修改密码",
+      description: "确认当前密码后设置新密码。修改后,除当前设备外的所有设备都会退出登录。",
+      currentLabel: "当前密码",
+      newLabel: "新密码(至少12个字符)",
+      confirmLabel: "新密码(确认)",
+      submit: "修改密码",
+      submitting: "正在修改…",
+      mismatch: "两次输入的新密码不一致",
+      tooShort: "新密码至少需要12个字符",
+      success: "密码已修改。其他设备已退出登录。",
+      errors: {
+        invalid_body: "请检查输入内容",
+        invalid_current_password: "当前密码不正确",
+        invalid_new_password: "新密码至少需要12个字符",
+        same_password: "新密码不能与当前密码相同,请输入其他密码",
+        no_password_credential: "此账号未设置密码(通过 SSO 登录的账号)",
+        rate_limited: "尝试次数过多,请稍后再试",
+        default: "无法修改密码,请重试",
+      },
+    },
+
     title: "两步验证",
     tagline: "在密码之外,再用身份验证器应用中的6位验证码保护你的登录。",
     loadFailed: "获取信息失败,请重试",

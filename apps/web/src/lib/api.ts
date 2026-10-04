@@ -747,6 +747,13 @@ export interface InvitationPreviewDto {
   email: string;
 }
 
+/** GET /password-resets/config(公開)。システムメールが無い配備では `selfService: false`。 */
+export interface PasswordResetConfigDto {
+  selfService: boolean;
+  /** Turnstile のサイトキー(キーが設定されている配備のみ。無ければ Turnstile 不要) */
+  turnstileSiteKey?: string;
+}
+
 /** GET /signup/config(公開)。off の配備でも 200 で `{ mode: "off" }`。 */
 export interface SignupConfigDto {
   mode: "off" | "invite" | "open";
@@ -1878,8 +1885,37 @@ export const api = {
   async usePasswordReset(
     token: string,
     password: string,
-  ): Promise<{ user: AuthUser } | { passwordUpdated: true; error: "session_issuance_failed" }> {
+  ): Promise<
+    | { user: AuthUser }
+    | { passwordUpdated: true; error: "session_issuance_failed" }
+    /** 2FA 利用者: パスワードは更新済みだがセッションは発行されない(ログイン画面から TOTP 付きで入り直す) */
+    | { passwordUpdated: true; status: "login_required" }
+  > {
     return request(`/password-resets/${encodeURIComponent(token)}/use`, { method: "POST", body: JSON.stringify({ password }) });
+  },
+
+  /**
+   * GET /password-resets/config(公開)。ログイン画面の「パスワードをお忘れの場合」リンクの表示判定と
+   * 入力画面の構成に使う。システムメールが無い配備では `{ selfService: false }`。
+   */
+  async getPasswordResetConfig(): Promise<PasswordResetConfigDto> {
+    return request("/password-resets/config");
+  },
+
+  /**
+   * POST /password-resets(公開)。本人用の「パスワードを忘れた」。該当アカウントの有無に関係なく
+   * 202 で同じボディが返る(ユーザー列挙対策、routes/password-resets.ts 冒頭)。
+   */
+  async requestPasswordReset(input: { email: string; turnstileToken?: string }): Promise<{ status: "reset_requested" }> {
+    return request("/password-resets", { method: "POST", body: JSON.stringify(input) });
+  },
+
+  /**
+   * POST /auth/password/change(認証済み本人)。現在のパスワードを確認して変更し、今のセッション以外を
+   * 失効させる(routes/auth-password.ts)。
+   */
+  async changePassword(input: { currentPassword: string; newPassword: string }): Promise<{ changed: true; otherSessionsRevoked: true }> {
+    return request("/auth/password/change", { method: "POST", body: JSON.stringify(input) });
   },
 
   /**

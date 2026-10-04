@@ -27,6 +27,8 @@ const KNOWN_ACTIONS: readonly string[] = [
   "approval_flow_settings.update",
   // 二要素認証(2026-08-27 追加)。本人の操作(auth.totp.*)と、管理者による強制解除
   // (member.totp.reset)は別アクションとして記録される。
+  // パスワードの本人操作(2026-10-04)。変更(ログイン中)と、「パスワードを忘れた」の要求・使用。
+  "auth.password_change",
   "auth.totp.disable",
   "auth.totp.enable",
   "auth.totp.recovery_codes.regenerate",
@@ -70,6 +72,8 @@ const KNOWN_ACTIONS: readonly string[] = [
   "member.work_policy.assign",
   "notification_settings.test",
   "notification_settings.update",
+  "password_reset.self_request",
+  "password_reset.use",
   "permission_assignment.update",
   "permission_preset.create",
   "permission_preset.delete",

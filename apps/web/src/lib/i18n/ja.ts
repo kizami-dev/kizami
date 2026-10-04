@@ -297,6 +297,7 @@ export const ja = {
     /** セルフサインアップ(SIGNUP_MODE が off 以外のときだけ表示、2026-10-03)。 */
     signupPrompt: "はじめての方は",
     signupLink: "新規登録",
+    forgotPasswordLink: "パスワードをお忘れの場合",
     /**
      * ログイン(POST /auth/login)のエラーマッピング(lib/messages.ts の mapLoginErrorMessage)。
      * 2026-08-24: 総当たり対策のレート制限(429 rate_limited)を API 側に入れたのに合わせ、
@@ -485,6 +486,31 @@ export const ja = {
    * inviteAccept と同型(構成・状態機械・文言のトーンを流用)。管理者発行のリセットリンクから
    * 新しいパスワードを設定すると、そのままログイン状態になる(routes/password-resets.ts)。
    */
+  /**
+   * 「パスワードを忘れた」画面(/forgot-password、認証ガード無し・公開、2026-10-04)。
+   * システムメールがある配備でだけ有効(GET /password-resets/config の selfService)。
+   */
+  forgotPassword: {
+    loading: "確認しています…",
+    closedTitle: "この環境では利用できません",
+    closedMessage: "この環境ではメールによるパスワード再設定を利用できません。管理者にパスワードのリセットを依頼してください。",
+    tagline: "登録したメールアドレスを入力してください。該当するアカウントがあれば、パスワード再設定のリンクをメールでお送りします。",
+    emailLabel: "メールアドレス",
+    submit: "再設定メールを送る",
+    submitting: "送信しています…",
+    turnstileRequired: "「私はロボットではありません」の確認を完了してください",
+    sentTitle: "メールを送りました",
+    sentMessage: "該当するアカウントがあれば、パスワード再設定のメールを送りました。メールのリンクから1時間以内に新しいパスワードを設定してください。届かない場合は、迷惑メールフォルダをご確認のうえ、5分ほど待ってからもう一度お試しください。",
+    backToLogin: "ログインに戻る",
+    errors: {
+      invalid_email: "メールアドレスの形式が正しくありません",
+      turnstile_failed: "確認に失敗しました。もう一度お試しください",
+      turnstile_unavailable: "確認サービスに接続できませんでした。しばらくしてからお試しください",
+      rate_limited: "試行回数が多すぎます。しばらく待ってからやり直してください",
+      default: "送信に失敗しました。もう一度お試しください",
+    },
+  },
+
   passwordResetAccept: {
     tenantUnnamed: "会社",
     introSuffix: " のアカウントのパスワードを再設定します",
@@ -501,7 +527,7 @@ export const ja = {
     invalidTitle: "このリセットリンクは無効です",
     invalidMessage: "このリセットリンクは無効です。管理者に確認してください。",
     expiredTitle: "このリセットリンクは期限切れです",
-    expiredMessage: "このリセットリンクは期限切れです。管理者に再発行を依頼してください。",
+    expiredMessage: "このリセットリンクは期限切れです。ログイン画面の「パスワードをお忘れの場合」からやり直すか、管理者に再発行を依頼してください。",
     acceptedRedirecting: "パスワードを再設定しました。移動しています…",
 
     /**
@@ -512,6 +538,9 @@ export const ja = {
     sessionIssuanceFailedTitle: "パスワードを更新しました",
     sessionIssuanceFailedMessage: "パスワードは更新済みです。お手数ですが、ログイン画面から改めてログインしてください。",
     goToLogin: "ログインページへ",
+    /** 2FA 利用者には使用直後のセッションを発行しない(`status: "login_required"`、routes/password-resets.ts)。 */
+    loginRequiredTitle: "パスワードを再設定しました",
+    loginRequiredMessage: "二要素認証を設定しているため、このままではログインしません。新しいパスワードでログインし、認証アプリのコードを入力してください。",
 
     errors: {
       invalid_password: "パスワードは12文字以上で入力してください",
@@ -2647,6 +2676,29 @@ export const ja = {
    * 自分の認証設定なので権限は不要(APIキー画面と同じ扱い)。
    */
   settingsSecurity: {
+    /** ログイン中の本人によるパスワード変更(POST /auth/password/change、2026-10-04 追加)。 */
+    passwordChange: {
+      title: "パスワードの変更",
+      description: "現在のパスワードを確認したうえで、新しいパスワードに変更します。変更すると、この端末以外のログインはすべて解除されます。",
+      currentLabel: "現在のパスワード",
+      newLabel: "新しいパスワード(12文字以上)",
+      confirmLabel: "新しいパスワード(確認)",
+      submit: "パスワードを変更する",
+      submitting: "変更しています…",
+      mismatch: "新しいパスワードが一致しません",
+      tooShort: "新しいパスワードは12文字以上で入力してください",
+      success: "パスワードを変更しました。ほかの端末からはログアウトしました。",
+      errors: {
+        invalid_body: "入力内容を確認してください",
+        invalid_current_password: "現在のパスワードが正しくありません",
+        invalid_new_password: "新しいパスワードは12文字以上で入力してください",
+        same_password: "現在と同じパスワードは使えません。別のパスワードを入力してください",
+        no_password_credential: "このアカウントにはパスワードが設定されていません(SSO でログインしているアカウントです)",
+        rate_limited: "試行回数が多すぎます。しばらく待ってからやり直してください",
+        default: "パスワードを変更できませんでした。もう一度お試しください",
+      },
+    },
+
     title: "二要素認証",
     tagline: "パスワードに加えて、認証アプリに表示される6桁のコードでログインを守ります。",
     loadFailed: "情報の取得に失敗しました。もう一度お試しください",

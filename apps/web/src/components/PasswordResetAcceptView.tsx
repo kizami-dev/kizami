@@ -12,6 +12,8 @@ type ViewState =
   | { kind: "expired" }
   | { kind: "ready"; tenantName: string | null; userName: string; email: string }
   | { kind: "accepted" }
+  /** 2FA 利用者: パスワードは更新済みだがセッションは発行されない(routes/password-resets.ts の `status: "login_required"`) */
+  | { kind: "loginRequired" }
   /** パスワード自体は更新済みだがセッション発行だけ失敗した場合(routes/password-resets.ts の判断点コメント参照)。 */
   | { kind: "sessionIssuanceFailed" };
 
@@ -70,6 +72,10 @@ export function PasswordResetAcceptView({ token }: { token: string }) {
         setState({ kind: "sessionIssuanceFailed" });
         return;
       }
+      if ("status" in res && res.status === "login_required") {
+        setState({ kind: "loginRequired" });
+        return;
+      }
       setState({ kind: "accepted" });
       router.push("/");
     } catch (err) {
@@ -120,6 +126,16 @@ export function PasswordResetAcceptView({ token }: { token: string }) {
         ) : null}
 
         {state.kind === "accepted" ? <p className="login-card__tagline">{messages.passwordResetAccept.acceptedRedirecting}</p> : null}
+
+        {state.kind === "loginRequired" ? (
+          <>
+            <h2 className="invite-accept__title">{messages.passwordResetAccept.loginRequiredTitle}</h2>
+            <p className="login-card__tagline">{messages.passwordResetAccept.loginRequiredMessage}</p>
+            <button type="button" className="login-submit" onClick={() => router.push("/login")}>
+              {messages.passwordResetAccept.goToLogin}
+            </button>
+          </>
+        ) : null}
 
         {state.kind === "sessionIssuanceFailed" ? (
           <>

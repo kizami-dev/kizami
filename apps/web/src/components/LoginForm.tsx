@@ -34,6 +34,12 @@ export function LoginForm() {
    * ログイン画面の見た目は従来と一切変わらない)。
    */
   const [signupEnabled, setSignupEnabled] = useState(false);
+  /**
+   * 「パスワードをお忘れの場合」リンクを出すか(本人用のパスワード再設定、2026-10-04)。
+   * GET /password-resets/config の selfService が true のとき(= システムメールがある配備)だけ true。
+   * 照会に失敗しても黙って false のまま(セルフホストではログイン画面の見た目は従来と変わらない)。
+   */
+  const [forgotPasswordEnabled, setForgotPasswordEnabled] = useState(false);
 
   /**
    * 二要素認証(TOTP)の2段目(2026-08-27 追加)。POST /auth/login が **200 のまま**
@@ -80,6 +86,21 @@ export function LoginForm() {
       .getSignupConfig()
       .then((config) => {
         if (!cancelled) setSignupEnabled(config.mode !== "off");
+      })
+      .catch(() => {
+        // 通信エラー等はリンクを出さないだけ
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .getPasswordResetConfig()
+      .then((config) => {
+        if (!cancelled) setForgotPasswordEnabled(config.selfService);
       })
       .catch(() => {
         // 通信エラー等はリンクを出さないだけ
@@ -390,6 +411,12 @@ export function LoginForm() {
             ) : null}
           </form>
         )}
+
+        {forgotPasswordEnabled && !awaitingTotp && !selectingTenant ? (
+          <p className="login-signup-link">
+            <Link to="/forgot-password">{messages.login.forgotPasswordLink}</Link>
+          </p>
+        ) : null}
 
         {signupEnabled && !awaitingTotp && !selectingTenant ? (
           <p className="login-signup-link">

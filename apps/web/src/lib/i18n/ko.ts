@@ -284,6 +284,7 @@ export const ko = {
     /** 셀프 가입(SIGNUP_MODE 가 off 가 아닐 때만 표시, 2026-10-03). */
     signupPrompt: "처음 오셨나요?",
     signupLink: "신규 가입",
+    forgotPasswordLink: "비밀번호를 잊으셨나요?",
     errors: {
       invalid_credentials: "이메일 주소 또는 비밀번호가 올바르지 않습니다",
       rate_limited: "시도 횟수가 너무 많습니다. 잠시 기다린 후 다시 시도해 주세요",
@@ -451,6 +452,31 @@ export const ko = {
    * inviteAccept와 동일한 구조(구성·상태 머신·문구 톤 재사용). 관리자가 발급한 재설정 링크로
    * 새 비밀번호를 설정하면 그대로 로그인 상태가 됩니다(routes/password-resets.ts).
    */
+  /**
+   * 「パスワードを忘れた」画面(/forgot-password、認証ガード無し・公開、2026-10-04)。
+   * システムメールがある配備でだけ有効(GET /password-resets/config の selfService)。
+   */
+  forgotPassword: {
+    loading: "확인하는 중…",
+    closedTitle: "이 환경에서는 사용할 수 없습니다",
+    closedMessage: "이 환경에서는 이메일을 통한 비밀번호 재설정을 사용할 수 없습니다. 관리자에게 비밀번호 초기화를 요청해 주세요.",
+    tagline: "등록한 이메일 주소를 입력해 주세요. 해당하는 계정이 있으면 비밀번호 재설정 링크를 이메일로 보내 드립니다.",
+    emailLabel: "이메일 주소",
+    submit: "재설정 메일 보내기",
+    submitting: "보내는 중…",
+    turnstileRequired: "'로봇이 아닙니다' 확인을 완료해 주세요",
+    sentTitle: "메일을 보냈습니다",
+    sentMessage: "해당하는 계정이 있으면 비밀번호 재설정 메일을 보냈습니다. 메일의 링크에서 1시간 이내에 새 비밀번호를 설정해 주세요. 메일이 오지 않으면 스팸 폴더를 확인하고 5분 정도 기다린 뒤 다시 시도해 주세요.",
+    backToLogin: "로그인으로 돌아가기",
+    errors: {
+      invalid_email: "이메일 주소 형식이 올바르지 않습니다",
+      turnstile_failed: "확인에 실패했습니다. 다시 시도해 주세요",
+      turnstile_unavailable: "확인 서비스에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요",
+      rate_limited: "시도 횟수가 너무 많습니다. 잠시 후 다시 시도해 주세요",
+      default: "전송에 실패했습니다. 다시 시도해 주세요",
+    },
+  },
+
   passwordResetAccept: {
     tenantUnnamed: "회사",
     introSuffix: " 계정의 비밀번호를 재설정합니다",
@@ -467,12 +493,15 @@ export const ko = {
     invalidTitle: "이 재설정 링크는 유효하지 않습니다",
     invalidMessage: "이 재설정 링크는 유효하지 않습니다. 관리자에게 문의해 주세요.",
     expiredTitle: "이 재설정 링크는 기한이 만료되었습니다",
-    expiredMessage: "이 재설정 링크는 기한이 만료되었습니다. 관리자에게 재발급을 요청해 주세요.",
+    expiredMessage: "이 재설정 링크는 만료되었습니다. 로그인 화면의 '비밀번호를 잊으셨나요?'에서 다시 시도하거나 관리자에게 재발급을 요청해 주세요.",
     acceptedRedirecting: "비밀번호를 재설정했습니다. 이동하는 중…",
 
     sessionIssuanceFailedTitle: "비밀번호를 변경했습니다",
     sessionIssuanceFailedMessage: "비밀번호는 이미 변경되었습니다. 번거로우시겠지만 로그인 페이지에서 다시 로그인해 주세요.",
     goToLogin: "로그인 페이지로 이동",
+    /** 2FA 利用者には使用直後のセッションを発行しない(`status: "login_required"`、routes/password-resets.ts)。 */
+    loginRequiredTitle: "비밀번호를 재설정했습니다",
+    loginRequiredMessage: "2단계 인증을 사용 중이므로 자동으로 로그인되지 않습니다. 새 비밀번호로 로그인한 뒤 인증 앱의 코드를 입력해 주세요.",
 
     errors: {
       invalid_password: "비밀번호는 12자 이상 입력해 주세요",
@@ -2585,6 +2614,29 @@ export const ko = {
    * 권한이 필요하지 않음(자신의 키는 누구나 발급·폐기할 수 있음, 요청 「본인용이므로 권한 불필요」).
    */
   settingsSecurity: {
+    /** ログイン中の本人によるパスワード変更(POST /auth/password/change、2026-10-04 追加)。 */
+    passwordChange: {
+      title: "비밀번호 변경",
+      description: "현재 비밀번호를 확인한 뒤 새 비밀번호로 변경합니다. 변경하면 이 기기를 제외한 모든 기기에서 로그아웃됩니다.",
+      currentLabel: "현재 비밀번호",
+      newLabel: "새 비밀번호(12자 이상)",
+      confirmLabel: "새 비밀번호(확인)",
+      submit: "비밀번호 변경",
+      submitting: "변경하는 중…",
+      mismatch: "새 비밀번호가 일치하지 않습니다",
+      tooShort: "새 비밀번호는 12자 이상으로 입력해 주세요",
+      success: "비밀번호를 변경했습니다. 다른 기기에서는 로그아웃되었습니다.",
+      errors: {
+        invalid_body: "입력 내용을 확인해 주세요",
+        invalid_current_password: "현재 비밀번호가 올바르지 않습니다",
+        invalid_new_password: "새 비밀번호는 12자 이상으로 입력해 주세요",
+        same_password: "현재와 같은 비밀번호는 사용할 수 없습니다. 다른 비밀번호를 입력해 주세요",
+        no_password_credential: "이 계정에는 비밀번호가 설정되어 있지 않습니다(SSO로 로그인하는 계정입니다)",
+        rate_limited: "시도 횟수가 너무 많습니다. 잠시 후 다시 시도해 주세요",
+        default: "비밀번호를 변경하지 못했습니다. 다시 시도해 주세요",
+      },
+    },
+
     title: "2단계 인증",
     tagline: "비밀번호에 더해 인증 앱에 표시되는 6자리 코드로 로그인을 보호합니다.",
     loadFailed: "정보를 가져오지 못했습니다. 다시 시도해 주세요",

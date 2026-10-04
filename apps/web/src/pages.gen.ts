@@ -6,6 +6,8 @@ import type { PathsForPages, GetConfigResponse, SearchCodecsForPages } from 'wak
 // prettier-ignore
 import type { getConfig as File_Corrections_getConfig } from './pages/corrections';
 // prettier-ignore
+import type { getConfig as File_ForgotPassword_getConfig } from './pages/forgot-password';
+// prettier-ignore
 import type { getConfig as File_Index_getConfig } from './pages/index';
 // prettier-ignore
 import type { getConfig as File_InviteToken_getConfig } from './pages/invite/[token]';
@@ -74,6 +76,7 @@ import type { getConfig as File_Signup_getConfig } from './pages/signup';
 type Page =
 | { path: '/_root'; render: 'static' }
 | ({ path: '/corrections' } & GetConfigResponse<typeof File_Corrections_getConfig>)
+| ({ path: '/forgot-password' } & GetConfigResponse<typeof File_ForgotPassword_getConfig>)
 | ({ path: '/' } & GetConfigResponse<typeof File_Index_getConfig>)
 | ({ path: '/invite/[token]' } & GetConfigResponse<typeof File_InviteToken_getConfig>)
 | ({ path: '/leave' } & GetConfigResponse<typeof File_Leave_getConfig>)

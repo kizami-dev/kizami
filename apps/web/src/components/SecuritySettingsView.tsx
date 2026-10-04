@@ -8,6 +8,7 @@ import { formatDateTimeJst } from "../lib/time";
 import { useAuthGuard } from "../lib/useAuthGuard";
 import { AppHeader } from "./AppHeader";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { PasswordChangeSection } from "./PasswordChangeSection";
 import { SettingsNav } from "./SettingsNav";
 
 /** リカバリコードの残数がこれ以下になったら再生成をすすめる(10本中3本 = 心細くなる目安)。 */
@@ -223,6 +224,8 @@ export function SecuritySettingsView() {
         <SettingsNav active="security" />
         <h1 className="settings-notif__title">{messages.settingsSecurity.title}</h1>
         <p className="settings-notif__tagline">{messages.settingsSecurity.tagline}</p>
+
+        <PasswordChangeSection />
 
         {loadError ? <p className="monthly-error">{loadError}</p> : null}
 
