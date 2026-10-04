@@ -22,7 +22,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  font-size: 0.88rem;
+  font-size: var(--text-sm);
   line-height: 1.6;
 }
 
@@ -55,9 +55,10 @@
 }
 
 .help-settings__list-group-title {
-  font-family: var(--font-display);
-  font-size: 0.92rem;
-  letter-spacing: 0.02em;
+  font-family: var(--font-heading);
+  font-weight: var(--weight-bold);
+  font-feature-settings: var(--feature-heading);
+  font-size: var(--text-sm);
 }
 
 .help-settings__list-subgroup {
@@ -67,7 +68,7 @@
 }
 
 .help-settings__list-subgroup-title {
-  font-size: 0.74rem;
+  font-size: var(--text-xs);
   color: var(--k-ink-soft);
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -94,7 +95,7 @@
   border-radius: var(--radius-s);
   background: transparent;
   color: var(--k-key);
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   cursor: pointer;
 }
 
@@ -135,14 +136,14 @@
 }
 
 .help-settings__reference-summary {
-  font-size: 0.88rem;
+  font-size: var(--text-sm);
   line-height: 1.6;
   color: var(--k-key);
 }
 
 .help-settings__textarea {
   font-family: var(--font-mono, monospace);
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   line-height: 1.6;
   resize: vertical;
   min-height: 10rem;

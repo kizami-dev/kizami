@@ -16,7 +16,7 @@
   border: none;
   background: transparent;
   color: var(--k-ink-soft);
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   text-decoration: underline;
   text-underline-offset: 2px;
   padding: var(--space-1);
@@ -53,14 +53,14 @@
 
 .onboarding__item-title {
   margin: 0;
-  font-size: 0.92rem;
+  font-size: var(--text-sm);
   font-weight: 700;
   color: var(--k-key);
 }
 
 .onboarding__item-reason {
   margin: 0;
-  font-size: 0.82rem;
+  font-size: var(--text-sm);
   color: var(--k-ink-soft);
   line-height: 1.55;
 }

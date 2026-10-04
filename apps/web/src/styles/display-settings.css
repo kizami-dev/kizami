@@ -11,14 +11,14 @@
 
 .display-settings__desc {
   margin: 0;
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   color: var(--k-ink-soft);
   line-height: 1.7;
 }
 
 .display-settings__note {
   margin: 0;
-  font-size: 0.8rem;
+  font-size: var(--text-sm);
   color: var(--k-ink-soft);
   line-height: 1.7;
 }
@@ -49,7 +49,7 @@
   border: var(--border-hair);
   padding: var(--space-3);
   border-radius: var(--radius-s);
-  font-size: 0.9rem;
+  font-size: var(--text-sm);
   color: var(--k-key);
   cursor: pointer;
 }
@@ -92,7 +92,7 @@
 
 .prelogin-language__select {
   font: inherit;
-  font-size: 0.8rem;
+  font-size: var(--text-sm);
   color: var(--k-ink-soft);
   background: transparent;
   border: none;

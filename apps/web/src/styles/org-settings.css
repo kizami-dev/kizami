@@ -15,7 +15,7 @@
   gap: var(--space-3);
   padding-bottom: var(--space-3);
   border-bottom: var(--border-hair);
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
 }
 
 /* 「一覧に戻る」操作であることが分かるよう、タブ群とは視覚的に分けて薄く表示する
@@ -26,7 +26,7 @@
   /* 2026-08-23 SP監査: 縦 padding が var(--space-1)=4px だと高さ約28pxで、設定系画面
      共通の「戻る」導線としてはタップしづらい。var(--space-2)=8px に広げ約36pxを確保する。 */
   padding: var(--space-2) 0;
-  font-size: 0.8rem;
+  font-size: var(--text-sm);
   white-space: nowrap;
 }
 
@@ -88,13 +88,14 @@
 }
 
 .settings-hub__title {
-  font-family: var(--font-display);
-  font-size: 1.4rem;
-  letter-spacing: 0.04em;
+  font-family: var(--font-heading);
+  font-weight: var(--weight-bold);
+  font-feature-settings: var(--feature-heading);
+  font-size: var(--text-xl);
 }
 
 .settings-hub__tagline {
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   color: var(--k-ink-soft);
 }
 
@@ -107,9 +108,10 @@
 }
 
 .settings-hub__group-title {
-  font-family: var(--font-display);
-  font-size: 0.95rem;
-  letter-spacing: 0.03em;
+  font-family: var(--font-heading);
+  font-weight: var(--weight-bold);
+  font-feature-settings: var(--feature-heading);
+  font-size: var(--text-md);
   color: var(--k-ink-soft);
   border-bottom: var(--border-hair);
   padding-bottom: var(--space-2);
@@ -138,12 +140,14 @@
 }
 
 .settings-hub__card-title {
-  font-family: var(--font-display);
-  font-size: 1.05rem;
+  font-family: var(--font-heading);
+  font-weight: var(--weight-bold);
+  font-feature-settings: var(--feature-heading);
+  font-size: var(--text-md);
 }
 
 .settings-hub__card-desc {
-  font-size: 0.82rem;
+  font-size: var(--text-sm);
   color: var(--k-ink-soft);
 }
 
@@ -162,7 +166,7 @@
   border: none;
   background: transparent;
   padding: 0;
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   color: var(--k-cyan-ink);
   text-decoration: underline;
   text-underline-offset: 2px;
@@ -173,7 +177,7 @@
 }
 
 .settings-hub__tour-desc {
-  font-size: 0.78rem;
+  font-size: var(--text-xs);
   color: var(--k-ink-soft);
 }
 
@@ -208,19 +212,20 @@
 }
 
 .org-settings__title {
-  font-family: var(--font-display);
-  font-size: 1.4rem;
-  letter-spacing: 0.04em;
+  font-family: var(--font-heading);
+  font-weight: var(--weight-bold);
+  font-feature-settings: var(--feature-heading);
+  font-size: var(--text-xl);
 }
 
 .org-settings__tagline {
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   color: var(--k-ink-soft);
 }
 
 .org-settings__empty {
   color: var(--k-ink-soft);
-  font-size: 0.9rem;
+  font-size: var(--text-sm);
   padding: var(--space-6) 0;
   text-align: center;
 }
@@ -239,7 +244,7 @@
 .org-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.9rem;
+  font-size: var(--text-sm);
   min-width: 42rem;
 }
 
@@ -254,7 +259,7 @@
 .org-table th {
   color: var(--k-ink-soft);
   font-weight: 400;
-  font-size: 0.78rem;
+  font-size: var(--text-xs);
 }
 
 .org-table tbody tr:last-child td {
@@ -269,7 +274,7 @@
   border: var(--border-hair);
   border-radius: var(--radius-s);
   padding: var(--space-2);
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   background: var(--k-surface);
   font-family: inherit;
   max-width: 12rem;
@@ -293,20 +298,20 @@
   border: var(--border-hair);
   border-radius: var(--radius-s);
   padding: var(--space-2);
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   background: var(--k-surface);
   font-family: inherit;
 }
 
 .member-hire-date__warning {
   color: var(--k-magenta-ink);
-  font-size: 0.76rem;
+  font-size: var(--text-xs);
 }
 
 .org-table__link-btn {
   background: none;
   border: none;
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   color: var(--k-cyan-ink);
   text-decoration: underline;
   text-underline-offset: 2px;
@@ -337,7 +342,7 @@ td.org-table__detail-cell {
 /* ---- 招待式登録(メンバー招待・再発行・取り消し、2026-08-23 追加) ---- */
 
 .member-invite-form__hint {
-  font-size: 0.82rem;
+  font-size: var(--text-sm);
   color: var(--k-ink-soft);
 }
 
@@ -354,7 +359,7 @@ td.org-table__detail-cell {
 /* 招待リンクの提示画面(発行・再発行の直後)。api-keys-settings.css の
    .api-keys__reveal と同じ「二度と表示されない」強調枠を踏襲する。 */
 .invite-link__target {
-  font-size: 0.9rem;
+  font-size: var(--text-sm);
   color: var(--k-ink-soft);
 }
 
@@ -384,7 +389,7 @@ td.org-table__detail-cell {
 .invite-link__url {
   flex: 1;
   font-family: var(--font-mono);
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   padding: var(--space-2) var(--space-3);
   border: var(--border-hair);
   border-radius: var(--radius-s);
@@ -395,7 +400,7 @@ td.org-table__detail-cell {
 }
 
 .invite-link__expires {
-  font-size: 0.82rem;
+  font-size: var(--text-sm);
   color: var(--k-ink-soft);
   margin: 0;
 }
@@ -430,7 +435,7 @@ td.org-table__detail-cell {
 }
 
 .dept-tree__name {
-  font-size: 0.95rem;
+  font-size: var(--text-md);
   font-weight: 700;
 }
 
@@ -448,7 +453,7 @@ td.org-table__detail-cell {
   /* 2026-08-23 SP監査: 縦 padding が var(--space-1)=4px だと高さ約28pxでタップしづらい。
      var(--space-2)=8px に広げ約36pxを確保する(操作列は元々 flex-wrap 済み)。 */
   padding: var(--space-2) var(--space-3);
-  font-size: 0.78rem;
+  font-size: var(--text-xs);
 }
 
 .dept-tree__btn:hover {
@@ -488,17 +493,19 @@ td.org-table__detail-cell {
 }
 
 .member-detail__section-title {
-  font-family: var(--font-display);
-  font-size: 1rem;
+  font-family: var(--font-heading);
+  font-weight: var(--weight-bold);
+  font-feature-settings: var(--feature-heading);
+  font-size: var(--text-md);
 }
 
 .member-detail__hint {
-  font-size: 0.78rem;
+  font-size: var(--text-xs);
   color: var(--k-ink-soft);
 }
 
 .member-detail__unsaved {
-  font-size: 0.82rem;
+  font-size: var(--text-sm);
   color: var(--k-yellow-ink);
 }
 
@@ -521,7 +528,7 @@ td.org-table__detail-cell {
   flex-wrap: wrap;
   align-items: baseline;
   gap: var(--space-2);
-  font-size: 0.88rem;
+  font-size: var(--text-sm);
 }
 
 .preset-checkbox-list__item input[type="checkbox"] {
@@ -531,7 +538,7 @@ td.org-table__detail-cell {
 }
 
 .preset-checkbox-list__desc {
-  font-size: 0.78rem;
+  font-size: var(--text-xs);
   color: var(--k-ink-soft);
   flex-basis: 100%;
   padding-left: 1.65rem;
@@ -547,11 +554,11 @@ td.org-table__detail-cell {
 
 .effective-perms__empty {
   color: var(--k-ink-soft);
-  font-size: 0.88rem;
+  font-size: var(--text-sm);
 }
 
 .effective-perms__group-title {
-  font-size: 0.82rem;
+  font-size: var(--text-sm);
   color: var(--k-ink-soft);
   margin-bottom: var(--space-2);
 }
@@ -571,7 +578,7 @@ td.org-table__detail-cell {
   gap: 2px;
   border-left: 3px solid var(--k-cyan-ink);
   padding-left: var(--space-3);
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
 }
 
 .effective-perms__item-label {
@@ -580,7 +587,7 @@ td.org-table__detail-cell {
 
 .effective-perms__item-scope,
 .effective-perms__item-source {
-  font-size: 0.78rem;
+  font-size: var(--text-xs);
   color: var(--k-ink-soft);
 }
 
@@ -600,7 +607,7 @@ td.org-table__detail-cell {
 }
 
 .effective-perms__item-denied-note {
-  font-size: 0.78rem;
+  font-size: var(--text-xs);
   color: var(--k-magenta-ink);
 }
 
@@ -611,7 +618,7 @@ td.org-table__detail-cell {
 }
 
 .preset-form__readonly-note {
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   color: var(--k-ink-soft);
   border: var(--border-hair);
   border-radius: var(--radius-s);
@@ -625,7 +632,7 @@ td.org-table__detail-cell {
 }
 
 .preset-form__permissions-label {
-  font-size: 0.82rem;
+  font-size: var(--text-sm);
   color: var(--k-ink-soft);
 }
 
@@ -636,8 +643,10 @@ td.org-table__detail-cell {
 }
 
 .preset-form__group-title {
-  font-family: var(--font-display);
-  font-size: 0.95rem;
+  font-family: var(--font-heading);
+  font-weight: var(--weight-bold);
+  font-feature-settings: var(--feature-heading);
+  font-size: var(--text-md);
   margin-bottom: var(--space-2);
 }
 
@@ -678,12 +687,12 @@ td.org-table__detail-cell {
 }
 
 .preset-form__entry-label {
-  font-size: 0.9rem;
+  font-size: var(--text-sm);
   font-weight: 700;
 }
 
 .preset-form__entry-desc {
-  font-size: 0.8rem;
+  font-size: var(--text-sm);
   color: var(--k-ink-soft);
   padding-left: 1.65rem;
   margin-top: 2px;
@@ -705,7 +714,7 @@ td.org-table__detail-cell {
   border: none;
   padding: 0;
   cursor: pointer;
-  font-size: 0.9rem;
+  font-size: var(--text-sm);
   font-weight: 700;
   color: var(--k-magenta-ink);
 }
@@ -713,7 +722,7 @@ td.org-table__detail-cell {
 .preset-form__denies-count {
   border-radius: 999px;
   padding: 1px var(--space-2);
-  font-size: 0.7rem;
+  font-size: var(--text-xs);
   border: 1px solid var(--k-magenta-ink);
 }
 
@@ -722,14 +731,14 @@ td.org-table__detail-cell {
   border: 1px solid var(--k-magenta-ink);
   border-radius: var(--radius-s);
   padding: var(--space-2) var(--space-3);
-  font-size: 0.82rem;
+  font-size: var(--text-sm);
   font-weight: 700;
   color: var(--k-magenta-ink);
 }
 
 .preset-form__denies-hint {
   margin-top: var(--space-2);
-  font-size: 0.8rem;
+  font-size: var(--text-sm);
   color: var(--k-ink-soft);
 }
 
@@ -743,7 +752,7 @@ td.org-table__detail-cell {
 }
 
 .preset-form__deny-entry .preset-form__entry-label {
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
 }
 
 .preset-form__entry-details {
@@ -758,7 +767,7 @@ td.org-table__detail-cell {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  font-size: 0.82rem;
+  font-size: var(--text-sm);
   color: var(--k-ink-soft);
 }
 
@@ -766,23 +775,23 @@ td.org-table__detail-cell {
   border: var(--border-hair);
   border-radius: var(--radius-s);
   padding: var(--space-1) var(--space-2);
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   background: var(--k-surface);
   font-family: inherit;
 }
 
 .preset-form__scope-fixed {
-  font-size: 0.82rem;
+  font-size: var(--text-sm);
   color: var(--k-ink-soft);
 }
 
 .preset-form__implies {
-  font-size: 0.78rem;
+  font-size: var(--text-xs);
   color: var(--k-cyan-ink);
 }
 
 .preset-form__dangerous-note {
-  font-size: 0.8rem;
+  font-size: var(--text-sm);
   color: var(--k-magenta-ink);
   background: color-mix(in srgb, var(--k-magenta) 6%, transparent);
   border-radius: var(--radius-s);
@@ -795,7 +804,7 @@ td.org-table__detail-cell {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   color: var(--k-ink-soft);
 }
 
@@ -817,11 +826,11 @@ td.org-table__detail-cell {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
-  font-size: 0.9rem;
+  font-size: var(--text-sm);
 }
 
 .member-work-policy__current-effective-from {
-  font-size: 0.78rem;
+  font-size: var(--text-xs);
   color: var(--k-ink-soft);
 }
 
@@ -844,7 +853,7 @@ td.org-table__detail-cell {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
-  font-size: 0.88rem;
+  font-size: var(--text-sm);
 }
 
 /* ---- 退職者データの保持状況(2026-08-27、docs/design/data-retention.md) ---- */
@@ -853,7 +862,7 @@ td.org-table__detail-cell {
   display: flex;
   flex-direction: column;
   gap: 0.1rem;
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   color: var(--k-ink-soft);
   margin-top: var(--space-1);
 }

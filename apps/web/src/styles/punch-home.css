@@ -46,19 +46,19 @@
 }
 
 .punch-clock__main {
-  font-size: clamp(3rem, 12vw, 4.5rem);
+  font-size: var(--text-clock);
   font-weight: 600;
   line-height: 1;
 }
 
 .punch-clock__seconds {
-  font-size: 1.25rem;
+  font-size: var(--text-lg);
   color: var(--k-ink-soft);
   min-width: 2.4ch;
 }
 
 .punch-clock__date {
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   color: var(--k-ink-soft);
   text-align: center;
   margin-top: calc(-1 * var(--space-3));
@@ -89,7 +89,7 @@
 
 .stamp__label {
   font-family: var(--font-display);
-  font-size: 1.6rem;
+  font-size: var(--text-stamp);
   letter-spacing: 0.08em;
   color: var(--stamp-color, var(--k-key));
   /* 静止時の版ズレはインキの気配程度に薄く(メイン色の可読性を優先)。
@@ -187,7 +187,7 @@
   border: none;
   font-family: var(--font-body);
   font-weight: 700;
-  font-size: 1.1rem;
+  font-size: var(--text-md);
   color: var(--k-key);
   box-shadow: var(--shadow-card);
   transition:
@@ -257,7 +257,7 @@
 }
 
 .punch-pad__hint span {
-  font-size: 0.72rem;
+  font-size: var(--text-xs);
   color: var(--k-ink-soft);
   text-align: center;
   line-height: 1.3;
@@ -266,7 +266,7 @@
 .punch-error {
   width: 100%;
   color: var(--k-magenta-ink);
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   border: 1px solid var(--k-magenta);
   background: color-mix(in srgb, var(--k-magenta) 6%, transparent);
   border-radius: var(--radius-s);
@@ -279,7 +279,7 @@
 .punch-offline-banner {
   width: 100%;
   color: var(--k-ink-soft);
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   border: 1px solid var(--k-ink-soft);
   background: color-mix(in srgb, var(--k-key) 4%, transparent);
   border-radius: var(--radius-s);
@@ -294,7 +294,7 @@
   width: 100%;
   border-left: 3px solid var(--k-cyan-ink);
   padding: var(--space-2) var(--space-3);
-  font-size: 0.8rem;
+  font-size: var(--text-sm);
   color: var(--k-ink-soft);
 }
 
@@ -315,7 +315,7 @@
 .punch-gps-notice__detail summary {
   cursor: pointer;
   color: var(--k-cyan-ink);
-  font-size: 0.78rem;
+  font-size: var(--text-xs);
 }
 
 .punch-gps-notice__detail p {
@@ -326,7 +326,7 @@
 .punch-gps-notice__unavailable {
   width: 100%;
   color: var(--k-ink-soft);
-  font-size: 0.78rem;
+  font-size: var(--text-xs);
   text-align: center;
   margin: 0;
 }
@@ -337,7 +337,7 @@
 }
 
 .tombo-row__title {
-  font-size: 0.8rem;
+  font-size: var(--text-sm);
   color: var(--k-ink-soft);
   margin-bottom: var(--space-2);
 }
@@ -354,7 +354,7 @@
 
 .tombo-row__empty {
   color: var(--k-ink-soft);
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   padding: var(--space-3) 0;
 }
 
@@ -372,14 +372,14 @@
 }
 
 .tombo-chip__kind {
-  font-size: 0.7rem;
+  font-size: var(--text-xs);
   color: var(--chip-color, var(--k-key));
   font-weight: 700;
 }
 
 .tombo-chip__time {
   font-family: var(--font-mono);
-  font-size: 0.95rem;
+  font-size: var(--text-md);
 }
 
 .tombo-chip--in {
@@ -418,6 +418,6 @@
 @media (max-width: 420px) {
   .punch-button {
     min-height: 5.25rem;
-    font-size: 1rem;
+    font-size: var(--text-md);
   }
 }

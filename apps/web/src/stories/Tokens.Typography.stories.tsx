@@ -3,7 +3,8 @@ import { messages } from "../lib/messages";
 
 /**
  * タイポグラフィのカタログ(docs/design/ui-direction.md「タイポグラフィ」節)。
- * 実際に使われている書体トークン(--font-display/--font-logo/--font-body/--font-mono)を
+ * 実際に使われている書体トークン(--font-display/--font-heading/--font-logo/--font-body/--font-mono)と
+ * 文字サイズの段階(--text-*)を
  * そのまま参照し、用途どおりの見せ方(状態スタンプ・ロゴ・本文・数値)で型見本を出す。
  */
 function TypographyCatalog() {
@@ -21,15 +22,35 @@ function TypographyCatalog() {
       <div className="story-group">
         <p className="story-group__title">Display — Shippori Antique B1(状態スタンプ専用)</p>
         <div className="story-frame story-frame--center">
-          <span style={{ fontFamily: "var(--font-display)", fontSize: "1.6rem", letterSpacing: "0.08em" }}>
+          <span style={{ fontFamily: "var(--font-display)", fontSize: "var(--text-stamp)", letterSpacing: "0.08em" }}>
             {messages.attendanceState.working}
           </span>
-          <span style={{ fontFamily: "var(--font-display)", fontSize: "1.6rem", letterSpacing: "0.08em" }}>
+          <span style={{ fontFamily: "var(--font-display)", fontSize: "var(--text-stamp)", letterSpacing: "0.08em" }}>
             {messages.attendanceState.onBreak}
           </span>
-          <span style={{ fontFamily: "var(--font-display)", fontSize: "1.6rem", letterSpacing: "0.08em" }}>
+          <span style={{ fontFamily: "var(--font-display)", fontSize: "var(--text-stamp)", letterSpacing: "0.08em" }}>
             {messages.attendanceState.out}
           </span>
+        </div>
+      </div>
+
+      <div className="story-group">
+        <p className="story-group__title">Heading — Zen Kaku Gothic New 700 + palt(見出し全般、--font-heading)</p>
+        <div className="story-frame">
+          <h2 className="page-header__title">{messages.members.title}(--text-xl)</h2>
+          <h3 className="section-title">{messages.members.title}(--text-lg)</h3>
+          <h4 className="card__title">{messages.members.title}(--text-md)</h4>
+        </div>
+      </div>
+
+      <div className="story-group">
+        <p className="story-group__title">文字サイズの段階(--text-xs〜--text-xl。0.75rem 未満は使わない)</p>
+        <div className="story-frame">
+          {(["xs", "sm", "md", "lg", "xl"] as const).map((step) => (
+            <p key={step} style={{ fontSize: `var(--text-${step})`, margin: 0 }}>
+              --text-{step} {messages.login.tagline}
+            </p>
+          ))}
         </div>
       </div>
 

@@ -55,7 +55,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 0.78rem;
+  font-size: var(--text-xs);
   color: var(--k-ink-soft);
 }
 
@@ -74,7 +74,7 @@
 .k-header__logo {
   font-family: var(--font-logo);
   font-weight: 500;
-  font-size: 1.4rem;
+  font-size: var(--text-logo-header);
   letter-spacing: 0.18em;
 }
 
@@ -85,7 +85,7 @@
 }
 
 .k-header__navlink {
-  font-size: 0.9rem;
+  font-size: var(--text-sm);
   color: var(--k-ink-soft);
   text-decoration: none;
   padding: var(--space-2) var(--space-1);
@@ -118,7 +118,7 @@
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-m);
   border: var(--border-hair);
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   color: var(--k-ink-soft);
   background: transparent;
 }
@@ -147,7 +147,7 @@
 .k-header__menu-email {
   display: block;
   padding: var(--space-2) var(--space-3);
-  font-size: 0.8rem;
+  font-size: var(--text-sm);
   color: var(--k-ink-soft);
   word-break: break-all;
 }
@@ -160,7 +160,7 @@
   border: none;
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-s);
-  font-size: 0.9rem;
+  font-size: var(--text-sm);
   color: var(--k-magenta-ink);
 }
 
@@ -231,7 +231,7 @@
 }
 
 .k-tabbar__label {
-  font-size: 0.68rem;
+  font-size: var(--text-xs);
   line-height: 1.2;
 }
 
@@ -310,7 +310,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   max-width: 100%;
-  font-size: 0.76rem;
+  font-size: var(--text-xs);
   color: var(--k-ink-soft);
 }
 
@@ -322,7 +322,7 @@
 
 .more-sheet__email {
   display: block;
-  font-size: 0.78rem;
+  font-size: var(--text-xs);
   color: var(--k-ink-soft);
   word-break: break-all;
 }
@@ -336,7 +336,7 @@
   height: 2rem;
   border: none;
   background: none;
-  font-size: 1.3rem;
+  font-size: var(--text-lg);
   line-height: 1;
   color: var(--k-ink-soft);
   border-radius: var(--radius-s);
@@ -360,7 +360,7 @@
   border: none;
   padding: var(--space-3) var(--space-1);
   border-bottom: var(--border-hair);
-  font-size: 0.95rem;
+  font-size: var(--text-md);
   color: var(--k-key);
   font-family: inherit;
 }

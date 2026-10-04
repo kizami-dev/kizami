@@ -19,14 +19,15 @@
 }
 
 .story-section__title {
-  font-family: var(--font-display);
-  font-size: 1.3rem;
-  letter-spacing: 0.02em;
+  font-family: var(--font-heading);
+  font-weight: var(--weight-bold);
+  font-feature-settings: var(--feature-heading);
+  font-size: var(--text-lg);
 }
 
 .story-section__lead {
   color: var(--k-ink-soft);
-  font-size: 0.88rem;
+  font-size: var(--text-sm);
   max-width: 42rem;
   line-height: 1.7;
 }
@@ -38,14 +39,14 @@
 }
 
 .story-group__title {
-  font-size: 0.82rem;
+  font-size: var(--text-sm);
   font-weight: 700;
   color: var(--k-ink-soft);
   letter-spacing: 0.02em;
 }
 
 .story-group__note {
-  font-size: 0.8rem;
+  font-size: var(--text-sm);
   color: var(--k-ink-soft);
   margin: 0;
 }
@@ -77,17 +78,17 @@
 
 .story-swatch__token {
   font-family: var(--font-mono);
-  font-size: 0.76rem;
+  font-size: var(--text-xs);
 }
 
 .story-swatch__hex {
   font-family: var(--font-mono);
-  font-size: 0.72rem;
+  font-size: var(--text-xs);
   color: var(--k-ink-soft);
 }
 
 .story-swatch__role {
-  font-size: 0.74rem;
+  font-size: var(--text-xs);
   color: var(--k-ink-soft);
   margin: 0;
   line-height: 1.5;
@@ -111,7 +112,7 @@
 }
 
 .story-type-sample__label {
-  font-size: 0.72rem;
+  font-size: var(--text-xs);
   color: var(--k-ink-soft);
   font-family: var(--font-mono);
 }

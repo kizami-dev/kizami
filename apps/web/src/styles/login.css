@@ -38,7 +38,7 @@
 .login-card__logo {
   font-family: var(--font-logo);
   font-weight: 500;
-  font-size: 2rem;
+  font-size: var(--text-logo);
   letter-spacing: 0.18em;
   color: var(--k-key);
 }
@@ -46,7 +46,7 @@
 .login-card__tagline {
   text-align: center;
   color: var(--k-ink-soft);
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   margin-bottom: var(--space-6);
 }
 
@@ -57,9 +57,10 @@
 }
 
 .invite-accept__title {
-  font-family: var(--font-display);
-  font-size: 1.05rem;
-  letter-spacing: 0.02em;
+  font-family: var(--font-heading);
+  font-weight: var(--weight-bold);
+  font-feature-settings: var(--feature-heading);
+  font-size: var(--text-md);
   color: var(--k-key);
   margin: 0;
 }
@@ -75,14 +76,15 @@
 }
 
 .login-tenant-select__title {
-  font-family: var(--font-display);
-  font-size: 1.05rem;
-  letter-spacing: 0.02em;
+  font-family: var(--font-heading);
+  font-weight: var(--weight-bold);
+  font-feature-settings: var(--feature-heading);
+  font-size: var(--text-md);
   color: var(--k-key);
 }
 
 .login-tenant-select__desc {
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   color: var(--k-ink-soft);
 }
 
@@ -101,7 +103,7 @@
   border: var(--border-hair);
   border-radius: var(--radius-m);
   padding: var(--space-3) var(--space-4);
-  font-size: 0.95rem;
+  font-size: var(--text-md);
   font-weight: 700;
   color: var(--k-key);
   background: var(--k-surface);
@@ -127,7 +129,7 @@
   background: none;
   border: none;
   padding: var(--space-1) 0;
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   color: var(--k-cyan-ink);
   text-decoration: underline;
   text-underline-offset: 2px;
@@ -158,7 +160,7 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  font-size: 0.8rem;
+  font-size: var(--text-sm);
   color: var(--k-ink-soft);
 }
 
@@ -175,7 +177,7 @@
   border-color: var(--k-key);
   border-radius: var(--radius-m);
   padding: var(--space-3) var(--space-4);
-  font-size: 0.95rem;
+  font-size: var(--text-md);
   font-weight: 700;
   color: var(--k-key);
   background: var(--k-surface);
@@ -194,14 +196,14 @@
 .login-sso__button--inline {
   margin-top: var(--space-1);
   padding: var(--space-2) var(--space-3);
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
 }
 
 /* セルフサインアップ(2026-10-03): ログイン画面の「新規登録」リンクと、登録フォームの補足。 */
 .login-signup-link {
   margin-top: var(--space-5);
   text-align: center;
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   color: var(--k-ink-soft);
 }
 
@@ -212,7 +214,7 @@
 
 .signup-hint {
   color: var(--k-ink-soft);
-  font-size: 0.78rem;
+  font-size: var(--text-xs);
 }
 
 .signup-turnstile {

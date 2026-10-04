@@ -33,7 +33,7 @@
   border: var(--border-hair);
   text-decoration: none;
   color: var(--k-key);
-  font-size: 0.9rem;
+  font-size: var(--text-sm);
 }
 
 .monthly__nav-link:hover {
@@ -41,9 +41,10 @@
 }
 
 .monthly__title {
-  font-family: var(--font-display);
-  font-size: 1.4rem;
-  letter-spacing: 0.04em;
+  font-family: var(--font-heading);
+  font-weight: var(--weight-bold);
+  font-feature-settings: var(--feature-heading);
+  font-size: var(--text-xl);
 }
 
 /* 他人の勤怠閲覧(2026-08-23 追加)。切替セレクトは .field(components.css)を流用し、
@@ -53,7 +54,7 @@
 }
 
 .monthly__viewing-others {
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   color: var(--k-ink-soft);
   border: var(--border-hair);
   border-radius: var(--radius-s);
@@ -72,7 +73,7 @@
 }
 
 .flex-balance__label {
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   color: var(--k-ink-soft);
 }
 
@@ -101,7 +102,7 @@
   display: flex;
   justify-content: space-between;
   font-family: var(--font-mono);
-  font-size: 0.9rem;
+  font-size: var(--text-sm);
 }
 
 .flex-balance__diff--negative {
@@ -139,7 +140,7 @@
   border: 2px solid var(--chip-color, var(--k-key));
   border-radius: var(--radius-m);
   padding: var(--space-2) var(--space-3);
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
 }
 
 .totals-chip__label {
@@ -173,7 +174,7 @@
   display: flex;
   align-items: center;
   gap: var(--space-1);
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   color: var(--k-ink-soft);
 }
 
@@ -191,7 +192,7 @@
 .monthly-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.9rem;
+  font-size: var(--text-sm);
   min-width: 34rem;
 }
 
@@ -206,7 +207,7 @@
 .monthly-table th {
   color: var(--k-ink-soft);
   font-weight: 400;
-  font-size: 0.78rem;
+  font-size: var(--text-xs);
   text-align: right;
 }
 
@@ -242,7 +243,7 @@
 .monthly-table td.monthly-table__warning {
   text-align: left;
   color: var(--k-yellow-ink);
-  font-size: 0.78rem;
+  font-size: var(--text-xs);
   white-space: normal;
   min-width: 10rem;
 }
@@ -313,7 +314,7 @@
  */
 .monthly-table__stretch--incoming {
   color: var(--k-ink-soft);
-  font-size: 0.82rem;
+  font-size: var(--text-sm);
 }
 
 /*
@@ -327,7 +328,7 @@
 
 .monthly-table__overtime-extra {
   font-family: var(--font-mono);
-  font-size: 0.72rem;
+  font-size: var(--text-xs);
   color: var(--k-ink-soft);
   margin-top: 2px;
 }
@@ -339,7 +340,7 @@
  */
 .monthly-table__break-extra {
   font-family: var(--font-mono);
-  font-size: 0.72rem;
+  font-size: var(--text-xs);
   color: var(--k-ink-soft);
   margin-top: 2px;
 }
@@ -352,7 +353,7 @@
  */
 .monthly-table__allowance {
   font-family: var(--font-mono);
-  font-size: 0.72rem;
+  font-size: var(--text-xs);
   color: var(--k-ink-soft);
   margin-top: 2px;
   white-space: normal;
@@ -360,7 +361,7 @@
 
 .monthly-empty {
   color: var(--k-ink-soft);
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   padding: var(--space-3);
 }
 
@@ -384,9 +385,10 @@
 }
 
 .closing-diff__title {
-  font-family: var(--font-display);
-  font-size: 1rem;
-  letter-spacing: 0.02em;
+  font-family: var(--font-heading);
+  font-weight: var(--weight-bold);
+  font-feature-settings: var(--feature-heading);
+  font-size: var(--text-md);
 }
 
 .closing-diff__table-wrap {
@@ -396,7 +398,7 @@
 .closing-diff__table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   min-width: 28rem;
 }
 
@@ -411,7 +413,7 @@
 .closing-diff__table th {
   color: var(--k-ink-soft);
   font-weight: 400;
-  font-size: 0.76rem;
+  font-size: var(--text-xs);
 }
 
 .closing-diff__table th:first-child,
@@ -448,14 +450,14 @@
 
 .closing-history summary {
   cursor: pointer;
-  font-size: 0.88rem;
+  font-size: var(--text-sm);
   color: var(--k-ink-soft);
   font-weight: 700;
 }
 
 .closing-history__empty {
   color: var(--k-ink-soft);
-  font-size: 0.82rem;
+  font-size: var(--text-sm);
   padding-top: var(--space-2);
 }
 
@@ -476,7 +478,7 @@
   border: var(--border-hair);
   border-radius: var(--radius-s);
   padding: var(--space-2) var(--space-3);
-  font-size: 0.82rem;
+  font-size: var(--text-sm);
 }
 
 .closing-history__event {
@@ -520,7 +522,7 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
 }
 
 .csv-export__checkbox input[type="checkbox"] {
@@ -533,7 +535,7 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
 }
 
 /*
@@ -543,7 +545,7 @@
 .csv-export__beta {
   flex-basis: 100%;
   margin: 0;
-  font-size: 0.8rem;
+  font-size: var(--text-sm);
   line-height: 1.5;
   color: var(--k-ink-soft);
 }
@@ -621,14 +623,15 @@
   .monthly-table td[data-label]::before {
     content: attr(data-label);
     display: block;
-    font-size: 0.72rem;
+    font-size: var(--text-xs);
     color: var(--k-ink-soft);
   }
 
   .monthly-table__date {
-    font-family: var(--font-display);
-    font-size: 1rem;
-    letter-spacing: 0.02em;
+    font-family: var(--font-heading);
+  font-weight: var(--weight-bold);
+  font-feature-settings: var(--feature-heading);
+    font-size: var(--text-md);
     margin-bottom: var(--space-2);
   }
 }
@@ -646,7 +649,7 @@
   border: 1px solid var(--k-cyan-ink);
   border-radius: var(--radius-s);
   color: var(--k-cyan-ink);
-  font-size: 0.72rem;
+  font-size: var(--text-xs);
   white-space: nowrap;
 }
 

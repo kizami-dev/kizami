@@ -26,13 +26,14 @@
 }
 
 .attendance-settings__title {
-  font-family: var(--font-display);
-  font-size: 1.4rem;
-  letter-spacing: 0.04em;
+  font-family: var(--font-heading);
+  font-weight: var(--weight-bold);
+  font-feature-settings: var(--feature-heading);
+  font-size: var(--text-xl);
 }
 
 .attendance-settings__tagline {
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   color: var(--k-ink-soft);
 }
 
@@ -46,9 +47,10 @@
 }
 
 .attendance-settings__section-title {
-  font-family: var(--font-display);
-  font-size: 1.05rem;
-  letter-spacing: 0.02em;
+  font-family: var(--font-heading);
+  font-weight: var(--weight-bold);
+  font-feature-settings: var(--feature-heading);
+  font-size: var(--text-md);
   display: flex;
   align-items: center;
   gap: var(--space-2);
@@ -72,7 +74,7 @@
   align-items: baseline;
   justify-content: space-between;
   gap: var(--space-3);
-  font-size: 0.88rem;
+  font-size: var(--text-sm);
 }
 
 .attendance-settings__current-label {
@@ -87,19 +89,20 @@
 }
 
 .attendance-settings__current-effective-from {
-  font-size: 0.78rem;
+  font-size: var(--text-xs);
   color: var(--k-ink-soft);
 }
 
 .attendance-settings__empty {
   color: var(--k-ink-soft);
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
 }
 
 .attendance-settings__form-title {
-  font-family: var(--font-display);
-  font-size: 0.95rem;
-  letter-spacing: 0.02em;
+  font-family: var(--font-heading);
+  font-weight: var(--weight-bold);
+  font-feature-settings: var(--feature-heading);
+  font-size: var(--text-md);
   margin-top: var(--space-2);
 }
 
@@ -117,7 +120,7 @@
   display: flex;
   align-items: center;
   gap: var(--space-1);
-  font-size: 0.82rem;
+  font-size: var(--text-sm);
   color: var(--k-key);
   border: 1px solid var(--k-key);
   background: color-mix(in srgb, var(--k-key) 2%, transparent);
@@ -129,7 +132,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
-  font-size: 0.88rem;
+  font-size: var(--text-sm);
 }
 
 .attendance-settings__field > span:first-child {
@@ -144,13 +147,13 @@
   border: var(--border-hair);
   border-radius: var(--radius-s);
   padding: var(--space-2) var(--space-3);
-  font-size: 0.9rem;
+  font-size: var(--text-sm);
   background: var(--k-paper);
   color: inherit;
 }
 
 .attendance-settings__field-hint {
-  font-size: 0.76rem;
+  font-size: var(--text-xs);
   color: var(--k-ink-soft);
 }
 
@@ -158,7 +161,7 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  font-size: 0.9rem;
+  font-size: var(--text-sm);
   font-weight: 700;
 }
 
@@ -172,7 +175,7 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  font-size: 0.86rem;
+  font-size: var(--text-sm);
 }
 
 /*
@@ -191,14 +194,14 @@
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2);
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
 }
 
 .attendance-settings__break-rule-row input[type="time"] {
   border: var(--border-hair);
   border-radius: var(--radius-s);
   padding: var(--space-2) var(--space-3);
-  font-size: 0.9rem;
+  font-size: var(--text-sm);
   background: var(--k-paper);
   color: inherit;
   width: 7rem;
@@ -208,7 +211,7 @@
   border: var(--border-hair);
   border-radius: var(--radius-s);
   padding: var(--space-2) var(--space-3);
-  font-size: 0.9rem;
+  font-size: var(--text-sm);
   background: var(--k-paper);
   color: inherit;
   width: 5rem;
@@ -222,7 +225,7 @@
   /* 2026-08-23 SP監査: 縦 padding が var(--space-1)=4px だと高さ約28pxでタップしづらい。
      var(--space-2)=8px に広げ約36pxを確保する(行は元々 flex-wrap 済み)。 */
   padding: var(--space-2) var(--space-3);
-  font-size: 0.78rem;
+  font-size: var(--text-xs);
 }
 
 .attendance-settings__break-rule-remove:hover:not(:disabled) {
@@ -241,7 +244,7 @@
   background: color-mix(in srgb, var(--k-magenta) 6%, transparent);
   border-radius: var(--radius-s);
   padding: var(--space-3);
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
 }
 
 .attendance-settings__gps-warning a {

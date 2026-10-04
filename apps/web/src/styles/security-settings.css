@@ -42,7 +42,7 @@
 
 .security-settings__facts dt {
   color: var(--k-ink-soft);
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
 }
 
 .security-settings__facts dd {
@@ -62,7 +62,7 @@
 }
 
 .security-settings__setup-title {
-  font-size: 0.95rem;
+  font-size: var(--text-md);
   font-weight: 700;
   margin: 0;
 }
@@ -88,7 +88,7 @@
 
 .security-settings__secret {
   flex: 1;
-  font-size: 1rem;
+  font-size: var(--text-md);
   letter-spacing: 0.08em;
   overflow-x: auto;
   white-space: nowrap;
@@ -96,7 +96,7 @@
 
 .security-settings__uri {
   flex: 1;
-  font-size: 0.82rem;
+  font-size: var(--text-sm);
   overflow-x: auto;
   white-space: nowrap;
 }
@@ -129,7 +129,7 @@
 
 .security-settings__code {
   display: block;
-  font-size: 0.95rem;
+  font-size: var(--text-md);
   text-align: center;
 }
 
