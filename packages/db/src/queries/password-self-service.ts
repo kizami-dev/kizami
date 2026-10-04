@@ -14,7 +14,7 @@
  * routes/password-resets.ts の本人用リセットだけに限る。
  */
 
-import { and, asc, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, isNull, lt, sql } from "drizzle-orm";
 import type { Database, Transaction } from "../types.js";
 import { authCredentials, passwordResetRequests, passwordResetTokens, users } from "../schema/index.js";
 import { uuidv7 } from "../uuid.js";
@@ -134,6 +134,21 @@ export async function acquirePasswordResetRequestSlot(
     })
     .returning({ emailKey: passwordResetRequests.emailKey });
   return rows.length > 0;
+}
+
+/**
+ * 掃除: `requestedBefore` より前の再送スロットル行を消す。消した件数を返す。スロットルの窓(5分)を
+ * 過ぎた行は判定に効かない(次の要求で上書きされる)ので、いつ消しても挙動は変わらない。
+ * スロットルは存在しないメールにも取る(応答時間を該当者の有無から独立させるため。apps/api の
+ * routes/password-resets.ts 冒頭)ので、行数は「要求されたメールの種類数」に比例して増える —
+ * それを放置しないための掃除(signup-cleanup.ts の定期ジョブから呼ぶ)。
+ */
+export async function deletePasswordResetRequestsBefore(db: Database, params: { requestedBefore: number }): Promise<number> {
+  const rows = await db
+    .delete(passwordResetRequests)
+    .where(lt(passwordResetRequests.requestedAt, params.requestedBefore))
+    .returning({ emailKey: passwordResetRequests.emailKey });
+  return rows.length;
 }
 
 export interface NewSelfServiceResetTokenInput {
