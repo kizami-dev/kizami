@@ -2612,6 +2612,8 @@ export const zhHant = {
     registering: "登記中…",
     registerSuccess: "已登記為公司內部規定。可在「設定 > 公司內部規定」中編輯。",
     registerFailed: "登記失敗,請重試",
+    viewPreview: "預覽",
+    viewSource: "Markdown(原文)",
   },
 
   /**

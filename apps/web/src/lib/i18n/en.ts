@@ -2673,6 +2673,8 @@ export const en = {
     registering: "Registering…",
     registerSuccess: "Registered as company policy. You can edit it from \"Settings > Company policy\".",
     registerFailed: "Registration failed. Please try again",
+    viewPreview: "Preview",
+    viewSource: "Markdown (source)",
   },
 
   /**

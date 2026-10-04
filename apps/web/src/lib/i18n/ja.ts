@@ -2693,6 +2693,9 @@ export const ja = {
     registering: "登録中…",
     registerSuccess: "社内規定として登録しました。「設定 > 社内規定」から編集できます。",
     registerFailed: "登録に失敗しました。もう一度お試しください",
+    /** 雛形の表示切り替え(整形したプレビューと、Markdown の原文)。 */
+    viewPreview: "プレビュー",
+    viewSource: "Markdown(原文)",
   },
 
   /**

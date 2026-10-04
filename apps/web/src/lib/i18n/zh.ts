@@ -2612,6 +2612,8 @@ export const zh = {
     registering: "登记中…",
     registerSuccess: "已登记为公司内部规定。可在「设置 > 公司内部规定」中编辑。",
     registerFailed: "登记失败,请重试",
+    viewPreview: "预览",
+    viewSource: "Markdown(原文)",
   },
 
   /**
