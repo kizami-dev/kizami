@@ -184,7 +184,7 @@ export const ja = {
     },
   },
 
-  /** テーマ切り替え(ヘッダーのユーザーメニュー内、2026-08-22 ダーク対応で追加)。 */
+  /** テーマ切り替え(「言語と表示」設定 /settings/display 内。2026-08-22 ダーク対応で追加、2026-10-05 にヘッダーのユーザーメニューから移動)。 */
   theme: {
     label: "テーマ",
     system: "システム設定に従う",
@@ -193,9 +193,9 @@ export const ja = {
   },
 
   /**
-   * 言語切り替え(ヘッダーのユーザーメニュー内、2026-08-23 4言語対応で追加)。
+   * 言語切り替え(「言語と表示」設定内。2026-08-23 4言語対応で追加、2026-10-05 にヘッダーのユーザーメニューから移動)。
    * ThemeToggle と同じ場所・同じ作法(k-header__theme 相当の見た目)で配置する。
-   * 選択肢のラベル自体(日本語 / English / 한국어 / 简体中文)は各言語の自称のため
+   * 選択肢のラベル自体(日本語 / English / 한국어 / 简体中文 / 繁體中文)は各言語の自称のため
    * ロケールに関わらず固定 — messages ではなく lib/i18n/index.ts の LOCALE_NATIVE_NAMES で持つ。
    */
   language: {
@@ -1349,6 +1349,7 @@ export const ja = {
     allowances: "手当対象時間",
     shiftPatterns: "シフトパターン",
     security: "セキュリティ",
+    display: "言語と表示",
     apiKeys: "APIキー",
     slack: "Slack連携",
     sso: "SSO(OIDC)",
@@ -1390,6 +1391,8 @@ export const ja = {
     privacyDesc: "従業員向けプライバシー通知・社内利用規約の雛形を、現在の設定から確認します。",
     securityTitle: "ログインとセキュリティ",
     securityDesc: "パスワードの変更と、二要素認証(認証アプリの6桁コード)の設定を行います。",
+    displayTitle: "言語と表示",
+    displayDesc: "画面の表示言語と配色(ライト・ダーク)を選びます。",
     apiKeysTitle: "APIキー",
     apiKeysDesc: "ICカードリーダー・Slack bot・MCPサーバーなど外部クライアントから打刻するためのAPIキーを発行・失効します。",
     slackTitle: "Slack連携",
@@ -2776,6 +2779,17 @@ export const ja = {
       encryption_unavailable: "現在この操作を利用できません。管理者にお問い合わせください",
       default: "処理に失敗しました。もう一度お試しください",
     },
+  },
+
+  /** 言語と表示の設定(/settings/display、2026-10-05 追加。ヘッダーにあった言語・テーマの切り替えの移設先)。 */
+  settingsDisplay: {
+    title: "言語と表示",
+    tagline: "画面の言語と配色を選びます。選ぶとすぐに反映されます。",
+    languageTitle: "言語",
+    languageDesc: "画面の表示言語です。ログイン前の画面でも、ここで選んだ言語で表示されます。",
+    themeTitle: "配色",
+    themeDesc: "ライト・ダークのどちらかに固定するか、端末の設定に合わせます。",
+    storageNote: "この設定はこのブラウザに保存されます。別の端末やブラウザでは、それぞれで選び直してください。",
   },
 
   settingsApiKeys: {

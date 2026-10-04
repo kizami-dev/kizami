@@ -193,7 +193,7 @@ export const en = {
     },
   },
 
-  /** Theme toggle (in the header's user menu, added 2026-08-22 for dark mode support). */
+  /** Theme choice (on the "Language & display" settings screen, /settings/display; added 2026-08-22 for dark mode support, moved from the header's user menu on 2026-10-05). */
   theme: {
     label: "Theme",
     system: "Follow system setting",
@@ -202,7 +202,7 @@ export const en = {
   },
 
   /**
-   * Language switcher (in the header's user menu, added 2026-08-23 for 4-language support).
+   * Language choice (on the "Language & display" settings screen; added 2026-08-23 for 4-language support, moved from the header's user menu on 2026-10-05).
    * Placed alongside ThemeToggle in the same spot with the same styling (k-header__theme look).
    * The option labels themselves (日本語 / English / 한국어 / 简体中文) are each language's own
    * name for itself, so they stay fixed regardless of locale — held in LOCALE_NATIVE_NAMES in
@@ -1328,6 +1328,7 @@ export const en = {
     allowances: "Allowance-eligible time",
     shiftPatterns: "Shift patterns",
     security: "Security",
+    display: "Language & display",
     apiKeys: "API keys",
     slack: "Slack integration",
     sso: "SSO (OIDC)",
@@ -1369,6 +1370,8 @@ export const en = {
     privacyDesc: "Review draft employee privacy notices and internal usage terms generated from your current settings.",
     securityTitle: "Sign-in & security",
     securityDesc: "Change your password and set up two-factor authentication with a 6-digit code from your authenticator app.",
+    displayTitle: "Language & display",
+    displayDesc: "Choose the display language and the color theme (light or dark).",
     apiKeysTitle: "API keys",
     apiKeysDesc: "Issue and revoke API keys for punching in from external clients such as IC card readers, Slack bots, and MCP servers.",
     slackTitle: "Slack integration",
@@ -2752,6 +2755,17 @@ export const en = {
       encryption_unavailable: "This action is unavailable right now. Please contact your administrator",
       default: "Something went wrong. Please try again",
     },
+  },
+
+  /** 言語と表示の設定(/settings/display、2026-10-05 追加。ヘッダーにあった言語・テーマの切り替えの移設先)。 */
+  settingsDisplay: {
+    title: "Language & display",
+    tagline: "Choose the language and color theme of the screens. Changes take effect immediately.",
+    languageTitle: "Language",
+    languageDesc: "The display language. It is also used on the screens shown before you sign in.",
+    themeTitle: "Theme",
+    themeDesc: "Fix the theme to light or dark, or follow your device's setting.",
+    storageNote: "These settings are saved in this browser. On another device or browser, choose them again there.",
   },
 
   settingsApiKeys: {

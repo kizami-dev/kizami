@@ -1,4 +1,6 @@
 .login-screen {
+  /* 右上に言語切り替え(PreLoginLanguageSelect)を絶対配置するための基準 */
+  position: relative;
   min-height: 100dvh;
   display: flex;
   align-items: center;

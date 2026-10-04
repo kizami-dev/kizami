@@ -26,6 +26,7 @@ type SettingsRoute =
   | "/settings/allowances"
   | "/settings/shift-patterns"
   | "/settings/security"
+  | "/settings/display"
   | "/settings/api-keys"
   | "/settings/slack"
   | "/settings/sso"
@@ -54,6 +55,14 @@ export function SettingsHubView() {
       to: "/settings/notifications/me" as const,
       title: messages.settingsHub.myNotificationsTitle,
       desc: messages.settingsHub.myNotificationsDesc,
+    },
+    // 言語と表示(2026-10-05 追加。ヘッダーにあった言語・テーマの切り替えをここへ移した)。
+    {
+      key: "display",
+      enabled: access.display,
+      to: "/settings/display" as const,
+      title: messages.settingsHub.displayTitle,
+      desc: messages.settingsHub.displayDesc,
     },
     {
       key: "apiKeys",

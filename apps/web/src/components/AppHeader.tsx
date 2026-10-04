@@ -9,9 +9,7 @@ import { messages } from "../lib/messages";
 import { useSettingsAccess } from "../lib/useSettingsAccess";
 import { CorrectionsTabIcon, MonthlyTabIcon, MoreTabIcon, PunchTabIcon } from "./NavIcons";
 import { KizamiMark } from "./KizamiMark";
-import { LanguageToggle } from "./LanguageToggle";
 import { NotificationBell } from "./NotificationBell";
-import { ThemeToggle } from "./ThemeToggle";
 
 /**
  * "notifications"(通知一覧画面、2026-08-22 追加)はどのタブ・デスクトップナビにも対応させない
@@ -51,7 +49,8 @@ function tabForActive(active: AppHeaderActive): TabKey | null {
  *
  * デスクトップ(641px〜)は従来どおり横並びナビ+ユーザーメニュー。
  * モバイル(〜640px)はロゴ+通知ベルだけの薄いヘッダーにし、ナビは下部固定タブバーへ、
- * ユーザーメニュー(テーマ切り替え・ログアウト含む)は「その他」シートへ移す
+ * ユーザーメニュー(ログアウト)は「その他」シートへ移す。テーマ・言語の切り替えは
+ * 2026-10-05 に「言語と表示」設定(/settings/display)へ移した(ここには置かない)
  * (要件: 390px 幅でナビが2行に折り返しユーザーメニューが画面外にはみ出す問題の解消)。
  * 表示の出し分けは CSS のメディアクエリのみで行い、両方を常に DOM に置く
  * (JS 分岐で二重にコンポーネントを持たない=通知ベルのポーリングが二重化しない)。
@@ -187,8 +186,6 @@ export function AppHeader({ displayName, email, tenantName, active }: AppHeaderP
             <summary>{displayName} ▾</summary>
             <div className="k-header__menu">
               <span className="k-header__menu-email">{email}</span>
-              <ThemeToggle />
-              <LanguageToggle />
               <button type="button" className="k-header__logout" onClick={handleLogout} disabled={loggingOut}>
                 {messages.nav.logout}
               </button>
@@ -287,13 +284,6 @@ export function AppHeader({ displayName, email, tenantName, active }: AppHeaderP
               <Link to="/notifications" className="more-sheet__row" onClick={() => setSheetOpen(false)}>
                 {messages.mobileNav.allNotifications}
               </Link>
-
-              <div className="more-sheet__theme">
-                <ThemeToggle />
-              </div>
-              <div className="more-sheet__language">
-                <LanguageToggle />
-              </div>
 
               <button
                 type="button"

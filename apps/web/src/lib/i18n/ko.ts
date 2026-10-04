@@ -178,7 +178,7 @@ export const ko = {
     },
   },
 
-  /** 테마 전환(헤더의 사용자 메뉴 내, 2026-08-22 다크 모드 대응으로 추가). */
+  /** 테마 선택(「언어 및 화면」 설정 /settings/display 내. 2026-08-22 다크 모드 대응으로 추가, 2026-10-05 헤더의 사용자 메뉴에서 이동). */
   theme: {
     label: "테마",
     system: "시스템 설정을 따름",
@@ -187,7 +187,7 @@ export const ko = {
   },
 
   /**
-   * 언어 전환(헤더의 사용자 메뉴 내, 2026-08-23 4개 언어 지원으로 추가).
+   * 언어 선택(「언어 및 화면」 설정 내. 2026-08-23 4개 언어 지원으로 추가, 2026-10-05 헤더의 사용자 메뉴에서 이동).
    * ThemeToggle 과 동일한 위치·동일한 방식(k-header__theme 에 준하는 모양)으로 배치한다.
    * 선택지 라벨 자체(日本語 / English / 한국어 / 简体中文)는 각 언어의 자칭이므로
    * 로케일과 무관하게 고정 — messages 가 아니라 lib/i18n/index.ts 의 LOCALE_NATIVE_NAMES 에서 관리한다.
@@ -1300,6 +1300,7 @@ export const ko = {
     allowances: "수당 대상 시간",
     shiftPatterns: "시프트 패턴",
     security: "보안",
+    display: "언어 및 화면",
     apiKeys: "API 키",
     slack: "Slack 연동",
     sso: "SSO(OIDC)",
@@ -1341,6 +1342,8 @@ export const ko = {
     privacyDesc: "직원 대상 개인정보 안내·사내 이용약관 템플릿을 현재 설정 기준으로 확인합니다.",
     securityTitle: "로그인 및 보안",
     securityDesc: "비밀번호를 변경하고, 인증 앱의 6자리 코드를 사용하는 2단계 인증을 설정합니다.",
+    displayTitle: "언어 및 화면",
+    displayDesc: "화면 표시 언어와 색상 테마(라이트·다크)를 선택합니다.",
     apiKeysTitle: "API 키",
     apiKeysDesc: "IC카드 리더·Slack bot·MCP 서버 등 외부 클라이언트에서 출퇴근을 기록하기 위한 API 키를 발급·폐기합니다.",
     slackTitle: "Slack 연동",
@@ -2711,6 +2714,17 @@ export const ko = {
       encryption_unavailable: "현재 이 작업을 사용할 수 없습니다. 관리자에게 문의해 주세요",
       default: "처리에 실패했습니다. 다시 시도해 주세요",
     },
+  },
+
+  /** 言語と表示の設定(/settings/display、2026-10-05 追加。ヘッダーにあった言語・テーマの切り替えの移設先)。 */
+  settingsDisplay: {
+    title: "언어 및 화면",
+    tagline: "화면의 언어와 색상 테마를 선택합니다. 선택하면 바로 반영됩니다.",
+    languageTitle: "언어",
+    languageDesc: "화면 표시 언어입니다. 로그인 전 화면에서도 여기서 선택한 언어로 표시됩니다.",
+    themeTitle: "색상 테마",
+    themeDesc: "라이트 또는 다크로 고정하거나, 기기의 설정을 따릅니다.",
+    storageNote: "이 설정은 이 브라우저에 저장됩니다. 다른 기기나 브라우저에서는 각각 다시 선택해 주세요.",
   },
 
   settingsApiKeys: {

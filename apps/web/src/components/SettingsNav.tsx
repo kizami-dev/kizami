@@ -18,6 +18,7 @@ export type SettingsSection =
   | "allowances"
   | "shiftPatterns"
   | "security"
+  | "display"
   | "apiKeys"
   | "slack"
   | "sso"
@@ -37,6 +38,7 @@ type SettingsRoute =
   | "/settings/allowances"
   | "/settings/shift-patterns"
   | "/settings/security"
+  | "/settings/display"
   | "/settings/api-keys"
   | "/settings/slack"
   | "/settings/sso"
@@ -91,6 +93,8 @@ export function SettingsNav({ active }: { active: SettingsSection }) {
     { key: "privacy", to: "/settings/privacy", label: messages.settingsNav.privacy, enabled: access.privacy },
     // 二要素認証(2026-08-27 追加)。自分の認証設定なので、同じく権限不要の APIキーの隣に置く。
     { key: "security", to: "/settings/security", label: messages.settingsNav.security, enabled: access.security },
+    // 言語と表示(2026-10-05 追加)。ヘッダーから移した本人用の設定で、同じく権限不要。
+    { key: "display", to: "/settings/display", label: messages.settingsNav.display, enabled: access.display },
     { key: "apiKeys", to: "/settings/api-keys", label: messages.settingsNav.apiKeys, enabled: access.apiKeys },
     { key: "slack", to: "/settings/slack", label: messages.settingsNav.slack, enabled: access.slack },
     { key: "sso", to: "/settings/sso", label: messages.settingsNav.sso, enabled: access.sso },

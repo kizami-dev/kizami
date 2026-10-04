@@ -31,6 +31,11 @@ export interface SettingsAccess {
    * 判定する — ナビから消してしまうと、使えない理由を知る術が利用者に無くなるため。
    */
   security: boolean;
+  /**
+   * /settings/display(言語と表示、2026-10-05 追加)。ヘッダーにあった言語・テーマの切り替えの移設先。
+   * ブラウザの localStorage に保存する本人の設定でサーバー側の権限が無いため、常に true。
+   */
+  display: boolean;
   slack: boolean;
   /** /settings/sso(SSO(OIDC)設定、2026-08-24 追加)。tenant_settings.auth.manage(tenant スコープ)。 */
   sso: boolean;
@@ -87,6 +92,7 @@ export function useSettingsAccess(): SettingsAccess {
     myNotifications: true,
     apiKeys: true,
     security: true,
+    display: true,
     slackLink: true,
     notifications: has("notification.settings.manage", "tenant"),
     departments: has("department.manage", "department_and_descendants") || has("member.view", "department"),
