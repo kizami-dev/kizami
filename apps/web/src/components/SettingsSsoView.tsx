@@ -8,6 +8,7 @@ import { useAuthGuard } from "../lib/useAuthGuard";
 import { AppHeader } from "./AppHeader";
 import { SettingsNav } from "./SettingsNav";
 import { StateView } from "./ui/StateView";
+import { PageHeader } from "./ui/PageHeader";
 
 interface FormState {
   issuer: string;
@@ -136,8 +137,7 @@ export function SettingsSsoView() {
       <AppHeader displayName={guard.user.displayName} email={guard.user.email} tenantName={guard.tenant?.name ?? null} active="settings" />
       <main className="page">
         <SettingsNav active="sso" />
-        <h1 className="settings-notif__title">{messages.settingsSso.title}</h1>
-        <p className="settings-notif__tagline">{messages.settingsSso.tagline}</p>
+        <PageHeader title={messages.settingsSso.title} lead={messages.settingsSso.tagline} />
         <p className="field__hint">{messages.settingsSso.noAutoProvisioningNote}</p>
         <p className="field__hint">{messages.settingsSso.setupGuideHint}</p>
 

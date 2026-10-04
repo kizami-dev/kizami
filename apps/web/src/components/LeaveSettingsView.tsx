@@ -25,6 +25,7 @@ import { ConfirmDialog } from "./ConfirmDialog";
 import { HelpTip } from "./HelpTip";
 import { SettingsNav } from "./SettingsNav";
 import { StateView } from "./ui/StateView";
+import { PageHeader } from "./ui/PageHeader";
 
 interface FormState {
   grantMethod: LeaveGrantMethod;
@@ -400,8 +401,7 @@ export function LeaveSettingsView() {
       <AppHeader displayName={guard.user.displayName} email={guard.user.email} tenantName={guard.tenant?.name ?? null} active="settings" />
       <main className="page">
         <SettingsNav active="leave" />
-        <h1 className="settings-notif__title">{messages.settingsLeave.title}</h1>
-        <p className="settings-notif__tagline">{messages.settingsLeave.tagline}</p>
+        <PageHeader title={messages.settingsLeave.title} lead={messages.settingsLeave.tagline} />
 
         {forbidden ? (
           <p className="notice notice--danger" role="alert">
@@ -547,7 +547,7 @@ export function LeaveSettingsView() {
               </div>
             </form>
 
-            <section className="leave-admin-section">
+            <section className="leave-admin-section page-body--form">
               <h2 className="card__title">{messages.settingsLeave.adminSectionTitle}</h2>
               <p className="leave-admin-section__desc">{messages.settingsLeave.adminSectionTagline}</p>
 

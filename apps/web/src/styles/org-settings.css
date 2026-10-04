@@ -73,32 +73,6 @@
   flex-direction: column;
 }
 
-.settings-hub__main {
-  flex: 1;
-  padding: var(--space-5) var(--space-4) var(--space-7);
-  /* 2026-08-23: PC表示の余白を狭める依頼。.settings-hub__grid は auto-fill のカードグリッドの
-     ため、幅を広げるとカラム数が自然に増えて埋まる(無理に1カラムを引き伸ばす形にはならない
-     — ダッシュボードとの違いはここ)。テーブル系と同じ幅トークンを使う。 */
-  max-width: var(--width-content-wide);
-  margin: 0 auto;
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-5);
-}
-
-.settings-hub__title {
-  font-family: var(--font-heading);
-  font-weight: var(--weight-bold);
-  font-feature-settings: var(--feature-heading);
-  font-size: var(--text-xl);
-}
-
-.settings-hub__tagline {
-  font-size: var(--text-sm);
-  color: var(--k-ink-soft);
-}
-
 /* 「自分の設定」(全員)/「会社の設定」(管理者向け)のカード群を視覚的に分ける
  * (docs/requirements.md §7: テナント設定と個人設定を混ぜない)。 */
 .settings-hub__group {
@@ -189,50 +163,11 @@
   flex-direction: column;
 }
 
-.org-settings__main {
-  flex: 1;
-  padding: var(--space-5) var(--space-4) var(--space-7);
-  /* 2026-08-23: PC表示の余白を狭める依頼。部署・メンバー・プリセット管理はいずれも
-     一覧が主役のためテーブル系の幅トークンを使う(tokens.css 参照)。以前は部署ツリー
-     (このクラスをそのまま使う DepartmentsView)だけ 48rem に据え置いていたが、他の2画面
-     (--wide 修飾子で 72rem)と地続きの管理画面群のため、ここで幅の規律を揃えた。 */
-  max-width: var(--width-content-wide);
-  margin: 0 auto;
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-}
-
-/* .org-settings__main が var(--width-content-wide) に揃ったことで値としては重複するが、
-   「テーブルが主役の画面は明示的に --wide を付ける」という呼び出し側(MembersView/
-   PresetsView)の意図を残すため、クラス自体とルールは維持する(no-op 化した安全策)。 */
-.org-settings__main--wide {
-  max-width: var(--width-content-wide);
-}
-
-.org-settings__title {
-  font-family: var(--font-heading);
-  font-weight: var(--weight-bold);
-  font-feature-settings: var(--feature-heading);
-  font-size: var(--text-xl);
-}
-
-.org-settings__tagline {
-  font-size: var(--text-sm);
-  color: var(--k-ink-soft);
-}
-
 .org-settings__empty {
   color: var(--k-ink-soft);
   font-size: var(--text-sm);
   padding: var(--space-6) 0;
   text-align: center;
-}
-
-.org-settings__toolbar {
-  display: flex;
-  justify-content: flex-end;
 }
 
 .org-settings__table-wrap {
@@ -799,20 +734,6 @@ td.org-table__detail-cell {
 }
 
 /* ---- 一覧フィルタ(無効なメンバーの表示切替、2026-08-23 Tier 0 その4 追加) ---- */
-
-.org-settings__filter {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  font-size: var(--text-sm);
-  color: var(--k-ink-soft);
-}
-
-.org-settings__filter input[type="checkbox"] {
-  accent-color: var(--k-key);
-  width: 1.05rem;
-  height: 1.05rem;
-}
 
 /* ---- メンバー詳細: 労働時間制セクション(2026-08-23 Tier 0 その4 追加) ---- */
 

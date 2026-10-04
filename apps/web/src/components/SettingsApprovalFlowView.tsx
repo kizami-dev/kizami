@@ -8,6 +8,7 @@ import { useAuthGuard } from "../lib/useAuthGuard";
 import { AppHeader } from "./AppHeader";
 import { SettingsNav } from "./SettingsNav";
 import { StateView } from "./ui/StateView";
+import { PageHeader } from "./ui/PageHeader";
 
 /** PUT /settings/approval-flow が受け付ける段数。API 側も 1|2 以外は 400 で弾く。 */
 type Steps = 1 | 2;
@@ -152,8 +153,7 @@ export function SettingsApprovalFlowView() {
       <AppHeader displayName={guard.user.displayName} email={guard.user.email} tenantName={guard.tenant?.name ?? null} active="settings" />
       <main className="page">
         <SettingsNav active="approvalFlow" />
-        <h1 className="settings-notif__title">{messages.settingsApprovalFlow.title}</h1>
-        <p className="settings-notif__tagline">{messages.settingsApprovalFlow.tagline}</p>
+        <PageHeader title={messages.settingsApprovalFlow.title} lead={messages.settingsApprovalFlow.tagline} />
         <p className="field__hint">{messages.settingsApprovalFlow.defaultSingleHint}</p>
         <p className="field__hint">{messages.settingsApprovalFlow.twoStepHint}</p>
         <p className="field__hint">{messages.settingsApprovalFlow.sameApproverHint}</p>

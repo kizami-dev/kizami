@@ -175,31 +175,6 @@
   flex-direction: column;
 }
 
-.corrections__main {
-  flex: 1;
-  padding: var(--space-5) var(--space-4) var(--space-7);
-  /* 2026-08-23: PC表示の余白を狭める依頼。申請一覧が主役のページのためテーブル系の
-     幅トークンを使う(tokens.css 参照)。 */
-  max-width: var(--width-content-wide);
-  margin: 0 auto;
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-5);
-}
-
-.corrections__title {
-  font-family: var(--font-heading);
-  font-weight: var(--weight-bold);
-  font-feature-settings: var(--feature-heading);
-  font-size: var(--text-xl);
-}
-
-.corrections__tagline {
-  font-size: var(--text-sm);
-  color: var(--k-ink-soft);
-}
-
 .corrections__empty {
   color: var(--k-ink-soft);
   font-size: var(--text-sm);

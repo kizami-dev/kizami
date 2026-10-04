@@ -10,33 +10,6 @@
   flex-direction: column;
 }
 
-.attendance-settings__main {
-  flex: 1;
-  padding: var(--space-5) var(--space-4) var(--space-7);
-  /* 2026-08-23: 外枠は認証後の全ページ共通で --width-content-wide に統一する(見出し・
-     SettingsNav の左端が他ページと揃う)。中身(現在値の表示・フォーム)は下記の
-     __current / __form 側で --width-form に個別制約し左寄せする(allowances.css が
-     再利用する履歴テーブルは制約しないため、この main 自体は wide のままでよい)。 */
-  max-width: var(--width-content-wide);
-  margin: 0 auto;
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-5);
-}
-
-.attendance-settings__title {
-  font-family: var(--font-heading);
-  font-weight: var(--weight-bold);
-  font-feature-settings: var(--feature-heading);
-  font-size: var(--text-xl);
-}
-
-.attendance-settings__tagline {
-  font-size: var(--text-sm);
-  color: var(--k-ink-soft);
-}
-
 .attendance-settings__section {
   border: var(--border-hair);
   border-radius: var(--radius-m);

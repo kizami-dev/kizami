@@ -12,6 +12,7 @@ import { ConfirmDialog } from "./ConfirmDialog";
 import { HelpTip } from "./HelpTip";
 import { SettingsNav } from "./SettingsNav";
 import { StateView } from "./ui/StateView";
+import { PageHeader } from "./ui/PageHeader";
 
 /** LawRules のトップレベルキーのうち、法改正で変わりうるものの表示順(packages/law/src/types.ts の定義順)。 */
 const RULE_KEY_ORDER = ["weeklyStatutoryMinutes", "lateNight", "overtime60h", "agreement36", "annualLeave"] as const;
@@ -137,10 +138,9 @@ export function SettingsTenantProfileView() {
   return (
     <div className="tenant-profile">
       <AppHeader displayName={guard.user.displayName} email={guard.user.email} tenantName={guard.tenant?.name ?? null} active="settings" />
-      <main className="tenant-profile__main">
+      <main className="page">
         <SettingsNav active="tenantProfile" />
-        <h1 className="tenant-profile__title">{messages.settingsTenantProfile.title}</h1>
-        <p className="tenant-profile__tagline">{messages.settingsTenantProfile.tagline}</p>
+        <PageHeader title={messages.settingsTenantProfile.title} lead={messages.settingsTenantProfile.tagline} />
 
         {forbidden ? (
           <p className="notice notice--danger" role="alert">

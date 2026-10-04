@@ -10,6 +10,7 @@ import { ConfirmDialog } from "./ConfirmDialog";
 import { SettingsNav } from "./SettingsNav";
 import { formatShiftPatternTime, ShiftPatternFormDialog, type ShiftPatternFormValue } from "./ShiftPatternFormDialog";
 import { StateView } from "./ui/StateView";
+import { PageHeader } from "./ui/PageHeader";
 
 /**
  * シフトパターン管理画面(/settings/shift-patterns、v0.7 フェーズ3、2026-08-24 追加)。
@@ -114,10 +115,26 @@ export function SettingsShiftPatternsView() {
   return (
     <div className="org-settings">
       <AppHeader displayName={guard.user.displayName} email={guard.user.email} tenantName={guard.tenant?.name ?? null} active="settings" />
-      <main className="org-settings__main org-settings__main--wide">
+      <main className="page">
         <SettingsNav active="shiftPatterns" />
-        <h1 className="org-settings__title">{messages.shiftPatterns.title}</h1>
-        <p className="org-settings__tagline">{messages.shiftPatterns.tagline}</p>
+        <PageHeader
+          title={messages.shiftPatterns.title}
+          lead={messages.shiftPatterns.tagline}
+          actions={
+            !forbidden && patterns ? (
+              <button
+                type="button"
+                className="btn btn--primary"
+                onClick={() => {
+                  setFormError(null);
+                  setFormOpen(true);
+                }}
+              >
+                {messages.shiftPatterns.addNew}
+              </button>
+            ) : null
+          }
+        />
 
         {forbidden ? (
           <p className="notice notice--danger" role="alert">
@@ -128,11 +145,8 @@ export function SettingsShiftPatternsView() {
 
         {!forbidden && patterns ? (
           <>
-            <div className="org-settings__toolbar">
-              <button type="button" className="btn btn--primary" onClick={() => { setFormError(null); setFormOpen(true); }}>
-                {messages.shiftPatterns.addNew}
-              </button>
-              <label className="attendance-settings__checkbox">
+            <div className="page-toolbar">
+              <label className="check">
                 <input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} />
                 {messages.shiftPatterns.showArchived}
               </label>

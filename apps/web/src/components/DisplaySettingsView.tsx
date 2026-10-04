@@ -7,6 +7,7 @@ import { LanguageToggle } from "./LanguageToggle";
 import { SettingsNav } from "./SettingsNav";
 import { ThemeToggle } from "./ThemeToggle";
 import { StateView } from "./ui/StateView";
+import { PageHeader } from "./ui/PageHeader";
 
 /**
  * 言語と表示の設定画面(/settings/display、2026-10-05 追加)。
@@ -40,8 +41,7 @@ export function DisplaySettingsView() {
       <AppHeader displayName={guard.user.displayName} email={guard.user.email} tenantName={guard.tenant?.name ?? null} active="settings" />
       <main className="page">
         <SettingsNav active="display" />
-        <h1 className="settings-notif__title">{messages.settingsDisplay.title}</h1>
-        <p className="settings-notif__tagline">{messages.settingsDisplay.tagline}</p>
+        <PageHeader title={messages.settingsDisplay.title} lead={messages.settingsDisplay.tagline} />
 
         <section className="card display-settings__section" aria-labelledby="display-language-title">
           <h2 className="card__title" id="display-language-title">

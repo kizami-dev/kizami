@@ -9,6 +9,7 @@ import { useAuthGuard } from "../lib/useAuthGuard";
 import { AppHeader } from "./AppHeader";
 import { SettingsNav } from "./SettingsNav";
 import { StateView } from "./ui/StateView";
+import { PageHeader } from "./ui/PageHeader";
 
 /**
  * apps/api の監査ログ挿入箇所(apps/api/src/routes/*.ts の insertAuditLog 呼び出し)から
@@ -225,10 +226,9 @@ export function AuditLogsView() {
   return (
     <div className="page-shell">
       <AppHeader displayName={guard.user.displayName} email={guard.user.email} tenantName={guard.tenant?.name ?? null} active="settings" />
-      <main className="page audit-logs__main">
+      <main className="page">
         <SettingsNav active="auditLogs" />
-        <h1 className="settings-notif__title">{messages.settingsAuditLogs.title}</h1>
-        <p className="settings-notif__tagline">{messages.settingsAuditLogs.tagline}</p>
+        <PageHeader title={messages.settingsAuditLogs.title} lead={messages.settingsAuditLogs.tagline} />
         <p className="notice notice--info">{messages.settingsAuditLogs.immutableNote}</p>
 
         {forbidden ? (

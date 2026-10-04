@@ -4,7 +4,7 @@
  * docs/design/ui-direction.md の方針どおり、この画面群(申請・承認・制度設定)は
  * 遊びを持たず K 主体で静かに保つ。残高・年5日は「数値が主役」のため K 主体+tabular-nums、
  * 警告のみ Y(--k-yellow-ink)、危険操作の確認は M(--k-magenta-ink)に絞る。
- * 申請一覧・確認ダイアログ・フォーム部品は corrections.css の .correction-* / .k-modal
+ * 申請一覧・確認ダイアログは corrections.css の .correction-* / .k-modal、フォーム部品は components.css の .field / .btn
  * クラスをそのまま再利用し、ここでは有給固有の表示(残高カード・年5日・コンテキストヘルプ等)
  * のみを追加する。
  */
@@ -13,32 +13,6 @@
   min-height: 100dvh;
   display: flex;
   flex-direction: column;
-}
-
-.leave__main {
-  flex: 1;
-  padding: var(--space-5) var(--space-4) var(--space-7);
-  /* 2026-08-23: PC表示の余白を狭める依頼。残高カードグリッド(auto-fit)+申請一覧が
-     主役のページのためテーブル系の幅トークンを使う(tokens.css 参照)。/settings/leave
-     (制度設定、フォーム中心)は共通の .page を使うため対象外。 */
-  max-width: var(--width-content-wide);
-  margin: 0 auto;
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-6);
-}
-
-.leave__title {
-  font-family: var(--font-heading);
-  font-weight: var(--weight-bold);
-  font-feature-settings: var(--feature-heading);
-  font-size: var(--text-xl);
-}
-
-.leave__tagline {
-  font-size: var(--text-sm);
-  color: var(--k-ink-soft);
 }
 
 .leave__section {

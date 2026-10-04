@@ -16,6 +16,7 @@ import { AppHeader } from "./AppHeader";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { SettingsNav } from "./SettingsNav";
 import { StateView } from "./ui/StateView";
+import { PageHeader } from "./ui/PageHeader";
 
 interface FormState {
   webhookEnabled: boolean;
@@ -181,8 +182,7 @@ export function SettingsNotificationsView() {
       <AppHeader displayName={guard.user.displayName} email={guard.user.email} tenantName={guard.tenant?.name ?? null} active="settings" />
       <main className="page">
         <SettingsNav active="notifications" />
-        <h1 className="settings-notif__title">{messages.settingsNotifications.title}</h1>
-        <p className="settings-notif__tagline">{messages.settingsNotifications.tagline}</p>
+        <PageHeader title={messages.settingsNotifications.title} lead={messages.settingsNotifications.tagline} />
 
         <p className="notice notice--info">
           {messages.settingsNotifications.distinctionBanner}{" "}

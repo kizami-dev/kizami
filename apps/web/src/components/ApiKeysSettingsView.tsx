@@ -10,6 +10,7 @@ import { AppHeader } from "./AppHeader";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { SettingsNav } from "./SettingsNav";
 import { StateView } from "./ui/StateView";
+import { PageHeader } from "./ui/PageHeader";
 
 // SCOPE_OPTIONS/STATUS_LABEL をモジュールレベルの配列/オブジェクトとして持つと、import 時の言語
 // (通常は既定の日本語)で messages のプロパティが凍結され、言語切替に追従しない(messages は
@@ -180,10 +181,9 @@ export function ApiKeysSettingsView() {
   return (
     <div className="page-shell">
       <AppHeader displayName={guard.user.displayName} email={guard.user.email} tenantName={guard.tenant?.name ?? null} active="settings" />
-      <main className="page api-keys-settings__main">
+      <main className="page">
         <SettingsNav active="apiKeys" />
-        <h1 className="settings-notif__title">{messages.settingsApiKeys.title}</h1>
-        <p className="settings-notif__tagline">{messages.settingsApiKeys.tagline}</p>
+        <PageHeader title={messages.settingsApiKeys.title} lead={messages.settingsApiKeys.tagline} />
 
         {loadError ? <StateView kind="error">{loadError}</StateView> : null}
 
@@ -305,7 +305,7 @@ export function ApiKeysSettingsView() {
                           {key.expiresAt === null ? messages.settingsApiKeys.noExpiry : formatDateTimeJst(key.expiresAt)}
                         </td>
                         <td>
-                          <span className={`api-keys__status api-keys__status--${status}`}>{statusLabel(status)}</span>
+                          <span className={`badge ${status === "active" ? "badge--cyan" : "badge--neutral"}`}>{statusLabel(status)}</span>
                         </td>
                         <td>
                           {status === "active" ? (

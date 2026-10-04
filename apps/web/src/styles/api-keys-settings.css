@@ -2,35 +2,6 @@
    一覧・発行フォームの本体は components.css(.page / .card / .field / .btn)と org-settings.css(.org-table 等)
    を流用し、ここでは発行直後のトークン表示・使い方の例・状態バッジなど固有の見た目だけを持つ。 */
 
-/* 2026-08-23: PC表示の余白を狭める依頼。発行フォームの下に org-table 形式のキー一覧が
-   並ぶ一覧主体のページのため、.page-body--form(フォーム系の幅)ではなくテーブル系の
-   幅トークンで上書きする。help-settings.css / privacy-settings.css と同じ「基底クラス+
-   固有クラスで上書き」パターン(ApiKeysSettingsView.tsx 側で2クラスを併記)。 */
-.api-keys-settings__main {
-  max-width: var(--width-content-wide);
-}
-
-.api-keys__status {
-  display: inline-flex;
-  align-items: center;
-  font-size: var(--text-xs);
-  font-weight: 700;
-  padding: 2px var(--space-2);
-  border-radius: 999px;
-  white-space: nowrap;
-}
-
-.api-keys__status--active {
-  border: 1px solid var(--k-cyan-ink);
-  color: var(--k-cyan-ink);
-}
-
-.api-keys__status--revoked,
-.api-keys__status--expired {
-  border: 1px solid var(--k-ink-soft);
-  color: var(--k-ink-soft);
-}
-
 .api-keys__scopes {
   display: flex;
   flex-wrap: wrap;

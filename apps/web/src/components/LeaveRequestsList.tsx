@@ -296,7 +296,7 @@ export function LeaveRequestsList({ requests, currentUserId, closedMonthRequestI
       {hasApprovePermission ? (
         <section className="leave__section">
           <h2 className="leave__section-title">{messages.leave.queueSectionTitle}</h2>
-          <p className="leave__tagline">{messages.leave.queueSectionTagline}</p>
+          <p className="section-lead">{messages.leave.queueSectionTagline}</p>
 
           {queueRequests.length === 0 ? <p className="correction-form__empty">{messages.leave.queueEmpty}</p> : null}
 

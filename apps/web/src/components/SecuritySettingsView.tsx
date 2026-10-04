@@ -11,6 +11,7 @@ import { ConfirmDialog } from "./ConfirmDialog";
 import { PasswordChangeSection } from "./PasswordChangeSection";
 import { SettingsNav } from "./SettingsNav";
 import { StateView } from "./ui/StateView";
+import { PageHeader } from "./ui/PageHeader";
 
 /** リカバリコードの残数がこれ以下になったら再生成をすすめる(10本中3本 = 心細くなる目安)。 */
 const RECOVERY_LOW_THRESHOLD = 3;
@@ -223,8 +224,7 @@ export function SecuritySettingsView() {
       <AppHeader displayName={guard.user.displayName} email={guard.user.email} tenantName={guard.tenant?.name ?? null} active="settings" />
       <main className="page">
         <SettingsNav active="security" />
-        <h1 className="settings-notif__title">{messages.settingsSecurity.title}</h1>
-        <p className="settings-notif__tagline">{messages.settingsSecurity.tagline}</p>
+        <PageHeader title={messages.settingsSecurity.title} lead={messages.settingsSecurity.tagline} />
 
         <PasswordChangeSection />
 

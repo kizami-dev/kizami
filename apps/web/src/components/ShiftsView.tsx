@@ -33,6 +33,7 @@ import { ShiftBulkAssignPanel } from "./shifts/ShiftBulkAssignPanel";
 import { ShiftCellDialog } from "./shifts/ShiftCellDialog";
 import { ShiftWeekGrid } from "./shifts/ShiftWeekGrid";
 import { StateView } from "./ui/StateView";
+import { PageHeader } from "./ui/PageHeader";
 
 /**
  * シフト表の作成・確定(/shifts、shift.manage 保持者、v0.7 フェーズ3、2026-08-24 追加)。
@@ -297,8 +298,8 @@ export function ShiftsView() {
     return (
       <div className="shifts-view">
         <AppHeader displayName={guard.user.displayName} email={guard.user.email} tenantName={guard.tenant?.name ?? null} active="shifts" />
-        <main className="shifts-view__main">
-          <h1 className="shifts-view__title">{messages.shifts.title}</h1>
+        <main className="page">
+          <PageHeader title={messages.shifts.title} />
           <p className="notice notice--danger" role="alert">
             {messages.shifts.noPermission}
           </p>
@@ -322,9 +323,8 @@ export function ShiftsView() {
   return (
     <div className="shifts-view">
       <AppHeader displayName={guard.user.displayName} email={guard.user.email} tenantName={guard.tenant?.name ?? null} active="shifts" />
-      <main className="shifts-view__main">
-        <h1 className="shifts-view__title">{messages.shifts.title}</h1>
-        <p className="shifts-view__tagline">{messages.shifts.tagline}</p>
+      <main className="page">
+        <PageHeader title={messages.shifts.title} lead={messages.shifts.tagline} />
 
         <div className="field shifts-view__member-picker">
           <label htmlFor="shifts-member-select">{messages.shifts.memberLabel}</label>

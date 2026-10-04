@@ -18,6 +18,7 @@ import { AppHeader } from "./AppHeader";
 import { HelpTip } from "./HelpTip";
 import { SettingsNav } from "./SettingsNav";
 import { StateView } from "./ui/StateView";
+import { PageHeader } from "./ui/PageHeader";
 
 const WEEKDAYS = [0, 1, 2, 3, 4, 5, 6] as const;
 
@@ -380,10 +381,9 @@ export function SettingsAllowancesView() {
   return (
     <div className="attendance-settings">
       <AppHeader displayName={guard.user.displayName} email={guard.user.email} tenantName={guard.tenant?.name ?? null} active="settings" />
-      <main className="attendance-settings__main">
+      <main className="page">
         <SettingsNav active="allowances" />
-        <h1 className="attendance-settings__title">{messages.settingsAllowances.title}</h1>
-        <p className="attendance-settings__tagline">{messages.settingsAllowances.tagline}</p>
+        <PageHeader title={messages.settingsAllowances.title} lead={messages.settingsAllowances.tagline} />
 
         {forbidden ? (
           <p className="notice notice--danger" role="alert">

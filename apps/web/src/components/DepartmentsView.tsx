@@ -10,6 +10,7 @@ import { ConfirmDialog } from "./ConfirmDialog";
 import { DepartmentFormDialog, type DepartmentFormValue } from "./DepartmentFormDialog";
 import { SettingsNav } from "./SettingsNav";
 import { StateView } from "./ui/StateView";
+import { PageHeader } from "./ui/PageHeader";
 
 interface TreeNode {
   dept: DepartmentDto;
@@ -186,10 +187,19 @@ export function DepartmentsView() {
   return (
     <div className="org-settings">
       <AppHeader displayName={guard.user.displayName} email={guard.user.email} tenantName={guard.tenant?.name ?? null} active="settings" />
-      <main className="org-settings__main">
+      <main className="page">
         <SettingsNav active="departments" />
-        <h1 className="org-settings__title">{messages.departments.title}</h1>
-        <p className="org-settings__tagline">{messages.departments.tagline}</p>
+        <PageHeader
+          title={messages.departments.title}
+          lead={messages.departments.tagline}
+          actions={
+            !forbidden && departments ? (
+              <button type="button" className="btn btn--primary" onClick={() => openCreate(null)}>
+                {messages.departments.addRoot}
+              </button>
+            ) : null
+          }
+        />
 
         {forbidden ? (
           <p className="notice notice--danger" role="alert">
@@ -200,12 +210,6 @@ export function DepartmentsView() {
 
         {!forbidden && departments ? (
           <>
-            <div className="org-settings__toolbar">
-              <button type="button" className="btn btn--primary" onClick={() => openCreate(null)}>
-                {messages.departments.addRoot}
-              </button>
-            </div>
-
             {tree.length === 0 ? (
               <StateView kind="empty">{messages.departments.empty}</StateView>
             ) : (

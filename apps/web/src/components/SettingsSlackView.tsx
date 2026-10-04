@@ -8,6 +8,7 @@ import { useAuthGuard } from "../lib/useAuthGuard";
 import { AppHeader } from "./AppHeader";
 import { SettingsNav } from "./SettingsNav";
 import { StateView } from "./ui/StateView";
+import { PageHeader } from "./ui/PageHeader";
 
 interface FormState {
   teamId: string;
@@ -124,8 +125,7 @@ export function SettingsSlackView() {
       <AppHeader displayName={guard.user.displayName} email={guard.user.email} tenantName={guard.tenant?.name ?? null} active="settings" />
       <main className="page">
         <SettingsNav active="slack" />
-        <h1 className="settings-notif__title">{messages.settingsSlack.title}</h1>
-        <p className="settings-notif__tagline">{messages.settingsSlack.tagline}</p>
+        <PageHeader title={messages.settingsSlack.title} lead={messages.settingsSlack.tagline} />
         <p className="field__hint">{messages.settingsSlack.setupGuideHint}</p>
 
         {forbidden ? (
