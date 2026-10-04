@@ -189,11 +189,9 @@
   border-color: var(--k-key);
 }
 
-/* 日付・時刻は数字を等幅で揃え、「06:00 AM」が切れない最小幅を持たせる。 */
+/* 日付・時刻は数字の幅を揃え、時刻欄は「06:00 AM」が切れない最小幅を持たせる。 */
 .field :where(input[type="date"], input[type="time"], input[type="datetime-local"], input[type="month"]) {
-  font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
-  min-width: 9.5rem;
 }
 
 .field :where(input[type="time"]) {

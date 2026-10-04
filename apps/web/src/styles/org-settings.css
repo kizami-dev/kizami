@@ -195,6 +195,13 @@
   color: var(--k-ink-soft);
   font-weight: 400;
   font-size: var(--text-xs);
+  white-space: nowrap;
+}
+
+/* 先頭列(氏名・名称)は1文字ずつ縦に折り返さない。バッジを nowrap にした(components.css)
+   ことで他の列が幅を取るようになったため、ここで押し負けないようにする(2026-10-05)。 */
+.org-table tbody td:first-child {
+  white-space: nowrap;
 }
 
 .org-table tbody tr:last-child td {

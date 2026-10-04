@@ -88,7 +88,7 @@ export function CsvExport({ monthParam, data }: CsvExportProps) {
     <div className="csv-export">
       <label className="csv-export__format">
         {messages.closing.csvFormatLabel}
-        <select value={format} onChange={(e) => setFormat(e.target.value as AttendanceCsvFormat)}>
+        <select className="input" value={format} onChange={(e) => setFormat(e.target.value as AttendanceCsvFormat)}>
           {CSV_FORMATS.map((f) => (
             <option key={f} value={f}>
               {messages.closing.csvFormatOptions[f]}
@@ -98,7 +98,7 @@ export function CsvExport({ monthParam, data }: CsvExportProps) {
       </label>
       {/* compare=original は汎用CSV専用。給与ソフト形式では列を足せないためチェックボックスごと隠す。 */}
       {data.closing.amended && format === "generic" ? (
-        <label className="csv-export__checkbox">
+        <label className="check">
           <input type="checkbox" checked={compareOriginal} onChange={(e) => setCompareOriginal(e.target.checked)} />
           {messages.closing.csvCompareOriginalLabel}
         </label>

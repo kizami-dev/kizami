@@ -488,7 +488,7 @@ export function SettingsAttendanceView() {
 
             <h3 className="attendance-settings__form-title">{messages.settingsAttendance.formTitle}</h3>
             <form className="attendance-settings__form" onSubmit={handleAttendanceSubmit}>
-              <p className="attendance-settings__effective-hint">
+              <p className="notice notice--caution">
                 {messages.settingsAttendance.effectiveFromHint}
                 <HelpTip helpKey="law.versioning" />
               </p>
@@ -687,7 +687,7 @@ export function SettingsAttendanceView() {
               </label>
               {attendanceForm.gpsEnabled ? (
                 <>
-                  <p className="attendance-settings__gps-warning" role="alert">
+                  <p className="notice notice--caution" role="alert">
                     {messages.settingsAttendance.gpsWarning}{" "}
                     <Link to="/settings/privacy">{messages.settingsAttendance.gpsWarningLink}</Link>
                   </p>
@@ -769,7 +769,7 @@ export function SettingsAttendanceView() {
 
             <h3 className="attendance-settings__form-title">{messages.settingsAttendance.workPolicyFormTitle}</h3>
             <form className="attendance-settings__form" onSubmit={handleWorkPolicySubmit}>
-              <p className="attendance-settings__effective-hint">
+              <p className="notice notice--caution">
                 {messages.settingsAttendance.effectiveFromHint}
                 <HelpTip helpKey="law.versioning" />
               </p>
