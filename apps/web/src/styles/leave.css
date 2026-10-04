@@ -21,6 +21,10 @@
   gap: var(--space-3);
 }
 
+.leave__section--form {
+  max-width: var(--width-form);
+}
+
 .leave__section-title {
   font-family: var(--font-heading);
   font-weight: var(--weight-bold);

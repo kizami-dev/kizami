@@ -111,7 +111,7 @@ export function LeaveHome() {
         {balance ? <LeaveBalancePanel balance={balance} /> : null}
 
         {balance ? (
-          <section className="leave__section" data-tour="leave-request-form">
+          <section className="leave__section leave__section--form" data-tour="leave-request-form">
             <h2 className="leave__section-title">{messages.leave.requestFormTitle}</h2>
             <LeaveRequestForm
               standardDayMinutes={balance.standardDayMinutes}

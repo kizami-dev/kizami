@@ -15,6 +15,7 @@ import { formatDateLabel, formatDateTimeJst } from "../lib/time";
 import { useEffectivePermissions } from "../lib/useEffectivePermissions";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { requestStatusTone } from "./ui/Badge";
+import { buttonClass } from "./ui/Button";
 
 /**
  * 休暇申請の承認(POST /leave/requests/:id/approve・reject)が要求する権限
@@ -154,7 +155,10 @@ export function LeaveRequestsList({ requests, currentUserId, closedMonthRequestI
    * 二次承認でき、部署スコープの承認者は apps/api 側で 403 になる(2026-08-24 追加)。
    */
   const hasTenantApprovePermission = hasEffectivePermission(effectivePermissions, APPROVE_PERMISSION, "tenant");
-  const ownRequests = requests.filter((r) => r.requestedBy === currentUserId);
+  // 日付の新しい順(同日は作成の新しい順)。API の返す順に依存しない。
+  const ownRequests = requests
+    .filter((r) => r.requestedBy === currentUserId)
+    .sort((a, b) => (a.leaveDate === b.leaveDate ? b.createdAt - a.createdAt : b.leaveDate.localeCompare(a.leaveDate)));
   // 承認キューは「未決裁」= pending(一次承認待ち)+ approved_step1(二次承認待ち)を対象にする。
   const queueRequests = hasApprovePermission ? requests.filter((r) => isOpenStatus(r.status)) : [];
 
@@ -250,14 +254,14 @@ export function LeaveRequestsList({ requests, currentUserId, closedMonthRequestI
               <>
                 <button
                   type="button"
-                  className="correction-card__btn correction-card__btn--approve"
+                  className={buttonClass("primary", "sm")}
                   onClick={() => openConfirm(req.id, "approve")}
                 >
                   {messages.leave.approve}
                 </button>
                 <button
                   type="button"
-                  className="correction-card__btn correction-card__btn--reject"
+                  className={buttonClass("secondary", "sm")}
                   onClick={() => openConfirm(req.id, "reject")}
                 >
                   {messages.leave.reject}
@@ -267,7 +271,7 @@ export function LeaveRequestsList({ requests, currentUserId, closedMonthRequestI
             {options.showWithdraw ? (
               <button
                 type="button"
-                className="correction-card__btn correction-card__btn--withdraw"
+                className={buttonClass("secondary", "sm")}
                 onClick={() => openConfirm(req.id, "withdraw")}
               >
                 {messages.leave.withdraw}

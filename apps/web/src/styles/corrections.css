@@ -267,42 +267,6 @@
   border-top: var(--border-hair);
 }
 
-.correction-card__btn {
-  border-radius: var(--radius-s);
-  padding: var(--space-2) var(--space-4);
-  font-size: var(--text-sm);
-  font-weight: 700;
-  border: var(--border-hair);
-  background: transparent;
-  color: var(--k-key);
-}
-
-.correction-card__btn--approve {
-  border-color: var(--k-cyan-ink);
-  color: var(--k-cyan-ink);
-}
-
-.correction-card__btn--approve:hover {
-  background: color-mix(in srgb, var(--k-cyan) 8%, transparent);
-}
-
-.correction-card__btn--reject {
-  border-color: var(--k-magenta-ink);
-  color: var(--k-magenta-ink);
-}
-
-.correction-card__btn--reject:hover {
-  background: color-mix(in srgb, var(--k-magenta) 8%, transparent);
-}
-
-.correction-card__btn--withdraw {
-  color: var(--k-ink-soft);
-}
-
-.correction-card__btn--withdraw:hover {
-  background: color-mix(in srgb, var(--k-key) 4%, transparent);
-}
-
 /* ---- 月次テーブル: 修正導線 ---- */
 
 .monthly-table__actions {
