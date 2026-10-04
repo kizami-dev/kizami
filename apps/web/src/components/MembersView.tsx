@@ -14,6 +14,7 @@ import {
   type PermissionPresetDto,
   type WorkSystemKind,
 } from "../lib/api";
+import { formatEffectiveFrom } from "../lib/effective-from";
 import { mapAssignmentErrorMessage, mapMemberErrorMessage, messages } from "../lib/messages";
 import { computeEffectivePermissions, hasEffectivePermission, matchAssignedPresetIds } from "../lib/permissions";
 import { dateStrFromEpochMinutesJst, nowMinutes } from "../lib/time";
@@ -1067,7 +1068,7 @@ export function MembersView() {
                                                 {messages.monthly.workSystemValue[workPolicy.effective.kind]}
                                               </span>
                                               <span className="member-work-policy__current-effective-from tabular-nums">
-                                                {messages.members.workPolicyCurrentEffectiveFrom}: {workPolicy.effective.effectiveFrom}
+                                                {messages.members.workPolicyCurrentEffectiveFrom}: {formatEffectiveFrom(workPolicy.effective.effectiveFrom)}
                                               </span>
                                             </>
                                           ) : (
@@ -1176,7 +1177,7 @@ export function MembersView() {
                                               <tbody>
                                                 {[...workPolicy.history].reverse().map((h) => (
                                                   <tr key={h.effectiveFrom}>
-                                                    <td className="tabular-nums">{h.effectiveFrom}</td>
+                                                    <td className="tabular-nums">{formatEffectiveFrom(h.effectiveFrom)}</td>
                                                     <td>{messages.monthly.workSystemValue[h.kind]}</td>
                                                   </tr>
                                                 ))}

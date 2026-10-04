@@ -197,6 +197,7 @@ export const zh = {
   common: {
     /** 用于松散分隔两段简短补充说明的符号(例如「已设置(…)」「不更改时请留空」)。 */
     hintSeparator: " · ",
+    initialVersion: "初始设置",
   },
 
   /**

@@ -832,3 +832,8 @@ td.org-table__detail-cell {
   align-items: center;
   gap: var(--space-2);
 }
+
+/* 日付・数値の列は途中で折り返さない(「2026-10-/05」のような割れ方を防ぐ)。 */
+.org-table td.tabular-nums {
+  white-space: nowrap;
+}

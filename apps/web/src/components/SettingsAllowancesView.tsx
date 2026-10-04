@@ -12,6 +12,7 @@ import {
 } from "../lib/api";
 import { summarizeAllowanceConditions } from "../lib/allowances";
 import { mapAllowanceSettingsErrorMessage, messages } from "../lib/messages";
+import { formatEffectiveFrom } from "../lib/effective-from";
 import { currentYearMonthJst, dateStrFromEpochMinutesJst, formatMonthParam, hmToMinutes, minutesToHm, nowMinutes, shiftMonth } from "../lib/time";
 import { useAuthGuard } from "../lib/useAuthGuard";
 import { AppHeader } from "./AppHeader";
@@ -463,7 +464,7 @@ export function SettingsAllowancesView() {
                           <span className="attendance-settings__current-value">{summarizeAllowanceConditions(def.effective.conditions)}</span>
                         </div>
                         <p className="attendance-settings__current-effective-from tabular-nums">
-                          {messages.settingsAllowances.currentEffectiveFrom}: {def.effective.effectiveFrom}
+                          {messages.settingsAllowances.currentEffectiveFrom}: {formatEffectiveFrom(def.effective.effectiveFrom)}
                         </p>
                       </div>
                     ) : (
@@ -538,7 +539,7 @@ export function SettingsAllowancesView() {
                           <tbody>
                             {[...def.history].reverse().map((v) => (
                               <tr key={v.effectiveFrom}>
-                                <td className="tabular-nums">{v.effectiveFrom}</td>
+                                <td className="tabular-nums">{formatEffectiveFrom(v.effectiveFrom)}</td>
                                 <td>{v.name}</td>
                                 <td>{summarizeAllowanceConditions(v.conditions)}</td>
                               </tr>
