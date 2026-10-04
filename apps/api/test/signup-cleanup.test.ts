@@ -5,7 +5,13 @@
 
 import { describe, expect, it } from "vitest";
 import { consumePendingSignup, findPendingSignupByTokenHash, upsertPendingSignupUnlessRecent, type Database } from "@kizami/db";
-import { PENDING_SIGNUP_RETENTION_AFTER_EXPIRY_MINUTES, runPendingSignupCleanup } from "../src/signup-cleanup.js";
+import {
+  PASSWORD_RESET_REQUEST_RETENTION_MINUTES,
+  PENDING_SIGNUP_RETENTION_AFTER_EXPIRY_MINUTES,
+  runPasswordResetRequestCleanup,
+  runPendingSignupCleanup,
+} from "../src/signup-cleanup.js";
+import { acquirePasswordResetRequestSlot } from "@kizami/db";
 import { createTestDatabase } from "./support/setup.js";
 
 const DAY = 24 * 60;
@@ -53,5 +59,19 @@ describe("runPendingSignupCleanup", () => {
     await pendingExpiringAt(db, "old@example.com", NOW - 10 * DAY);
     expect((await runPendingSignupCleanup(db, { nowMinutes: NOW })).deletedCount).toBe(1);
     expect((await runPendingSignupCleanup(db, { nowMinutes: NOW })).deletedCount).toBe(0);
+  });
+});
+
+describe("runPasswordResetRequestCleanup", () => {
+  it("保持期間を過ぎた再送スロットル行だけを消す(冪等)", async () => {
+    const db = await createTestDatabase();
+    const slot = (emailKey: string, nowMinutes: number) => acquirePasswordResetRequestSlot(db, { emailKey, nowMinutes, throttleMinutes: 5 });
+    await slot("old@example.com", NOW - PASSWORD_RESET_REQUEST_RETENTION_MINUTES - 1);
+    await slot("recent@example.com", NOW - 10);
+
+    expect(await runPasswordResetRequestCleanup(db, { nowMinutes: NOW })).toEqual({ deletedCount: 1 });
+    expect(await runPasswordResetRequestCleanup(db, { nowMinutes: NOW })).toEqual({ deletedCount: 0 });
+    // 残った行は窓内なのでまだ抑止が効く
+    expect(await slot("recent@example.com", NOW - 9)).toBe(false);
   });
 });

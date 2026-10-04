@@ -59,7 +59,7 @@ import { runOvertimeAlertScan } from "./overtime-alerts.js";
 import { nodemailerSendFn } from "./lib/smtp.js";
 import { runReminderScan } from "./reminders.js";
 import { runShiftVarianceAlertScan } from "./shift-variance-alerts.js";
-import { runPendingSignupCleanup } from "./signup-cleanup.js";
+import { runPasswordResetRequestCleanup, runPendingSignupCleanup } from "./signup-cleanup.js";
 import { buildVapidFromEnv } from "./lib/web-push.js";
 
 const QUEUE_NAME = "kizami-reminders";
@@ -253,6 +253,9 @@ async function main(): Promise<void> {
         const result = await runPendingSignupCleanup(db, { nowMinutes });
         signupCleanupDeleted = result.deletedCount;
         console.log(`[kizami-reminders] signup-cleanup: deleted ${result.deletedCount} stale pending signup(s)`);
+        // 本人用パスワード再設定の再送スロットル行(password_reset_requests)も同じ定期ジョブで掃除する。
+        const requests = await runPasswordResetRequestCleanup(db, { nowMinutes });
+        console.log(`[kizami-reminders] signup-cleanup: deleted ${requests.deletedCount} stale password reset request row(s)`);
         await finishScan(SCAN_JOBS.signupCleanup);
       } catch (err) {
         console.error("[kizami-reminders] signup-cleanup failed:", err);

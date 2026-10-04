@@ -30,8 +30,15 @@
  * `GET /config` が `{ selfService: false }`、`POST /` は 404 で、**従来の体験を一切変えない**。
  *
  * - **ユーザー列挙対策**: `POST /` は、そのメールのユーザーが居ても居なくても、退職者でも資格情報なしでも、
- *   スロットルで抑止されても、常に 202 + 同一ボディ。メール送信は応答を待たない(signup と同じ)。
+ *   スロットルで抑止されても、常に 202 + 同一ボディ。
  *   メールアドレスの形式不正・Turnstile 失敗は列挙に関係しないので 400 / 503 で明示する。
+ * - **応答時間を該当者の有無から独立させる**(判断): ボディが同じでも、該当者がいるときだけ対象の探索
+ *   + トークン発行(トランザクション・監査ログ)が応答の前に走ると、応答時間の差で登録の有無が分かる。
+ *   そこで応答の前に行うのは、入力検証・Origin/JSON ガード・Turnstile・**メール単位スロットルの取得**
+ *   (全メール共通のコスト = 実在しないメールにも同じ 1 回の書き込み)までにし、**対象の探索・
+ *   トークン発行・メール送信はすべて応答の後のバックグラウンド**で行う(signup のメール送信と同じく
+ *   応答を待たない。失敗はログのみ)。その代償として、スロットル行(password_reset_requests)は
+ *   実在しないメールにも作られるため、定期ジョブ(signup-cleanup.ts)で掃除する。
  * - **対象**: そのメールを持つ有効な(退職処理されていない)ユーザーで、パスワード資格情報を持つ人を
  *   全テナントから探す(POST /auth/login と同じ users.email 完全一致)。SSO だけの人にはパスワードが
  *   無いので出さない。該当者が居なければメールは送らない。
@@ -87,6 +94,13 @@ export interface SelfServiceResetDeps {
   turnstile?: { secretKey: string; siteKey: string };
   /** Turnstile siteverify に使う fetch(テストの差し替え用。省略時は globalThis.fetch) */
   fetchFn?: typeof fetch;
+  /**
+   * 応答の後に走らせる処理(対象の探索・トークン発行・メール送信)の実行方法。**応答を返してから**
+   * 呼ぶこと(thunk を受け取り、始めるのは実行側)。既定は次のマクロタスクで投げっぱなし。テストは
+   * thunk を集めて、応答の直後の状態を確認してから実行・完了待ちする。Workers では本人用再設定自体が
+   * 無効なので waitUntil は考えない。
+   */
+  runInBackground?: (task: () => Promise<void>) => void;
 }
 
 /**
@@ -124,6 +138,43 @@ async function resolvePasswordReset(db: Database, token: string) {
     return { status: "expired" as const, hash, now };
   }
   return { status: "valid" as const, hash, now, resetToken };
+}
+
+/** 既定のバックグラウンド実行: 応答を返した後(次のマクロタスク)に始め、投げっぱなしにする。 */
+function defaultRunInBackground(task: () => Promise<void>): void {
+  setTimeout(() => void task(), 0);
+}
+
+/**
+ * 応答の後に走る本体: 対象の探索 → 本人発行トークンの発行(各ユーザー)→ メール送信。
+ * 該当者がいなければ何もしない(メールも送らない)。失敗はログに残すだけ(応答は返し済み。メールが
+ * 届かなければ 5 分後に再要求できる)。この関数は例外を投げない。
+ */
+async function processSelfServiceRequest(
+  db: Database,
+  deps: SelfServiceResetDeps,
+  params: { email: string; now: number },
+): Promise<void> {
+  try {
+    const targets = await findSelfServiceResetTargetsByEmail(db, params.email);
+    if (targets.length === 0) return;
+
+    const resetUrls: string[] = [];
+    for (const target of targets) {
+      const { token, hash } = await generatePasswordResetToken();
+      await issueSelfServicePasswordResetToken(db, {
+        tenantId: target.tenantId,
+        userId: target.userId,
+        tokenHash: hash,
+        expiresAt: params.now + SELF_SERVICE_PASSWORD_RESET_TTL_MINUTES,
+        createdAt: params.now,
+      });
+      resetUrls.push(`${deps.appBaseUrl}/reset/${token}`);
+    }
+    await deps.sendMail(buildSelfServiceResetMail({ to: params.email, resetUrls }));
+  } catch (err) {
+    console.error("password-reset: self-service request failed:", err);
+  }
 }
 
 export interface PasswordResetsRoutesOptions {
@@ -189,39 +240,25 @@ export function createPasswordResetsRoutes(db: Database, options: PasswordResets
 
     const normalizedEmail = email.trim();
     const now = nowMinutes();
+
+    // 応答の前に行うのは、メール単位スロットルの取得(`acquirePasswordResetRequestSlot`)まで。これは
+    // **メールが実在するかに関係なく全リクエスト共通**のコスト(1回の DB 書き込み)で、応答時間に差が出ない。
+    // 対象の探索・トークン発行・メール送信はすべて応答の後のバックグラウンドで行う(このファイル冒頭
+    // 「応答時間」)。スロットルで抑止された(直近 5 分以内に同じメールで要求があった)ときは何もしない。
+    let acquired = false;
     try {
-      const targets = await findSelfServiceResetTargetsByEmail(db, normalizedEmail);
-      // スロットルは実在する宛先があるときだけ消費する(存在しないメールで password_reset_requests を
-      // 肥大させない)。抑止されたら何もせず、応答は通常と同一の 202。
-      if (
-        targets.length > 0 &&
-        (await acquirePasswordResetRequestSlot(db, {
-          emailKey: normalizedEmail.toLowerCase(),
-          nowMinutes: now,
-          throttleMinutes: SELF_SERVICE_PASSWORD_RESET_THROTTLE_MINUTES,
-        }))
-      ) {
-        const resetUrls: string[] = [];
-        for (const target of targets) {
-          const { token, hash } = await generatePasswordResetToken();
-          await issueSelfServicePasswordResetToken(db, {
-            tenantId: target.tenantId,
-            userId: target.userId,
-            tokenHash: hash,
-            expiresAt: now + SELF_SERVICE_PASSWORD_RESET_TTL_MINUTES,
-            createdAt: now,
-          });
-          resetUrls.push(`${deps.appBaseUrl}/reset/${token}`);
-        }
-        // 送信は応答を待たない(SMTP の遅さ・失敗が、メールの存在を示す応答差にならないように)。
-        void deps.sendMail(buildSelfServiceResetMail({ to: normalizedEmail, resetUrls })).catch((err: unknown) => {
-          console.error("password-reset: failed to send self-service mail:", err);
-        });
-      }
+      acquired = await acquirePasswordResetRequestSlot(db, {
+        emailKey: normalizedEmail.toLowerCase(),
+        nowMinutes: now,
+        throttleMinutes: SELF_SERVICE_PASSWORD_RESET_THROTTLE_MINUTES,
+      });
     } catch (err) {
-      // 内部エラーを 500 で返すと、メールの存在(対象が居るときだけ到達する経路)が応答に出うる。
-      // ログに残して 202 を返す(利用者は 5 分後に再要求できる)。
-      console.error("password-reset: self-service request failed:", err);
+      // 内部エラーを 500 で返すと、全リクエスト共通の経路なので列挙にはならないが、
+      // 利用者に不可解な失敗を見せないよう、ログに残して通常と同じ 202 を返す(5 分後に再要求できる)。
+      console.error("password-reset: failed to acquire the request slot:", err);
+    }
+    if (acquired) {
+      (deps.runInBackground ?? defaultRunInBackground)(() => processSelfServiceRequest(db, deps, { email: normalizedEmail, now }));
     }
 
     return c.json({ status: "reset_requested" }, 202);

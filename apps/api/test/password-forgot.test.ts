@@ -38,6 +38,8 @@ interface Harness {
   app: ReturnType<typeof createApp>;
   mails: SystemMail[];
   turnstileCalls: URLSearchParams[];
+  /** 応答の後に走らせる処理(対象の探索・トークン発行・メール送信)。drain() で実行して完了を待つ */
+  background: (() => Promise<void>)[];
 }
 
 /** Turnstile の偽 siteverify: トークンが "pass" のときだけ成功、"down" は通信失敗。 */
@@ -57,6 +59,7 @@ async function harness(
   const db = options.db ?? (await createTestDatabase());
   const mails: SystemMail[] = [];
   const turnstileCalls: URLSearchParams[] = [];
+  const background: Harness["background"] = [];
   const selfServiceReset: SelfServiceResetDeps | undefined =
     mode === "disabled"
       ? undefined
@@ -66,10 +69,13 @@ async function harness(
             mails.push(mail);
           },
           fetchFn: fakeTurnstileFetch(turnstileCalls),
+          runInBackground: (task) => {
+            background.push(task);
+          },
           ...(mode === "enabled-turnstile" ? { turnstile: { secretKey: "secret", siteKey: "site-key" } } : {}),
         };
   const app = createApp({ db, ...(selfServiceReset ? { selfServiceReset } : {}) });
-  return { db, app, mails, turnstileCalls };
+  return { db, app, mails, turnstileCalls, background };
 }
 
 function post(app: Harness["app"], path: string, body?: unknown, headers: Record<string, string> = {}) {
@@ -85,9 +91,9 @@ function requestReset(h: Harness, email: string, extra: Record<string, unknown> 
   return post(h.app, "/password-resets", { email, ...extra }, headers);
 }
 
-/** 送信の完了待ち(送信は応答を待たない)。Date だけ偽装しているのでタイマーは実時間。 */
-async function flush() {
-  await new Promise((resolve) => setTimeout(resolve, 0));
+/** 応答の後のバックグラウンド処理を実行して、完了(トークン発行・メール送信)を待つ。 */
+async function flush(h: Harness) {
+  while (h.background.length > 0) await h.background.shift()!();
 }
 
 function tokensFrom(mail: SystemMail | undefined): string[] {
@@ -165,12 +171,34 @@ describe("本人用の「パスワードを忘れた」再設定", () => {
       expect(known.status).toBe(202);
       expect(unknown.status).toBe(202);
       expect(await known.json()).toEqual(await unknown.json());
-      await flush();
+      await flush(h);
 
       expect(h.mails).toHaveLength(1);
       expect(h.mails[0]?.to).toBe(email);
       expect(tokensFrom(h.mails[0])).toHaveLength(1);
       expect(h.mails[0]?.text).toContain("https://app.example.com/reset/");
+    });
+
+    it("応答の前に DB 書き込み(トークン発行)もメール送信も起きない。該当者あり・なしのどちらでも、応答直後はトークン 0 件で、バックグラウンドの完了後に作られる", async () => {
+      const { db, email } = await setupTestDb();
+      const h = await harness("enabled", { db });
+
+      // 該当者あり
+      expect((await requestReset(h, email)).status).toBe(202);
+      expect(await db.select().from(passwordResetTokens)).toHaveLength(0);
+      expect(await db.select().from(auditLogs).where(eq(auditLogs.action, "password_reset.self_request"))).toHaveLength(0);
+      expect(h.mails).toHaveLength(0);
+      expect(h.background).toHaveLength(1);
+
+      // 該当者なし: 応答の前にやることは同じ(スロットルの取得 1 回)で、後続の処理も予約される
+      expect((await requestReset(h, "nobody@example.com")).status).toBe(202);
+      expect(await db.select().from(passwordResetTokens)).toHaveLength(0);
+      expect(h.background).toHaveLength(2);
+      expect(await db.select().from(passwordResetRequests)).toHaveLength(2);
+
+      await flush(h);
+      expect(await db.select().from(passwordResetTokens)).toHaveLength(1);
+      expect(h.mails).toHaveLength(1);
     });
 
     it("メール本文にテナント名も入力値(メールアドレス)も含めない。固定文面 + リンクのみ", async () => {
@@ -179,7 +207,7 @@ describe("本人用の「パスワードを忘れた」再設定", () => {
       const h = await harness("enabled", { db });
 
       await requestReset(h, email);
-      await flush();
+      await flush(h);
 
       const mail = h.mails[0]!;
       expect(mail.text).not.toContain("株式会社シークレット");
@@ -198,12 +226,12 @@ describe("本人用の「パスワードを忘れた」再設定", () => {
       await db.update(users).set({ isActive: true }).where(eq(users.id, userId));
       await db.delete(authCredentials).where(eq(authCredentials.userId, userId));
       expect((await requestReset(h, email)).status).toBe(202);
-      await flush();
+      await flush(h);
 
       expect(h.mails).toHaveLength(0);
       expect(await db.select().from(passwordResetTokens).where(eq(passwordResetTokens.tenantId, tenantId))).toHaveLength(0);
-      // 宛先が無いのでスロットルも消費しない(存在しないメールで表を肥大させない)
-      expect(await db.select().from(passwordResetRequests)).toHaveLength(0);
+      // スロットルは実在しないメール・退職者にも同じように取る(応答時間を該当者の有無から独立させるため)
+      expect(await db.select().from(passwordResetRequests)).toHaveLength(1);
     });
 
     it("複数テナントに該当するときは、リンクを「アカウント1」「アカウント2」と番号付きで並べる(各トークンは本人発行・監査ログあり)", async () => {
@@ -215,7 +243,7 @@ describe("本人用の「パスワードを忘れた」再設定", () => {
       const h = await harness("enabled", { db });
 
       expect((await requestReset(h, a.email)).status).toBe(202);
-      await flush();
+      await flush(h);
 
       expect(h.mails).toHaveLength(1);
       const mail = h.mails[0]!;
@@ -246,12 +274,12 @@ describe("本人用の「パスワードを忘れた」再設定", () => {
       await requestReset(h, email);
       advanceMinutes(4);
       expect((await requestReset(h, email)).status).toBe(202);
-      await flush();
+      await flush(h);
       expect(h.mails).toHaveLength(1);
 
       advanceMinutes(1);
       expect((await requestReset(h, email)).status).toBe(202);
-      await flush();
+      await flush(h);
       expect(h.mails).toHaveLength(2);
     });
 
@@ -261,7 +289,7 @@ describe("本人用の「パスワードを忘れた」再設定", () => {
 
       const responses = await Promise.all(Array.from({ length: 4 }, () => requestReset(h, email)));
       expect(responses.map((r) => r.status)).toEqual([202, 202, 202, 202]);
-      await flush();
+      await flush(h);
 
       expect(h.mails).toHaveLength(1);
       expect(await db.select().from(passwordResetTokens)).toHaveLength(1);
@@ -275,7 +303,7 @@ describe("本人用の「パスワードを忘れた」再設定", () => {
 
       expect((await requestReset(h, "Case@Example.com")).status).toBe(202);
       expect((await requestReset(h, "case@example.com")).status).toBe(202);
-      await flush();
+      await flush(h);
 
       expect(h.mails).toHaveLength(1);
       expect(h.mails[0]?.to).toBe("Case@Example.com");
@@ -286,11 +314,11 @@ describe("本人用の「パスワードを忘れた」再設定", () => {
       const h = await harness("enabled", { db });
 
       await requestReset(h, email);
-      await flush();
+      await flush(h);
       const [oldToken] = tokensFrom(h.mails[0]);
       advanceMinutes(6);
       await requestReset(h, email);
-      await flush();
+      await flush(h);
       const [newToken] = tokensFrom(h.mails[1]);
 
       expect((await h.app.request(`/password-resets/${oldToken}`)).status).toBe(404);
@@ -310,6 +338,8 @@ describe("本人用の「パスワードを忘れた」再設定", () => {
       });
 
       await requestReset(h, email);
+      await flush(h);
+      expect(await db.select().from(passwordResetTokens)).toHaveLength(2);
       const [admin] = await db.select().from(passwordResetTokens).where(eq(passwordResetTokens.tokenHash, "admin-h"));
       expect(admin?.revokedAt).toBeNull();
     });
@@ -326,11 +356,11 @@ describe("本人用の「パスワードを忘れた」再設定", () => {
 
       expect((await requestReset(h, email, { turnstileToken: "bad" })).status).toBe(400);
       expect((await requestReset(h, email, { turnstileToken: "down" })).status).toBe(503);
-      await flush();
+      await flush(h);
       expect(h.mails).toHaveLength(0);
 
       expect((await requestReset(h, email, { turnstileToken: "pass" })).status).toBe(202);
-      await flush();
+      await flush(h);
       expect(h.mails).toHaveLength(1);
       expect(h.turnstileCalls.at(-1)?.get("secret")).toBe("secret");
     });
@@ -339,7 +369,7 @@ describe("本人用の「パスワードを忘れた」再設定", () => {
       const { db, email } = await setupTestDb();
       const h = await harness("enabled", { db });
       expect((await requestReset(h, email)).status).toBe(202);
-      await flush();
+      await flush(h);
       expect(h.mails).toHaveLength(1);
       expect(h.turnstileCalls).toHaveLength(0);
     });
@@ -376,7 +406,7 @@ describe("本人用の「パスワードを忘れた」再設定", () => {
         body: `email=${encodeURIComponent(email)}`,
       });
       expect(form.status).toBe(415);
-      await flush();
+      await flush(h);
       expect(h.mails).toHaveLength(0);
 
       expect((await requestReset(h, email, {}, { origin: "https://app.example.com" })).status).toBe(202);
@@ -396,7 +426,7 @@ describe("本人用の「パスワードを忘れた」再設定", () => {
   describe("受諾(既存の /password-resets/:token 経路をそのまま使う)", () => {
     async function issue(h: Harness, email: string): Promise<string> {
       await requestReset(h, email);
-      await flush();
+      await flush(h);
       return tokensFrom(h.mails.at(-1))[0]!;
     }
 

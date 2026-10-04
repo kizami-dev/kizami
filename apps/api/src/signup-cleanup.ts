@@ -12,7 +12,7 @@
  * 冪等で、何度走らせても結果は同じ。
  */
 
-import { deleteStalePendingSignups, type Database } from "@kizami/db";
+import { deletePasswordResetRequestsBefore, deleteStalePendingSignups, type Database } from "@kizami/db";
 
 /** 期限切れから削除までの猶予(7日、分単位)。 */
 export const PENDING_SIGNUP_RETENTION_AFTER_EXPIRY_MINUTES = 7 * 24 * 60;
@@ -24,6 +24,21 @@ export interface PendingSignupCleanupResult {
 export async function runPendingSignupCleanup(db: Database, params: { nowMinutes: number }): Promise<PendingSignupCleanupResult> {
   const deletedCount = await deleteStalePendingSignups(db, {
     expiredBefore: params.nowMinutes - PENDING_SIGNUP_RETENTION_AFTER_EXPIRY_MINUTES,
+  });
+  return { deletedCount };
+}
+
+/** 本人用パスワード再設定の再送スロットル行(password_reset_requests)を残す期間(1日、分単位)。窓(5分)よりずっと長い。 */
+export const PASSWORD_RESET_REQUEST_RETENTION_MINUTES = 24 * 60;
+
+/**
+ * 本人用パスワード再設定のメール単位スロットル行の掃除(2026-10-04)。スロットルは存在しないメールにも
+ * 取るため(routes/password-resets.ts 冒頭「応答時間」)、窓を過ぎた行を定期的に消して表の肥大を防ぐ。
+ * 冪等。本人用の再設定が無効な配備では表が空なので何も消えない。
+ */
+export async function runPasswordResetRequestCleanup(db: Database, params: { nowMinutes: number }): Promise<{ deletedCount: number }> {
+  const deletedCount = await deletePasswordResetRequestsBefore(db, {
+    requestedBefore: params.nowMinutes - PASSWORD_RESET_REQUEST_RETENTION_MINUTES,
   });
   return { deletedCount };
 }
