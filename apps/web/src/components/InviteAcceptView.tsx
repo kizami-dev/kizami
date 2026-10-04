@@ -127,7 +127,7 @@ export function InviteAcceptView({ token }: { token: string }) {
           <>
             <h2 className="invite-accept__title">{messages.inviteAccept.sessionIssuanceFailedTitle}</h2>
             <p className="login-card__tagline">{messages.inviteAccept.sessionIssuanceFailedMessage}</p>
-            <button type="button" className="login-submit" onClick={() => router.push("/login")}>
+            <button type="button" className="btn btn--primary btn--lg btn--block" onClick={() => router.push("/login")}>
               {messages.inviteAccept.goToLogin}
             </button>
           </>
@@ -140,17 +140,17 @@ export function InviteAcceptView({ token }: { token: string }) {
             </p>
 
             <form className="login-form" onSubmit={handleSubmit} noValidate>
-              <div className="login-field">
+              <div className="field">
                 <label htmlFor="invite-accept-name">{messages.inviteAccept.nameLabel}</label>
                 <input id="invite-accept-name" type="text" value={state.userName} readOnly />
               </div>
 
-              <div className="login-field">
+              <div className="field">
                 <label htmlFor="invite-accept-email">{messages.inviteAccept.emailLabel}</label>
                 <input id="invite-accept-email" type="email" value={state.email} readOnly />
               </div>
 
-              <div className="login-field">
+              <div className="field">
                 <label htmlFor="invite-accept-password">{messages.inviteAccept.passwordLabel}</label>
                 <input
                   id="invite-accept-password"
@@ -164,7 +164,7 @@ export function InviteAcceptView({ token }: { token: string }) {
                 />
               </div>
 
-              <div className="login-field">
+              <div className="field">
                 <label htmlFor="invite-accept-password-confirm">{messages.inviteAccept.passwordConfirmLabel}</label>
                 <input
                   id="invite-accept-password-confirm"
@@ -179,12 +179,12 @@ export function InviteAcceptView({ token }: { token: string }) {
               </div>
 
               {error ? (
-                <p className="login-error" role="alert">
+                <p className="notice notice--danger" role="alert">
                   {error}
                 </p>
               ) : null}
 
-              <button type="submit" className="login-submit" disabled={submitting}>
+              <button type="submit" className="btn btn--primary btn--lg btn--block" disabled={submitting}>
                 {submitting ? messages.inviteAccept.submitting : messages.inviteAccept.submit}
               </button>
             </form>

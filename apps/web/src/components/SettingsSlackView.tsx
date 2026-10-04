@@ -7,6 +7,7 @@ import { mapSlackSettingsErrorMessage, messages } from "../lib/messages";
 import { useAuthGuard } from "../lib/useAuthGuard";
 import { AppHeader } from "./AppHeader";
 import { SettingsNav } from "./SettingsNav";
+import { StateView } from "./ui/StateView";
 
 interface FormState {
   teamId: string;
@@ -112,33 +113,33 @@ export function SettingsSlackView() {
   }
 
   if (guard.status === "loading" || loading) {
-    return <p className="monthly-loading">{messages.loading}</p>;
+    return <StateView kind="loading">{messages.loading}</StateView>;
   }
   if (guard.status === "error" || !guard.user) {
-    return <p className="monthly-error">{messages.errors.network}</p>;
+    return <StateView kind="error">{messages.errors.network}</StateView>;
   }
 
   return (
-    <div className="settings-notif">
+    <div className="page-shell">
       <AppHeader displayName={guard.user.displayName} email={guard.user.email} tenantName={guard.tenant?.name ?? null} active="settings" />
-      <main className="settings-notif__main">
+      <main className="page">
         <SettingsNav active="slack" />
         <h1 className="settings-notif__title">{messages.settingsSlack.title}</h1>
         <p className="settings-notif__tagline">{messages.settingsSlack.tagline}</p>
-        <p className="settings-notif__field-hint">{messages.settingsSlack.setupGuideHint}</p>
+        <p className="field__hint">{messages.settingsSlack.setupGuideHint}</p>
 
         {forbidden ? (
-          <p className="settings-notif__forbidden" role="alert">
+          <p className="notice notice--danger" role="alert">
             {messages.settingsSlack.noPermission}
           </p>
         ) : null}
 
-        {loadError ? <p className="monthly-error">{loadError}</p> : null}
+        {loadError ? <StateView kind="error">{loadError}</StateView> : null}
 
         {!forbidden && form && settings ? (
-          <form className="settings-notif__form" onSubmit={handleSave}>
-            <section className="settings-notif__section">
-              <div className="correction-field">
+          <form className="page-body page-body--form" onSubmit={handleSave}>
+            <section className="card">
+              <div className="field">
                 <label htmlFor="slack-team-id">{messages.settingsSlack.teamIdLabel}</label>
                 <input
                   id="slack-team-id"
@@ -147,10 +148,10 @@ export function SettingsSlackView() {
                   placeholder={messages.settingsSlack.teamIdPlaceholder}
                   onChange={(e) => updateForm({ teamId: e.target.value })}
                 />
-                <p className="settings-notif__field-hint">{messages.settingsSlack.teamIdHint}</p>
+                <p className="field__hint">{messages.settingsSlack.teamIdHint}</p>
               </div>
 
-              <div className="correction-field">
+              <div className="field">
                 <label htmlFor="slack-signing-secret">{messages.settingsSlack.signingSecretLabel}</label>
                 <input
                   id="slack-signing-secret"
@@ -159,7 +160,7 @@ export function SettingsSlackView() {
                   value={form.signingSecret}
                   onChange={(e) => updateForm({ signingSecret: e.target.value })}
                 />
-                <p className="settings-notif__field-hint">
+                <p className="field__hint">
                   {settings.signingSecretSet
                     ? messages.settingsSlack.signingSecretConfigured
                     : messages.settingsSlack.signingSecretNotConfigured}
@@ -168,29 +169,29 @@ export function SettingsSlackView() {
                 </p>
               </div>
 
-              <label className="settings-notif__checkbox">
+              <label className="check">
                 <input type="checkbox" checked={form.enabled} onChange={(e) => updateForm({ enabled: e.target.checked })} />
                 {messages.settingsSlack.enabledLabel}
               </label>
-              <p className="settings-notif__field-hint">{messages.settingsSlack.enabledHint}</p>
+              <p className="field__hint">{messages.settingsSlack.enabledHint}</p>
             </section>
 
             {saveError ? (
-              <p className="correction-error" role="alert">
+              <p className="notice notice--danger" role="alert">
                 {saveError}
               </p>
             ) : null}
-            {saveSuccess ? <p className="settings-notif__success">{messages.settingsSlack.saveSuccess}</p> : null}
+            {saveSuccess ? <p className="notice notice--success">{messages.settingsSlack.saveSuccess}</p> : null}
 
-            <p className="settings-notif__save-note">{messages.settingsSlack.saveNote}</p>
+            <p className="field__hint">{messages.settingsSlack.saveNote}</p>
 
-            <div className="settings-notif__actions">
-              <button type="submit" className="k-modal__confirm k-modal__confirm--neutral" disabled={saving}>
+            <div className="btn-row">
+              <button type="submit" className="btn btn--primary" disabled={saving}>
                 {saving ? messages.settingsSlack.saving : messages.settingsSlack.save}
               </button>
             </div>
 
-            <p className="settings-notif__field-hint">
+            <p className="field__hint">
               {messages.settingsSlack.linkNavHint}
               <Link to="/settings/slack-link">{messages.settingsSlack.linkNavLinkLabel}</Link>
               {messages.settingsSlack.linkNavHintSuffix}

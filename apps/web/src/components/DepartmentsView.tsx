@@ -9,6 +9,7 @@ import { AppHeader } from "./AppHeader";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { DepartmentFormDialog, type DepartmentFormValue } from "./DepartmentFormDialog";
 import { SettingsNav } from "./SettingsNav";
+import { StateView } from "./ui/StateView";
 
 interface TreeNode {
   dept: DepartmentDto;
@@ -176,10 +177,10 @@ export function DepartmentsView() {
   }
 
   if (guard.status === "loading" || loading) {
-    return <p className="monthly-loading">{messages.loading}</p>;
+    return <StateView kind="loading">{messages.loading}</StateView>;
   }
   if (guard.status === "error" || !guard.user) {
-    return <p className="monthly-error">{messages.errors.network}</p>;
+    return <StateView kind="error">{messages.errors.network}</StateView>;
   }
 
   return (
@@ -191,22 +192,22 @@ export function DepartmentsView() {
         <p className="org-settings__tagline">{messages.departments.tagline}</p>
 
         {forbidden ? (
-          <p className="org-settings__forbidden" role="alert">
+          <p className="notice notice--danger" role="alert">
             {messages.departments.noPermission}
           </p>
         ) : null}
-        {loadError ? <p className="monthly-error">{loadError}</p> : null}
+        {loadError ? <StateView kind="error">{loadError}</StateView> : null}
 
         {!forbidden && departments ? (
           <>
             <div className="org-settings__toolbar">
-              <button type="button" className="org-settings__primary-btn" onClick={() => openCreate(null)}>
+              <button type="button" className="btn btn--primary" onClick={() => openCreate(null)}>
                 {messages.departments.addRoot}
               </button>
             </div>
 
             {tree.length === 0 ? (
-              <p className="org-settings__empty">{messages.departments.empty}</p>
+              <StateView kind="empty">{messages.departments.empty}</StateView>
             ) : (
               <ul className="dept-tree">{tree.map((n) => renderNode(n, 0))}</ul>
             )}

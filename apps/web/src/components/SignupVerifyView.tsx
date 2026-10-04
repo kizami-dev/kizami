@@ -103,7 +103,7 @@ export function SignupVerifyView({ token }: { token: string }) {
           <>
             <h2 className="invite-accept__title">{messages.signupVerify.invalidTitle}</h2>
             <p className="login-card__tagline">{messages.signupVerify.invalidMessage}</p>
-            <button type="button" className="login-submit" onClick={() => router.push("/login")}>
+            <button type="button" className="btn btn--primary btn--lg btn--block" onClick={() => router.push("/login")}>
               {messages.signupVerify.goToLogin}
             </button>
           </>
@@ -113,7 +113,7 @@ export function SignupVerifyView({ token }: { token: string }) {
           <>
             <h2 className="invite-accept__title">{messages.signupVerify.expiredTitle}</h2>
             <p className="login-card__tagline">{messages.signupVerify.expiredMessage}</p>
-            <button type="button" className="login-submit" onClick={() => router.push("/signup")}>
+            <button type="button" className="btn btn--primary btn--lg btn--block" onClick={() => router.push("/signup")}>
               {messages.signupVerify.goToSignup}
             </button>
           </>
@@ -125,7 +125,7 @@ export function SignupVerifyView({ token }: { token: string }) {
           <>
             <h2 className="invite-accept__title">{messages.signupVerify.sessionIssuanceFailedTitle}</h2>
             <p className="login-card__tagline">{messages.signupVerify.sessionIssuanceFailedMessage}</p>
-            <button type="button" className="login-submit" onClick={() => router.push("/login")}>
+            <button type="button" className="btn btn--primary btn--lg btn--block" onClick={() => router.push("/login")}>
               {messages.signupVerify.goToLogin}
             </button>
           </>
@@ -136,20 +136,20 @@ export function SignupVerifyView({ token }: { token: string }) {
             <p className="login-card__tagline">{messages.signupVerify.intro}</p>
 
             <form className="login-form" onSubmit={handleConfirm} noValidate>
-              <div className="login-field">
+              <div className="field">
                 <label htmlFor="signup-verify-organization">{messages.signupVerify.organizationLabel}</label>
                 <input id="signup-verify-organization" type="text" value={state.organizationName} readOnly />
               </div>
-              <div className="login-field">
+              <div className="field">
                 <label htmlFor="signup-verify-name">{messages.signupVerify.nameLabel}</label>
                 <input id="signup-verify-name" type="text" value={state.adminName} readOnly />
               </div>
-              <div className="login-field">
+              <div className="field">
                 <label htmlFor="signup-verify-email">{messages.signupVerify.emailLabel}</label>
                 <input id="signup-verify-email" type="email" value={state.email} readOnly />
               </div>
 
-              <div className="login-field">
+              <div className="field">
                 <label htmlFor="signup-verify-password">{messages.signupVerify.passwordLabel}</label>
                 <input
                   id="signup-verify-password"
@@ -163,7 +163,7 @@ export function SignupVerifyView({ token }: { token: string }) {
                 />
               </div>
 
-              <div className="login-field">
+              <div className="field">
                 <label htmlFor="signup-verify-password-confirm">{messages.signupVerify.passwordConfirmLabel}</label>
                 <input
                   id="signup-verify-password-confirm"
@@ -178,12 +178,12 @@ export function SignupVerifyView({ token }: { token: string }) {
               </div>
 
               {error ? (
-                <p className="login-error" role="alert">
+                <p className="notice notice--danger" role="alert">
                   {error}
                 </p>
               ) : null}
 
-              <button type="submit" className="login-submit" disabled={submitting}>
+              <button type="submit" className="btn btn--primary btn--lg btn--block" disabled={submitting}>
                 {submitting ? messages.signupVerify.submitting : messages.signupVerify.submit}
               </button>
             </form>

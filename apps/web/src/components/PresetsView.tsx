@@ -17,6 +17,7 @@ import { ConfirmDialog } from "./ConfirmDialog";
 import { HelpTip } from "./HelpTip";
 import { PresetFormDialog, type PresetFormValue } from "./PresetFormDialog";
 import { SettingsNav } from "./SettingsNav";
+import { StateView } from "./ui/StateView";
 
 type FormState = { mode: "create" | "edit"; editingId?: string; readOnly: boolean; initial: PresetFormValue };
 type DeleteState = { id: string; name: string };
@@ -163,10 +164,10 @@ export function PresetsView() {
   }
 
   if (guard.status === "loading" || loading) {
-    return <p className="monthly-loading">{messages.loading}</p>;
+    return <StateView kind="loading">{messages.loading}</StateView>;
   }
   if (guard.status === "error" || !guard.user) {
-    return <p className="monthly-error">{messages.errors.network}</p>;
+    return <StateView kind="error">{messages.errors.network}</StateView>;
   }
 
   return (
@@ -181,22 +182,22 @@ export function PresetsView() {
         <p className="org-settings__tagline">{messages.presets.tagline}</p>
 
         {forbidden ? (
-          <p className="org-settings__forbidden" role="alert">
+          <p className="notice notice--danger" role="alert">
             {messages.presets.noPermission}
           </p>
         ) : null}
-        {loadError ? <p className="monthly-error">{loadError}</p> : null}
+        {loadError ? <StateView kind="error">{loadError}</StateView> : null}
 
         {!forbidden && presets ? (
           <>
             <div className="org-settings__toolbar">
-              <button type="button" className="org-settings__primary-btn" onClick={openCreate}>
+              <button type="button" className="btn btn--primary" onClick={openCreate}>
                 {messages.presets.addNew}
               </button>
             </div>
 
             {presets.length === 0 ? (
-              <p className="org-settings__empty">{messages.presets.empty}</p>
+              <StateView kind="empty">{messages.presets.empty}</StateView>
             ) : (
               <div className="org-settings__table-wrap">
                 <table className="org-table">
@@ -215,7 +216,7 @@ export function PresetsView() {
                         <td>{preset.name}</td>
                         <td className="org-table__muted">{preset.description ?? messages.presets.noDescription}</td>
                         <td>
-                          <span className={`chip${preset.isSystem ? " chip--system" : ""}`}>
+                          <span className={`badge ${preset.isSystem ? "badge--key" : "badge--neutral"}`}>
                             {preset.isSystem ? messages.presets.systemBadge : messages.presets.customBadge}
                           </span>
                         </td>

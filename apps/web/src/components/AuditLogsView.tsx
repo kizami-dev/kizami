@@ -8,6 +8,7 @@ import { dateWindowJst, formatDateTimeJst } from "../lib/time";
 import { useAuthGuard } from "../lib/useAuthGuard";
 import { AppHeader } from "./AppHeader";
 import { SettingsNav } from "./SettingsNav";
+import { StateView } from "./ui/StateView";
 
 /**
  * apps/api の監査ログ挿入箇所(apps/api/src/routes/*.ts の insertAuditLog 呼び出し)から
@@ -215,29 +216,29 @@ export function AuditLogsView() {
   }
 
   if (guard.status === "loading") {
-    return <p className="monthly-loading">{messages.loading}</p>;
+    return <StateView kind="loading">{messages.loading}</StateView>;
   }
   if (guard.status === "error" || !guard.user) {
-    return <p className="monthly-error">{messages.errors.network}</p>;
+    return <StateView kind="error">{messages.errors.network}</StateView>;
   }
 
   return (
-    <div className="settings-notif">
+    <div className="page-shell">
       <AppHeader displayName={guard.user.displayName} email={guard.user.email} tenantName={guard.tenant?.name ?? null} active="settings" />
-      <main className="settings-notif__main audit-logs__main">
+      <main className="page audit-logs__main">
         <SettingsNav active="auditLogs" />
         <h1 className="settings-notif__title">{messages.settingsAuditLogs.title}</h1>
         <p className="settings-notif__tagline">{messages.settingsAuditLogs.tagline}</p>
-        <p className="audit-logs__immutable-note">{messages.settingsAuditLogs.immutableNote}</p>
+        <p className="notice notice--info">{messages.settingsAuditLogs.immutableNote}</p>
 
         {forbidden ? (
-          <p className="settings-notif__forbidden" role="alert">
+          <p className="notice notice--danger" role="alert">
             {messages.settingsAuditLogs.forbidden}
           </p>
         ) : (
           <>
             <form className="audit-logs__filters" onSubmit={handleApply}>
-              <div className="correction-field">
+              <div className="field">
                 <label htmlFor="audit-logs-action">{messages.settingsAuditLogs.filterActionLabel}</label>
                 <select
                   id="audit-logs-action"
@@ -253,7 +254,7 @@ export function AuditLogsView() {
                 </select>
               </div>
 
-              <div className="correction-field">
+              <div className="field">
                 <label htmlFor="audit-logs-actor">{messages.settingsAuditLogs.filterActorLabel}</label>
                 <input
                   id="audit-logs-actor"
@@ -264,8 +265,8 @@ export function AuditLogsView() {
                 />
               </div>
 
-              <div className="correction-field-row">
-                <div className="correction-field">
+              <div className="field-row">
+                <div className="field">
                   <label htmlFor="audit-logs-from">{messages.settingsAuditLogs.filterFromLabel}</label>
                   <input
                     id="audit-logs-from"
@@ -274,7 +275,7 @@ export function AuditLogsView() {
                     onChange={(e) => setDraft({ ...draft, fromDate: e.target.value })}
                   />
                 </div>
-                <div className="correction-field">
+                <div className="field">
                   <label htmlFor="audit-logs-to">{messages.settingsAuditLogs.filterToLabel}</label>
                   <input
                     id="audit-logs-to"
@@ -286,27 +287,27 @@ export function AuditLogsView() {
               </div>
 
               {rangeError ? (
-                <p className="correction-error" role="alert">
+                <p className="notice notice--danger" role="alert">
                   {rangeError}
                 </p>
               ) : null}
 
-              <div className="settings-notif__actions">
-                <button type="submit" className="k-modal__confirm k-modal__confirm--neutral">
+              <div className="btn-row">
+                <button type="submit" className="btn btn--primary">
                   {messages.settingsAuditLogs.filterApply}
                 </button>
-                <button type="button" className="k-modal__cancel" onClick={handleClear}>
+                <button type="button" className="btn btn--secondary" onClick={handleClear}>
                   {messages.settingsAuditLogs.filterClear}
                 </button>
               </div>
             </form>
 
-            {loading ? <p className="monthly-loading">{messages.loading}</p> : null}
-            {loadError ? <p className="monthly-error">{loadError}</p> : null}
+            {loading ? <StateView kind="loading">{messages.loading}</StateView> : null}
+            {loadError ? <StateView kind="error">{loadError}</StateView> : null}
 
             {!loading && loaded ? (
               logs.length === 0 ? (
-                <p className="org-settings__empty">{messages.settingsAuditLogs.empty}</p>
+                <StateView kind="empty">{messages.settingsAuditLogs.empty}</StateView>
               ) : (
                 <>
                   <div className="org-settings__table-wrap">
@@ -352,8 +353,8 @@ export function AuditLogsView() {
                   </div>
 
                   {nextCursor !== null ? (
-                    <div className="settings-notif__actions">
-                      <button type="button" className="k-modal__cancel" onClick={handleLoadMore} disabled={loadingMore}>
+                    <div className="btn-row">
+                      <button type="button" className="btn btn--secondary" onClick={handleLoadMore} disabled={loadingMore}>
                         {loadingMore ? messages.settingsAuditLogs.loadingMore : messages.settingsAuditLogs.loadMore}
                       </button>
                     </div>

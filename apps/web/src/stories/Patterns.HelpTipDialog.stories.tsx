@@ -49,7 +49,7 @@ function ConfirmDialogDemo({ tone }: { tone: "neutral" | "caution" }) {
   if (!open) {
     return (
       <div className="story-section">
-        <button type="button" className="k-modal__confirm k-modal__confirm--neutral" onClick={() => setOpen(true)}>
+        <button type="button" className="btn btn--primary" onClick={() => setOpen(true)}>
           {messages.closing.reopenAction}
         </button>
       </div>

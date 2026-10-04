@@ -17,6 +17,7 @@ import { useAuthGuard } from "../lib/useAuthGuard";
 import { AppHeader } from "./AppHeader";
 import { HelpTip } from "./HelpTip";
 import { SettingsNav } from "./SettingsNav";
+import { StateView } from "./ui/StateView";
 
 const WEEKDAYS = [0, 1, 2, 3, 4, 5, 6] as const;
 
@@ -186,7 +187,7 @@ function AllowanceConditionsEditor({
             </button>
           </div>
         ))}
-        <button type="button" className="k-modal__cancel" onClick={addDateRow}>
+        <button type="button" className="btn btn--secondary" onClick={addDateRow}>
           {messages.settingsAllowances.addDateRow}
         </button>
       </fieldset>
@@ -368,10 +369,10 @@ export function SettingsAllowancesView() {
   }
 
   if (guard.status === "loading" || loading) {
-    return <p className="monthly-loading">{messages.loading}</p>;
+    return <StateView kind="loading">{messages.loading}</StateView>;
   }
   if (guard.status === "error" || !guard.user) {
-    return <p className="monthly-error">{messages.errors.network}</p>;
+    return <StateView kind="error">{messages.errors.network}</StateView>;
   }
 
   const todayDate = dateStrFromEpochMinutesJst(nowMinutes());
@@ -385,11 +386,11 @@ export function SettingsAllowancesView() {
         <p className="attendance-settings__tagline">{messages.settingsAllowances.tagline}</p>
 
         {forbidden ? (
-          <p className="attendance-settings__forbidden" role="alert">
+          <p className="notice notice--danger" role="alert">
             {messages.settingsAllowances.noPermission}
           </p>
         ) : null}
-        {loadError ? <p className="monthly-error">{loadError}</p> : null}
+        {loadError ? <StateView kind="error">{loadError}</StateView> : null}
 
         {!forbidden && data ? (
           <>
@@ -430,14 +431,14 @@ export function SettingsAllowancesView() {
                 />
 
                 {createError ? (
-                  <p className="correction-error" role="alert">
+                  <p className="notice notice--danger" role="alert">
                     {createError}
                   </p>
                 ) : null}
-                {createSuccess ? <p className="attendance-settings__success">{messages.settingsAllowances.createSuccess}</p> : null}
+                {createSuccess ? <p className="notice notice--success">{messages.settingsAllowances.createSuccess}</p> : null}
 
                 <div className="attendance-settings__actions">
-                  <button type="submit" className="k-modal__confirm k-modal__confirm--neutral" disabled={createSaving}>
+                  <button type="submit" className="btn btn--primary" disabled={createSaving}>
                     {createSaving ? messages.settingsAllowances.creating : messages.settingsAllowances.createDefinitionButton}
                   </button>
                 </div>
@@ -506,16 +507,16 @@ export function SettingsAllowancesView() {
                       />
 
                       {versionErrors[def.id] ? (
-                        <p className="correction-error" role="alert">
+                        <p className="notice notice--danger" role="alert">
                           {versionErrors[def.id]}
                         </p>
                       ) : null}
                       {versionSuccess[def.id] ? (
-                        <p className="attendance-settings__success">{messages.settingsAllowances.submitSuccess}</p>
+                        <p className="notice notice--success">{messages.settingsAllowances.submitSuccess}</p>
                       ) : null}
 
                       <div className="attendance-settings__actions">
-                        <button type="submit" className="k-modal__confirm k-modal__confirm--neutral" disabled={versionSaving[def.id]}>
+                        <button type="submit" className="btn btn--primary" disabled={versionSaving[def.id]}>
                           {versionSaving[def.id] ? messages.settingsAllowances.addingVersion : messages.settingsAllowances.addVersionSubmit}
                         </button>
                       </div>

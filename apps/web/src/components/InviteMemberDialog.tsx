@@ -78,7 +78,7 @@ export function InviteMemberDialog({ departments, presets, pending, error, onSub
           <div className="k-modal__body">
             <p className="member-invite-form__hint">{messages.members.inviteFormHint}</p>
 
-            <div className="correction-field">
+            <div className="field">
               <label htmlFor="invite-email">{messages.members.inviteEmailLabel}</label>
               <input
                 id="invite-email"
@@ -92,7 +92,7 @@ export function InviteMemberDialog({ departments, presets, pending, error, onSub
               />
             </div>
 
-            <div className="correction-field">
+            <div className="field">
               <label htmlFor="invite-name">{messages.members.inviteNameLabel}</label>
               <input
                 id="invite-name"
@@ -105,7 +105,7 @@ export function InviteMemberDialog({ departments, presets, pending, error, onSub
               />
             </div>
 
-            <div className="correction-field">
+            <div className="field">
               <label htmlFor="invite-department">{messages.members.inviteDepartmentLabel}</label>
               <select id="invite-department" value={departmentId} onChange={(e) => setDepartmentId(e.target.value)}>
                 <option value="">{messages.members.noDepartment}</option>
@@ -117,13 +117,13 @@ export function InviteMemberDialog({ departments, presets, pending, error, onSub
               </select>
             </div>
 
-            <div className="correction-field">
+            <div className="field">
               <label htmlFor="invite-hire-date">{messages.members.inviteHireDateLabel}</label>
               <input id="invite-hire-date" type="date" value={hireDate} onChange={(e) => setHireDate(e.target.value)} />
             </div>
 
             {presets.length > 0 ? (
-              <div className="correction-field">
+              <div className="field">
                 <span>{messages.members.invitePresetsLabel}</span>
                 <ul className="preset-checkbox-list">
                   {presets.map((preset) => (
@@ -140,17 +140,17 @@ export function InviteMemberDialog({ departments, presets, pending, error, onSub
             ) : null}
 
             {error ? (
-              <p className="correction-error" role="alert">
+              <p className="notice notice--danger" role="alert">
                 {error}
               </p>
             ) : null}
           </div>
 
           <div className="k-modal__footer">
-            <button type="button" className="k-modal__cancel" onClick={onCancel} disabled={pending}>
+            <button type="button" className="btn btn--secondary" onClick={onCancel} disabled={pending}>
               {messages.members.inviteCancel}
             </button>
-            <button type="submit" className="k-modal__confirm k-modal__confirm--neutral" disabled={pending}>
+            <button type="submit" className="btn btn--primary" disabled={pending}>
               {pending ? messages.members.inviteSubmitting : messages.members.inviteSubmit}
             </button>
           </div>

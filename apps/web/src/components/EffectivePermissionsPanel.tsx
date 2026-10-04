@@ -37,7 +37,7 @@ export function EffectivePermissionsPanel({ entries }: EffectivePermissionsPanel
                 <li key={entry.key} className={`effective-perms__item${entry.denied ? " effective-perms__item--denied" : ""}`}>
                   <span className="effective-perms__item-label">
                     {entry.catalogEntry.labelJa}
-                    {entry.denied ? <span className="effective-perms__denied-chip">{messages.members.effectiveDeniedChip}</span> : null}
+                    {entry.denied ? <span className="badge badge--magenta effective-perms__denied-chip">{messages.members.effectiveDeniedChip}</span> : null}
                   </span>
                   <span className="effective-perms__item-scope">
                     {messages.members.effectiveScopeLabel}: {messages.scopeLabel[entry.scope]}

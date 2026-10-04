@@ -5,27 +5,6 @@
  * テスト送信結果のみ意味色を使う: 成功=C(--k-cyan-ink)、失敗=M(--k-magenta-ink)。
  */
 
-.settings-notif {
-  min-height: 100dvh;
-  display: flex;
-  flex-direction: column;
-}
-
-.settings-notif__main {
-  flex: 1;
-  padding: var(--space-5) var(--space-4) var(--space-7);
-  /* 2026-08-23: 外枠は認証後の全ページ共通で --width-content-wide に統一する(見出し・
-     SettingsNav の左端が他ページと揃う)。help-settings.css / api-keys-settings.css は
-     元々このクラスに追加クラスで同じ wide を明示していたため実質的に無変更。
-     フォーム部分の内側制約は .settings-notif__form 側(下記)で --width-form に行う。 */
-  max-width: var(--width-content-wide);
-  margin: 0 auto;
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-5);
-}
-
 .settings-notif__title {
   font-family: var(--font-display);
   font-size: 1.4rem;
@@ -37,100 +16,6 @@
   color: var(--k-ink-soft);
 }
 
-/* テナント設定と個人設定を混同しないための導線バナー(docs/requirements.md §7)。
- * personal-notifications.css の .settings-personal-notif__banner と対になる。 */
-.settings-notif__distinction-banner {
-  font-size: 0.82rem;
-  color: var(--k-ink-soft);
-  border: var(--border-hair);
-  border-radius: var(--radius-s);
-  padding: var(--space-3);
-  background: color-mix(in srgb, var(--k-key) 3%, transparent);
-}
-
-.settings-notif__distinction-banner a {
-  color: var(--k-key);
-  /* 2026-08-23 SP監査: 文中リンクのタップ領域が文字の実寸(高さ約19px)しかなかった。
-     インライン要素への padding-block は行送りに影響しない(通常フロー)ため、
-     見た目・行間を変えずにタップ領域だけ広げられる。 */
-  padding: 6px 2px;
-  margin: -6px -2px;
-}
-
-.settings-notif__forbidden {
-  border: 1px solid var(--k-magenta);
-  color: var(--k-magenta-ink);
-  background: color-mix(in srgb, var(--k-magenta) 6%, transparent);
-  border-radius: var(--radius-s);
-  padding: var(--space-4);
-  font-size: 0.92rem;
-}
-
-.settings-notif__form {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-5);
-  /* 2026-08-23: フォーム要素群(入力欄・説明文・送信ボタンのまとまり)を --width-form に
-     制約し左寄せする(main は wide のまま、中身だけ狭める。センタリングはしない)。
-     help-settings.css のエディタ用フォーム(テキストエリアが主役)だけは
-     .help-settings__editor-panel 側でこの上限を明示的に解除している。 */
-  max-width: var(--width-form);
-  margin: 0;
-}
-
-.settings-notif__section {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  border: var(--border-hair);
-  border-radius: var(--radius-m);
-  padding: var(--space-4);
-}
-
-.settings-notif__section-title {
-  font-family: var(--font-display);
-  font-size: 1rem;
-  letter-spacing: 0.02em;
-}
-
-.settings-notif__checkbox {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  font-size: 0.9rem;
-}
-
-.settings-notif__checkbox input[type="checkbox"] {
-  accent-color: var(--k-key);
-  width: 1.05rem;
-  height: 1.05rem;
-}
-
-.settings-notif__field-hint {
-  font-size: 0.78rem;
-  color: var(--k-ink-soft);
-}
-
-.settings-notif__success {
-  color: var(--k-cyan-ink);
-  font-size: 0.85rem;
-  border: 1px solid var(--k-cyan);
-  background: color-mix(in srgb, var(--k-cyan) 6%, transparent);
-  border-radius: var(--radius-s);
-  padding: var(--space-3);
-}
-
-.settings-notif__save-note {
-  font-size: 0.78rem;
-  color: var(--k-ink-soft);
-}
-
-.settings-notif__actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-3);
-}
-
 .settings-notif__test-results {
   display: flex;
   flex-direction: column;
@@ -138,7 +23,7 @@
   border: var(--border-hair);
   border-radius: var(--radius-m);
   padding: var(--space-4);
-  /* 2026-08-23: 直上の .settings-notif__form と同じ左端に揃える(フォームに付随する
+  /* 2026-08-23: 直上のフォーム(.page-body--form) と同じ左端に揃える(フォームに付随する
      テスト送信結果のため、読み物寄りの --width-form に制約する)。 */
   max-width: var(--width-form);
   margin: 0;

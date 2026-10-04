@@ -8,6 +8,7 @@ import { invalidateHelpOverridesCache } from "../lib/useHelpOverrides";
 import { useAuthGuard } from "../lib/useAuthGuard";
 import { AppHeader } from "./AppHeader";
 import { SettingsNav } from "./SettingsNav";
+import { StateView } from "./ui/StateView";
 
 /** privacy.notice-template / privacy.internal-terms-template(packages/help-content 側で定義)。 */
 const NOTICE_HELP_KEY = "privacy.notice-template";
@@ -68,31 +69,31 @@ function TemplateCard({ title, desc, content, filename, helpKey }: TemplateCardP
   }
 
   return (
-    <section className="settings-notif__section privacy-template__card">
-      <h2 className="settings-notif__section-title">{title}</h2>
-      <p className="settings-notif__field-hint">{desc}</p>
+    <section className="card privacy-template__card">
+      <h2 className="card__title">{title}</h2>
+      <p className="field__hint">{desc}</p>
 
       <pre className="privacy-template__body">{content}</pre>
 
-      <div className="settings-notif__actions privacy-template__actions">
-        <button type="button" className="k-modal__confirm k-modal__confirm--neutral" onClick={handleCopy}>
+      <div className="btn-row privacy-template__actions">
+        <button type="button" className="btn btn--primary" onClick={handleCopy}>
           {copyState === "copied" ? messages.settingsPrivacy.copied : messages.settingsPrivacy.copy}
         </button>
         <button
           type="button"
-          className="k-modal__confirm k-modal__confirm--neutral"
+          className="btn btn--primary"
           onClick={() => downloadMarkdown(filename, content)}
         >
           {messages.settingsPrivacy.download}
         </button>
-        <button type="button" className="k-modal__confirm k-modal__confirm--neutral" disabled={registering} onClick={handleRegister}>
+        <button type="button" className="btn btn--primary" disabled={registering} onClick={handleRegister}>
           {registering ? messages.settingsPrivacy.registering : messages.settingsPrivacy.registerAsCompanyRule}
         </button>
       </div>
 
-      {copyState === "failed" ? <p className="correction-error" role="alert">{messages.settingsPrivacy.copyFailed}</p> : null}
+      {copyState === "failed" ? <p className="notice notice--danger" role="alert">{messages.settingsPrivacy.copyFailed}</p> : null}
       {registerResult ? (
-        <p className={registerResult.ok ? "settings-notif__success" : "correction-error"} role={registerResult.ok ? undefined : "alert"}>
+        <p className={registerResult.ok ? "notice notice--success" : "notice notice--danger"} role={registerResult.ok ? undefined : "alert"}>
           {registerResult.message}
         </p>
       ) : null}
@@ -183,35 +184,35 @@ export function PrivacyTemplatesView() {
   }, [guard.status]);
 
   if (guard.status === "loading" || loading) {
-    return <p className="monthly-loading">{messages.loading}</p>;
+    return <StateView kind="loading">{messages.loading}</StateView>;
   }
   if (guard.status === "error" || !guard.user) {
-    return <p className="monthly-error">{messages.errors.network}</p>;
+    return <StateView kind="error">{messages.errors.network}</StateView>;
   }
 
   return (
-    <div className="settings-notif">
+    <div className="page-shell">
       <AppHeader displayName={guard.user.displayName} email={guard.user.email} tenantName={guard.tenant?.name ?? null} active="settings" />
-      <main className="settings-notif__main privacy-template__main">
+      <main className="page privacy-template__main">
         <SettingsNav active="privacy" />
         <h1 className="settings-notif__title">{messages.settingsPrivacy.title}</h1>
         <p className="settings-notif__tagline">{messages.settingsPrivacy.tagline}</p>
 
-        <p className="privacy-template__disclaimer" role="note">
+        <p className="notice notice--info" role="note">
           {messages.settingsPrivacy.disclaimer}
         </p>
 
         {forbidden ? (
-          <p className="settings-notif__forbidden" role="alert">
+          <p className="notice notice--danger" role="alert">
             {messages.settingsPrivacy.noPermission}
           </p>
         ) : null}
-        {loadError ? <p className="monthly-error">{loadError}</p> : null}
+        {loadError ? <StateView kind="error">{loadError}</StateView> : null}
 
         {!forbidden && data ? (
           <>
-            <section className="settings-notif__section privacy-template__generated-from">
-              <h2 className="settings-notif__section-title">{messages.settingsPrivacy.generatedFromTitle}</h2>
+            <section className="card privacy-template__generated-from">
+              <h2 className="card__title">{messages.settingsPrivacy.generatedFromTitle}</h2>
               <ul className="privacy-template__generated-from-list">
                 <li>{data.generatedFrom.gpsEnabled ? messages.settingsPrivacy.generatedFromGpsOn : messages.settingsPrivacy.generatedFromGpsOff}</li>
                 {data.generatedFrom.gpsEnabled ? (
@@ -222,14 +223,14 @@ export function PrivacyTemplatesView() {
                   </li>
                 ) : null}
               </ul>
-              <p className="settings-notif__field-hint">{messages.settingsPrivacy.generatedFromNote}</p>
+              <p className="field__hint">{messages.settingsPrivacy.generatedFromNote}</p>
             </section>
 
             {retention ? (
-              <section className="settings-notif__section">
-                <h2 className="settings-notif__section-title">{messages.settingsPrivacy.retentionTitle}</h2>
-                <p className="settings-notif__field-hint">{messages.settingsPrivacy.retentionHint}</p>
-                <div className="correction-field">
+              <section className="card">
+                <h2 className="card__title">{messages.settingsPrivacy.retentionTitle}</h2>
+                <p className="field__hint">{messages.settingsPrivacy.retentionHint}</p>
+                <div className="field">
                   <label htmlFor="personal-data-retention-years">{messages.settingsPrivacy.retentionLabel}</label>
                   <select
                     id="personal-data-retention-years"
@@ -244,14 +245,14 @@ export function PrivacyTemplatesView() {
                     ))}
                   </select>
                 </div>
-                <p className="settings-notif__field-hint">{messages.settingsPrivacy.retentionLegalNote}</p>
-                <p className="settings-notif__field-hint">{messages.settingsPrivacy.retentionExecutionNote}</p>
+                <p className="field__hint">{messages.settingsPrivacy.retentionLegalNote}</p>
+                <p className="field__hint">{messages.settingsPrivacy.retentionExecutionNote}</p>
                 {retentionError ? (
-                  <p className="correction-error" role="alert">
+                  <p className="notice notice--danger" role="alert">
                     {retentionError}
                   </p>
                 ) : null}
-                {retentionSaved && !retentionError ? <p className="settings-notif__success">{messages.settingsPrivacy.retentionSaved}</p> : null}
+                {retentionSaved && !retentionError ? <p className="notice notice--success">{messages.settingsPrivacy.retentionSaved}</p> : null}
               </section>
             ) : null}
 

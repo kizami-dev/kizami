@@ -7,6 +7,7 @@ import { mapApprovalFlowSettingsErrorMessage, messages } from "../lib/messages";
 import { useAuthGuard } from "../lib/useAuthGuard";
 import { AppHeader } from "./AppHeader";
 import { SettingsNav } from "./SettingsNav";
+import { StateView } from "./ui/StateView";
 
 /** PUT /settings/approval-flow が受け付ける段数。API 側も 1|2 以外は 400 で弾く。 */
 type Steps = 1 | 2;
@@ -126,50 +127,50 @@ export function SettingsApprovalFlowView() {
   }
 
   if (guard.status === "loading" || loading) {
-    return <p className="monthly-loading">{messages.loading}</p>;
+    return <StateView kind="loading">{messages.loading}</StateView>;
   }
   if (guard.status === "error" || !guard.user) {
-    return <p className="monthly-error">{messages.errors.network}</p>;
+    return <StateView kind="error">{messages.errors.network}</StateView>;
   }
 
   /** 3つの select は見た目・振る舞いが同じで、ラベルと補足だけが違う。 */
   function renderStepsField(id: string, label: string, hint: string, value: Steps, onChange: (next: Steps) => void) {
     return (
-      <div className="correction-field">
+      <div className="field">
         <label htmlFor={id}>{label}</label>
         <select id={id} value={value} onChange={(e) => onChange(e.target.value === "2" ? 2 : 1)}>
           <option value={1}>{messages.settingsApprovalFlow.optionOneStep}</option>
           <option value={2}>{messages.settingsApprovalFlow.optionTwoSteps}</option>
         </select>
-        <p className="settings-notif__field-hint">{hint}</p>
+        <p className="field__hint">{hint}</p>
       </div>
     );
   }
 
   return (
-    <div className="settings-notif">
+    <div className="page-shell">
       <AppHeader displayName={guard.user.displayName} email={guard.user.email} tenantName={guard.tenant?.name ?? null} active="settings" />
-      <main className="settings-notif__main">
+      <main className="page">
         <SettingsNav active="approvalFlow" />
         <h1 className="settings-notif__title">{messages.settingsApprovalFlow.title}</h1>
         <p className="settings-notif__tagline">{messages.settingsApprovalFlow.tagline}</p>
-        <p className="settings-notif__field-hint">{messages.settingsApprovalFlow.defaultSingleHint}</p>
-        <p className="settings-notif__field-hint">{messages.settingsApprovalFlow.twoStepHint}</p>
-        <p className="settings-notif__field-hint">{messages.settingsApprovalFlow.sameApproverHint}</p>
-        <p className="settings-notif__field-hint">{messages.settingsApprovalFlow.frozenAtCreationHint}</p>
-        <p className="settings-notif__field-hint">{messages.settingsApprovalFlow.tenantApproverRequiredHint}</p>
+        <p className="field__hint">{messages.settingsApprovalFlow.defaultSingleHint}</p>
+        <p className="field__hint">{messages.settingsApprovalFlow.twoStepHint}</p>
+        <p className="field__hint">{messages.settingsApprovalFlow.sameApproverHint}</p>
+        <p className="field__hint">{messages.settingsApprovalFlow.frozenAtCreationHint}</p>
+        <p className="field__hint">{messages.settingsApprovalFlow.tenantApproverRequiredHint}</p>
 
         {forbidden ? (
-          <p className="settings-notif__forbidden" role="alert">
+          <p className="notice notice--danger" role="alert">
             {messages.settingsApprovalFlow.noPermission}
           </p>
         ) : null}
 
-        {loadError ? <p className="monthly-error">{loadError}</p> : null}
+        {loadError ? <StateView kind="error">{loadError}</StateView> : null}
 
         {!forbidden && form ? (
-          <form className="settings-notif__form" onSubmit={handleSave}>
-            <section className="settings-notif__section">
+          <form className="page-body page-body--form" onSubmit={handleSave}>
+            <section className="card">
               {renderStepsField(
                 "approval-flow-correction",
                 messages.settingsApprovalFlow.correctionLabel,
@@ -194,16 +195,16 @@ export function SettingsApprovalFlowView() {
             </section>
 
             {saveError ? (
-              <p className="correction-error" role="alert">
+              <p className="notice notice--danger" role="alert">
                 {saveError}
               </p>
             ) : null}
-            {saveSuccess ? <p className="settings-notif__success">{messages.settingsApprovalFlow.saveSuccess}</p> : null}
+            {saveSuccess ? <p className="notice notice--success">{messages.settingsApprovalFlow.saveSuccess}</p> : null}
 
-            <p className="settings-notif__save-note">{messages.settingsApprovalFlow.saveNote}</p>
+            <p className="field__hint">{messages.settingsApprovalFlow.saveNote}</p>
 
-            <div className="settings-notif__actions">
-              <button type="submit" className="k-modal__confirm k-modal__confirm--neutral" disabled={saving}>
+            <div className="btn-row">
+              <button type="submit" className="btn btn--primary" disabled={saving}>
                 {saving ? messages.settingsApprovalFlow.saving : messages.settingsApprovalFlow.save}
               </button>
             </div>

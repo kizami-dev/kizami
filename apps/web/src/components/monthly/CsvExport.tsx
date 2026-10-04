@@ -103,7 +103,7 @@ export function CsvExport({ monthParam, data }: CsvExportProps) {
           {messages.closing.csvCompareOriginalLabel}
         </label>
       ) : null}
-      <button type="button" className="k-modal__cancel" onClick={handleCsvDownload} disabled={csvDownloading}>
+      <button type="button" className="btn btn--secondary" onClick={handleCsvDownload} disabled={csvDownloading}>
         {csvDownloading ? messages.closing.csvDownloading : messages.closing.csvDownload}
       </button>
       {/*
@@ -117,7 +117,7 @@ export function CsvExport({ monthParam, data }: CsvExportProps) {
         </p>
       )}
       {csvError ? (
-        <p className="correction-error" role="alert">
+        <p className="notice notice--danger" role="alert">
           {csvError}
         </p>
       ) : null}

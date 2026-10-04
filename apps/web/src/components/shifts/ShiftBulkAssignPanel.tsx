@@ -63,14 +63,14 @@ export function ShiftBulkAssignPanel({ periodStart, periodEnd, patterns, pending
       </div>
 
       {error ? (
-        <p className="correction-error" role="alert">
+        <p className="notice notice--danger" role="alert">
           {error}
         </p>
       ) : null}
 
       <button
         type="button"
-        className="k-modal__confirm k-modal__confirm--neutral"
+        className="btn btn--primary"
         onClick={handleApply}
         disabled={pending || !hasSelection}
       >

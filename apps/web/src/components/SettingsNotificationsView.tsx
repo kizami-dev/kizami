@@ -15,6 +15,7 @@ import { useAuthGuard } from "../lib/useAuthGuard";
 import { AppHeader } from "./AppHeader";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { SettingsNav } from "./SettingsNav";
+import { StateView } from "./ui/StateView";
 
 interface FormState {
   webhookEnabled: boolean;
@@ -169,39 +170,39 @@ export function SettingsNotificationsView() {
   }
 
   if (guard.status === "loading" || loading) {
-    return <p className="monthly-loading">{messages.loading}</p>;
+    return <StateView kind="loading">{messages.loading}</StateView>;
   }
   if (guard.status === "error" || !guard.user) {
-    return <p className="monthly-error">{messages.errors.network}</p>;
+    return <StateView kind="error">{messages.errors.network}</StateView>;
   }
 
   return (
-    <div className="settings-notif">
+    <div className="page-shell">
       <AppHeader displayName={guard.user.displayName} email={guard.user.email} tenantName={guard.tenant?.name ?? null} active="settings" />
-      <main className="settings-notif__main">
+      <main className="page">
         <SettingsNav active="notifications" />
         <h1 className="settings-notif__title">{messages.settingsNotifications.title}</h1>
         <p className="settings-notif__tagline">{messages.settingsNotifications.tagline}</p>
 
-        <p className="settings-notif__distinction-banner">
+        <p className="notice notice--info">
           {messages.settingsNotifications.distinctionBanner}{" "}
           <Link to="/settings/notifications/me">{messages.settingsNotifications.linkToPersonalSettings}</Link>
         </p>
 
         {forbidden ? (
-          <p className="settings-notif__forbidden" role="alert">
+          <p className="notice notice--danger" role="alert">
             {messages.settingsNotifications.noPermission}
           </p>
         ) : null}
 
-        {loadError ? <p className="monthly-error">{loadError}</p> : null}
+        {loadError ? <StateView kind="error">{loadError}</StateView> : null}
 
         {!forbidden && form && settings ? (
           <>
-            <form className="settings-notif__form" onSubmit={handleSave}>
-              <section className="settings-notif__section">
-                <h2 className="settings-notif__section-title">{messages.settingsNotifications.webhookSectionTitle}</h2>
-                <label className="settings-notif__checkbox">
+            <form className="page-body page-body--form" onSubmit={handleSave}>
+              <section className="card">
+                <h2 className="card__title">{messages.settingsNotifications.webhookSectionTitle}</h2>
+                <label className="check">
                   <input
                     type="checkbox"
                     checked={form.webhookEnabled}
@@ -209,7 +210,7 @@ export function SettingsNotificationsView() {
                   />
                   {messages.settingsNotifications.webhookEnabledLabel}
                 </label>
-                <div className="correction-field">
+                <div className="field">
                   <label htmlFor="webhook-url">{messages.settingsNotifications.webhookUrlLabel}</label>
                   <input
                     id="webhook-url"
@@ -219,7 +220,7 @@ export function SettingsNotificationsView() {
                     placeholder={messages.settingsNotifications.webhookUrlPlaceholder}
                     onChange={(e) => updateForm({ webhookUrl: e.target.value })}
                   />
-                  <p className="settings-notif__field-hint">
+                  <p className="field__hint">
                     {settings.webhookUrl.configured
                       ? `${messages.settingsNotifications.webhookUrlConfigured}(${settings.webhookUrl.preview})`
                       : messages.settingsNotifications.webhookUrlNotConfigured}
@@ -229,9 +230,9 @@ export function SettingsNotificationsView() {
                 </div>
               </section>
 
-              <section className="settings-notif__section">
-                <h2 className="settings-notif__section-title">{messages.settingsNotifications.smtpSectionTitle}</h2>
-                <label className="settings-notif__checkbox">
+              <section className="card">
+                <h2 className="card__title">{messages.settingsNotifications.smtpSectionTitle}</h2>
+                <label className="check">
                   <input
                     type="checkbox"
                     checked={form.smtpEnabled}
@@ -240,8 +241,8 @@ export function SettingsNotificationsView() {
                   {messages.settingsNotifications.smtpEnabledLabel}
                 </label>
 
-                <div className="correction-field-row">
-                  <div className="correction-field">
+                <div className="field-row">
+                  <div className="field">
                     <label htmlFor="smtp-host">{messages.settingsNotifications.smtpHostLabel}</label>
                     <input
                       id="smtp-host"
@@ -250,7 +251,7 @@ export function SettingsNotificationsView() {
                       onChange={(e) => updateForm({ smtpHost: e.target.value })}
                     />
                   </div>
-                  <div className="correction-field">
+                  <div className="field">
                     <label htmlFor="smtp-port">{messages.settingsNotifications.smtpPortLabel}</label>
                     <input
                       id="smtp-port"
@@ -264,8 +265,8 @@ export function SettingsNotificationsView() {
                   </div>
                 </div>
 
-                <div className="correction-field-row">
-                  <div className="correction-field">
+                <div className="field-row">
+                  <div className="field">
                     <label htmlFor="smtp-user">{messages.settingsNotifications.smtpUserLabel}</label>
                     <input
                       id="smtp-user"
@@ -274,7 +275,7 @@ export function SettingsNotificationsView() {
                       onChange={(e) => updateForm({ smtpUser: e.target.value })}
                     />
                   </div>
-                  <div className="correction-field">
+                  <div className="field">
                     <label htmlFor="smtp-from">{messages.settingsNotifications.smtpFromLabel}</label>
                     <input
                       id="smtp-from"
@@ -286,7 +287,7 @@ export function SettingsNotificationsView() {
                   </div>
                 </div>
 
-                <div className="correction-field">
+                <div className="field">
                   <label htmlFor="smtp-password">{messages.settingsNotifications.smtpPasswordLabel}</label>
                   <input
                     id="smtp-password"
@@ -295,7 +296,7 @@ export function SettingsNotificationsView() {
                     value={form.smtpPassword}
                     onChange={(e) => updateForm({ smtpPassword: e.target.value })}
                   />
-                  <p className="settings-notif__field-hint">
+                  <p className="field__hint">
                     {settings.smtpPasswordSet
                       ? messages.settingsNotifications.smtpPasswordConfigured
                       : messages.settingsNotifications.smtpPasswordNotConfigured}
@@ -306,21 +307,21 @@ export function SettingsNotificationsView() {
               </section>
 
               {saveError ? (
-                <p className="correction-error" role="alert">
+                <p className="notice notice--danger" role="alert">
                   {saveError}
                 </p>
               ) : null}
-              {saveSuccess ? <p className="settings-notif__success">{messages.settingsNotifications.saveSuccess}</p> : null}
+              {saveSuccess ? <p className="notice notice--success">{messages.settingsNotifications.saveSuccess}</p> : null}
 
-              <p className="settings-notif__save-note">{messages.settingsNotifications.saveNote}</p>
+              <p className="field__hint">{messages.settingsNotifications.saveNote}</p>
 
-              <div className="settings-notif__actions">
-                <button type="submit" className="k-modal__confirm k-modal__confirm--neutral" disabled={saving}>
+              <div className="btn-row">
+                <button type="submit" className="btn btn--primary" disabled={saving}>
                   {saving ? messages.settingsNotifications.saving : messages.settingsNotifications.save}
                 </button>
                 <button
                   type="button"
-                  className="k-modal__cancel"
+                  className="btn btn--secondary"
                   onClick={() => {
                     setTestError(null);
                     setTestResults(null);
@@ -334,7 +335,7 @@ export function SettingsNotificationsView() {
 
             {testResults ? (
               <section className="settings-notif__test-results">
-                <h2 className="settings-notif__section-title">{messages.settingsNotifications.testSendResultTitle}</h2>
+                <h2 className="card__title">{messages.settingsNotifications.testSendResultTitle}</h2>
                 <ul className="test-result-list">
                   {testResults.map((r) => (
                     <li

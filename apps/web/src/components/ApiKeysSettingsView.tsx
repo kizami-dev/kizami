@@ -9,6 +9,7 @@ import { useAuthGuard } from "../lib/useAuthGuard";
 import { AppHeader } from "./AppHeader";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { SettingsNav } from "./SettingsNav";
+import { StateView } from "./ui/StateView";
 
 // SCOPE_OPTIONS/STATUS_LABEL をモジュールレベルの配列/オブジェクトとして持つと、import 時の言語
 // (通常は既定の日本語)で messages のプロパティが凍結され、言語切替に追従しない(messages は
@@ -168,56 +169,56 @@ export function ApiKeysSettingsView() {
   }
 
   if (guard.status === "loading" || loading) {
-    return <p className="monthly-loading">{messages.loading}</p>;
+    return <StateView kind="loading">{messages.loading}</StateView>;
   }
   if (guard.status === "error" || !guard.user) {
-    return <p className="monthly-error">{messages.errors.network}</p>;
+    return <StateView kind="error">{messages.errors.network}</StateView>;
   }
 
   const nowMin = Math.floor(Date.now() / 60_000);
 
   return (
-    <div className="settings-notif">
+    <div className="page-shell">
       <AppHeader displayName={guard.user.displayName} email={guard.user.email} tenantName={guard.tenant?.name ?? null} active="settings" />
-      <main className="settings-notif__main api-keys-settings__main">
+      <main className="page api-keys-settings__main">
         <SettingsNav active="apiKeys" />
         <h1 className="settings-notif__title">{messages.settingsApiKeys.title}</h1>
         <p className="settings-notif__tagline">{messages.settingsApiKeys.tagline}</p>
 
-        {loadError ? <p className="monthly-error">{loadError}</p> : null}
+        {loadError ? <StateView kind="error">{loadError}</StateView> : null}
 
         {justIssued ? (
           <section className="api-keys__reveal" aria-live="polite">
-            <h2 className="settings-notif__section-title">{messages.settingsApiKeys.createdTitle}</h2>
+            <h2 className="card__title">{messages.settingsApiKeys.createdTitle}</h2>
             <p className="api-keys__reveal-warning">{messages.settingsApiKeys.createdWarning}</p>
-            <div className="correction-field">
+            <div className="field">
               <label htmlFor="api-key-token">{messages.settingsApiKeys.createdTokenLabel}</label>
               <div className="api-keys__token-row">
                 <code id="api-key-token" className="api-keys__token">
                   {justIssued.token}
                 </code>
-                <button type="button" className="k-modal__confirm k-modal__confirm--neutral" onClick={handleCopyToken}>
+                <button type="button" className="btn btn--primary" onClick={handleCopyToken}>
                   {copyState === "copied" ? messages.settingsApiKeys.copied : messages.settingsApiKeys.copy}
                 </button>
               </div>
               {copyState === "failed" ? (
-                <p className="correction-error" role="alert">
+                <p className="notice notice--danger" role="alert">
                   {messages.settingsApiKeys.copyFailed}
                 </p>
               ) : null}
             </div>
-            <div className="settings-notif__actions">
-              <button type="button" className="k-modal__confirm k-modal__confirm--neutral" onClick={() => setJustIssued(null)}>
+            <div className="btn-row">
+              <button type="button" className="btn btn--primary" onClick={() => setJustIssued(null)}>
                 {messages.settingsApiKeys.createdDone}
               </button>
             </div>
           </section>
         ) : null}
 
-        <section className="settings-notif__section">
-          <h2 className="settings-notif__section-title">{messages.settingsApiKeys.createTitle}</h2>
-          <form className="settings-notif__form" onSubmit={handleIssue}>
-            <div className="correction-field">
+        <section className="card">
+          <h2 className="card__title">{messages.settingsApiKeys.createTitle}</h2>
+          <form className="page-body page-body--form" onSubmit={handleIssue}>
+            <div className="field">
               <label htmlFor="api-key-name">{messages.settingsApiKeys.nameLabel}</label>
               <input
                 id="api-key-name"
@@ -229,7 +230,7 @@ export function ApiKeysSettingsView() {
               />
             </div>
 
-            <div className="correction-field">
+            <div className="field">
               <span>{messages.settingsApiKeys.scopesLabel}</span>
               <ul className="preset-checkbox-list">
                 {scopeOptions().map((opt) => (
@@ -243,30 +244,30 @@ export function ApiKeysSettingsView() {
               </ul>
             </div>
 
-            <div className="correction-field">
+            <div className="field">
               <label htmlFor="api-key-expires">{messages.settingsApiKeys.expiresLabel}</label>
               <input id="api-key-expires" type="date" value={expiresDraft} onChange={(e) => setExpiresDraft(e.target.value)} />
-              <p className="settings-notif__field-hint">{messages.settingsApiKeys.expiresHint}</p>
+              <p className="field__hint">{messages.settingsApiKeys.expiresHint}</p>
             </div>
 
             {issueError ? (
-              <p className="correction-error" role="alert">
+              <p className="notice notice--danger" role="alert">
                 {issueError}
               </p>
             ) : null}
 
-            <div className="settings-notif__actions">
-              <button type="submit" className="k-modal__confirm k-modal__confirm--neutral" disabled={issuing}>
+            <div className="btn-row">
+              <button type="submit" className="btn btn--primary" disabled={issuing}>
                 {issuing ? messages.settingsApiKeys.issuing : messages.settingsApiKeys.issue}
               </button>
             </div>
           </form>
         </section>
 
-        <section className="settings-notif__section">
-          <h2 className="settings-notif__section-title">{messages.settingsApiKeys.listTitle}</h2>
+        <section className="card">
+          <h2 className="card__title">{messages.settingsApiKeys.listTitle}</h2>
           {!keys || keys.length === 0 ? (
-            <p className="org-settings__empty">{messages.settingsApiKeys.empty}</p>
+            <StateView kind="empty">{messages.settingsApiKeys.empty}</StateView>
           ) : (
             <div className="org-settings__table-wrap">
               <table className="org-table">
@@ -290,7 +291,7 @@ export function ApiKeysSettingsView() {
                         <td>
                           <div className="api-keys__scopes">
                             {key.scopes.map((s) => (
-                              <span key={s} className="api-keys__scope-chip">
+                              <span key={s} className="badge badge--scope">
                                 {s}
                               </span>
                             ))}
@@ -329,9 +330,9 @@ export function ApiKeysSettingsView() {
           )}
         </section>
 
-        <section className="settings-notif__section">
-          <h2 className="settings-notif__section-title">{messages.settingsApiKeys.usageExampleTitle}</h2>
-          <p className="settings-notif__field-hint">{messages.settingsApiKeys.usageExampleDesc}</p>
+        <section className="card">
+          <h2 className="card__title">{messages.settingsApiKeys.usageExampleTitle}</h2>
+          <p className="field__hint">{messages.settingsApiKeys.usageExampleDesc}</p>
           <div className="api-keys__usage-example">
             <pre>{`${messages.settingsApiKeys.usageExampleCurlComment}
 curl -X POST https://<your-kizami-host>/api/punches \\

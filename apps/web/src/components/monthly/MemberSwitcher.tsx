@@ -87,7 +87,7 @@ export function MemberSwitcher({ selfId, targetUserId, onChange }: MemberSwitche
   const groups = buildGroups(members, departments, selfId);
 
   return (
-    <div className="correction-field monthly-member-switcher">
+    <div className="field monthly-member-switcher">
       <label htmlFor="monthly-member-switcher-select">{messages.monthly.memberSwitcherLabel}</label>
       <select id="monthly-member-switcher-select" value={targetUserId} onChange={(e) => onChange(e.target.value)}>
         {self ? <option value={self.id}>{messages.monthly.memberSwitcherSelfOption(self.name)}</option> : null}

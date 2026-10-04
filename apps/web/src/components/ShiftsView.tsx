@@ -32,6 +32,7 @@ import { ConfirmDialog } from "./ConfirmDialog";
 import { ShiftBulkAssignPanel } from "./shifts/ShiftBulkAssignPanel";
 import { ShiftCellDialog } from "./shifts/ShiftCellDialog";
 import { ShiftWeekGrid } from "./shifts/ShiftWeekGrid";
+import { StateView } from "./ui/StateView";
 
 /**
  * シフト表の作成・確定(/shifts、shift.manage 保持者、v0.7 フェーズ3、2026-08-24 追加)。
@@ -286,10 +287,10 @@ export function ShiftsView() {
   }
 
   if (guard.status === "loading" || permsLoading) {
-    return <p className="monthly-loading">{messages.loading}</p>;
+    return <StateView kind="loading">{messages.loading}</StateView>;
   }
   if (guard.status === "error" || !guard.user) {
-    return <p className="monthly-error">{messages.errors.network}</p>;
+    return <StateView kind="error">{messages.errors.network}</StateView>;
   }
 
   if (!canManage) {
@@ -298,7 +299,7 @@ export function ShiftsView() {
         <AppHeader displayName={guard.user.displayName} email={guard.user.email} tenantName={guard.tenant?.name ?? null} active="shifts" />
         <main className="shifts-view__main">
           <h1 className="shifts-view__title">{messages.shifts.title}</h1>
-          <p className="org-settings__forbidden" role="alert">
+          <p className="notice notice--danger" role="alert">
             {messages.shifts.noPermission}
           </p>
           <Link to="/shifts/me" className="dashboard-card__link">
@@ -325,7 +326,7 @@ export function ShiftsView() {
         <h1 className="shifts-view__title">{messages.shifts.title}</h1>
         <p className="shifts-view__tagline">{messages.shifts.tagline}</p>
 
-        <div className="correction-field shifts-view__member-picker">
+        <div className="field shifts-view__member-picker">
           <label htmlFor="shifts-member-select">{messages.shifts.memberLabel}</label>
           <select id="shifts-member-select" value={selectedUserId ?? ""} onChange={(e) => setSelectedUserId(e.target.value)}>
             {(members ?? []).map((m) => (
@@ -337,35 +338,35 @@ export function ShiftsView() {
         </div>
 
         <div className="shifts-view__period-nav">
-          <button type="button" className="k-modal__cancel" onClick={() => setNavOffsetMonths((o) => o - 1)}>
+          <button type="button" className="btn btn--secondary" onClick={() => setNavOffsetMonths((o) => o - 1)}>
             {messages.shifts.prevPeriod}
           </button>
           <span className="shifts-view__period-range tabular-nums">{messages.shifts.periodRangeLabel(periodStart, periodEnd)}</span>
-          <button type="button" className="k-modal__cancel" onClick={() => setNavOffsetMonths((o) => o + 1)}>
+          <button type="button" className="btn btn--secondary" onClick={() => setNavOffsetMonths((o) => o + 1)}>
             {messages.shifts.nextPeriod}
           </button>
         </div>
 
-        {plansError ? <p className="monthly-error">{plansError}</p> : null}
+        {plansError ? <StateView kind="error">{plansError}</StateView> : null}
 
         {plansLoading ? (
-          <p className="monthly-loading">{messages.loading}</p>
+          <StateView kind="loading">{messages.loading}</StateView>
         ) : !currentPlan ? (
           <div className="shifts-view__no-plan">
             <p>{messages.shifts.noPlanYet}</p>
             {createPlanError ? (
-              <p className="correction-error" role="alert">
+              <p className="notice notice--danger" role="alert">
                 {createPlanError}
               </p>
             ) : null}
-            <button type="button" className="org-settings__primary-btn" onClick={handleCreatePlan} disabled={creatingPlan}>
+            <button type="button" className="btn btn--primary" onClick={handleCreatePlan} disabled={creatingPlan}>
               {creatingPlan ? messages.shifts.creatingPlan : messages.shifts.createPlan}
             </button>
           </div>
         ) : (
           <>
             <div className="shifts-view__status-row">
-              <span className={`chip${currentPlan.publishedAt !== null ? " chip--system" : ""}`}>
+              <span className={`badge ${currentPlan.publishedAt !== null ? "badge--key" : "badge--neutral"}`}>
                 {currentPlan.publishedAt !== null ? messages.shifts.publishedBadge : messages.shifts.unpublishedBadge}
               </span>
               <button type="button" className="org-table__link-btn" onClick={handleHistoryToggle}>
@@ -376,7 +377,7 @@ export function ShiftsView() {
             {historyOpen ? (
               <div className="org-settings__table-wrap shifts-view__history">
                 {historyLoading ? (
-                  <p className="monthly-loading">{messages.loading}</p>
+                  <StateView kind="loading">{messages.loading}</StateView>
                 ) : !history || history.history.length === 0 ? (
                   <p className="org-settings__empty">{messages.shifts.historyEmpty}</p>
                 ) : (
@@ -425,7 +426,7 @@ export function ShiftsView() {
               error={bulkError}
               onApply={handleBulkApply}
             />
-            {bulkSuccess ? <p className="attendance-settings__success">{messages.shifts.bulkAssignSuccess}</p> : null}
+            {bulkSuccess ? <p className="notice notice--success">{messages.shifts.bulkAssignSuccess}</p> : null}
 
             <section className="shifts-aggregation">
               <h2 className="shifts-panel__title">{messages.shifts.aggregationTitle}</h2>
@@ -456,7 +457,7 @@ export function ShiftsView() {
             <div className="shifts-view__publish-row">
               <button
                 type="button"
-                className="org-settings__primary-btn"
+                className="btn btn--primary"
                 onClick={() => {
                   setPublishError(null);
                   setPublishConfirmOpen(true);

@@ -1,13 +1,14 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { formatDurationHm } from "../lib/time";
 import { messages } from "../lib/messages";
+import { Badge } from "../components/ui/Badge";
 
 const TOTAL_CATEGORIES = ["statutory", "overtime", "overtime60h", "lateNight", "statutoryHoliday"] as const;
 
 /**
- * チップ・バッジのカタログ。実クラス(monthly.css の .totals-chip/.closing-badge、
- * org-settings.css の .invite-status-badge、monthly.css の .monthly-table__leave-badge)を
- * 実際のマークアップと同じ形で使う。
+ * チップ・バッジのカタログ。実クラス(monthly.css の .totals-chip、components.css の .badge、
+ * monthly.css の .monthly-table__leave-badge)を実際のマークアップと同じ形で使う。
+ * バッジは太さ(1px の枠・700)を全種類で揃え、色だけで種類を分ける。
  */
 function ChipsBadgesCatalog() {
   return (
@@ -33,20 +34,18 @@ function ChipsBadgesCatalog() {
       </div>
 
       <div className="story-group">
-        <p className="story-group__title">締めバッジ(.closing-badge)</p>
-        <div className="closing-status">
-          <span className="closing-badge closing-badge--closed">{messages.closing.closedBadge}</span>
-          <span className="closing-badge closing-badge--amended">{messages.closing.amendedBadge}</span>
-        </div>
-      </div>
-
-      <div className="story-group">
-        <p className="story-group__title">招待状態バッジ(MembersView の .invite-status-badge)</p>
-        <div className="story-row">
-          <span className="invite-status-badge invite-status-badge--invited">{messages.members.inviteStatusBadge.invited}</span>
-          <span className="invite-status-badge invite-status-badge--invite_expired">
-            {messages.members.inviteStatusBadge.invite_expired}
-          </span>
+        <p className="story-group__title">共通バッジ(components.css の .badge)</p>
+        <p className="story-group__note">
+          neutral=属性・区分、key=状態(標準・申請中)、cyan=確定・承認・有効、magenta=却下・期限切れ・無効化、
+          yellow=待ち・注意、scope=機械的な識別子。
+        </p>
+        <div className="story-row story-row--center">
+          <Badge tone="neutral">{messages.monthly.workSystemValue.flex}</Badge>
+          <Badge tone="key">{messages.corrections.statusLabel.pending}</Badge>
+          <Badge tone="cyan">{messages.closing.closedBadge}</Badge>
+          <Badge tone="magenta">{messages.members.inviteStatusBadge.invite_expired}</Badge>
+          <Badge tone="yellow">{messages.closing.amendedBadge}</Badge>
+          <Badge tone="scope">attendance:read</Badge>
         </div>
       </div>
 

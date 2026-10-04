@@ -1,7 +1,7 @@
 /**
  * 個人の通知設定画面(/settings/notifications/me)のスタイル。
  *
- * 判断点: settings.css の .settings-notif__section / __field-hint / __actions / __success /
+ * 判断点: components.css の .card / .field__hint / .btn-row / .notice /
  * __test-results 等はそのまま再利用する(構造が同一のため二重定義しない)。この
  * ファイルはこの画面固有のレイアウト(バナー・カテゴリ表)だけを持つ。
  */
@@ -34,26 +34,6 @@
 .settings-personal-notif__tagline {
   font-size: 0.85rem;
   color: var(--k-ink-soft);
-}
-
-/* テナント設定(/settings/notifications)との違いを明示するバナー。settings.css の
- * .settings-notif__distinction-banner と対になる見た目にする。 */
-.settings-personal-notif__banner {
-  font-size: 0.82rem;
-  color: var(--k-ink-soft);
-  border: var(--border-hair);
-  border-radius: var(--radius-s);
-  padding: var(--space-3);
-  background: color-mix(in srgb, var(--k-cyan) 5%, transparent);
-}
-
-.settings-personal-notif__banner a {
-  color: var(--k-key);
-  /* 2026-08-23 SP監査: 文中リンクのタップ領域が文字の実寸(高さ約19px)しかなかった。
-     インライン要素への padding-block は行送りに影響しない(通常フロー)ため、
-     見た目・行間を変えずにタップ領域だけ広げられる。 */
-  padding: 6px 2px;
-  margin: -6px -2px;
 }
 
 .settings-personal-notif__form {

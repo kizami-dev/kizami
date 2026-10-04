@@ -9,6 +9,7 @@ import { categorizeNotificationType, type NotificationCategory } from "../lib/no
 import { useAuthGuard } from "../lib/useAuthGuard";
 import { AppHeader } from "./AppHeader";
 import { NotificationListItem } from "./NotificationListItem";
+import { StateView } from "./ui/StateView";
 
 /** GET /notifications が実際に返す最大件数(apps/api/src/routes/notifications.ts の MAX_LIST_LIMIT)。
  * APIはページングパラメータを持たないため、この件数に達したら「古い通知は表示されません」と
@@ -151,10 +152,10 @@ export function NotificationsListView() {
   }
 
   if (guard.status === "loading") {
-    return <p className="monthly-loading">{messages.loading}</p>;
+    return <StateView kind="loading">{messages.loading}</StateView>;
   }
   if (guard.status === "error" || !guard.user) {
-    return <p className="monthly-error">{messages.errors.network}</p>;
+    return <StateView kind="error">{messages.errors.network}</StateView>;
   }
 
   const isTruncated = notifications !== null && notifications.length >= MAX_LIST_LIMIT;
@@ -201,22 +202,22 @@ export function NotificationsListView() {
           </div>
         </div>
 
-        {loading ? <p className="monthly-loading">{messages.loading}</p> : null}
+        {loading ? <StateView kind="loading">{messages.loading}</StateView> : null}
         {loadError ? (
-          <p className="monthly-error" role="alert">
+          <p className="notice notice--danger" role="alert">
             {loadError}
           </p>
         ) : null}
         {markReadError ? (
-          <p className="correction-error" role="alert">
+          <p className="notice notice--danger" role="alert">
             {markReadError}
           </p>
         ) : null}
 
         {!loading && notifications && displayed.length === 0 ? (
-          <p className="notif-list-page__empty">
+          <StateView kind="empty">
             {notifications.length === 0 ? messages.notificationsPage.empty : messages.notificationsPage.emptyFiltered}
-          </p>
+          </StateView>
         ) : null}
 
         {displayed.length > 0 ? (

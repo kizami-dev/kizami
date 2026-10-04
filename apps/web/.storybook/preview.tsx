@@ -4,6 +4,7 @@ import { LOCALE_NATIVE_NAMES, LOCALE_ORDER, type Locale, setLocale } from "../sr
 // カタログはページ CSS に依存したまま「生きたスタイルリファレンス」として動かす。
 import "../src/styles/tokens.css";
 import "../src/styles/base.css";
+import "../src/styles/components.css";
 import "../src/styles/header.css";
 import "../src/styles/login.css";
 import "../src/styles/dashboard.css";
@@ -23,7 +24,11 @@ import "../src/styles/privacy-settings.css";
 import "../src/styles/attendance-settings.css";
 import "../src/styles/allowance-settings.css";
 import "../src/styles/api-keys-settings.css";
+import "../src/styles/security-settings.css";
+import "../src/styles/display-settings.css";
+import "../src/styles/audit-logs.css";
 import "../src/styles/shifts.css";
+import "../src/styles/tour.css";
 // カタログ自体のレイアウト補助(スウォッチの並び等)。トークンのみ使い、独自の色・書体は持ち込まない。
 import "../src/stories/catalog.css";
 

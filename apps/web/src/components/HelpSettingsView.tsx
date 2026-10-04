@@ -10,6 +10,7 @@ import { useAuthGuard } from "../lib/useAuthGuard";
 import { AppHeader } from "./AppHeader";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { SettingsNav } from "./SettingsNav";
+import { StateView } from "./ui/StateView";
 
 // モジュールレベルで messages のプロパティを取り出して定数化すると、import 時の言語
 // (通常は既定の日本語)で凍結され、言語切替に追従しない(messages は Proxy 経由で現在ロケールを
@@ -191,10 +192,10 @@ export function HelpSettingsView() {
   }
 
   if (guard.status === "loading" || loading) {
-    return <p className="monthly-loading">{messages.loading}</p>;
+    return <StateView kind="loading">{messages.loading}</StateView>;
   }
   if (guard.status === "error" || !guard.user) {
-    return <p className="monthly-error">{messages.errors.network}</p>;
+    return <StateView kind="error">{messages.errors.network}</StateView>;
   }
 
   const selectedEntry = selectedKey ? helpEntry(selectedKey) : null;
@@ -220,7 +221,7 @@ export function HelpSettingsView() {
                         onClick={() => selectKey(entry.key)}
                       >
                         <span>{firstHeading(entry.body)}</span>
-                        {hasOverride ? <span className="help-settings__badge-mini">{messages.settingsHelp.hasOverrideBadge}</span> : null}
+                        {hasOverride ? <span className="badge badge--neutral badge--dashed">{messages.settingsHelp.hasOverrideBadge}</span> : null}
                       </button>
                     </li>
                   );
@@ -234,24 +235,24 @@ export function HelpSettingsView() {
   }
 
   return (
-    <div className="settings-notif">
+    <div className="page-shell">
       <AppHeader displayName={guard.user.displayName} email={guard.user.email} tenantName={guard.tenant?.name ?? null} active="settings" />
-      <main className="settings-notif__main help-settings__main">
+      <main className="page help-settings__main">
         <SettingsNav active="help" />
         <h1 className="settings-notif__title">{messages.settingsHelp.title}</h1>
         <p className="settings-notif__tagline">{messages.settingsHelp.tagline}</p>
 
         {forbidden ? (
-          <p className="settings-notif__forbidden" role="alert">
+          <p className="notice notice--danger" role="alert">
             {messages.settingsHelp.noPermission}
           </p>
         ) : null}
-        {loadError ? <p className="monthly-error">{loadError}</p> : null}
+        {loadError ? <StateView kind="error">{loadError}</StateView> : null}
 
         {!forbidden && data ? (
           <>
-            <section className="settings-notif__section help-settings__guidelines">
-              <h2 className="settings-notif__section-title">{messages.settingsHelp.guidelinesTitle}</h2>
+            <section className="card help-settings__guidelines">
+              <h2 className="card__title">{messages.settingsHelp.guidelinesTitle}</h2>
               <ol className="help-settings__guideline-list">
                 <li>{messages.settingsHelp.guideline1}</li>
                 <li>{messages.settingsHelp.guideline2}</li>
@@ -259,11 +260,11 @@ export function HelpSettingsView() {
               </ol>
             </section>
 
-            <section className="settings-notif__section">
-              <h2 className="settings-notif__section-title">{messages.settingsHelp.workRulesSectionTitle}</h2>
-              <p className="settings-notif__field-hint">{messages.settingsHelp.workRulesDesc}</p>
-              <form className="settings-notif__form" onSubmit={handleWorkRulesSave}>
-                <div className="correction-field">
+            <section className="card">
+              <h2 className="card__title">{messages.settingsHelp.workRulesSectionTitle}</h2>
+              <p className="field__hint">{messages.settingsHelp.workRulesDesc}</p>
+              <form className="page-body page-body--form" onSubmit={handleWorkRulesSave}>
+                <div className="field">
                   <label htmlFor="work-rules-url">{messages.settingsHelp.workRulesUrlLabel}</label>
                   <input
                     id="work-rules-url"
@@ -274,13 +275,13 @@ export function HelpSettingsView() {
                   />
                 </div>
                 {workRulesError ? (
-                  <p className="correction-error" role="alert">
+                  <p className="notice notice--danger" role="alert">
                     {workRulesError}
                   </p>
                 ) : null}
-                {workRulesSuccess ? <p className="settings-notif__success">{messages.settingsHelp.workRulesSaveSuccess}</p> : null}
-                <div className="settings-notif__actions">
-                  <button type="submit" className="k-modal__confirm k-modal__confirm--neutral" disabled={workRulesSaving}>
+                {workRulesSuccess ? <p className="notice notice--success">{messages.settingsHelp.workRulesSaveSuccess}</p> : null}
+                <div className="btn-row">
+                  <button type="submit" className="btn btn--primary" disabled={workRulesSaving}>
                     {workRulesSaving ? messages.settingsHelp.workRulesSaving : messages.settingsHelp.workRulesSave}
                   </button>
                 </div>
@@ -289,18 +290,18 @@ export function HelpSettingsView() {
 
             <div className="help-settings__grid">
               <div className="help-settings__list-panel">
-                <h2 className="settings-notif__section-title">{messages.settingsHelp.listTitle}</h2>
+                <h2 className="card__title">{messages.settingsHelp.listTitle}</h2>
                 {renderList(messages.settingsHelp.listEmployeeGroup, grouped.employee)}
                 {renderList(messages.settingsHelp.listAdminGroup, grouped.admin)}
               </div>
 
               <div className="help-settings__editor-panel">
                 {!selectedEntry || !selectedKey ? (
-                  <p className="settings-notif__field-hint">{messages.settingsHelp.selectPrompt}</p>
+                  <p className="field__hint">{messages.settingsHelp.selectPrompt}</p>
                 ) : (
                   <>
                     <section className="help-settings__reference">
-                      <h2 className="settings-notif__section-title">{messages.settingsHelp.referenceTitle}</h2>
+                      <h2 className="card__title">{messages.settingsHelp.referenceTitle}</h2>
                       <span className={`help-tip__badge help-tip__badge--${selectedEntry.origin}`}>
                         {selectedEntry.origin === "law" && selectedEntry.basis
                           ? `${originLabel("law")} · ${selectedEntry.basis}`
@@ -310,14 +311,14 @@ export function HelpSettingsView() {
                       {translationNotice ? <p className="help-tip__notice">{translationNotice}</p> : null}
                     </section>
 
-                    <form className="settings-notif__form" onSubmit={handleSave}>
-                      <section className="settings-notif__section">
-                        <h2 className="settings-notif__section-title">
+                    <form className="page-body page-body--form" onSubmit={handleSave}>
+                      <section className="card">
+                        <h2 className="card__title">
                           {messages.settingsHelp.editorTitle}
                           <span className="help-tip__badge help-tip__badge--company">{messages.settingsNav.help}</span>
                         </h2>
-                        <p className="settings-notif__field-hint">{messages.settingsHelp.editorPlaceholderNote}</p>
-                        <div className="correction-field">
+                        <p className="field__hint">{messages.settingsHelp.editorPlaceholderNote}</p>
+                        <div className="field">
                           <label htmlFor="help-body-md">{messages.settingsHelp.bodyLabel}</label>
                           <textarea
                             id="help-body-md"
@@ -328,23 +329,23 @@ export function HelpSettingsView() {
                             onChange={(e) => setBodyDraft(e.target.value)}
                           />
                         </div>
-                        {bodyDraft.trim() === "" ? <p className="settings-notif__field-hint">{messages.settingsHelp.empty}</p> : null}
+                        {bodyDraft.trim() === "" ? <p className="field__hint">{messages.settingsHelp.empty}</p> : null}
 
                         {saveError ? (
-                          <p className="correction-error" role="alert">
+                          <p className="notice notice--danger" role="alert">
                             {saveError}
                           </p>
                         ) : null}
-                        {saveSuccess ? <p className="settings-notif__success">{messages.settingsHelp.saveSuccess}</p> : null}
+                        {saveSuccess ? <p className="notice notice--success">{messages.settingsHelp.saveSuccess}</p> : null}
 
-                        <div className="settings-notif__actions">
-                          <button type="submit" className="k-modal__confirm k-modal__confirm--neutral" disabled={saving}>
+                        <div className="btn-row">
+                          <button type="submit" className="btn btn--primary" disabled={saving}>
                             {saving ? messages.settingsHelp.saving : messages.settingsHelp.save}
                           </button>
                           {data.overrides[selectedKey] ? (
                             <button
                               type="button"
-                              className="k-modal__confirm k-modal__confirm--caution"
+                              className="btn btn--danger"
                               disabled={saving}
                               onClick={() => {
                                 setDeleteError(null);

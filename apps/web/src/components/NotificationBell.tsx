@@ -183,12 +183,12 @@ export function NotificationBell() {
 
           {listLoading ? <p className="notif-panel__hint">{messages.loading}</p> : null}
           {listError ? (
-            <p className="correction-error" role="alert">
+            <p className="notice notice--danger" role="alert">
               {listError}
             </p>
           ) : null}
           {markReadError ? (
-            <p className="correction-error" role="alert">
+            <p className="notice notice--danger" role="alert">
               {markReadError}
             </p>
           ) : null}

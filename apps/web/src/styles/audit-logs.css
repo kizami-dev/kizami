@@ -1,17 +1,9 @@
 /**
  * 監査ログ閲覧(/settings/audit-logs、Tier 1 新設)。
- * ページ外枠・フォーム部品は settings-notif__*(settings.css)・correction-field(corrections.css)を
+ * ページ外枠・フォーム部品は components.css の .page / .card / .field / .noticeを
  * 流用し、ここでは監査ログ特有の見た目(不可変性の注記・フィルタ行・詳細JSONの折りたたみ)のみ持つ。
  * 一覧テーブル自体は org-table(org-settings.css)を流用する。
  */
-
-.audit-logs__immutable-note {
-  font-size: 0.82rem;
-  color: var(--k-ink-soft);
-  border: var(--border-hair);
-  border-radius: var(--radius-s);
-  padding: var(--space-3);
-}
 
 .audit-logs__filters {
   display: flex;

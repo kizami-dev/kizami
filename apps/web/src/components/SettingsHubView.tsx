@@ -6,6 +6,7 @@ import { restartTour } from "./Tour";
 import { useSettingsAccess } from "../lib/useSettingsAccess";
 import { useAuthGuard } from "../lib/useAuthGuard";
 import { AppHeader } from "./AppHeader";
+import { StateView } from "./ui/StateView";
 
 /**
  * /settings のハブ画面。アクセスできる設定項目だけをカードで表示する
@@ -190,10 +191,10 @@ export function SettingsHubView() {
   ].filter((c) => c.enabled);
 
   if (guard.status === "loading" || access.loading) {
-    return <p className="monthly-loading">{messages.loading}</p>;
+    return <StateView kind="loading">{messages.loading}</StateView>;
   }
   if (guard.status === "error" || !guard.user) {
-    return <p className="monthly-error">{messages.errors.network}</p>;
+    return <StateView kind="error">{messages.errors.network}</StateView>;
   }
 
   return (
@@ -204,7 +205,7 @@ export function SettingsHubView() {
         <p className="settings-hub__tagline">{messages.settingsHub.tagline}</p>
 
         {personalCards.length === 0 && cards.length === 0 ? (
-          <p className="settings-hub__empty">{messages.settingsHub.empty}</p>
+          <StateView kind="empty">{messages.settingsHub.empty}</StateView>
         ) : (
           <>
             {personalCards.length > 0 ? (

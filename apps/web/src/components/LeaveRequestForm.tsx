@@ -114,12 +114,12 @@ export function LeaveRequestForm({ standardDayMinutes, settings, hourlyUsedMinut
 
   return (
     <form className="leave-request-form" onSubmit={handleSubmit}>
-      <div className="correction-field">
+      <div className="field">
         <label htmlFor="leave-date">{messages.leave.dateLabel}</label>
         <input id="leave-date" type="date" value={leaveDate} onChange={(e) => setLeaveDate(e.target.value)} required />
       </div>
 
-      <div className="correction-field">
+      <div className="field">
         <span>{messages.leave.unitLabel}</span>
         <div className="leave-unit-group" role="radiogroup" aria-label={messages.leave.unitLabel}>
           {unitOptions.map((opt) => (
@@ -138,7 +138,7 @@ export function LeaveRequestForm({ standardDayMinutes, settings, hourlyUsedMinut
       </div>
 
       {unit === "hourly" ? (
-        <div className="correction-field">
+        <div className="field">
           <label htmlFor="leave-minutes">
             {messages.leave.minutesLabel}
             <HelpTip helpKey="leave.hourly" />
@@ -161,7 +161,7 @@ export function LeaveRequestForm({ standardDayMinutes, settings, hourlyUsedMinut
         </div>
       ) : null}
 
-      <div className="correction-field">
+      <div className="field">
         <label htmlFor="leave-type">{messages.leave.leaveTypeLabel}</label>
         <select id="leave-type" value={leaveType} onChange={(e) => setLeaveType(e.target.value as LeaveType)}>
           <option value="annual">{messages.leave.leaveTypeAnnual}</option>
@@ -169,7 +169,7 @@ export function LeaveRequestForm({ standardDayMinutes, settings, hourlyUsedMinut
         </select>
       </div>
 
-      <div className="correction-field">
+      <div className="field">
         <label htmlFor="leave-reason">{messages.leave.reasonLabel}</label>
         <textarea
           id="leave-reason"
@@ -179,18 +179,18 @@ export function LeaveRequestForm({ standardDayMinutes, settings, hourlyUsedMinut
           onChange={(e) => setReason(e.target.value)}
           required
         />
-        <span className="correction-field__counter tabular-nums">
+        <span className="field__counter tabular-nums">
           {reason.length}/{MAX_REASON_LENGTH}
         </span>
       </div>
 
       {formError ? (
-        <p className="correction-error" role="alert">
+        <p className="notice notice--danger" role="alert">
           {formError}
         </p>
       ) : null}
 
-      <button type="submit" className="k-modal__confirm k-modal__confirm--neutral" disabled={submitting}>
+      <button type="submit" className="btn btn--primary" disabled={submitting}>
         {submitting ? messages.leave.submitting : messages.leave.submit}
       </button>
     </form>

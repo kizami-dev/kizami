@@ -60,6 +60,37 @@
   --font-logo: "Jost", "Futura", "Century Gothic", sans-serif;
   --font-body: "Zen Kaku Gothic New", sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  /* 見出しのロール(2026-10-05、UI ブラッシュアップ段階A)。本文と同じ Zen Kaku Gothic New の
+     700 に、約物を詰める palt を組み合わせる(見出しで使うときは font-weight: var(--weight-bold)
+     と font-feature-settings: var(--feature-heading) を併記する)。
+     --font-display(Shippori Antique B1)は状態スタンプ(.stamp__label・
+     .dashboard-punch__state-label)だけに使い、見出しには使わない(ui-direction.md「多用禁止」)。 */
+  --font-heading: var(--font-body);
+  --feature-heading: "palt";
+
+  /*
+   * 文字サイズの段階(2026-10-05)。画面ごとの直書き(28 種類)をこの5段階に寄せる。
+   * --text-xs を下限とし、0.75rem 未満は使わない。
+   */
+  --text-xs: 0.75rem; /* 補足・注記・バッジ */
+  --text-sm: 0.85rem; /* ラベル・表・ボタン・二次テキスト */
+  --text-md: 1rem; /* 本文・入力欄 */
+  --text-lg: 1.25rem; /* 節見出し・ダイアログ見出し */
+  --text-xl: 1.6rem; /* ページ見出し */
+  /* 意図して大きいもの(5段階の外)。打刻画面の大時計・状態スタンプ・文字ロゴだけに使う。 */
+  --text-clock: clamp(3rem, 12vw, 4.5rem);
+  --text-stamp: 1.6rem;
+  --text-logo: 2rem;
+  --text-logo-header: 1.4rem;
+
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-bold: 700;
+
+  /* 操作部品の高さ(components.css の .btn / .field)。 */
+  --control-sm: 36px;
+  --control-md: 44px;
+  --control-lg: 52px;
 
   /* 形状・間隔の共通単位 */
   --radius-s: 6px;
@@ -89,8 +120,12 @@
 
   /* 打刻ボタン等の disabled 塗り(旧 #e7e7e3 直書き)。 */
   --k-disabled-bg: #e7e7e3;
+  /* 無効状態の文字と破線の枠(2026-10-05)。無効は opacity で薄めず、この2トークンと
+     破線の枠で「押せない」ことを形でも示す。AA: #55565a vs disabled-bg #e7e7e3 = 5.91:1。 */
+  --k-disabled-text: #55565a;
+  --k-disabled-border: #76777b;
 
-  /* --k-key 塗りボタン(login-submit 等)の hover。--k-key より「さらに強い」方向
+  /* --k-key 塗りボタン(.btn--primary 等)の hover。--k-key より「さらに強い」方向
      (ライトは黒、ダークは白)。--k-key 自体がテーマで反転するため、hover 側も対で反転させる。 */
   --k-key-strong: #000000;
 
@@ -148,6 +183,9 @@
     --k-surface: #1d2023;
     --k-disabled-bg: #2e3134;
     /* AA: disabled-bg #2e3134 vs ink-soft #a9aba8 = 5.66:1(disabled ラベルの可読性) */
+    --k-disabled-text: #b4b6b3;
+    /* AA: disabled-bg #2e3134 vs disabled-text #b4b6b3 = 6.41:1 */
+    --k-disabled-border: #7a7d80;
 
     --k-scrim: rgba(0, 0, 0, 0.6);
 
@@ -178,6 +216,8 @@
 
   --k-surface: #1d2023;
   --k-disabled-bg: #2e3134;
+  --k-disabled-text: #b4b6b3;
+  --k-disabled-border: #7a7d80;
 
   --k-scrim: rgba(0, 0, 0, 0.6);
 

@@ -36,6 +36,7 @@ import { useAuthGuard } from "../lib/useAuthGuard";
 import { useOnlineStatus } from "../lib/useOnlineStatus";
 import { AppHeader } from "./AppHeader";
 import { OnboardingSection } from "./OnboardingSection";
+import { StateView } from "./ui/StateView";
 
 const MAX_WARNING_DAYS_SHOWN = 5;
 const MAX_NOTIFICATIONS_SHOWN = 3;
@@ -243,10 +244,10 @@ export function DashboardView() {
   }
 
   if (guard.status === "loading") {
-    return <p className="monthly-loading">{messages.loading}</p>;
+    return <StateView kind="loading">{messages.loading}</StateView>;
   }
   if (guard.status === "error" || !guard.user) {
-    return <p className="monthly-error">{messages.errors.network}</p>;
+    return <StateView kind="error">{messages.errors.network}</StateView>;
   }
 
   const state: AttendanceState = status?.state ?? "out";
@@ -408,7 +409,7 @@ export function DashboardView() {
           <h2 className="dashboard-card__title">{messages.dashboard.todoTitle}</h2>
 
           {!todoDataLoaded ? (
-            <p className="monthly-loading">{messages.loading}</p>
+            <StateView kind="loading">{messages.loading}</StateView>
           ) : !hasTodo ? (
             <p className="dashboard-todo__empty">{messages.dashboard.todoEmpty}</p>
           ) : (

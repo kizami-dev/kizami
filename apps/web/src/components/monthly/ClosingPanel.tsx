@@ -133,7 +133,7 @@ export function ClosingPanel({ monthParam, reloadKey, onReload, userId, data }: 
               <>
                 <button
                   type="button"
-                  className="k-modal__confirm k-modal__confirm--neutral"
+                  className="btn btn--primary"
                   onClick={() => setCloseConfirmOpen(true)}
                 >
                   {messages.closing.closeAction}
@@ -144,7 +144,7 @@ export function ClosingPanel({ monthParam, reloadKey, onReload, userId, data }: 
               <>
                 <button
                   type="button"
-                  className="k-modal__confirm k-modal__confirm--caution"
+                  className="btn btn--danger"
                   onClick={() => setReopenConfirmOpen(true)}
                 >
                   {messages.closing.reopenAction}

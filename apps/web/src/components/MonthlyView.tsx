@@ -23,6 +23,7 @@ import { MemberSwitcher } from "./monthly/MemberSwitcher";
 import { MonthlyAttendanceTable } from "./monthly/MonthlyAttendanceTable";
 import { MonthlyTotals } from "./monthly/MonthlyTotals";
 import { WorkloadBar } from "./monthly/WorkloadBar";
+import { StateView } from "./ui/StateView";
 
 export function MonthlyView() {
   const router = useRouter();
@@ -66,10 +67,10 @@ export function MonthlyView() {
   }, [autoOpenDate, viewingOthers]);
 
   if (guard.status === "loading") {
-    return <p className="monthly-loading">{messages.loading}</p>;
+    return <StateView kind="loading">{messages.loading}</StateView>;
   }
   if (guard.status === "error" || !guard.user) {
-    return <p className="monthly-error">{messages.errors.network}</p>;
+    return <StateView kind="error">{messages.errors.network}</StateView>;
   }
 
   const prevMonthParam = formatMonthParam(shiftMonth(ym, -1));
@@ -106,19 +107,19 @@ export function MonthlyView() {
           </p>
         ) : null}
 
-        {loading ? <p className="monthly-loading">{messages.loading}</p> : null}
-        {error ? <p className="monthly-error">{error}</p> : null}
+        {loading ? <StateView kind="loading">{messages.loading}</StateView> : null}
+        {error ? <StateView kind="error">{error}</StateView> : null}
 
         {data ? (
           <>
             {data.closing.closed ? (
               <div className="closing-status">
-                <span className="closing-badge closing-badge--closed">{messages.closing.closedBadge}</span>
+                <span className="badge badge--cyan">{messages.closing.closedBadge}</span>
                 {data.closing.amended ? (
-                  <span className="closing-badge closing-badge--amended">{messages.closing.amendedBadge}</span>
+                  <span className="badge badge--yellow">{messages.closing.amendedBadge}</span>
                 ) : null}
                 {data.figures.source === "snapshot" ? (
-                  <span className="closing-badge closing-badge--snapshot closing-badge--small">
+                  <span className="badge badge--neutral">
                     {messages.closing.snapshotBadge}
                   </span>
                 ) : null}
