@@ -1894,6 +1894,10 @@ export const zh = {
     workSystemUnset: "未设置",
 
     detailToggleOpen: "展开详情",
+    detailShortOpen: "详情",
+    detailShortClose: "关闭",
+    moreActions: "更多操作",
+    basicsTitle: "所属部门与入职日",
     detailToggleClose: "收起详情",
 
     /** 已离职处理(停用)成员的状态徽章(2026-08-23 Tier 0 第4部分新增)。 */

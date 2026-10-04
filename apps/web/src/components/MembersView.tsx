@@ -25,6 +25,7 @@ import { EffectivePermissionsPanel } from "./EffectivePermissionsPanel";
 import { InviteLinkDialog } from "./InviteLinkDialog";
 import { InviteMemberDialog, type InviteMemberFormValue } from "./InviteMemberDialog";
 import { SettingsNav } from "./SettingsNav";
+import { MenuButton, type MenuItem } from "./ui/MenuButton";
 import { StateView } from "./ui/StateView";
 import { PageHeader } from "./ui/PageHeader";
 
@@ -647,6 +648,48 @@ export function MembersView() {
     }
   }
 
+  /** 行の「…」メニューに畳む操作。出し分けの条件は、表に直接並べていた頃と同じ。 */
+  function menuItemsFor(member: MemberDto, isSelf: boolean): MenuItem[] {
+    const items: MenuItem[] = [];
+    if (canInvite && member.isActive && member.inviteStatus !== "active") {
+      items.push({ key: "reissue", label: messages.members.reissueButton, onSelect: () => openReissueConfirm(member) });
+      items.push({ key: "revokeInvite", label: messages.members.revokeInviteButton, danger: true, onSelect: () => openRevokeInviteConfirm(member) });
+    }
+    if (canInvite && member.isActive && member.inviteStatus === "active") {
+      items.push({
+        key: "passwordReset",
+        label: resetIssuePendingId === member.id ? messages.members.inviteSubmitting : messages.members.passwordResetButton,
+        disabled: resetIssuePendingId === member.id,
+        onSelect: () => handleIssueReset(member),
+      });
+    }
+    if (canInvite && member.hasPendingPasswordReset) {
+      items.push({ key: "revokeReset", label: messages.members.passwordResetRevokeButton, danger: true, onSelect: () => openRevokeResetConfirm(member) });
+    }
+    if (canDeactivate && member.isActive && !isSelf) {
+      items.push({ key: "deactivate", label: messages.members.deactivateButton, danger: true, onSelect: () => openDeactivateConfirm(member) });
+    }
+    // 2FA リセットは退職処理と同じ member.deactivate 権限で出す(どちらも「その人のログイン手段に手を入れる」操作)。
+    // 自分自身には出さない — 自分の 2FA は /settings/security でパスワード+コードを添えて外すのが正規の手順。
+    if (canDeactivate && member.twoFactorEnabled && !isSelf) {
+      items.push({ key: "twoFactorReset", label: messages.members.twoFactorResetButton, danger: true, onSelect: () => openTwoFactorResetConfirm(member) });
+    }
+    if (canDeactivate && !member.isActive && member.erasedAt === null) {
+      items.push({
+        key: "reactivate",
+        label: reactivatePendingId === member.id ? messages.members.reactivating : messages.members.reactivateButton,
+        disabled: reactivatePendingId === member.id,
+        onSelect: () => handleReactivate(member),
+      });
+    }
+    // 消去は「退職処理済み」かつ「保持期間を経過した」人にだけ出す。押せない状態の項目を出して
+    // 409 を返させるより、出さないほうが誤解が少ない — 残り日数は状態列に出ている。
+    if (canErase && !member.isActive && member.erasedAt === null && member.retention.erasable) {
+      items.push({ key: "erase", label: messages.members.eraseButton, danger: true, onSelect: () => openEraseConfirm(member) });
+    }
+    return items;
+  }
+
   const visibleMembers = useMemo(() => members?.filter((m) => showInactive || m.isActive) ?? null, [members, showInactive]);
 
   const expandedMember = members?.find((m) => m.id === expandedId) ?? null;
@@ -744,61 +787,17 @@ export function MembersView() {
                         <tr className={member.isActive ? undefined : "member-row--inactive"}>
                           <td>{member.name}</td>
                           <td className="org-table__muted">{member.email}</td>
-                          <td>
-                            {departments.length > 0 ? (
-                              <select
-                                aria-label={messages.members.departmentChangeLabel}
-                                value={member.department?.id ?? ""}
-                                disabled={deptChangePendingId === member.id}
-                                onChange={(e) => handleDepartmentChange(member.id, e.target.value)}
-                              >
-                                {member.department === null ? <option value="">{messages.members.noDepartment}</option> : null}
-                                {departments.map((d) => (
-                                  <option key={d.id} value={d.id}>
-                                    {d.name}
-                                  </option>
-                                ))}
-                              </select>
-                            ) : (
-                              <span className="org-table__muted">{member.department?.name ?? messages.members.noDepartment}</span>
-                            )}
-                            {deptChangeError?.memberId === member.id ? (
-                              <p className="notice notice--danger" role="alert">
-                                {deptChangeError.message}
-                              </p>
-                            ) : null}
+                          <td className="member-cell--nowrap">
+                            {member.department?.name ?? <span className="org-table__muted">{messages.members.noDepartment}</span>}
                           </td>
-                          <td>
-                            <div className="member-hire-date">
-                              <input
-                                type="date"
-                                aria-label={messages.members.hireDateLabel}
-                                value={hireDateDraftFor(member)}
-                                disabled={hireDatePendingId === member.id}
-                                onChange={(e) => setHireDateDrafts((prev) => ({ ...prev, [member.id]: e.target.value }))}
-                              />
-                              <button
-                                type="button"
-                                className="org-table__link-btn"
-                                disabled={hireDatePendingId === member.id}
-                                onClick={() => handleHireDateSave(member)}
-                              >
-                                {hireDatePendingId === member.id ? messages.members.hireDateSaving : messages.members.hireDateSave}
-                              </button>
-                              {!member.hireDate ? (
-                                <p className="member-hire-date__warning" role="alert">
-                                  {messages.members.hireDateWarning}
-                                </p>
-                              ) : null}
-                              {hireDateError?.memberId === member.id ? (
-                                <p className="notice notice--danger" role="alert">
-                                  {hireDateError.message}
-                                </p>
-                              ) : null}
-                              {hireDateSavedId === member.id ? (
-                                <p className="notice notice--success">{messages.members.hireDateSaved}</p>
-                              ) : null}
-                            </div>
+                          <td className="member-cell--nowrap tabular-nums">
+                            {member.hireDate ? (
+                              member.hireDate
+                            ) : (
+                              <span className="badge badge--magenta" title={messages.members.hireDateWarning}>
+                                {messages.members.hireDateUnset}
+                              </span>
+                            )}
                           </td>
                           <td>
                             {member.presetNames.length > 0 ? (
@@ -868,88 +867,15 @@ export function MembersView() {
                           </td>
                           <td>
                             <div className="org-table__actions">
-                              <button type="button" className="org-table__link-btn" onClick={() => toggleExpand(member)}>
-                                {isExpanded ? messages.members.detailToggleClose : messages.members.detailToggleOpen}
+                              <button
+                                type="button"
+                                className="btn btn--secondary btn--sm"
+                                aria-expanded={isExpanded}
+                                onClick={() => toggleExpand(member)}
+                              >
+                                {isExpanded ? messages.members.detailShortClose : messages.members.detailShortOpen}
                               </button>
-                              {canInvite && member.isActive && member.inviteStatus !== "active" ? (
-                                <>
-                                  <button type="button" className="org-table__link-btn" onClick={() => openReissueConfirm(member)}>
-                                    {messages.members.reissueButton}
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="org-table__link-btn org-table__link-btn--danger"
-                                    onClick={() => openRevokeInviteConfirm(member)}
-                                  >
-                                    {messages.members.revokeInviteButton}
-                                  </button>
-                                </>
-                              ) : null}
-                              {canInvite && member.isActive && member.inviteStatus === "active" ? (
-                                <button
-                                  type="button"
-                                  className="org-table__link-btn"
-                                  disabled={resetIssuePendingId === member.id}
-                                  onClick={() => handleIssueReset(member)}
-                                >
-                                  {resetIssuePendingId === member.id ? messages.members.inviteSubmitting : messages.members.passwordResetButton}
-                                </button>
-                              ) : null}
-                              {canInvite && member.hasPendingPasswordReset ? (
-                                <button
-                                  type="button"
-                                  className="org-table__link-btn org-table__link-btn--danger"
-                                  onClick={() => openRevokeResetConfirm(member)}
-                                >
-                                  {messages.members.passwordResetRevokeButton}
-                                </button>
-                              ) : null}
-                              {canDeactivate && member.isActive && !isSelf ? (
-                                <button
-                                  type="button"
-                                  className="org-table__link-btn org-table__link-btn--danger"
-                                  onClick={() => openDeactivateConfirm(member)}
-                                >
-                                  {messages.members.deactivateButton}
-                                </button>
-                              ) : null}
-                              {/* 2FAリセットは退職処理と同じ member.deactivate 権限で出す
-                                  (どちらも「その人のログイン手段に手を入れる」操作のため)。
-                                  自分自身には出さない — 自分の 2FA は /settings/security で
-                                  パスワード+コードを添えて外すのが正規の手順。 */}
-                              {canDeactivate && member.twoFactorEnabled && !isSelf ? (
-                                <button
-                                  type="button"
-                                  className="org-table__link-btn org-table__link-btn--danger"
-                                  onClick={() => openTwoFactorResetConfirm(member)}
-                                >
-                                  {messages.members.twoFactorResetButton}
-                                </button>
-                              ) : null}
-                              {canDeactivate && !member.isActive && member.erasedAt === null ? (
-                                <button
-                                  type="button"
-                                  className="org-table__link-btn"
-                                  disabled={reactivatePendingId === member.id}
-                                  onClick={() => handleReactivate(member)}
-                                >
-                                  {reactivatePendingId === member.id ? messages.members.reactivating : messages.members.reactivateButton}
-                                </button>
-                              ) : null}
-                              {/*
-                               * 消去は「退職処理済み」かつ「保持期間を経過した」人にだけ出す
-                               * (2026-08-27)。押せない状態のボタンを出して 409 を返させるより、
-                               * 出さないほうが誤解が少ない — 残り日数は左の状態列に出ている。
-                               */}
-                              {canErase && !member.isActive && member.erasedAt === null && member.retention.erasable ? (
-                                <button
-                                  type="button"
-                                  className="org-table__link-btn org-table__link-btn--danger"
-                                  onClick={() => openEraseConfirm(member)}
-                                >
-                                  {messages.members.eraseButton}
-                                </button>
-                              ) : null}
+                              <MenuButton label={messages.members.moreActions} items={menuItemsFor(member, isSelf)} />
                             </div>
                             {resetIssueError?.memberId === member.id ? (
                               <p className="notice notice--danger" role="alert">
@@ -967,6 +893,70 @@ export function MembersView() {
                           <tr key={`${member.id}-detail`}>
                             <td colSpan={9} className="org-table__detail-cell">
                               <div className="member-detail">
+                                <section className="member-detail__section member-detail__section--full">
+                                  <h2 className="member-detail__section-title">{messages.members.basicsTitle}</h2>
+                                  <div className="member-basics">
+                                    <div className="field">
+                                      <label htmlFor={`member-department-${member.id}`}>{messages.members.columnDepartment}</label>
+                                      {departments.length > 0 ? (
+                                        <select
+                                          id={`member-department-${member.id}`}
+                                          value={member.department?.id ?? ""}
+                                          disabled={deptChangePendingId === member.id}
+                                          onChange={(e) => handleDepartmentChange(member.id, e.target.value)}
+                                        >
+                                          {member.department === null ? <option value="">{messages.members.noDepartment}</option> : null}
+                                          {departments.map((d) => (
+                                            <option key={d.id} value={d.id}>
+                                              {d.name}
+                                            </option>
+                                          ))}
+                                        </select>
+                                      ) : (
+                                        <span className="org-table__muted">{member.department?.name ?? messages.members.noDepartment}</span>
+                                      )}
+                                      {deptChangeError?.memberId === member.id ? (
+                                        <p className="notice notice--danger" role="alert">
+                                          {deptChangeError.message}
+                                        </p>
+                                      ) : null}
+                                    </div>
+                                    <div className="field">
+                                      <label htmlFor={`member-hire-date-${member.id}`}>{messages.members.columnHireDate}</label>
+                                      <div className="member-basics__hire-date">
+                                        <input
+                                          id={`member-hire-date-${member.id}`}
+                                          type="date"
+                                          value={hireDateDraftFor(member)}
+                                          disabled={hireDatePendingId === member.id}
+                                          onChange={(e) => setHireDateDrafts((prev) => ({ ...prev, [member.id]: e.target.value }))}
+                                        />
+                                        <button
+                                          type="button"
+                                          className="btn btn--secondary btn--sm"
+                                          disabled={hireDatePendingId === member.id}
+                                          onClick={() => handleHireDateSave(member)}
+                                        >
+                                          {hireDatePendingId === member.id ? messages.members.hireDateSaving : messages.members.hireDateSave}
+                                        </button>
+                                      </div>
+                                      {!member.hireDate ? (
+                                        <p className="member-hire-date__warning" role="alert">
+                                          {messages.members.hireDateWarning}
+                                        </p>
+                                      ) : null}
+                                      {hireDateError?.memberId === member.id ? (
+                                        <p className="notice notice--danger" role="alert">
+                                          {hireDateError.message}
+                                        </p>
+                                      ) : null}
+                                      {hireDateSavedId === member.id ? (
+                                        <p className="notice notice--success">{messages.members.hireDateSaved}</p>
+                                      ) : null}
+                                    </div>
+                                  </div>
+                                </section>
+
                                 <section className="member-detail__section">
                                   <h2 className="member-detail__section-title">{messages.members.presetAssignTitle}</h2>
                                   <p className="member-detail__hint">{messages.members.presetAssignHint}</p>

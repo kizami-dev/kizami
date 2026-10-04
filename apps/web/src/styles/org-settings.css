@@ -804,3 +804,31 @@ td.org-table__detail-cell {
 .member-retention__waiting {
   color: var(--k-ink-soft);
 }
+
+/* ---- メンバー表(表示専用)と詳細の「所属と入社日」(段階B-7) ---- */
+
+.org-table th {
+  white-space: nowrap;
+}
+
+.org-table td.member-cell--nowrap {
+  white-space: nowrap;
+}
+
+.org-table .org-table__actions {
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.member-basics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-5);
+}
+
+.member-basics__hire-date {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
