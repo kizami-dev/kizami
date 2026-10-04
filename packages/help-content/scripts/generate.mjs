@@ -10,7 +10,7 @@
  * frontmatter は README.md が定める固定フォーマット(scalar / [array] / `|` ブロックスカラー)
  * だけを扱えればよいため、汎用 YAML パーサは導入せず、この形式専用の最小限のパーサを書く。
  *
- * 多言語(2026-08-24 追加): UI が ja/en/ko/zh の4言語に対応したため、ヘルプ本文も
+ * 多言語(2026-08-24 追加): UI が ja/en/ko/zh(簡体)の4言語に対応したため、ヘルプ本文も
  * `content/<slug>.<lang>.md` の兄弟ファイルとして各言語を持つ。**日本語(ja)が単一の正**で、
  * 翻訳は ja に存在するキーの訳文としてのみ存在できる(ja に無いキーの訳文ファイルはエラー)。
  * 生成物は言語ごとの辞書(HELP_BY_LOCALE)と、言語ごとの欠落キー一覧(HELP_MISSING_KEYS)を
@@ -39,7 +39,7 @@ const VALID_ORIGINS = new Set(["law", "product", "company"]);
  * 対応ロケール。apps/web/src/lib/i18n/index.ts の `Locale` と同じ並び・同じ値にする
  * (web 側は文字列がそのまま一致することを前提に HelpLocale へ渡す)。
  */
-const LOCALES = ["ja", "en", "ko", "zh"];
+const LOCALES = ["ja", "en", "ko", "zh", "zh-Hant"];
 
 /** 単一の正となるロケール。翻訳が欠けているときのフォールバック先でもある。 */
 const SOURCE_LOCALE = "ja";
@@ -57,6 +57,7 @@ const TRANSLATION_NOTICE = {
   en: "This translation is provided for reference. The Japanese text and Japanese law are authoritative.",
   ko: "이 번역은 참고용입니다. 정본은 일본어 원문 및 일본 법령입니다.",
   zh: "本译文仅供参考。以日文原文及日本法律为准。",
+  "zh-Hant": "本譯文僅供參考。以日文原文及日本法律為準。",
 };
 
 /** frontmatter の1ブロック分をパースする。README.md の frontmatter 仕様に合わせた最小実装。 */
@@ -114,7 +115,7 @@ function parseContentFile(absPath) {
   const fields = parseFrontmatter(fmRaw, absPath);
 
   const filename = path.basename(absPath);
-  const langMatch = /\.([a-z]{2})\.md$/.exec(filename);
+  const langMatch = /\.([a-z]{2}(?:-[A-Za-z]+)?)\.md$/.exec(filename);
   if (!langMatch) {
     throw new Error(`${absPath}: ファイル名は <slug>.<lang>.md の形式である必要があります`);
   }
@@ -261,7 +262,7 @@ function renderEntryLiteral(entry, indent) {
  */
 export function renderGeneratedTs(byLocaleOrEntries) {
   const byLocale = Array.isArray(byLocaleOrEntries)
-    ? { ja: byLocaleOrEntries, en: [], ko: [], zh: [] }
+    ? { ja: byLocaleOrEntries, en: [], ko: [], zh: [], "zh-Hant": [] }
     : byLocaleOrEntries;
 
   const entries = byLocale[SOURCE_LOCALE];
@@ -274,13 +275,13 @@ export function renderGeneratedTs(byLocaleOrEntries) {
   const translatedDicts = translatedLocales
     .map((locale) => {
       const body = byLocale[locale].map((e) => renderEntryLiteral(e, 2)).join("\n");
-      return `  ${locale}: {\n${body}\n  },`;
+      return `  ${JSON.stringify(locale)}: {\n${body}\n  },`;
     })
     .join("\n");
 
-  const missingLiteral = LOCALES.map((locale) => `  ${locale}: ${JSON.stringify(missing[locale])},`).join("\n");
+  const missingLiteral = LOCALES.map((locale) => `  ${JSON.stringify(locale)}: ${JSON.stringify(missing[locale])},`).join("\n");
 
-  const noticeLiteral = LOCALES.map((locale) => `  ${locale}: ${JSON.stringify(TRANSLATION_NOTICE[locale])},`).join("\n");
+  const noticeLiteral = LOCALES.map((locale) => `  ${JSON.stringify(locale)}: ${JSON.stringify(TRANSLATION_NOTICE[locale])},`).join("\n");
 
   const localeUnion = LOCALES.map((l) => JSON.stringify(l)).join(" | ");
 
