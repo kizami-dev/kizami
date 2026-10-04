@@ -83,7 +83,7 @@ Cloudflare Tunnel の ingress(Watcher SV トンネル)に追加する。web イ�
 ベース URL をビルド時に `/api`(同一オリジン)で埋め込んでいるため、本番・デモと同じく
 パスで振り分ける。**Path あり行を Path なし行より上に**置くこと:
 
-1. `app.kizami.dev` Path `^/api` → `http://10.10.0.3:30098`(api)
+1. `app.kizami.dev` Path `^/api(/.*)?` → `http://10.10.0.3:30098`(api。本番 kizami.bktsk.com と同じ正規表現)
 2. `app.kizami.dev` Path なし → `http://10.10.0.3:30097`(web)
 
 保存後、Path なし行の hostname が意図どおり `app.kizami.dev` になっているか確認する
