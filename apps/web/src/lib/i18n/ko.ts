@@ -80,6 +80,7 @@ export const ko = {
     todoDeadlinesMandatorySuffix2: ")",
     todoDeadlinesExpiring: "곧 소멸되는 연차유급휴가가 있습니다",
     todoDeadlinesGoLeave: "연차유급휴가 보기 →",
+    todoDeadlinesMandatoryExpired: (n: number) => `연 5일 취득 의무 미달(기한 경과) ${n}건`,
 
     quickLinksTitle: "자주 쓰는 화면",
     quickLinkMonthlyTitle: "월간",
@@ -2247,6 +2248,9 @@ export const ko = {
     mandatoryShortagePrefix: "앞으로",
     mandatoryShortageSuffix: "일",
     mandatorySatisfied: "달성",
+    mandatoryExpiredSummary: (n: number) => `미달(기한 경과) ${n}건`,
+    mandatoryExpiredLabel: "기한 경과",
+    mandatoryUpcomingLabel: "다음 기간",
 
     requestFormTitle: "휴가 신청",
     dateLabel: "대상일",

@@ -82,6 +82,7 @@ export const ja = {
     todoDeadlinesMandatorySuffix2: ")",
     todoDeadlinesExpiring: "まもなく失効する有給休暇があります",
     todoDeadlinesGoLeave: "有給休暇を見る →",
+    todoDeadlinesMandatoryExpired: (n: number) => `年5日取得義務の未達(期限切れ)が${n}件あります`,
 
     quickLinksTitle: "よく使う画面",
     quickLinkMonthlyTitle: "月次",
@@ -2300,6 +2301,9 @@ export const ja = {
     mandatoryShortagePrefix: "あと",
     mandatoryShortageSuffix: "日",
     mandatorySatisfied: "達成",
+    mandatoryExpiredSummary: (n: number) => `未達(期限切れ)${n}件`,
+    mandatoryExpiredLabel: "期限切れ",
+    mandatoryUpcomingLabel: "次の期間",
 
     requestFormTitle: "休暇を申請",
     dateLabel: "対象日",

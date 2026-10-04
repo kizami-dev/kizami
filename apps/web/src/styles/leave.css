@@ -205,6 +205,31 @@
   font-weight: 400;
 }
 
+/* 期限切れの未達は 1 行(summary)に畳み、開いたときだけ過去分を見せる。注意色は使わず、静かに。 */
+.leave-mandatory-expired {
+  margin-top: var(--space-3);
+  font-size: var(--text-sm);
+}
+
+.leave-mandatory-expired > summary {
+  cursor: pointer;
+  color: var(--k-ink-soft);
+  padding: var(--space-2) 0;
+}
+
+.leave-mandatory-expired > .leave-mandatory-list {
+  margin-top: var(--space-2);
+}
+
+.leave-mandatory-item--expired {
+  border-style: dashed;
+  color: var(--k-ink-soft);
+}
+
+.leave-mandatory-item--expired .leave-mandatory-item__status {
+  font-weight: 400;
+}
+
 /* ---- 申請フォーム ---- */
 
 .leave-request-form {

@@ -95,6 +95,7 @@ export const en = {
     todoDeadlinesMandatorySuffix2: ")",
     todoDeadlinesExpiring: "Some annual paid leave is about to expire",
     todoDeadlinesGoLeave: "View annual paid leave →",
+    todoDeadlinesMandatoryExpired: (n: number) => `${n} mandatory 5-day minimum shortfall(s) past the deadline`,
 
     quickLinksTitle: "Frequently used pages",
     quickLinkMonthlyTitle: "Monthly",
@@ -2283,6 +2284,9 @@ export const en = {
     mandatoryShortagePrefix: "",
     mandatoryShortageSuffix: " day(s) short",
     mandatorySatisfied: "Met",
+    mandatoryExpiredSummary: (n: number) => `Missed (past deadline): ${n}`,
+    mandatoryExpiredLabel: "Expired",
+    mandatoryUpcomingLabel: "Next period",
 
     requestFormTitle: "Request leave",
     dateLabel: "Target date",

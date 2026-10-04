@@ -2,7 +2,8 @@
 
 import type { LeaveBalanceDto, LeaveGrantAllocationDto, MandatoryFiveDaysStatusDto } from "../lib/api";
 import { messages } from "../lib/messages";
-import { formatDaysHoursMinutes } from "../lib/time";
+import { splitMandatoryFiveDays } from "../lib/mandatory-five-days";
+import { dateStrFromEpochMinutesJst, formatDaysHoursMinutes, nowMinutes } from "../lib/time";
 import { HelpTip } from "./HelpTip";
 
 export interface LeaveBalancePanelProps {
@@ -84,11 +85,40 @@ function BalanceCard({
   );
 }
 
-function mandatoryItemClass(status: MandatoryFiveDaysStatusDto): string {
+function mandatoryItemClass(status: MandatoryFiveDaysStatusDto, expired = false): string {
+  if (expired) return "leave-mandatory-item leave-mandatory-item--expired";
   return status.satisfied ? "leave-mandatory-item leave-mandatory-item--satisfied" : "leave-mandatory-item leave-mandatory-item--shortage";
 }
 
+function MandatoryItem({ status, expired = false }: { status: MandatoryFiveDaysStatusDto; expired?: boolean }) {
+  return (
+    <li className={mandatoryItemClass(status, expired)}>
+      <span className="leave-mandatory-item__period">
+        {status.periodStart} 〜 {status.periodEnd}
+      </span>
+      <span className="leave-mandatory-item__count tabular-nums">
+        {messages.leave.mandatoryTakenLabel} {status.taken}
+        {messages.leave.mandatoryShortageSuffix} / {messages.leave.mandatoryRequiredLabel} {status.required}
+        {messages.leave.mandatoryShortageSuffix}
+      </span>
+      <span className="leave-mandatory-item__count tabular-nums">
+        {messages.leave.mandatoryDeadlineLabel}: {status.deadline}
+      </span>
+      <span className="leave-mandatory-item__status">
+        {expired
+          ? messages.leave.mandatoryExpiredLabel
+          : status.satisfied
+            ? messages.leave.mandatorySatisfied
+            : `${messages.leave.mandatoryShortagePrefix}${status.shortage}${messages.leave.mandatoryShortageSuffix}`}
+      </span>
+    </li>
+  );
+}
+
 export function LeaveBalancePanel({ balance }: LeaveBalancePanelProps) {
+  // 今の期間と次の期間だけを並べる。期限切れの未達は 1 行に畳む(過去分が何行も並ぶと、今やるべきことが埋もれる)。
+  const { current, upcoming, expiredShortages } = splitMandatoryFiveDays(balance.mandatoryFiveDays, dateStrFromEpochMinutesJst(nowMinutes()));
+  const shown = [...current, ...upcoming];
   return (
     <>
       <section className="leave__section">
@@ -108,31 +138,28 @@ export function LeaveBalancePanel({ balance }: LeaveBalancePanelProps) {
           <HelpTip helpKey="leave.mandatory-five-days" />
         </h2>
 
-        {balance.mandatoryFiveDays.length === 0 ? (
+        {shown.length === 0 && expiredShortages.length === 0 ? (
           <p className="correction-form__empty">{messages.leave.mandatoryNone}</p>
         ) : (
-          <ul className="leave-mandatory-list">
-            {balance.mandatoryFiveDays.map((status) => (
-              <li key={status.grantId} className={mandatoryItemClass(status)}>
-                <span className="leave-mandatory-item__period">
-                  {status.periodStart} 〜 {status.periodEnd}
-                </span>
-                <span className="leave-mandatory-item__count tabular-nums">
-                  {messages.leave.mandatoryTakenLabel} {status.taken}
-                  {messages.leave.mandatoryShortageSuffix} / {messages.leave.mandatoryRequiredLabel} {status.required}
-                  {messages.leave.mandatoryShortageSuffix}
-                </span>
-                <span className="leave-mandatory-item__count tabular-nums">
-                  {messages.leave.mandatoryDeadlineLabel}: {status.deadline}
-                </span>
-                <span className="leave-mandatory-item__status">
-                  {status.satisfied
-                    ? messages.leave.mandatorySatisfied
-                    : `${messages.leave.mandatoryShortagePrefix}${status.shortage}${messages.leave.mandatoryShortageSuffix}`}
-                </span>
-              </li>
-            ))}
-          </ul>
+          <>
+            {shown.length > 0 ? (
+              <ul className="leave-mandatory-list">
+                {shown.map((status) => (
+                  <MandatoryItem key={status.grantId} status={status} />
+                ))}
+              </ul>
+            ) : null}
+            {expiredShortages.length > 0 ? (
+              <details className="leave-mandatory-expired">
+                <summary>{messages.leave.mandatoryExpiredSummary(expiredShortages.length)}</summary>
+                <ul className="leave-mandatory-list">
+                  {expiredShortages.map((status) => (
+                    <MandatoryItem key={status.grantId} status={status} expired />
+                  ))}
+                </ul>
+              </details>
+            ) : null}
+          </>
         )}
       </section>
     </>
