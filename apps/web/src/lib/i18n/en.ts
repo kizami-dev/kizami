@@ -2620,6 +2620,9 @@ export const en = {
       forbidden: "You don't have permission to perform this action",
       default: "Something went wrong. Please try again",
     },
+    searchLabel: "Search topics",
+    searchPlaceholder: "Search topics",
+    searchNoResults: "No matching topics",
   },
 
   /**

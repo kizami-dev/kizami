@@ -2562,6 +2562,9 @@ export const zhHant = {
       forbidden: "沒有執行此操作的權限",
       default: "處理失敗,請重試",
     },
+    searchLabel: "搜尋條目",
+    searchPlaceholder: "搜尋條目",
+    searchNoResults: "沒有符合的條目",
   },
 
   /**

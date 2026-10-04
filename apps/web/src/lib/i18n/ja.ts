@@ -2642,6 +2642,9 @@ export const ja = {
       forbidden: "この操作を行う権限がありません",
       default: "処理に失敗しました。もう一度お試しください",
     },
+    searchLabel: "項目を検索",
+    searchPlaceholder: "項目を検索",
+    searchNoResults: "一致する項目がありません",
   },
 
   /**

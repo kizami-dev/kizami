@@ -2581,6 +2581,9 @@ export const ko = {
       forbidden: "이 작업을 수행할 권한이 없습니다",
       default: "처리에 실패했습니다. 다시 시도해 주세요",
     },
+    searchLabel: "항목 검색",
+    searchPlaceholder: "항목 검색",
+    searchNoResults: "일치하는 항목이 없습니다",
   },
 
   /**

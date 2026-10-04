@@ -61,10 +61,44 @@
 }
 
 .help-settings__list-subgroup-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--control-sm);
   font-size: var(--text-xs);
+  font-weight: var(--weight-bold);
   color: var(--k-ink-soft);
-  text-transform: uppercase;
   letter-spacing: 0.04em;
+  cursor: pointer;
+  list-style: none;
+}
+
+.help-settings__list-subgroup-title::-webkit-details-marker {
+  display: none;
+}
+
+/* 開閉の山形(開=下向き、閉=右向き)。形で状態が分かる。 */
+.help-settings__list-subgroup-title::before {
+  content: "";
+  width: 0.4rem;
+  height: 0.4rem;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform 120ms ease;
+}
+
+.help-settings__list-subgroup[open] > .help-settings__list-subgroup-title::before {
+  transform: rotate(45deg);
+}
+
+.help-settings__list-subgroup-title:focus-visible {
+  outline: 3px solid var(--k-cyan-ink);
+  outline-offset: 1px;
+}
+
+.help-settings__list-count {
+  font-weight: var(--weight-regular, 400);
 }
 
 .help-settings__list {

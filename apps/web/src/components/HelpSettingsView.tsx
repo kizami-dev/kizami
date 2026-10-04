@@ -68,6 +68,9 @@ export function HelpSettingsView() {
 
   const [selectedKey, setSelectedKey] = useState<HelpKey | null>(null);
   const [bodyDraft, setBodyDraft] = useState("");
+  /** 左の一覧の絞り込み語と、折りたたみの開閉(キーは「audience-origin」。未指定は閉じる)。 */
+  const [query, setQuery] = useState("");
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
 
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -116,6 +119,18 @@ export function HelpSettingsView() {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [guard.status]);
+
+  // 開いた直後に右ペインが空にならないよう、最初の項目を選んで開く(その項目のグループも開く)。
+  useEffect(() => {
+    if (!data || selectedKey !== null) return;
+    const first = [grouped.employee.law, grouped.employee.product, grouped.admin.law, grouped.admin.product].find((l) => l.length > 0)?.[0];
+    if (!first) return;
+    const groupKey = grouped.employee.law[0] === first ? "employee-law" : grouped.employee.product[0] === first ? "employee-product" : grouped.admin.law[0] === first ? "admin-law" : "admin-product";
+    setOpenGroups((prev) => ({ ...prev, [groupKey]: true }));
+    setSelectedKey(first.key);
+    setBodyDraft(data.overrides[first.key]?.bodyMd ?? "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data]);
 
   function selectKey(key: HelpKey) {
     setSelectedKey(key);
@@ -202,17 +217,36 @@ export function HelpSettingsView() {
   const selectedEntry = selectedKey ? helpEntry(selectedKey) : null;
   const translationNotice = helpNotice();
 
-  function renderList(title: string, entries: { law: HelpEntry[]; product: HelpEntry[] }) {
-    if (entries.law.length === 0 && entries.product.length === 0) return null;
+  const needle = query.trim().toLowerCase();
+  function matches(entry: HelpEntry): boolean {
+    return needle === "" || firstHeading(entry.body).toLowerCase().includes(needle) || entry.key.toLowerCase().includes(needle);
+  }
+
+  function renderList(audienceKey: "employee" | "admin", title: string, entries: { law: HelpEntry[]; product: HelpEntry[] }) {
+    const visible = { law: entries.law.filter(matches), product: entries.product.filter(matches) };
+    if (visible.law.length === 0 && visible.product.length === 0) return null;
     return (
       <div className="help-settings__list-group">
         <h3 className="help-settings__list-group-title">{title}</h3>
-        {(["law", "product"] as const).map((origin) =>
-          entries[origin].length === 0 ? null : (
-            <div key={origin} className="help-settings__list-subgroup">
-              <span className="help-settings__list-subgroup-title">{originLabel(origin)}</span>
+        {(["law", "product"] as const).map((origin) => {
+          if (visible[origin].length === 0) return null;
+          const groupKey = `${audienceKey}-${origin}`;
+          // 絞り込み中は一致した項目が見えるよう全部開く。
+          const open = needle !== "" || Boolean(openGroups[groupKey]);
+          return (
+            <details key={origin} className="help-settings__list-subgroup" open={open}>
+              <summary
+                className="help-settings__list-subgroup-title"
+                onClick={(e) => {
+                  e.preventDefault();
+                  setOpenGroups((prev) => ({ ...prev, [groupKey]: !open }));
+                }}
+              >
+                {originLabel(origin)}
+                <span className="help-settings__list-count tabular-nums">{visible[origin].length}</span>
+              </summary>
               <ul className="help-settings__list">
-                {entries[origin].map((entry) => {
+                {visible[origin].map((entry) => {
                   const hasOverride = Boolean(data?.overrides[entry.key]);
                   return (
                     <li key={entry.key}>
@@ -228,9 +262,9 @@ export function HelpSettingsView() {
                   );
                 })}
               </ul>
-            </div>
-          ),
-        )}
+            </details>
+          );
+        })}
       </div>
     );
   }
@@ -291,8 +325,24 @@ export function HelpSettingsView() {
             <div className="help-settings__grid">
               <div className="help-settings__list-panel">
                 <h2 className="card__title">{messages.settingsHelp.listTitle}</h2>
-                {renderList(messages.settingsHelp.listEmployeeGroup, grouped.employee)}
-                {renderList(messages.settingsHelp.listAdminGroup, grouped.admin)}
+                <div className="field">
+                  <label htmlFor="help-search" className="visually-hidden">
+                    {messages.settingsHelp.searchLabel}
+                  </label>
+                  <input
+                    id="help-search"
+                    type="search"
+                    placeholder={messages.settingsHelp.searchPlaceholder}
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                  />
+                </div>
+                {renderList("employee", messages.settingsHelp.listEmployeeGroup, grouped.employee)}
+                {renderList("admin", messages.settingsHelp.listAdminGroup, grouped.admin)}
+                {needle !== "" &&
+                [grouped.employee.law, grouped.employee.product, grouped.admin.law, grouped.admin.product].every((l) => l.filter(matches).length === 0) ? (
+                  <p className="field__hint">{messages.settingsHelp.searchNoResults}</p>
+                ) : null}
               </div>
 
               <div className="help-settings__editor-panel">
@@ -345,7 +395,7 @@ export function HelpSettingsView() {
                           {data.overrides[selectedKey] ? (
                             <button
                               type="button"
-                              className="btn btn--danger"
+                              className="btn btn--danger-ghost"
                               disabled={saving}
                               onClick={() => {
                                 setDeleteError(null);

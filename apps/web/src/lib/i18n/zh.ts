@@ -2562,6 +2562,9 @@ export const zh = {
       forbidden: "没有执行此操作的权限",
       default: "处理失败,请重试",
     },
+    searchLabel: "搜索条目",
+    searchPlaceholder: "搜索条目",
+    searchNoResults: "没有匹配的条目",
   },
 
   /**
