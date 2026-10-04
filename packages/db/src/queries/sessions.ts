@@ -8,7 +8,7 @@
  * POST /logout)はここでは扱わない(そちらは token → sessionId 変換を伴う認証層の関心事)。
  */
 
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, ne } from "drizzle-orm";
 import type { Database, Transaction } from "../types.js";
 import { sessions } from "../schema/index.js";
 
@@ -21,4 +21,26 @@ export async function revokeAllSessionsForUser(
     .update(sessions)
     .set({ revokedAt: params.revokedAt })
     .where(and(eq(sessions.tenantId, params.tenantId), eq(sessions.userId, params.userId), isNull(sessions.revokedAt)));
+}
+
+/**
+ * そのユーザーの有効なセッションのうち、`exceptSessionId` **以外**を全て失効させる(本人による
+ * パスワード変更で「今使っているセッションだけ残す」ため)。対象0件でも冪等に成功する。
+ * `exceptSessionId` は sessions.id(トークンの SHA-256 hex、apps/api の sessionIdFromToken)。
+ */
+export async function revokeOtherSessionsForUser(
+  db: Database | Transaction,
+  params: { tenantId: string; userId: string; exceptSessionId: string; revokedAt: number },
+): Promise<void> {
+  await db
+    .update(sessions)
+    .set({ revokedAt: params.revokedAt })
+    .where(
+      and(
+        eq(sessions.tenantId, params.tenantId),
+        eq(sessions.userId, params.userId),
+        isNull(sessions.revokedAt),
+        ne(sessions.id, params.exceptSessionId),
+      ),
+    );
 }

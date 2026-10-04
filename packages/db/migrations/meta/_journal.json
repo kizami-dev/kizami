@@ -232,6 +232,13 @@
       "when": 1791037939522,
       "tag": "0032_foamy_zzzax",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "6",
+      "when": 1791122065671,
+      "tag": "0033_fresh_talon",
+      "breakpoints": true
     }
   ]
 }
