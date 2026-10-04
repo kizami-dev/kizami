@@ -126,6 +126,10 @@ spec:
             httpGet: {path: /healthz, port: 3001}
             initialDelaySeconds: 3
             periodSeconds: 10
+          # 入れ替え時、終了の合図(SIGTERM)を受ける前に数秒待つ。Service の振り分けから外れるのが
+          # 終了より遅れると、止まりかけの Pod に届いた要求が 502 になる(2026-10-05 の反映で発生)
+          lifecycle:
+            preStop: {sleep: {seconds: 5}}
           resources:
             requests: {cpu: 50m, memory: 192Mi}
             limits: {memory: 512Mi}
@@ -137,6 +141,8 @@ spec:
             httpGet: {path: /, port: 3000}
             initialDelaySeconds: 3
             periodSeconds: 10
+          lifecycle:
+            preStop: {sleep: {seconds: 5}}
           resources:
             requests: {cpu: 25m, memory: 96Mi}
             limits: {memory: 256Mi}
