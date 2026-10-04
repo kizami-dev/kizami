@@ -7,7 +7,7 @@ import { hasEffectivePermission } from "../lib/permissions";
 import { invalidateEffectivePermissionsCache, useEffectivePermissions } from "../lib/useEffectivePermissions";
 import { messages } from "../lib/messages";
 import { useSettingsAccess } from "../lib/useSettingsAccess";
-import { CorrectionsTabIcon, MonthlyTabIcon, MoreTabIcon, PunchTabIcon } from "./NavIcons";
+import { CorrectionsTabIcon, HomeTabIcon, MonthlyTabIcon, MoreTabIcon, PunchTabIcon } from "./NavIcons";
 import { KizamiMark } from "./KizamiMark";
 import { NotificationBell } from "./NotificationBell";
 
@@ -32,16 +32,17 @@ export interface AppHeaderProps {
   active: AppHeaderActive;
 }
 
-/** 下部タブバーの4つの枠のうち、現在どれを選択状態にするか。「有給」「設定」は「その他」に畳む。 */
-type TabKey = "punch" | "monthly" | "corrections" | "other";
+/** 下部タブバーの5つの枠のうち、現在どれを選択状態にするか。「有給」「設定」は「その他」に畳む。 */
+type TabKey = "dashboard" | "punch" | "monthly" | "corrections" | "other";
 
 function tabForActive(active: AppHeaderActive): TabKey | null {
+  if (active === "dashboard") return "dashboard";
   if (active === "punch") return "punch";
   if (active === "monthly") return "monthly";
   if (active === "corrections") return "corrections";
   // シフト(2026-08-24 追加)も既存4タブの構成を崩さず「その他」に畳む(判断点: 完了報告に明記)。
   if (active === "leave" || active === "settings" || active === "shifts") return "other";
-  return null; // dashboard はロゴタップで戻る場所のため、タブには対応させない
+  return null;
 }
 
 /**
@@ -196,6 +197,15 @@ export function AppHeader({ displayName, email, tenantName, active }: AppHeaderP
 
       {/* モバイルのみ表示(CSS でデスクトップ時 display:none)。 */}
       <nav className="k-tabbar" aria-label={messages.appName}>
+        <Link
+          to="/"
+          className="k-tabbar__item"
+          aria-current={activeTab === "dashboard" ? "page" : undefined}
+          onClick={() => setSheetOpen(false)}
+        >
+          <HomeTabIcon className="k-tabbar__icon" />
+          <span className="k-tabbar__label">{messages.nav.dashboard}</span>
+        </Link>
         <Link
           to="/punch"
           className="k-tabbar__item"

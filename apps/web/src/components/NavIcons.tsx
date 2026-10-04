@@ -11,6 +11,19 @@ export interface NavIconProps {
   className?: string;
 }
 
+/** ホームタブ: 家の輪郭(屋根+壁+戸口)。ほかのタブと同じ線の太さ・角の語彙。 */
+export function HomeTabIcon({ size = 22, className }: NavIconProps) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} className={className} aria-hidden="true">
+      <g stroke="currentColor" strokeWidth="1.6" fill="none" strokeLinecap="square" strokeLinejoin="miter">
+        <path d="M3 11.5L12 3.5l9 8" />
+        <path d="M5.5 10v10.5h13V10" />
+        <path d="M10 20.5v-5.5h4v5.5" />
+      </g>
+    </svg>
+  );
+}
+
 /** 打刻タブ: KizamiMark のトンボ+針モチーフを単色(currentColor)で。 */
 export function PunchTabIcon({ size = 22, className }: NavIconProps) {
   return (
