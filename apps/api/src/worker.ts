@@ -50,6 +50,7 @@ import { migrateDb } from "@kizami/db/node";
 import type { NotificationChannel } from "@kizami/notify";
 import { buildEncryptorFromEnv } from "./lib/encryption.js";
 import { buildErrorReporterFromEnv } from "./lib/error-report.js";
+import { withStartupRetry } from "./lib/startup-retry.js";
 import { resolveRelease } from "./lib/version.js";
 import { buildPersonalChannels } from "./lib/notification-channels.js";
 import { resolveNotificationCategory } from "./lib/notification-preferences.js";
@@ -100,7 +101,9 @@ async function main(): Promise<void> {
   // BullMQ の Worker/Queue はブロッキングコマンドを使うため、リクエストのキューイングが
   // 無限に続く maxRetriesPerRequest: null が必要(ioredis の推奨設定)。
   const connection = new IORedis(redisUrl, { maxRetriesPerRequest: null });
-  const { db } = await migrateDb({ url: databaseUrl });
+  // 起動直後の一時的な接続失敗は待って再試行する(lib/startup-retry.ts)。上限を超えたら投げ、
+  // 下の main().catch がプロセスを終了させて k8s の再起動に任せる
+  const { db } = await withStartupRetry(() => migrateDb({ url: databaseUrl }));
 
   const queue = new Queue(QUEUE_NAME, { connection });
   await queue.upsertJobScheduler(

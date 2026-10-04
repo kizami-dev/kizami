@@ -4,6 +4,7 @@ import { migrateDb } from "@kizami/db/node";
 import { createApp } from "./app.js";
 import { buildEncryptorFromEnv } from "./lib/encryption.js";
 import { buildErrorReporterFromEnv } from "./lib/error-report.js";
+import { withStartupRetry } from "./lib/startup-retry.js";
 import { parseSignupEnv } from "./lib/signup-config.js";
 import { parseSystemMailEnv } from "./lib/system-mail-config.js";
 import { parseTurnstileEnv } from "./lib/turnstile.js";
@@ -81,7 +82,8 @@ const turnstileConfig = parseTurnstileEnv(process.env);
 const systemMailSender =
   systemMailConfig !== null ? createSystemMailSender({ smtpUrl: systemMailConfig.systemSmtpUrl, from: systemMailConfig.systemMailFrom }) : null;
 
-const { db } = await migrateDb({ url: databaseUrl });
+// 起動直後の一時的な接続失敗(クラスタ DNS の EAI_AGAIN 等)は待って再試行する(lib/startup-retry.ts)
+const { db } = await withStartupRetry(() => migrateDb({ url: databaseUrl }));
 const app = createApp({
   db,
   secureCookies,
