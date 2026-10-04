@@ -35,6 +35,8 @@ async function newAuthedContext(browser: Browser, sessionCookie: string, viewpor
     // 一覧の既定言語を日本語に固定する。アプリの言語初期値は navigator.language を見るため、
     // 指定しないと Playwright 既定の en でUI全体が英語になってしまう(2026-08-23)。
     locale: "ja-JP",
+    // 画面の時刻は JST 表示。撮影する端末の時刻帯に左右されないよう固定する。
+    timezoneId: "Asia/Tokyo",
   });
   const [name, value] = sessionCookie.split("=");
   if (name && value !== undefined) {
@@ -67,7 +69,8 @@ export interface CaptureParams {
 export async function captureAll(params: CaptureParams): Promise<CapturedShot[]> {
   mkdirSync(OUTPUT_DIR, { recursive: true });
 
-  const browser = await chromium.launch();
+  const browser = await // ネイティブの日付・時刻入力の表記(yyyy/mm/dd・24時間)は context の locale ではなく起動言語に従うため --lang も合わせる
+  const browser = await chromium.launch({ args: ["--lang=ja-JP"] });
   const shots: CapturedShot[] = [];
 
   try {
