@@ -5,7 +5,9 @@
  *   無効のとき signup 系エンドポイントは `GET /signup/config` 以外すべて 404 で、
  *   セルフホストの体験を一切変えない。
  * - 有効にするなら次の5つが**全部**要る: `TURNSTILE_SECRET_KEY` / `TURNSTILE_SITE_KEY` /
- *   `SYSTEM_SMTP_URL` / `SYSTEM_MAIL_FROM` / `APP_BASE_URL`。
+ *   `SYSTEM_SMTP_URL` / `SYSTEM_MAIL_FROM` / `APP_BASE_URL`。後ろ3つ(システムメール)の解析は
+ *   lib/system-mail-config.ts に独立させてあり、ここはそれを使う(本人用のパスワード再設定も同じ
+ *   システムメールを SIGNUP_MODE と無関係に使うため。2026-10-04)。
  *
  * ## fail-fast(判断点)
  *
@@ -21,16 +23,12 @@
  * (app.ts → routes/signup.ts の経路に Node 専用モジュールを持ち込まないため。Workers 対応)。
  */
 
+import { parseSystemMailEnv, present, SYSTEM_MAIL_REQUIRED_ENV, type Env } from "./system-mail-config.js";
+
 export type SignupMode = "off" | "invite" | "open";
 
 /** 有効時に必須の環境変数。欠落の報告順もこの並びにする。 */
-export const SIGNUP_REQUIRED_ENV = [
-  "TURNSTILE_SECRET_KEY",
-  "TURNSTILE_SITE_KEY",
-  "SYSTEM_SMTP_URL",
-  "SYSTEM_MAIL_FROM",
-  "APP_BASE_URL",
-] as const;
+export const SIGNUP_REQUIRED_ENV = ["TURNSTILE_SECRET_KEY", "TURNSTILE_SITE_KEY", ...SYSTEM_MAIL_REQUIRED_ENV] as const;
 
 /** 有効化されたサインアップの設定(送信関数・fetch の注入は createApp 側で足す)。 */
 export interface SignupEnvConfig {
@@ -47,12 +45,6 @@ export type SignupEnvResult =
   | { ok: true; config: SignupEnvConfig | null }
   | { ok: false; errors: string[] };
 
-type Env = Record<string, string | undefined>;
-
-function present(value: string | undefined): value is string {
-  return value !== undefined && value.trim() !== "";
-}
-
 /**
  * 環境変数から設定を解釈する。
  *
@@ -68,21 +60,14 @@ export function parseSignupEnv(env: Env): SignupEnvResult {
   }
 
   const errors: string[] = [];
-  const missing = SIGNUP_REQUIRED_ENV.filter((name) => !present(env[name]));
+  const systemMail = parseSystemMailEnv(env);
+  const missing = [...SIGNUP_REQUIRED_ENV.filter((name) => name.startsWith("TURNSTILE_") && !present(env[name])), ...systemMail.missing];
   if (missing.length > 0) {
     errors.push(`SIGNUP_MODE=${rawMode} requires these environment variables, but they are missing: ${missing.join(", ")}`);
   }
+  errors.push(...systemMail.errors);
 
-  const smtpUrl = env.SYSTEM_SMTP_URL?.trim();
-  if (smtpUrl && !/^smtps?:\/\//i.test(smtpUrl)) {
-    errors.push("SYSTEM_SMTP_URL must start with smtp:// or smtps://");
-  }
-  const baseUrl = env.APP_BASE_URL?.trim();
-  if (baseUrl && !/^https?:\/\/[^/\s]+/i.test(baseUrl)) {
-    errors.push("APP_BASE_URL must be an absolute http(s) URL (e.g. https://app.kizami.dev)");
-  }
-
-  if (errors.length > 0) return { ok: false, errors };
+  if (errors.length > 0 || systemMail.config === null) return { ok: false, errors };
 
   return {
     ok: true,
@@ -90,9 +75,9 @@ export function parseSignupEnv(env: Env): SignupEnvResult {
       mode: rawMode,
       turnstileSecretKey: env.TURNSTILE_SECRET_KEY!.trim(),
       turnstileSiteKey: env.TURNSTILE_SITE_KEY!.trim(),
-      systemSmtpUrl: smtpUrl!,
-      systemMailFrom: env.SYSTEM_MAIL_FROM!.trim(),
-      appBaseUrl: baseUrl!.replace(/\/+$/, ""),
+      systemSmtpUrl: systemMail.config.systemSmtpUrl,
+      systemMailFrom: systemMail.config.systemMailFrom,
+      appBaseUrl: systemMail.config.appBaseUrl,
     },
   };
 }
