@@ -5,6 +5,7 @@ import { Link, useRouter } from "waku";
 import { api, ApiError, UnauthorizedError, type SlackSettingsDto, type UpdateSlackSettingsInput } from "../lib/api";
 import { mapSlackSettingsErrorMessage, messages } from "../lib/messages";
 import { useAuthGuard } from "../lib/useAuthGuard";
+import { docsHref } from "../lib/help";
 import { AppHeader } from "./AppHeader";
 import { SettingsNav } from "./SettingsNav";
 import { StateView } from "./ui/StateView";
@@ -126,7 +127,12 @@ export function SettingsSlackView() {
       <main className="page">
         <SettingsNav active="slack" />
         <PageHeader title={messages.settingsSlack.title} lead={messages.settingsSlack.tagline} />
-        <p className="field__hint">{messages.settingsSlack.setupGuideHint}</p>
+        <p className="field__hint">
+          {messages.settingsSlack.setupGuideHint}{" "}
+          <a href={docsHref("/external-api/slack")} target="_blank" rel="noreferrer">
+            {messages.settingsSlack.setupGuideLinkLabel}
+          </a>
+        </p>
 
         {forbidden ? (
           <p className="notice notice--danger" role="alert">

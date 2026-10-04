@@ -1120,7 +1120,8 @@ export const zhHant = {
     title: "Slack整合",
     tagline: "設定透過Slack斜線命令(/punch)進行打卡的功能。",
     noPermission: "沒有權限更改此設定",
-    setupGuideHint: "關於設定步驟(建立Slack 應用程式、儲存Signing Secret的方法),請參見 docs/external-api/slack.md。",
+    setupGuideHint: "關於設定步驟(建立Slack 應用程式、儲存Signing Secret的方法),請參見下方頁面。",
+    setupGuideLinkLabel: "Slack 整合設定步驟",
 
     teamIdLabel: "Slack 工作區ID(Team ID)",
     teamIdPlaceholder: "T0123456",
@@ -1162,7 +1163,8 @@ export const zhHant = {
     title: "SSO(OIDC)",
     tagline: "透過 OIDC 與 Google Workspace、Entra ID 等身分提供者串接,啟用 SSO 登入。",
     noPermission: "沒有權限更改此設定",
-    setupGuideHint: "身分提供者一側的應用程式註冊步驟,以及本介面各項的含義,請參見 docs/design/sso-oidc.md。",
+    setupGuideHint: "身分提供者一側的應用程式註冊步驟,以及本介面各項的含義,請參見下方頁面。",
+    setupGuideLinkLabel: "SSO(OIDC)登入的設計與設定步驟",
 
     noAutoProvisioningNote: "SSO 是現有成員的登入方式。即使在身分提供者擁有帳號,未被邀請加入 KIZAMI 的人也無法登入(不會自動建立成員)。",
 

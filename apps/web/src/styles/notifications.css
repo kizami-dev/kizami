@@ -162,39 +162,6 @@
   padding-top: var(--space-1);
 }
 
-.notif-item__link-btn,
-.notif-item__read-btn {
-  border: var(--border-hair);
-  border-radius: var(--radius-s);
-  background: transparent;
-  /* 2026-08-23 SP監査: 縦 padding が var(--space-1)=4px だと高さ約28pxでタップしづらい。
-     var(--space-2)=8px に広げ約36pxを確保する(通知カードは元々 flex-wrap 済み)。 */
-  padding: var(--space-2) var(--space-3);
-  font-size: var(--text-xs);
-}
-
-.notif-item__link-btn {
-  color: var(--k-cyan-ink);
-  border-color: var(--k-cyan-ink);
-}
-
-.notif-item__link-btn:hover {
-  background: color-mix(in srgb, var(--k-cyan) 8%, transparent);
-}
-
-.notif-item__read-btn {
-  color: var(--k-ink-soft);
-}
-
-.notif-item__read-btn:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--k-key) 5%, transparent);
-}
-
-.notif-item__read-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
 .notif-panel__footer {
   margin-top: var(--space-2);
   padding-top: var(--space-2);

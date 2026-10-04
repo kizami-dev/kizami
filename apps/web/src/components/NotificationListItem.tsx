@@ -5,6 +5,7 @@ import type { NotificationDto } from "../lib/api";
 import { messages } from "../lib/messages";
 import { notificationLinkFor } from "../lib/notifications";
 import { formatDateLabel, formatDateTimeJst } from "../lib/time";
+import { buttonClass } from "./ui/Button";
 
 export interface NotificationListItemProps {
   notification: NotificationDto;
@@ -47,12 +48,12 @@ export function NotificationListItem({ notification: n, pending, onNavigate, onM
       </div>
       <div className="notif-item__actions">
         {link ? (
-          <button type="button" className="notif-item__link-btn" onClick={() => onNavigate(link.href)}>
+          <button type="button" className={buttonClass("secondary", "sm")} onClick={() => onNavigate(link.href)}>
             {link.label}
           </button>
         ) : null}
         {isUnread ? (
-          <button type="button" className="notif-item__read-btn" onClick={() => onMarkRead(n.id)} disabled={pending}>
+          <button type="button" className={buttonClass("ghost", "sm")} onClick={() => onMarkRead(n.id)} disabled={pending}>
             {messages.notifications.markRead}
           </button>
         ) : null}

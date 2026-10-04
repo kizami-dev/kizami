@@ -393,11 +393,6 @@
   font-family: inherit;
 }
 
-.member-hire-date__warning {
-  color: var(--k-magenta-ink);
-  font-size: var(--text-xs);
-}
-
 /* td.org-table__detail-cell: 上の ".org-table th, .org-table td" と詳細度(0,1,1)を揃え、
    ソース順(このルールの方が後)で勝たせる(!important 廃止、2026-08-23)。 */
 td.org-table__detail-cell {

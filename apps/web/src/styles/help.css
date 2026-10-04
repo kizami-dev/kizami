@@ -72,37 +72,12 @@
   font-weight: 400;
 }
 
+/* 種類(法令/KIZAMIの仕様/自社の規定)は共通の .badge で示す。ここはパネル内の配置だけ。 */
 .help-tip__badge {
   align-self: flex-start;
-  display: inline-flex;
-  align-items: center;
-  font-size: var(--text-xs);
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  padding: 2px var(--space-2);
-  border-radius: 999px;
+  /* 長い根拠(「法令 · 労働基準法第…」)は折り返す。 */
   white-space: normal;
-}
-
-/* 法令: 落ち着いた実線の枠(変更不可であることを枠で示す) */
-.help-tip__badge--law {
-  border: 1px solid var(--k-key);
-  color: var(--k-key);
-  background: transparent;
-}
-
-/* KIZAMIの仕様: 薄いグレー塗り(バージョンで変わりうる、法令より軽い扱い) */
-.help-tip__badge--product {
-  border: none;
-  color: var(--k-ink-soft);
-  background: color-mix(in srgb, var(--k-key) 8%, transparent);
-}
-
-/* 自社の規定(将来のテナントオーバーライド表示用) */
-.help-tip__badge--company {
-  border: 1px dashed var(--k-ink-soft);
-  color: var(--k-ink-soft);
-  background: transparent;
+  border-radius: var(--radius-m);
 }
 
 .help-tip__summary {

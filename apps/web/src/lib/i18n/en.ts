@@ -1160,7 +1160,8 @@ export const en = {
     title: "Slack integration",
     tagline: "Configure punching in from Slack via the slash command (/punch).",
     noPermission: "You don't have permission to change this setting",
-    setupGuideHint: "For setup steps (creating a Slack app, where to find the signing secret), see docs/external-api/slack.md.",
+    setupGuideHint: "For setup steps (creating a Slack app, where to find the signing secret), see this page.",
+    setupGuideLinkLabel: "Slack integration setup guide",
 
     teamIdLabel: "Slack workspace ID (Team ID)",
     teamIdPlaceholder: "T0123456",
@@ -1202,7 +1203,8 @@ export const en = {
     title: "SSO (OIDC)",
     tagline: "Connect an identity provider such as Google Workspace or Entra ID over OIDC to enable SSO login.",
     noPermission: "You don't have permission to change this setting",
-    setupGuideHint: "For how to register the app on the identity provider side and what each field here means, see docs/design/sso-oidc.md.",
+    setupGuideHint: "For how to register the app on the identity provider side and what each field here means, see this page.",
+    setupGuideLinkLabel: "SSO (OIDC) login design and setup",
 
     noAutoProvisioningNote: "SSO is a login method for existing members. Even with an account at the identity provider, anyone who has not been invited to KIZAMI cannot log in (members are never created automatically).",
 
