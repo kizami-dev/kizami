@@ -378,8 +378,10 @@ frame(過不足を比べる枠) = 契約上の枠 + 前月からの繰越の受�
 | `flexCarryOut` | `flex_carry_out_minutes` |
 | `flexConfirmedShortfall` | `flex_confirmed_shortfall_minutes` |
 
-CSV の列は `fixed_extra_within_statutory_minutes` の後・手当の列の前に置き、`compare=original` の
-`original_` / `diff_` にも足した。
+CSV の6列は**行の末尾**に足し、既存の列(手当の列・`closed`・`compare=original` の既存の
+`original_` / `diff_` の列)の位置は変えない。列の位置で取り込んでいる給与ソフトの設定やスクリプトが
+黙って別の値を読むようになるのを避けるため。`compare=original` のときは、その後ろに6列の
+`original_` / `diff_` を足す。
 
 **既存の列の意味**: `flex_frame_minutes`(と `flexBalance.frameMinutes`)は「過不足を比べる枠」。
 法定の枠の制度では従来どおり法定の枠で、値は変わらない。契約上の枠の制度では
