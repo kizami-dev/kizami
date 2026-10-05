@@ -1,0 +1,23 @@
+# 時短フレックス(標準6時間・所定20日 → 契約上の枠120時間)で、ちょうど120時間働いた月。
+name: 時短フレックス — 契約上の枠ちょうど(過不足0・法定内超過0)
+law_reference: 労働基準法32条の3(フレックスタイム制)、育児・介護休業法23条(所定労働時間の短縮措置)
+settings:
+  tz_offset: 540
+  day_boundary: "00:00"
+  legal_holiday: { weekday: sunday }
+  flex: { standard_day: "06:00", total_hours_basis: scheduled_days, carry_over_shortfall: false }
+calendar: { weekdays: [saturday, sunday], national_holidays: true }
+months:
+  - period: 2026-08
+    # 2026-08 は31日・土日10日・山の日(8/11 火)1日 → 所定労働日 20日
+    work:
+      - { dates: scheduled, in: "09:00", out: "16:00", break: ["12:00", "13:00"] } # 6時間 × 20日
+    expected:
+      scheduled_work_days: 20
+      # 法定の枠 = floor(2400 × 31 / 7) = floor(10628.57) = 10628
+      # 契約上の枠 = 20日 × 360分 = 7200(120時間)
+      # 実績 7200 → 過不足 0、法定内超過 0、法定外 0
+      totals: { statutory: 7200, overtime: 0, overtime60h: 0, lateNight: 0, statutoryHoliday: 0 }
+      flex_balance:
+        { frame: 7200, actual: 7200, diff: 0, statutory_frame: 10628, contract_frame: 7200, carry_in: 0, within_statutory_excess: 0, carry_out: 0, confirmed_shortfall: 0 }
+      warnings: []

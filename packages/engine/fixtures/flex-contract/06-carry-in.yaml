@@ -1,0 +1,23 @@
+# 前月の不足10時間を今月の契約上の枠に上乗せする。今月130時間働けば、上乗せ後の枠(130時間)ちょうど。
+name: 不足の繰越 — 前月の不足10時間を上乗せし、今月で埋め合わせる
+law_reference: 労働基準法32条の3、昭和63年1月1日 基発1号(不足の繰越は法定労働時間の総枠の範囲内なら可)
+settings:
+  tz_offset: 540
+  day_boundary: "00:00"
+  legal_holiday: { weekday: sunday }
+  flex: { standard_day: "06:00", total_hours_basis: scheduled_days, carry_over_shortfall: true }
+calendar: { weekdays: [saturday, sunday], national_holidays: true }
+months:
+  - period: 2026-08
+    carry_in: 600 # 前月の不足10時間
+    next_period_capacity: 3445
+    work:
+      - { dates: scheduled, in: "09:00", out: "16:30", break: ["12:00", "13:00"] } # 6時間30分 × 20日 = 7800
+    expected:
+      scheduled_work_days: 20
+      # 上乗せの余地 = 法定の枠 10628 − 契約上の枠 7200 = 3428 ≥ 600 → 全額受け入れ
+      # 枠 = 7200 + 600 = 7800。実績 7800 → 過不足0。法定内超過も0(上乗せ分は埋め合わせであって超過ではない)
+      totals: { statutory: 7800, overtime: 0, overtime60h: 0, lateNight: 0, statutoryHoliday: 0 }
+      flex_balance:
+        { frame: 7800, actual: 7800, diff: 0, statutory_frame: 10628, contract_frame: 7200, carry_in: 600, within_statutory_excess: 0, carry_out: 0, confirmed_shortfall: 0 }
+      warnings: []

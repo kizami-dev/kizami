@@ -1,0 +1,23 @@
+# 既定(法定の枠)の制度は、所定労働日や繰越を渡されても従来と同じ結果になる(回帰)。
+# トップレベルのフィクスチャ全件についても test/flex-contract.test.ts が同じことを確かめている。
+name: 法定の枠(既定)— 契約上の枠の入力があっても従来と1分も変わらない
+law_reference: 労働基準法32条の3(フレックスタイム制)
+settings:
+  tz_offset: 540
+  day_boundary: "00:00"
+  legal_holiday: { weekday: sunday }
+  flex: { standard_day: "08:00", total_hours_basis: statutory_frame, carry_over_shortfall: false }
+calendar: { weekdays: [saturday, sunday], national_holidays: true }
+months:
+  - period: 2026-08
+    carry_in: 600 # 法定の枠が基準なら上乗せの余地は0 — 受け入れない(警告も出さない)
+    next_period_capacity: 3445
+    work:
+      - { dates: scheduled, in: "09:00", out: "18:00", break: ["12:00", "13:00"] } # 8時間 × 20日 = 9600
+    expected:
+      scheduled_work_days: 20
+      # 従来どおり: frame = 法定の枠 10628、diff = 9600 − 10628 = −1028
+      totals: { statutory: 9600, overtime: 0, overtime60h: 0, lateNight: 0, statutoryHoliday: 0 }
+      flex_balance:
+        { frame: 10628, actual: 9600, diff: -1028, statutory_frame: 10628, contract_frame: null, carry_in: 0, within_statutory_excess: 0, carry_out: 0, confirmed_shortfall: 1028 }
+      warnings: []

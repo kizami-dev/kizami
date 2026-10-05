@@ -89,8 +89,37 @@ export type WorkSystem =
        * (スーパーフレックス)で、コアタイム由来の警告は一切出ない。
        */
       core: CoreTime | null;
-      /** 標準となる1日の労働時間(分)。有給日の枠算入に使う */
+      /**
+       * 標準となる1日の労働時間(分)。有給日の枠算入に使う。`totalHoursBasis` が
+       * "scheduled_days" のときは、契約上の枠(所定労働日数 × この値)の掛け算にも使う
+       */
       standardDayMinutes: number;
+      /**
+       * 清算期間の総労働時間(労使協定で定める「清算期間における総労働時間」、労基法32条の3第1項2号)の
+       * 決め方。省略時は "statutory_frame"(2026-10-05 より前と同じ挙動)。
+       *
+       * - "statutory_frame": 法定の枠(週の法定労働時間 × 暦日数 ÷ 7)をそのまま総労働時間とする。
+       *   過不足も時間外も法定の枠と比べる2段の計算
+       * - "scheduled_days": 契約上の枠 = 清算期間の所定労働日数 × `standardDayMinutes`。
+       *   過不足は契約上の枠と比べ、契約上の枠〜法定の枠を法定内超過、法定の枠超を法定外とする
+       *   3段の計算(flex.ts 参照)。所定労働日は `EngineInput.flexContract.scheduledWorkDates` で渡す
+       *
+       * 判断点(2026-10-05、時短勤務の第2段階): 既定を法定の枠にしたのは、既存のテナントの数字を
+       * 1分も変えないため。所定6時間の人は法定の枠と比べると毎月大きな「不足」に見えるので、
+       * 時短フレックスの制度では "scheduled_days" を選ぶ(docs/design/work-systems.md)。
+       */
+      totalHoursBasis?: FlexTotalHoursBasis;
+      /**
+       * 不足(契約上の枠に届かなかった時間)を翌月へ繰り越すか。省略時は false。
+       *
+       * 繰り越すと翌月の契約上の枠に上乗せされる。上乗せは翌月の法定の枠を超えない範囲に限り、
+       * 超える分はその月の不足として確定する(`FlexBalance.confirmedShortfallMinutes`)。
+       * **超過(余剰)は繰り越さない** — 当月の労働に対する賃金を翌月へ回すことは、賃金の
+       * 全額払い(労基法24条)に反するため(昭63.1.1 基発1号)。
+       * "statutory_frame" では上乗せの余地(法定の枠 − 総労働時間)が常に0なので、繰り越しは起きない
+       * (API は "scheduled_days" でしか true を受け付けない)。
+       */
+      carryOverShortfall?: boolean;
     }
   | {
       kind: "fixed";
@@ -110,6 +139,81 @@ export type WorkSystem =
 
 /** フレックス(月清算)の設定。`WorkSystem` の flex 分岐と同じ形(判別子 `kind` を除く)。 */
 export type FlexSettings = Omit<Extract<WorkSystem, { kind: "flex" }>, "kind">;
+
+/** フレックスの総労働時間の決め方(`WorkSystem` の flex 分岐の `totalHoursBasis` 参照) */
+export type FlexTotalHoursBasis = "statutory_frame" | "scheduled_days";
+
+export type Weekday = 0 | 1 | 2 | 3 | 4 | 5 | 6;
+
+/**
+ * 所定休日のカレンダー(2026-10-05、フレックスの契約上の枠のため)。テナントの設定で、
+ * 「どの日が所定労働日か」を決める。
+ *
+ * 所定休日と法定休日の関係(判断点):
+ * - **法定休日**(労基法35条: 毎週1日、または4週4日)は割増率(35%)の区分を決めるための休日で、
+ *   既存の `LegalHolidayRule` が表す。**所定休日**は就業規則で「働かなくてよい」と定めた日の全体
+ *   (土日・祝日・年末年始など)で、法定休日はその一部にあたる
+ * - したがって所定労働日は「このカレンダーで所定休日でない」かつ「法定休日でない」日。カレンダーに
+ *   法定休日の曜日を入れ忘れても、法定休日は必ず所定休日として扱う(calendar.ts)。逆に
+ *   カレンダーの所定休日を法定休日として扱うことはない(割増の区分は法定休日の設定だけで決まる)
+ * - 法定休日でない所定休日(週休2日の土曜など)に働いた時間は、フレックスでは通常の労働時間として
+ *   総労働時間に積み上がる(所定休日の労働という独立した区分は持たない — payroll-export.ts の
+ *   freee の列の扱いと同じ)
+ */
+export interface ScheduledHolidayCalendar {
+  /** 所定休日の曜日(0=日曜)。既定は土・日 */
+  weekdays: Weekday[];
+  /** 国民の祝日(振替休日・国民の休日を含む)を所定休日にするか。既定は true */
+  nationalHolidays: boolean;
+  /** 曜日・祝日とは別に所定休日にする日(年末年始・夏季休業など) */
+  extraHolidays: PlainDateString[];
+  /**
+   * 曜日・祝日の規則から外して所定労働日にする日(祝日だが営業する日など)。
+   * `extraHolidays` と同じ日が両方にあれば所定労働日を優先する。法定休日は外せない
+   */
+  extraWorkdays: PlainDateString[];
+}
+
+/** effective-dated な所定休日のカレンダー(`SettingsSpan` と同じ「from 昇順、この日から有効」の契約) */
+export interface CalendarTimelineSpan {
+  from: PlainDateString;
+  calendar: ScheduledHolidayCalendar;
+}
+
+/**
+ * フレックスの契約上の枠と繰越の入力(`EngineInput.flexContract`)。
+ * 期間開始日の制度が `totalHoursBasis: "scheduled_days"` のフレックスのときだけ使う。
+ *
+ * エンジンは「所定労働日の一覧」と「前月から受け入れる繰越」「翌月が受け入れられる繰越の上限」を
+ * 受け取るだけで、前月・翌月を自分で計算しない(打刻・設定と同じ「入力は呼び出し側が集めて渡す」
+ * 原則)。前月の繰越の取り方(締め済みはスナップショット、締め前はその場で計算、遡る深さの上限)は
+ * apps/api/src/lib/flex-contract.ts が担う。
+ */
+export interface FlexContractInput {
+  /**
+   * 期間内の所定労働日(`listScheduledWorkDates` の結果)。契約上の枠 = これらの日の
+   * `standardDayMinutes`(その日に有効な版)の合計
+   */
+  scheduledWorkDates: PlainDateString[];
+  /** 前月の不足のうち、この月へ繰り越されてきた分(分、0以上)。前月の `carryOutMinutes` */
+  carryInMinutes: number;
+  /**
+   * 翌月が受け入れられる繰越の上限(分、0以上)= 翌月の法定の枠 − 翌月の契約上の枠。
+   * この月の不足のうち、これを超える分は繰り越さずこの月の不足として確定する。
+   * 省略時は 0(全額をこの月で確定)。`carryOverShortfall` が false なら使わない
+   */
+  nextPeriodCarryCapacityMinutes?: number;
+  /**
+   * 前月の繰越を遡る深さの上限に達して、それより前の繰越を0とみなしたか
+   * (true なら `flex_carry_chain_truncated` 警告を出す)
+   */
+  carryChainTruncated?: boolean;
+  /**
+   * 国民の祝日のデータが無い年を含むカレンダーで所定労働日を数えたか
+   * (true なら `national_holiday_data_unavailable` 警告を出す。`listScheduledWorkDates` の結果をそのまま渡す)
+   */
+  nationalHolidayDataUnavailable?: boolean;
+}
 
 export type LegalHolidayRule =
   | { kind: "weekday"; weekday: 0 | 1 | 2 | 3 | 4 | 5 | 6 } // 0=日曜
@@ -280,6 +384,13 @@ export interface EngineInput {
    * なので、基準日は呼び出し側が渡す。
    */
   asOfDate?: PlainDateString;
+  /**
+   * フレックスの契約上の枠と繰越(2026-10-05、`FlexContractInput` 参照)。期間開始日の制度が
+   * `totalHoursBasis: "scheduled_days"` のフレックスでなければ無視する。
+   * "scheduled_days" なのに省略された場合は所定労働日0日(契約上の枠0分)として扱う —
+   * 呼び出し側の配線漏れを、法定の枠にこっそり戻すのではなく数字の異常として表に出すため。
+   */
+  flexContract?: FlexContractInput;
 }
 
 /** 有給の取得。日単位・時間単位のどちらも「その日に何分ぶん有給を使ったか」で表す */
@@ -338,7 +449,19 @@ export type WarningKind =
   /** コアタイム終了より早い最後の退勤 */
   | "core_time_early_leave"
   /** コアタイムが適用される日に実労働が0分、かつ有給取得もない */
-  | "core_time_absence";
+  | "core_time_absence"
+  /**
+   * フレックスの契約上の枠(2026-10-05、flex.ts)。いずれも期間開始日に1件だけ出し、
+   * `flexFrame` に分数を添える。
+   */
+  /** 所定労働日数 × 標準労働時間が法定の枠を超えたため、法定の枠で頭打ちにした */
+  | "flex_contract_frame_capped"
+  /** 前月から繰り越されてきた不足が、この月の上乗せの余地(法定の枠 − 契約上の枠)を超えたため切り詰めた */
+  | "flex_carry_in_clipped"
+  /** 前月の繰越を遡る深さの上限に達し、それより前の繰越を0とみなした(締めれば遡りはそこで止まる) */
+  | "flex_carry_chain_truncated"
+  /** 国民の祝日のデータが無い年の所定労働日を数えた(祝日を所定休日として数えられていない) */
+  | "national_holiday_data_unavailable";
 
 export interface CalcWarning {
   kind: WarningKind;
@@ -369,6 +492,12 @@ export interface CalcWarning {
    * - absence: コアタイムの帯の長さそのもの(終日不在なので全部が不在)
    */
   core?: { deltaMinutes: number };
+  /**
+   * flex_contract_frame_capped・flex_carry_in_clipped のとき: 求められた分数と、頭打ちにした上限。
+   * - contract_frame_capped: requestedMinutes = 所定労働日数 × 標準労働時間、capMinutes = 法定の枠
+   * - carry_in_clipped: requestedMinutes = 前月から送られてきた繰越、capMinutes = 受け入れた分
+   */
+  flexFrame?: { requestedMinutes: number; capMinutes: number };
 }
 
 export type TimeCategory =
@@ -459,13 +588,46 @@ export interface DailyBreakdown {
   allowances: Array<{ definitionId: string; minutes: number }>;
 }
 
+/**
+ * フレックスの収支(清算期間1か月)。
+ *
+ * 2026-10-05(契約上の枠): `frameMinutes` は「過不足を比べる枠」を表す。総労働時間の決め方が
+ * 法定の枠("statutory_frame"、既定)なら法定の枠そのもので、従来と1分も変わらない。
+ * 契約上の枠("scheduled_days")なら「契約上の枠 + 前月からの繰越の受け入れ」になる。
+ * どちらでも `diffMinutes = actualMinutes − frameMinutes` は保たれる。
+ *
+ * 3段の区分(法定の枠が基準なら2段目は常に0):
+ * - 枠内: min(実績, frame) — totals.statutory の一部
+ * - 法定内超過: frame〜法定の枠 — `withinStatutoryExcessMinutes`(totals.statutory の一部、割増なし)
+ * - 法定外: 法定の枠超 — totals.overtime(割増あり)
+ * よって totals.statutory = min(実績, 法定の枠) は従来と同じ定義のまま。
+ */
 export interface FlexBalance {
-  /** 月の総枠: floor(週40h × 暦日数 / 7)(分) */
+  /**
+   * 過不足を比べる枠(分)。法定の枠が基準なら `statutoryFrameMinutes` と同じ値
+   * (floor(週法定労働時間 × 暦日数 / 7))。契約上の枠が基準なら
+   * `contractFrameMinutes + carryInMinutes`(法定の枠を超えない)
+   */
   frameMinutes: number;
   /** 実績: 法定休日以外の実労働 + 有給日 × standardDayMinutes */
   actualMinutes: number;
   /** actual - frame(負=不足) */
   diffMinutes: number;
+  /** 法定の枠: floor(週法定労働時間 × 暦日数 / 7)(分)。これを超えた分が法定外 */
+  statutoryFrameMinutes: number;
+  /**
+   * 契約上の枠(分): 所定労働日の標準労働時間の合計。法定の枠で頭打ちにした後の値。
+   * 総労働時間の決め方が法定の枠なら null
+   */
+  contractFrameMinutes: number | null;
+  /** 前月から繰り越されてきた不足のうち、この月の枠に上乗せした分(分) */
+  carryInMinutes: number;
+  /** 法定内超過(分): frame を超え、法定の枠以内の部分。法定の枠が基準なら常に0 */
+  withinStatutoryExcessMinutes: number;
+  /** この月の不足のうち、翌月へ繰り越す分(分)。繰り越さない設定なら常に0。超過は繰り越さない */
+  carryOutMinutes: number;
+  /** この月の不足として確定した分(分) = 不足 − 繰り越す分。給与で控除の対象になりうる時間 */
+  confirmedShortfallMinutes: number;
 }
 
 /**

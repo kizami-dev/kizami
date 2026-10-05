@@ -1,0 +1,25 @@
+# 所定日数が多い月に標準8時間を選ぶと、所定労働日数 × 標準労働時間が法定の枠を上回る。
+# 総労働時間は法定の枠の範囲内で定めるもの(労基法32条の3第1項2号・昭63.1.1 基発1号)なので、
+# 法定の枠で頭打ちにして警告する。法定外は元から法定の枠と比べるので、頭打ちで割増の対象は減らない。
+name: 契約上の枠が法定の枠を上回る — 法定の枠で頭打ちにして警告
+law_reference: 労働基準法32条の3第1項2号、昭和63年1月1日 基発1号
+settings:
+  tz_offset: 540
+  day_boundary: "00:00"
+  legal_holiday: { weekday: sunday }
+  flex: { standard_day: "08:00", total_hours_basis: scheduled_days, carry_over_shortfall: false }
+# 祝日を所定休日にしない会社(土日だけ休み)
+calendar: { weekdays: [saturday, sunday], national_holidays: false }
+months:
+  - period: 2026-07
+    # 2026-07 は31日・土日8日 → 所定労働日 23日(海の日 7/20 も所定労働日)
+    work:
+      - { dates: scheduled, in: "09:00", out: "18:00", break: ["12:00", "13:00"] } # 8時間 × 23日 = 11040
+    expected:
+      scheduled_work_days: 23
+      # 23日 × 480 = 11040 > 法定の枠 10628 → 契約上の枠は 10628 で頭打ち(警告)
+      # 実績 11040: 法定外 412(頭打ちしなくても法定外は 11040 − 10628 = 412 で同じ)
+      totals: { statutory: 10628, overtime: 412, overtime60h: 0, lateNight: 0, statutoryHoliday: 0 }
+      flex_balance:
+        { frame: 10628, actual: 11040, diff: 412, statutory_frame: 10628, contract_frame: 10628, carry_in: 0, within_statutory_excess: 0, carry_out: 0, confirmed_shortfall: 0 }
+      warnings: [flex_contract_frame_capped]
