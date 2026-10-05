@@ -25,6 +25,15 @@ exceed the prescribed hours but are within 8 hours per day, so they are **not st
 No premium wages are required, but the wages for the hours worked are of course payable. KIZAMI shows this
 separately as "non-statutory overtime".
 
+## When prescribed hours differ between people (KIZAMI setting)
+
+When prescribed working hours differ from person to person, for example for short working hours during
+childcare or family care, create a policy for each set of prescribed hours under "Work-hour policies" in
+the attendance rules (for example "Fixed, short hours (6 hours)") and assign it from the member details.
+On a 9-hour day, a person with 6 prescribed hours has 6 hours within prescribed hours, 2 hours of
+non-statutory overtime, and 1 hour of statutory overtime beyond 8 hours. The 40-hour weekly limit is judged
+by law regardless of prescribed hours, and one day of paid leave counts as the prescribed hours (6 hours).
+
 ## Flexible working hours system
 
 The actual hours are compared with the **total hours limit** for the settlement period (one month in KIZAMI),
