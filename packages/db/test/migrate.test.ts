@@ -64,6 +64,7 @@ describe("migrate", () => {
         "tenant_leave_settings",
         "tenant_notification_settings",
         "tenant_oidc_settings",
+        "tenant_purge_records",
         "tenant_setting_versions",
         "tenant_slack_settings",
         "tenant_usage_counters",
@@ -101,6 +102,11 @@ describe("migrate", () => {
         recordRetentionDescription: null,
         privacyContactPoint: null,
         personalDataRetentionYears: 5,
+        // テナントの退会の状態(2026-10-05)。通常の状態ではすべて null
+        withdrawalRequestedAt: null,
+        withdrawalScheduledPurgeAt: null,
+        withdrawalReminderSentAt: null,
+        withdrawalPurgeStartedAt: null,
         createdAt: 0,
       },
     ]);
