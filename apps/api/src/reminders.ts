@@ -22,8 +22,8 @@
  * このファイルは「DB を受け取ってスキャンする」ピュアな関数として独立させている。
  */
 
-import { eq } from "drizzle-orm";
-import { createNotificationIfAbsent, listValidPunches, users, type Database, type Notification } from "@kizami/db";
+import { and, eq, isNull } from "drizzle-orm";
+import { createNotificationIfAbsent, listValidPunches, tenants, users, type Database, type Notification } from "@kizami/db";
 import { calculate, type CalcSettings, type EngineInput, type PunchKind, type SettingsSpan, type ValidPunch } from "@kizami/engine";
 import { dispatch, type DispatchResult, type NotificationChannel } from "@kizami/notify";
 import {
@@ -134,12 +134,18 @@ export interface ActiveUserRow {
  *
  * apps/api/src/overtime-alerts.ts からも再利用する(「全テナントの is_active ユーザーを
  * 走査する」対象集合は打刻忘れリマインドと36協定アラートで完全に同一であるため)。
+ * leave-alerts.ts・shift-variance-alerts.ts も同じ。
+ *
+ * **退会手続き中のテナントのユーザーは含めない**(2026-10-05、docs/design/tenant-withdrawal.md)。
+ * 手続き中は打刻も通知も止める — ログインできない人へ打刻忘れや36協定の通知を出しても、
+ * 本人は何もできない。この1か所で外すので、ここを使う定期ジョブはすべて手続き中のテナントを飛ばす。
  */
 export async function listActiveUsers(db: Database): Promise<ActiveUserRow[]> {
   const rows = await db
     .select({ id: users.id, tenantId: users.tenantId, email: users.email, name: users.name })
     .from(users)
-    .where(eq(users.isActive, true));
+    .innerJoin(tenants, eq(tenants.id, users.tenantId))
+    .where(and(eq(users.isActive, true), isNull(tenants.withdrawalRequestedAt)));
   return rows;
 }
 

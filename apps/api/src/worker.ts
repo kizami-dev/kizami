@@ -8,6 +8,8 @@
  * - DATABASE_URL (既定 "file:./kizami.db"、apps/api/src/node.ts と同じ既定値)
  * - SENTRY_DSN / SENTRY_SERVER_NAME / SENTRY_ENVIRONMENT(エラー報告。未設定なら no-op。
  *   docs/design/observability.md)
+ * - SYSTEM_SMTP_URL / SYSTEM_MAIL_FROM / APP_BASE_URL(システムメール。テナントの退会の再通知・削除の完了の
+ *   メールに使う。3つ揃っていなければメールを出さず、削除だけを行う — docs/design/tenant-withdrawal.md)
  *
  * 2026-08-27: 可観測性のため、スキャン1本ごとに **worker_heartbeats へ心拍を書く**
  * (最終実行時刻と成功/失敗の累計)。api の GET /metrics がこの表を読んで
@@ -63,6 +65,9 @@ import { nodemailerSendFn } from "./lib/smtp.js";
 import { runReminderScan } from "./reminders.js";
 import { runShiftVarianceAlertScan } from "./shift-variance-alerts.js";
 import { runPasswordResetRequestCleanup, runPendingSignupCleanup } from "./signup-cleanup.js";
+import { parseSystemMailEnv } from "./lib/system-mail-config.js";
+import { createSystemMailSender } from "./lib/system-mail.js";
+import { runTenantWithdrawalScan, type TenantWithdrawalMailer } from "./tenant-purge.js";
 import { buildVapidFromEnv } from "./lib/web-push.js";
 
 const QUEUE_NAME = "kizami-reminders";
@@ -78,6 +83,7 @@ const SCAN_JOBS = {
   shiftVarianceAlert: "shift-variance-alert",
   leaveGrantProposal: "leave-grant-proposal",
   signupCleanup: "signup-cleanup",
+  tenantWithdrawal: "tenant-withdrawal",
 } as const;
 // このジョブは打刻忘れリマインドと36協定アラートの両方のスキャンを担う(周期は共通)。
 const SCHEDULER_ID = "kizami-notification-scan";
@@ -108,6 +114,17 @@ if (quotaEnv.errors.length > 0) {
 const notifyOutboundDeps = { ...buildNotifyOutboundDeps(outboundEnv.guard, nodemailerSendFn), quotas: createTenantQuotas(quotaEnv.limits) };
 // エラー報告(docs/design/observability.md)。SENTRY_DSN 未設定なら no-op。
 const errorReporter = buildErrorReporterFromEnv(process.env, { release: resolveRelease(), runtime: "node" });
+// テナントの退会の再通知・削除の完了のメール(docs/design/tenant-withdrawal.md)。システムメールの3つの
+// 環境変数が揃っているときだけ。api(node.ts)と同じ解析を使う。値が不正なら警告だけ出してメールなしで続ける。
+const systemMailEnv = parseSystemMailEnv(process.env);
+for (const message of systemMailEnv.errors) console.warn(`[kizami-reminders] tenant withdrawal mail disabled: ${message}`);
+const withdrawalMailer: TenantWithdrawalMailer | null =
+  systemMailEnv.config !== null
+    ? {
+        appBaseUrl: systemMailEnv.config.appBaseUrl,
+        sendMail: createSystemMailSender({ smtpUrl: systemMailEnv.config.systemSmtpUrl, from: systemMailEnv.config.systemMailFrom }),
+      }
+    : null;
 
 if (!Number.isFinite(reminderIntervalMinutes) || reminderIntervalMinutes <= 0) {
   throw new Error(`REMINDER_INTERVAL_MINUTES must be a positive number, got: ${process.env.REMINDER_INTERVAL_MINUTES}`);
@@ -281,6 +298,26 @@ async function main(): Promise<void> {
         await finishScan(SCAN_JOBS.signupCleanup, err);
       }
 
+      // 退会手続き中のテナントの再通知と、削除予定を過ぎたテナントの物理削除(docs/design/tenant-withdrawal.md)。
+      // 1テナントの失敗で他のテナントを止めない(runTenantWithdrawalScan が受け止める)が、1件でも失敗が
+      // あればジョブとしては失敗を記録する(次の回にもう一度試みる。削除は冪等)。
+      let withdrawalPurged = 0;
+      try {
+        const result = await runTenantWithdrawalScan(db, { nowMinutes, mailer: withdrawalMailer });
+        withdrawalPurged = result.purgedTenantIds.length;
+        // 出すのはテナント id だけ(名前は出さない)
+        console.log(
+          `[kizami-reminders] tenant-withdrawal: reminded ${result.remindedTenantIds.length} tenant(s), purged ${result.purgedTenantIds.length} tenant(s)${result.purgedTenantIds.length > 0 ? ` (${result.purgedTenantIds.join(", ")})` : ""}`,
+        );
+        for (const failure of result.failures) {
+          console.error(`[kizami-reminders] tenant-withdrawal failed for tenant ${failure.tenantId}:`, failure.error);
+        }
+        await finishScan(SCAN_JOBS.tenantWithdrawal, result.failures[0]?.error);
+      } catch (err) {
+        console.error("[kizami-reminders] tenant-withdrawal scan failed:", err);
+        await finishScan(SCAN_JOBS.tenantWithdrawal, err);
+      }
+
       return {
         scannedUserCount: reminderScanned,
         createdCount: reminderCreated,
@@ -294,6 +331,7 @@ async function main(): Promise<void> {
         leaveGrantProposalScannedUserCount: grantProposalScanned,
         leaveGrantProposalCreatedCount: grantProposalCreated,
         signupCleanupDeletedCount: signupCleanupDeleted,
+        tenantWithdrawalPurgedCount: withdrawalPurged,
       };
     },
     { connection },

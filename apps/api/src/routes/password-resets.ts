@@ -78,6 +78,7 @@ import { createSession, setSessionCookie } from "../auth/session.js";
 import { getClientIp } from "../lib/client-ip.js";
 import { jsonPostGuard } from "../lib/json-post-guard.js";
 import type { SystemMailSendFn } from "../lib/system-mail.js";
+import { isLoginBlockedByWithdrawal, TENANT_WITHDRAWING_ERROR } from "../lib/tenant-withdrawal.js";
 import { nowMinutes } from "../lib/time.js";
 import { verifyTurnstile } from "../lib/turnstile.js";
 
@@ -307,6 +308,12 @@ export function createPasswordResetsRoutes(db: Database, options: PasswordResets
     const resolved = await resolvePasswordReset(db, token);
     if (resolved.status === "not_found") return c.json({ error: "not_found" }, 404);
     if (resolved.status === "expired") return c.json({ error: "expired" }, 410);
+
+    // 退会手続き中のテナントでは tenant.withdraw を持つ人しかログインできない
+    // (docs/design/tenant-withdrawal.md)。再設定もログインの経路なので、パスワードを変える前に断る。
+    if (await isLoginBlockedByWithdrawal(db, { tenantId: resolved.resetToken.tenantId, userId: resolved.resetToken.userId })) {
+      return c.json({ error: TENANT_WITHDRAWING_ERROR }, 403);
+    }
 
     const passwordHash = await hashPassword(password);
     const result = await usePasswordResetToken(db, { tokenHash: resolved.hash, passwordHash, nowMinutes: resolved.now });

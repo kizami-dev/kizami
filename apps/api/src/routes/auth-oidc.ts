@@ -53,6 +53,7 @@ import {
   type OidcNetworkDeps,
 } from "../lib/oidc.js";
 import { nowMinutes } from "../lib/time.js";
+import { isLoginBlockedByWithdrawal, TENANT_WITHDRAWING_ERROR } from "../lib/tenant-withdrawal.js";
 
 /**
  * 認可リクエスト1回ぶんの状態を運ぶ Cookie。**サーバー側に状態テーブルを持たない**
@@ -119,7 +120,7 @@ function normalizeEmail(email: string): string {
 export function createOidcRoutes(db: Database, options: OidcRoutesOptions) {
   const app = new Hono();
 
-  function failRedirect(c: Context, code: OidcErrorCode | "encryption_unavailable"): Response {
+  function failRedirect(c: Context, code: OidcErrorCode | "encryption_unavailable" | typeof TENANT_WITHDRAWING_ERROR): Response {
     deleteCookie(c, OIDC_TX_COOKIE_NAME, { path: "/" });
     return c.redirect(appUrl(options, `/login?error=${encodeURIComponent(code)}`), 302);
   }
@@ -347,6 +348,12 @@ export function createOidcRoutes(db: Database, options: OidcRoutesOptions) {
       return failRedirect(c, "sso_user_not_found");
     }
     const user = candidates[0] as (typeof candidates)[number];
+
+    // 退会手続き中のテナントでは tenant.withdraw を持つ人しか入れない(docs/design/tenant-withdrawal.md)。
+    // IdP の認証は通っていても、セッションは作らない。
+    if (await isLoginBlockedByWithdrawal(db, { tenantId: user.tenantId, userId: user.id })) {
+      return failRedirect(c, TENANT_WITHDRAWING_ERROR);
+    }
 
     const now = nowMinutes();
     const session = await createSession(db, { tenantId: user.tenantId, userId: user.id, nowMinutes: now });
