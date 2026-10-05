@@ -49,6 +49,11 @@ export interface Screen {
    * 「パスワードを忘れた」「新規登録」のリンクが出る。出ない版を撮るときだけ立てる。
    */
   selfHosted?: boolean;
+  /**
+   * 撮影前にクリックする要素(Playwright のセレクタ)と、その後に出るのを待つ要素(2026-10-05 追加)。
+   * 行を開いて出る詳細(メンバーの詳細など)のように、URL だけでは開けない状態を撮るために使う。
+   */
+  clickBeforeCapture?: { selector: string; waitFor?: string };
 }
 
 export const SCREENS: Screen[] = [
@@ -222,8 +227,9 @@ export const SCREENS: Screen[] = [
   {
     slug: "settings-attendance",
     path: "/settings/attendance",
-    title: "設定: 勤怠・フレックス",
-    caption: "日界・法定休日・GPS取得の可否と、フレックス清算期間の設定(版の履歴つき)。",
+    title: "設定: 勤怠ルール・労働時間制の制度",
+    caption:
+      "日界・法定休日・休憩ルール・GPSの版と、名前付きの労働時間制の制度(「固定・時短(6時間)」など)。制度ごとに所定・割当人数・版の履歴を並べる。",
     requiresAuth: true,
     mobile: true,
   },
@@ -316,6 +322,15 @@ export const SCREENS: Screen[] = [
     caption: "所属部署・入社日・権限プリセットをメンバーごとに確認する。",
     requiresAuth: true,
     mobile: true,
+  },
+  {
+    slug: "settings-members-detail",
+    path: "/settings/members",
+    title: "設定: メンバー(詳細)",
+    caption: "メンバーの詳細を開いたところ。労働時間制は種類ではなく制度を名前で選んで割り当てる(時短勤務のメンバー)。",
+    requiresAuth: true,
+    mobile: true,
+    clickBeforeCapture: { selector: 'tr:has-text("伊藤 美咲") button[aria-expanded]', waitFor: ".member-work-policy__current" },
   },
   {
     slug: "settings-presets",

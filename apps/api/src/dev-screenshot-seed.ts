@@ -103,6 +103,11 @@ interface DemoUserSpec {
    * 当日以降の effectiveFrom しか受け付けないため、直接 INSERT する以外に選択肢が無い)。
    */
   useVariablePolicy?: boolean;
+  /**
+   * true の場合、params.shortWorkPolicyId(2026-10-05、時短勤務の名前付き制度「固定・時短(6時間)」)を
+   * 割り当てる。useFixedPolicy と同じ理由で、暦月の初日から効かせるため直接 INSERT する。
+   */
+  useShortPolicy?: boolean;
 }
 
 const DEMO_USERS: DemoUserSpec[] = [
@@ -124,6 +129,16 @@ const DEMO_USERS: DemoUserSpec[] = [
     department: "sales",
     useVariablePolicy: true,
   },
+  {
+    // 時短勤務(育児の短時間勤務)のデモメンバー。勤怠ルールの「労働時間制の制度」に
+    // 「固定・時短(6時間)」の割当人数として、メンバーの詳細に制度名として写る。
+    key: "member4",
+    name: "伊藤 美咲",
+    email: "member4@kizami.example",
+    hireDate: "2022-04-01",
+    department: "dev",
+    useShortPolicy: true,
+  },
 ];
 
 const DEMO_PASSWORD = "kizami-demo-pass";
@@ -139,8 +154,10 @@ async function findWorkPolicyId(db: Database, tenantId: string): Promise<string>
  * v0.5 固定時間制デモ用の work_policies を新規作成する(テナント既定の「標準」フレックス
  * policy とは別行)。POST /settings/work-policy はテナントに1つしかない既定 policy
  * (getOrCreateTenantWorkPolicy)しか操作できず、ユーザー単位で別制度を割り当てる手段が
- * HTTP には無い(仕組みの確認結果)。そのためここでは packages/db のテーブルへ直接
+ * HTTP には無かった(仕組みの確認結果)。そのためここでは packages/db のテーブルへ直接
  * INSERT する(apps/api の既存機能は変更していない — このファイル自体がその例外)。
+ * 2026-10-05 以降は名前付きの制度の API(POST /settings/work-policies)でも作れるが、割当を
+ * 暦月の初日より前から効かせるには直接 INSERT が要るため、この形のまま残す。
  *
  * 所定労働時間は 7 時間(420分)にする: 8時間(法定)ちょうどの日を挟むだけでは
  * 「法定内残業」(所定超〜法定内)が絶対に出せない(所定=法定だと隙間が無い)ため、
@@ -165,6 +182,36 @@ async function createFixedWorkPolicy(db: Database, tenantId: string): Promise<st
     settlementPeriod: "monthly", // fixed では無視される placeholder(packages/db/src/schema/settings.ts のコメント参照)
     core: null,
     standardDayMinutes: 420,
+    createdAt: now,
+  });
+  return workPolicyId;
+}
+
+/**
+ * 時短勤務のデモ用の名前付き制度「固定・時短(6時間)」を作る(2026-10-05、名前付きの制度)。
+ *
+ * HTTP の POST /settings/work-policies でも作れるが、割当(member4)を暦月の初日より前から
+ * 効かせるには割当を直接 INSERT する必要があり(POST /members/:id/work-policy は今日以降しか
+ * 受け付けない)、割当先の制度もこのファイルで揃えて作る方が冪等に扱いやすい
+ * (createFixedWorkPolicy と同じ流儀)。
+ */
+async function createShortHoursWorkPolicy(db: Database, tenantId: string): Promise<string> {
+  const existingRows = await db.select().from(workPolicies).where(eq(workPolicies.tenantId, tenantId));
+  const existing = existingRows.find((p) => p.name === "固定・時短(6時間)");
+  if (existing) return existing.id;
+
+  const now = Math.floor(Date.now() / 60_000);
+  const workPolicyId = uuidv7();
+  await db.insert(workPolicies).values({ id: workPolicyId, tenantId, name: "固定・時短(6時間)", createdAt: now });
+  await db.insert(workPolicyVersions).values({
+    id: uuidv7(),
+    tenantId,
+    workPolicyId,
+    effectiveFrom: "1970-01-01",
+    kind: "fixed",
+    settlementPeriod: "monthly", // fixed では無視される placeholder
+    core: null,
+    standardDayMinutes: 360,
     createdAt: now,
   });
   return workPolicyId;
@@ -272,6 +319,7 @@ async function insertDemoUsers(
     workPolicyId: string;
     fixedWorkPolicyId: string;
     variableWorkPolicyId: string;
+    shortWorkPolicyId: string;
     departmentIdByKey: Record<"hq" | "sales" | "dev", string>;
   },
 ): Promise<Array<{ key: string; id: string; email: string }>> {
@@ -312,7 +360,9 @@ async function insertDemoUsers(
         ? params.fixedWorkPolicyId
         : spec.useVariablePolicy
           ? params.variableWorkPolicyId
-          : params.workPolicyId,
+          : spec.useShortPolicy
+            ? params.shortWorkPolicyId
+            : params.workPolicyId,
       effectiveFrom: "1970-01-01",
       createdAt: now,
     });
@@ -504,6 +554,8 @@ async function main(): Promise<void> {
   const fixedWorkPolicyId = await createFixedWorkPolicy(db, tenantId);
   // v0.7: シフト制(monthly_variable)メンバー用の別 work_policies を用意する。
   const variableWorkPolicyId = await createVariableWorkPolicy(db, tenantId);
+  // 2026-10-05: 時短勤務(固定・所定6時間)の名前付き制度と、その制度のメンバー(member4)。
+  const shortWorkPolicyId = await createShortHoursWorkPolicy(db, tenantId);
 
   // 部署(本社をルート、営業部・開発部を配下に)。既存なら流用する(冪等)。
   const now = Math.floor(Date.now() / 60_000);
@@ -530,6 +582,7 @@ async function main(): Promise<void> {
     workPolicyId,
     fixedWorkPolicyId,
     variableWorkPolicyId,
+    shortWorkPolicyId,
     departmentIdByKey: { hq: hqId, sales: salesId, dev: devId },
   });
 
