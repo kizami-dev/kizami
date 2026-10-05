@@ -39,6 +39,14 @@
  *   「今この瞬間、この記録を消してよいか」の判断であり、常に**現在値**で評価するのが正しい。
  *   よって work_rules_url 等と同じ単純な現在値としてここに1列持つ。
  *   GET/PUT /settings/data-retention(apps/api/src/routes/settings/privacy.ts)が読み書きする。
+ * - `withdrawal_requested_at` / `withdrawal_scheduled_purge_at` / `withdrawal_reminder_sent_at`
+ *   (2026-10-05、テナントの退会 — docs/design/tenant-withdrawal.md): 退会の申請から物理削除までの
+ *   **猶予期間の状態**。`withdrawal_requested_at` が null でなければ「退会手続き中」で、ログイン・打刻・
+ *   日次ジョブが止まる。判断点: 別表(tenant_withdrawals 等)にはしない。状態は「今、手続き中か」の
+ *   1つだけで履歴を持たず(取り消すと null に戻す。いつ申請・取り消したかは監査ログに残る)、
+ *   しかも**すべての認証済みリクエストが毎回読む**値なので、テナント行を引く1回の主キー検索で
+ *   済ませたい。テナントが削除されれば行ごと消えるので、退会の状態だけが残ることもない
+ *   (削除の記録は個人情報を含まないシステム表 tenant_purge_records に別に残す)。
  *
  * 参照: docs/design/v01-data-model.md §組織・認証・権限
  */
@@ -66,6 +74,21 @@ export const tenants = sqliteTable("tenants", {
    * 既定を3にすると経過措置が終了したときに全テナントが一斉に違反側へ倒れる — 既定は原則側に置く)。
    */
   personalDataRetentionYears: integer("personal_data_retention_years").notNull().default(5),
+  /**
+   * 退会を申請した時刻(UTC エポック分)。null = 通常の状態。null でなければ「退会手続き中」
+   * (apps/api/src/lib/tenant-withdrawal.ts の制限がすべて効く)。取り消すと null に戻す。
+   */
+  withdrawalRequestedAt: integer("withdrawal_requested_at"),
+  /**
+   * 物理削除を始めてよくなる時刻(UTC エポック分)= 申請時刻 + 30日。null = 通常の状態。
+   * 定期ジョブはこの時刻を過ぎたテナントだけを削除する(apps/api/src/tenant-purge.ts)。
+   */
+  withdrawalScheduledPurgeAt: integer("withdrawal_scheduled_purge_at"),
+  /**
+   * 削除の7日前の再通知メールを送った時刻(UTC エポック分)。null = 未送信。条件付き UPDATE で
+   * 埋めて、定期ジョブが何度走っても1通しか出さないための印。取り消すと null に戻す。
+   */
+  withdrawalReminderSentAt: integer("withdrawal_reminder_sent_at"),
   /** UTC エポック分 */
   createdAt: integer("created_at").notNull(),
 });

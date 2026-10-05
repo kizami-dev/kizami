@@ -55,6 +55,7 @@ export const {
   tenantLeaveSettings,
   tenantNotificationSettings,
   tenantOidcSettings,
+  tenantPurgeRecords,
   tenantSettingVersions,
   tenantSlackSettings,
   tenantUsageCounters,
