@@ -28,16 +28,19 @@
 
 | 操作 | 数える先 |
 | --- | --- |
-| システムが送る業務通知(打刻忘れ・36協定・有給・シフトのスキャン、承認依頼・結果の Webhook/メール) | テナントの外向きの通知の枠 |
+| システムが送る業務通知(打刻忘れ・36協定・有給・シフトのスキャン、承認・却下の結果と2段目の承認依頼の Webhook/メール) | テナントの外向きの通知の枠 |
 | 管理者の通知設定のテスト送信(`POST /settings/notifications/test`) | テナントの外向きの通知の枠(通知設定の管理権限が要る) |
 | 一般メンバーの個人 Webhook のテスト送信(`POST /settings/notifications/me/test`) | **本人ごとの1日 5 回**(テナントの枠は使わない) |
+| 一般メンバーの申請(修正・休暇・自動休憩の打ち消し)が起こす承認依頼の Webhook/メール | **本人ごとの1日 100 件**を先に数え、通ったものだけテナントの外向きの通知の枠 |
 | 管理者の招待・招待の再発行・パスワード再設定リンクの発行 | テナントの招待・再設定の枠 |
 | 未認証の本人用「パスワードを忘れた」 | **テナントの枠は使わない**(IP ごとのレート制限 + メールごとの 5 分スロットルで守る) |
 | メンバー数・API キー数 | 管理者の発行・招待だけが増やす(現在の数で判定。一般メンバーは増やせない) |
 
-残る注意: 一般メンバーの業務操作(修正申請・休暇申請など)が承認者宛の通知を起こし、それがテナントの枠に数えられる。
-通知の発生はメンバーの業務操作に紐づく(1操作 = 数件)ため大量には起こしにくいが、悪意のあるメンバーが申請を連打すれば
-消費しうる。必要になれば申請側のレート制限を足す。
+一般メンバーの申請が起こす承認依頼の通知は二段で数える: まず申請者本人ごとの1日 100 件(`MEMBER_TRIGGERED_SENDS_PER_DAY`)、
+通ったものだけテナントの枠。本人の枠が尽きたら送らず(アプリ内通知は通常どおり作る)、管理者への通知も出さない
+(管理者への通知はテナントの枠の話で、1人の連打を知らせるものではない)。これで悪意のあるメンバー1人が申請を連打しても
+テナントの枠を 100 件までしか使えない。残る注意: メンバーが多数いて全員が連打すれば(人数 × 100 件)テナントの枠を使い切れる。
+本人の枠を通ったあとテナントの枠で断られた場合、本人の枠は戻さない(単純さを取った)。
 
 ## 判定の精度
  *
@@ -114,12 +117,24 @@ export interface TenantQuotas {
    * (`PERSONAL_TEST_SENDS_PER_DAY`)で、テナントの枠は使わない。外向きの通知の上限が設定されている配備だけで働く。
    */
   consumePersonalTestSend(db: Database, tenantId: string, userId: string): Promise<boolean>;
+  /**
+   * 一般メンバーの申請が起こす承認依頼の送信(Webhook・メール)をしてよいか。**二段**: ①申請者本人ごとの1日の上限
+   * (`MEMBER_TRIGGERED_SENDS_PER_DAY`)を先に数え、②通ったら `consumeOutboundNotification` と同じくテナントの枠を数える。
+   * ①で断るときはテナントの枠に触れず、管理者へも知らせない。外向きの通知の上限が未設定なら素通し(何も数えない)。
+   */
+  consumeMemberTriggeredOutbound(db: Database, tenantId: string, userId: string): Promise<boolean>;
   /** 管理者が行う招待・再設定リンクの発行をしてよいか(発行するなら +1 する)。断ったら hit を記録する */
   consumeInviteResetMail(db: Database, tenantId: string): Promise<boolean>;
 }
 
 /** 一般メンバーの個人 Webhook のテスト送信の、本人ごとの1日の上限。 */
 export const PERSONAL_TEST_SENDS_PER_DAY = 5;
+
+/**
+ * 一般メンバーの申請(修正・休暇・自動休憩の打ち消し)が起こす承認依頼の送信の、申請者本人ごとの1日の上限。
+ * 申請1件で承認者の人数 + テナント共有の数件が出るため、通常の業務より十分大きく、連打には小さい値にしている。
+ */
+export const MEMBER_TRIGGERED_SENDS_PER_DAY = 100;
 
 const NOTIFICATION_SETTINGS_PERMISSION = "notification.settings.manage";
 const QUOTA_NOTICE_TYPE = "quota_notification_limit";
@@ -129,8 +144,13 @@ function jstDateString(epochMinutes: number): string {
   return new Date((epochMinutes + 9 * 60) * 60_000).toISOString().slice(0, 10);
 }
 
-export function createTenantQuotas(limits: TenantQuotaLimits, options: { nowMinutes?: () => number } = {}): TenantQuotas {
+export function createTenantQuotas(limits: TenantQuotaLimits, options: {
+    nowMinutes?: () => number;
+    /** 本人ごとの上限の差し替え(テスト用)。省略時は MEMBER_TRIGGERED_SENDS_PER_DAY */
+    memberTriggeredSendsPerDay?: number;
+  } = {}): TenantQuotas {
   const nowMinutes = options.nowMinutes ?? realNowMinutes;
+  const memberTriggeredSendsPerDay = options.memberTriggeredSendsPerDay ?? MEMBER_TRIGGERED_SENDS_PER_DAY;
 
   async function recordHit(db: Database, tenantId: string, limitName: string): Promise<void> {
     try {
@@ -169,6 +189,13 @@ export function createTenantQuotas(limits: TenantQuotaLimits, options: { nowMinu
     return result.allowed;
   }
 
+  /** テナントの外向きの通知の枠を1件使う。断ったら管理者へ1日1回知らせる(consumeMemberTriggeredOutbound の②からも使う)。 */
+  async function consumeTenantOutbound(db: Database, tenantId: string): Promise<boolean> {
+    const allowed = await consumeDaily(db, tenantId, "outbound_notifications", limits.outboundNotificationsPerDay);
+    if (!allowed) await notifyAdminsOutboundLimit(db, tenantId);
+    return allowed;
+  }
+
   return {
     limits,
     async checkMemberCapacity(db, tenantId) {
@@ -183,11 +210,7 @@ export function createTenantQuotas(limits: TenantQuotaLimits, options: { nowMinu
       await recordHit(db, tenantId, "api_keys");
       return { ok: false, limit: limits.apiKeys };
     },
-    async consumeOutboundNotification(db, tenantId) {
-      const allowed = await consumeDaily(db, tenantId, "outbound_notifications", limits.outboundNotificationsPerDay);
-      if (!allowed) await notifyAdminsOutboundLimit(db, tenantId);
-      return allowed;
-    },
+    consumeOutboundNotification: consumeTenantOutbound,
     async consumePersonalTestSend(db, tenantId, userId) {
       if (limits.outboundNotificationsPerDay === undefined) return true;
       return (
@@ -198,6 +221,25 @@ export function createTenantQuotas(limits: TenantQuotaLimits, options: { nowMinu
           limit: PERSONAL_TEST_SENDS_PER_DAY,
         })
       ).allowed;
+    },
+    async consumeMemberTriggeredOutbound(db, tenantId, userId) {
+      // 判断点: テナントの上限が未設定なら無制限(consumePersonalTestSend と同じ。セルフホストの挙動を変えない)。
+      if (limits.outboundNotificationsPerDay === undefined) return true;
+      // 判断点: ①本人ごとの枠を先に数える。本人の枠で断るときは hit を既存の `outbound_notifications` に記録する
+      // (メトリクスのラベル集合を増やさない)が、管理者へは知らせない(管理者への通知はテナントの枠の話)。
+      // 本人の枠を通ってテナントの枠で断られた場合、本人の枠は戻さない(許容: 戻すと原子性の扱いが増えるため)。
+      const own = await consumeTenantDailyCounter(db, {
+        tenantId,
+        counterKey: `member_triggered:${userId}`,
+        day: usageDayFromMinutes(nowMinutes()),
+        limit: memberTriggeredSendsPerDay,
+      });
+      if (!own.allowed) {
+        await recordHit(db, tenantId, "outbound_notifications");
+        return false;
+      }
+      // ②テナントの枠(従来どおり。断ったら管理者へ1日1回知らせる)
+      return consumeTenantOutbound(db, tenantId);
     },
     consumeInviteResetMail(db, tenantId) {
       return consumeDaily(db, tenantId, "invite_reset_mails", limits.inviteResetMailsPerDay);
