@@ -36,8 +36,21 @@ import { PageHeader } from "./ui/PageHeader";
  * 種類と所定も添えて見分けられるようにする。
  */
 function workPolicyLabel(name: string, kind: WorkPolicyDto["kind"], standardDayMinutes: number | null): string {
-  if (!kind || standardDayMinutes === null) return name;
-  return messages.members.workPolicyOption(name, messages.monthly.workSystemValue[kind], formatDurationHm(standardDayMinutes));
+  const summary = workPolicySummary(kind, standardDayMinutes);
+  return summary === null ? name : messages.members.workPolicyOption(name, summary);
+}
+
+/**
+ * 制度の種類と1日の所定の要約(「固定時間制・1日6:00」)。選択欄の下の補足と、現在値・履歴で使う。
+ * 変形労働時間制で基準所定が 0(未設定)のときは、所定はシフトで決まる旨を出す(0:00 と出さない)。
+ */
+function workPolicySummary(kind: WorkPolicyDto["kind"], standardDayMinutes: number | null): string | null {
+  if (!kind || standardDayMinutes === null) return null;
+  const standard =
+    kind === "monthly_variable" && standardDayMinutes === 0
+      ? messages.settingsWorkPolicies.standardDayByShift
+      : messages.members.workPolicyStandardPerDay(formatDurationHm(standardDayMinutes));
+  return messages.members.workPolicySummary(messages.monthly.workSystemValue[kind], standard);
 }
 
 /** 有給付与の区分の選択肢(表示順。@kizami/leave の LeaveGrantClass と一致)。 */
@@ -691,6 +704,12 @@ export function MembersView() {
 
   const expandedMember = members?.find((m) => m.id === expandedId) ?? null;
 
+  // 詳細は表の直後に出る(長い一覧では押した行から離れる)ため、開いたら詳細の区画を画面に入れる。
+  useEffect(() => {
+    if (expandedId === null) return;
+    document.getElementById("member-detail-panel")?.scrollIntoView({ block: "nearest" });
+  }, [expandedId]);
+
   const savedPresetIdsForExpanded = useMemo(
     () => (expandedMember ? matchAssignedPresetIds(expandedMember.presetNames, presets) : []),
     [expandedMember, presets],
@@ -890,298 +909,6 @@ export function MembersView() {
                             ) : null}
                           </td>
                         </tr>
-                        {isExpanded ? (
-                          <tr key={`${member.id}-detail`}>
-                            <td colSpan={9} className="org-table__detail-cell">
-                              <div className="member-detail">
-                                <section className="member-detail__section member-detail__section--full">
-                                  <h2 className="member-detail__section-title">{messages.members.basicsTitle}</h2>
-                                  <div className="member-basics">
-                                    <div className="field">
-                                      <label htmlFor={`member-department-${member.id}`}>{messages.members.columnDepartment}</label>
-                                      {departments.length > 0 ? (
-                                        <select
-                                          id={`member-department-${member.id}`}
-                                          value={member.department?.id ?? ""}
-                                          disabled={deptChangePendingId === member.id}
-                                          onChange={(e) => handleDepartmentChange(member.id, e.target.value)}
-                                        >
-                                          {member.department === null ? <option value="">{messages.members.noDepartment}</option> : null}
-                                          {departments.map((d) => (
-                                            <option key={d.id} value={d.id}>
-                                              {d.name}
-                                            </option>
-                                          ))}
-                                        </select>
-                                      ) : (
-                                        <span className="org-table__muted">{member.department?.name ?? messages.members.noDepartment}</span>
-                                      )}
-                                      {deptChangeError?.memberId === member.id ? (
-                                        <p className="notice notice--danger" role="alert">
-                                          {deptChangeError.message}
-                                        </p>
-                                      ) : null}
-                                    </div>
-                                    <div className="field">
-                                      <label htmlFor={`member-hire-date-${member.id}`}>{messages.members.columnHireDate}</label>
-                                      <div className="member-basics__hire-date">
-                                        <input
-                                          id={`member-hire-date-${member.id}`}
-                                          type="date"
-                                          value={hireDateDraftFor(member)}
-                                          disabled={hireDatePendingId === member.id}
-                                          onChange={(e) => setHireDateDrafts((prev) => ({ ...prev, [member.id]: e.target.value }))}
-                                        />
-                                        <button
-                                          type="button"
-                                          className="btn btn--secondary btn--sm"
-                                          disabled={hireDatePendingId === member.id}
-                                          onClick={() => handleHireDateSave(member)}
-                                        >
-                                          {hireDatePendingId === member.id ? messages.members.hireDateSaving : messages.members.hireDateSave}
-                                        </button>
-                                      </div>
-                                      {!member.hireDate ? (
-                                        <p className="notice notice--caution" role="alert">
-                                          {messages.members.hireDateWarning}
-                                        </p>
-                                      ) : null}
-                                      {hireDateError?.memberId === member.id ? (
-                                        <p className="notice notice--danger" role="alert">
-                                          {hireDateError.message}
-                                        </p>
-                                      ) : null}
-                                      {hireDateSavedId === member.id ? (
-                                        <p className="notice notice--success">{messages.members.hireDateSaved}</p>
-                                      ) : null}
-                                    </div>
-                                  </div>
-                                </section>
-
-                                <section className="member-detail__section">
-                                  <h2 className="member-detail__section-title">{messages.members.presetAssignTitle}</h2>
-                                  <p className="member-detail__hint">{messages.members.presetAssignHint}</p>
-                                  {presets.length === 0 ? (
-                                    <p className="org-settings__empty">{messages.members.noPresetsAvailable}</p>
-                                  ) : (
-                                    <ul className="preset-checkbox-list">
-                                      {presets.map((preset) => (
-                                        <li key={preset.id}>
-                                          <label className="preset-checkbox-list__item">
-                                            <input
-                                              type="checkbox"
-                                              checked={selectedPresetIds.includes(preset.id)}
-                                              onChange={() => togglePreset(preset.id)}
-                                            />
-                                            <span>{preset.name}</span>
-                                            {preset.description ? (
-                                              <span className="preset-checkbox-list__desc">{preset.description}</span>
-                                            ) : null}
-                                          </label>
-                                        </li>
-                                      ))}
-                                    </ul>
-                                  )}
-
-                                  {hasUnsavedChange ? (
-                                    <p className="member-detail__unsaved">{messages.members.presetAssignUnsaved}</p>
-                                  ) : null}
-                                  {assignError ? (
-                                    <p className="notice notice--danger" role="alert">
-                                      {assignError}
-                                    </p>
-                                  ) : null}
-                                  {assignSaved && !hasUnsavedChange ? (
-                                    <p className="notice notice--success">{messages.members.presetAssignSaved}</p>
-                                  ) : null}
-
-                                  <button
-                                    type="button"
-                                    className="btn btn--primary"
-                                    disabled={assignPending}
-                                    onClick={() => handleAssignSave(member.id)}
-                                  >
-                                    {assignPending ? messages.members.presetAssignSaving : messages.members.presetAssignSave}
-                                  </button>
-                                </section>
-
-                                <section className="member-detail__section">
-                                  <h2 className="member-detail__section-title">{messages.members.leaveGrantClassTitle}</h2>
-                                  <p className="member-detail__hint">{messages.members.leaveGrantClassHint}</p>
-                                  <select
-                                    aria-label={messages.members.leaveGrantClassLabel}
-                                    value={grantClassDraftFor(member)}
-                                    disabled={grantClassPendingId === member.id}
-                                    onChange={(e) => {
-                                      const next = e.target.value as LeaveGrantClass;
-                                      setGrantClassSavedId(null);
-                                      setGrantClassDrafts((prev) => ({ ...prev, [member.id]: next }));
-                                    }}
-                                  >
-                                    {LEAVE_GRANT_CLASS_OPTIONS.map((value) => (
-                                      <option key={value} value={value}>
-                                        {messages.members.leaveGrantClassOption[value]}
-                                      </option>
-                                    ))}
-                                  </select>
-                                  <p className="member-detail__hint">{messages.members.leaveGrantClassNote}</p>
-                                  {grantClassError?.memberId === member.id ? (
-                                    <p className="notice notice--danger" role="alert">
-                                      {grantClassError.message}
-                                    </p>
-                                  ) : null}
-                                  {grantClassSavedId === member.id ? (
-                                    <p className="notice notice--success">{messages.members.leaveGrantClassSaved}</p>
-                                  ) : null}
-                                  <button
-                                    type="button"
-                                    className="btn btn--secondary"
-                                    disabled={grantClassPendingId === member.id}
-                                    onClick={() => handleGrantClassSave(member)}
-                                  >
-                                    {grantClassPendingId === member.id
-                                      ? messages.members.leaveGrantClassSaving
-                                      : messages.members.leaveGrantClassSave}
-                                  </button>
-                                </section>
-
-                                <section className="member-detail__section">
-                                  <h2 className="member-detail__section-title">{messages.members.effectiveTitle}</h2>
-                                  <p className="member-detail__hint">{messages.members.effectiveHint}</p>
-                                  <EffectivePermissionsPanel entries={effectiveEntries} />
-                                </section>
-
-                                {canManageWorkPolicy ? (
-                                  <section className="member-detail__section member-detail__section--full">
-                                    <h2 className="member-detail__section-title">{messages.members.workPolicyTitle}</h2>
-                                    <p className="member-detail__hint">{messages.members.workPolicyHint}</p>
-
-                                    {workPolicyLoading ? (
-                                      <p className="org-settings__empty">{messages.loading}</p>
-                                    ) : (
-                                      <>
-                                        <div className="member-work-policy__current">
-                                          {workPolicy?.effective ? (
-                                            <>
-                                              <span>
-                                                {messages.members.workPolicyCurrentLabel}:{" "}
-                                                {workPolicyLabel(
-                                                  workPolicy.effective.workPolicyName,
-                                                  workPolicy.effective.kind,
-                                                  workPolicy.effective.standardDayMinutes,
-                                                )}
-                                              </span>
-                                              <span className="member-work-policy__current-effective-from tabular-nums">
-                                                {messages.members.workPolicyCurrentEffectiveFrom}: {formatEffectiveFrom(workPolicy.effective.effectiveFrom)}
-                                              </span>
-                                            </>
-                                          ) : (
-                                            <span className="org-settings__empty">{messages.members.workPolicyNoneYet}</span>
-                                          )}
-                                        </div>
-
-                                        <h3 className="member-detail__section-title">{messages.members.workPolicyFormTitle}</h3>
-                                        <form
-                                          className="member-work-policy__form"
-                                          onSubmit={(e) => handleWorkPolicySubmit(e, member.id)}
-                                        >
-                                          <div className="field">
-                                            <label htmlFor={`member-work-policy-id-${member.id}`}>
-                                              {messages.members.workPolicyPolicyLabel}
-                                            </label>
-                                            <select
-                                              id={`member-work-policy-id-${member.id}`}
-                                              value={workPolicyForm.workPolicyId}
-                                              onChange={(e) =>
-                                                setWorkPolicyForm((prev) => ({ ...prev, workPolicyId: e.target.value }))
-                                              }
-                                              required
-                                            >
-                                              {/* アーカイブ済みの制度は新しい割当の選択肢に出さない */}
-                                              {workPolicies
-                                                .filter((p) => p.archivedAt === null)
-                                                .map((p) => (
-                                                  <option key={p.id} value={p.id}>
-                                                    {workPolicyLabel(p.name, p.kind, p.effective?.standardDayMinutes ?? null)}
-                                                  </option>
-                                                ))}
-                                            </select>
-                                            <span className="field__hint">
-                                              {workPolicies.every((p) => p.archivedAt !== null) ? `${messages.members.workPolicyNoAssignable} ` : null}
-                                              <Link to="/settings/attendance">{messages.members.workPolicyManageLink}</Link>
-                                            </span>
-                                          </div>
-                                          <div className="field">
-                                            <label htmlFor={`member-work-policy-effective-from-${member.id}`}>
-                                              {messages.members.workPolicyEffectiveFromLabel}
-                                            </label>
-                                            <input
-                                              id={`member-work-policy-effective-from-${member.id}`}
-                                              type="date"
-                                              min={todayDate}
-                                              value={workPolicyForm.effectiveFrom}
-                                              onChange={(e) =>
-                                                setWorkPolicyForm((prev) => ({ ...prev, effectiveFrom: e.target.value }))
-                                              }
-                                              required
-                                            />
-                                            <span className="field__hint">
-                                              {messages.members.workPolicyEffectiveFromHint}
-                                            </span>
-                                          </div>
-                                          {workPolicyError ? (
-                                            <p className="notice notice--danger" role="alert">
-                                              {workPolicyError}
-                                            </p>
-                                          ) : null}
-                                          {workPolicySuccess ? (
-                                            <p className="notice notice--success">{messages.members.workPolicySubmitSuccess}</p>
-                                          ) : null}
-
-                                          <button
-                                            type="submit"
-                                            className="btn btn--primary"
-                                            disabled={workPolicySaving}
-                                          >
-                                            {workPolicySaving ? messages.members.workPolicySubmitting : messages.members.workPolicySubmit}
-                                          </button>
-                                        </form>
-
-                                        <h3 className="member-detail__section-title">{messages.members.workPolicyHistoryTitle}</h3>
-                                        {!workPolicy || workPolicy.history.length === 0 ? (
-                                          <p className="org-settings__empty">{messages.members.workPolicyHistoryEmpty}</p>
-                                        ) : (
-                                          <div className="org-settings__table-wrap">
-                                            <table className="org-table">
-                                              <thead>
-                                                <tr>
-                                                  <th>{messages.members.workPolicyHistoryColumnEffectiveFrom}</th>
-                                                  <th>{messages.members.workPolicyHistoryColumnPolicy}</th>
-                                                  <th>{messages.members.workPolicyHistoryColumnKind}</th>
-                                                </tr>
-                                              </thead>
-                                              <tbody>
-                                                {[...workPolicy.history].reverse().map((h) => (
-                                                  <tr key={h.effectiveFrom}>
-                                                    <td className="tabular-nums">{formatEffectiveFrom(h.effectiveFrom)}</td>
-                                                    <td>{h.workPolicyName}</td>
-                                                    <td className="tabular-nums">
-                                                      {messages.monthly.workSystemValue[h.kind]} / {formatDurationHm(h.standardDayMinutes)}
-                                                    </td>
-                                                  </tr>
-                                                ))}
-                                              </tbody>
-                                            </table>
-                                          </div>
-                                        )}
-                                      </>
-                                    )}
-                                  </section>
-                                ) : null}
-                              </div>
-                            </td>
-                          </tr>
-                        ) : null}
                       </Fragment>
                     );
                   })}
@@ -1189,6 +916,324 @@ export function MembersView() {
               </table>
             </div>
           )
+        ) : null}
+
+        {/*
+          メンバーの詳細(2026-10-05: 表の中の1行〔colspan〕から、表の直後の区画へ移した)。
+          表の行として描くと、横スクロールの枠(表の min-width)の幅で組まれて本文からはみ出していた。
+          本文(.page)の幅で組み、狭い画面では1列に落とす。開いた行の「閉じる」と、ここの「閉じる」は同じ操作。
+        */}
+        {expandedMember && !forbidden ? (
+          <section id="member-detail-panel" className="card" aria-labelledby="member-detail-panel-title">
+            <div className="btn-row">
+              <h2 id="member-detail-panel-title" className="card__title">
+                {expandedMember.name}
+              </h2>
+              <button type="button" className="btn btn--ghost btn--sm" onClick={() => toggleExpand(expandedMember)}>
+                {messages.members.detailShortClose}
+              </button>
+            </div>
+            {(() => {
+              const member = expandedMember;
+              return (
+          <div className="member-detail">
+            <section className="member-detail__section member-detail__section--full">
+              <h2 className="member-detail__section-title">{messages.members.basicsTitle}</h2>
+              <div className="field-row">
+                <div className="field">
+                  <label htmlFor={`member-department-${member.id}`}>{messages.members.columnDepartment}</label>
+                  {departments.length > 0 ? (
+                    <select
+                      id={`member-department-${member.id}`}
+                      value={member.department?.id ?? ""}
+                      disabled={deptChangePendingId === member.id}
+                      onChange={(e) => handleDepartmentChange(member.id, e.target.value)}
+                    >
+                      {member.department === null ? <option value="">{messages.members.noDepartment}</option> : null}
+                      {departments.map((d) => (
+                        <option key={d.id} value={d.id}>
+                          {d.name}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <span className="org-table__muted">{member.department?.name ?? messages.members.noDepartment}</span>
+                  )}
+                  {deptChangeError?.memberId === member.id ? (
+                    <p className="notice notice--danger" role="alert">
+                      {deptChangeError.message}
+                    </p>
+                  ) : null}
+                </div>
+                <div className="field">
+                  <label htmlFor={`member-hire-date-${member.id}`}>{messages.members.columnHireDate}</label>
+                  <div className="member-basics__hire-date">
+                    <input
+                      id={`member-hire-date-${member.id}`}
+                      type="date"
+                      value={hireDateDraftFor(member)}
+                      disabled={hireDatePendingId === member.id}
+                      onChange={(e) => setHireDateDrafts((prev) => ({ ...prev, [member.id]: e.target.value }))}
+                    />
+                    <button
+                      type="button"
+                      className="btn btn--secondary btn--sm"
+                      disabled={hireDatePendingId === member.id}
+                      onClick={() => handleHireDateSave(member)}
+                    >
+                      {hireDatePendingId === member.id ? messages.members.hireDateSaving : messages.members.hireDateSave}
+                    </button>
+                  </div>
+                  {!member.hireDate ? (
+                    <p className="notice notice--caution" role="alert">
+                      {messages.members.hireDateWarning}
+                    </p>
+                  ) : null}
+                  {hireDateError?.memberId === member.id ? (
+                    <p className="notice notice--danger" role="alert">
+                      {hireDateError.message}
+                    </p>
+                  ) : null}
+                  {hireDateSavedId === member.id ? (
+                    <p className="notice notice--success">{messages.members.hireDateSaved}</p>
+                  ) : null}
+                </div>
+              </div>
+            </section>
+
+            <section className="member-detail__section">
+              <h2 className="member-detail__section-title">{messages.members.presetAssignTitle}</h2>
+              <p className="member-detail__hint">{messages.members.presetAssignHint}</p>
+              {presets.length === 0 ? (
+                <p className="org-settings__empty">{messages.members.noPresetsAvailable}</p>
+              ) : (
+                <ul className="preset-checkbox-list">
+                  {presets.map((preset) => (
+                    <li key={preset.id}>
+                      <label className="preset-checkbox-list__item">
+                        <input
+                          type="checkbox"
+                          checked={selectedPresetIds.includes(preset.id)}
+                          onChange={() => togglePreset(preset.id)}
+                        />
+                        <span>{preset.name}</span>
+                        {preset.description ? (
+                          <span className="preset-checkbox-list__desc">{preset.description}</span>
+                        ) : null}
+                      </label>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              {hasUnsavedChange ? (
+                <p className="member-detail__unsaved">{messages.members.presetAssignUnsaved}</p>
+              ) : null}
+              {assignError ? (
+                <p className="notice notice--danger" role="alert">
+                  {assignError}
+                </p>
+              ) : null}
+              {assignSaved && !hasUnsavedChange ? (
+                <p className="notice notice--success">{messages.members.presetAssignSaved}</p>
+              ) : null}
+
+              <button
+                type="button"
+                className="btn btn--primary"
+                disabled={assignPending}
+                onClick={() => handleAssignSave(member.id)}
+              >
+                {assignPending ? messages.members.presetAssignSaving : messages.members.presetAssignSave}
+              </button>
+            </section>
+
+            <section className="member-detail__section">
+              <h2 className="member-detail__section-title">{messages.members.leaveGrantClassTitle}</h2>
+              <p className="member-detail__hint">{messages.members.leaveGrantClassHint}</p>
+              {/* 共通の .field に入れて、他の選択欄と同じ高さ・幅にする(2026-10-05) */}
+              <div className="field">
+                <select
+                  aria-label={messages.members.leaveGrantClassLabel}
+                  value={grantClassDraftFor(member)}
+                  disabled={grantClassPendingId === member.id}
+                  onChange={(e) => {
+                    const next = e.target.value as LeaveGrantClass;
+                    setGrantClassSavedId(null);
+                    setGrantClassDrafts((prev) => ({ ...prev, [member.id]: next }));
+                  }}
+                >
+                  {LEAVE_GRANT_CLASS_OPTIONS.map((value) => (
+                    <option key={value} value={value}>
+                      {messages.members.leaveGrantClassOption[value]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <p className="member-detail__hint">{messages.members.leaveGrantClassNote}</p>
+              {grantClassError?.memberId === member.id ? (
+                <p className="notice notice--danger" role="alert">
+                  {grantClassError.message}
+                </p>
+              ) : null}
+              {grantClassSavedId === member.id ? (
+                <p className="notice notice--success">{messages.members.leaveGrantClassSaved}</p>
+              ) : null}
+              <button
+                type="button"
+                className="btn btn--secondary"
+                disabled={grantClassPendingId === member.id}
+                onClick={() => handleGrantClassSave(member)}
+              >
+                {grantClassPendingId === member.id
+                  ? messages.members.leaveGrantClassSaving
+                  : messages.members.leaveGrantClassSave}
+              </button>
+            </section>
+
+            <section className="member-detail__section">
+              <h2 className="member-detail__section-title">{messages.members.effectiveTitle}</h2>
+              <p className="member-detail__hint">{messages.members.effectiveHint}</p>
+              <EffectivePermissionsPanel entries={effectiveEntries} />
+            </section>
+
+            {canManageWorkPolicy ? (
+              <section className="member-detail__section member-detail__section--full">
+                <h2 className="member-detail__section-title">{messages.members.workPolicyTitle}</h2>
+                <p className="member-detail__hint">{messages.members.workPolicyHint}</p>
+
+                {workPolicyLoading ? (
+                  <p className="org-settings__empty">{messages.loading}</p>
+                ) : (
+                  <>
+                    <div className="member-work-policy__current">
+                      {workPolicy?.effective ? (
+                        <>
+                          <span>
+                            {messages.members.workPolicyCurrentLabel}:{" "}
+                            {workPolicyLabel(
+                              workPolicy.effective.workPolicyName,
+                              workPolicy.effective.kind,
+                              workPolicy.effective.standardDayMinutes,
+                            )}
+                          </span>
+                          <span className="member-work-policy__current-effective-from tabular-nums">
+                            {messages.members.workPolicyCurrentEffectiveFrom}: {formatEffectiveFrom(workPolicy.effective.effectiveFrom)}
+                          </span>
+                        </>
+                      ) : (
+                        <span className="org-settings__empty">{messages.members.workPolicyNoneYet}</span>
+                      )}
+                    </div>
+
+                    <h3 className="member-detail__section-title">{messages.members.workPolicyFormTitle}</h3>
+                    <form
+                      className="member-work-policy__form"
+                      onSubmit={(e) => handleWorkPolicySubmit(e, member.id)}
+                    >
+                      <div className="field">
+                        <label htmlFor={`member-work-policy-id-${member.id}`}>
+                          {messages.members.workPolicyPolicyLabel}
+                        </label>
+                        <select
+                          id={`member-work-policy-id-${member.id}`}
+                          value={workPolicyForm.workPolicyId}
+                          onChange={(e) =>
+                            setWorkPolicyForm((prev) => ({ ...prev, workPolicyId: e.target.value }))
+                          }
+                          required
+                        >
+                          {/* アーカイブ済みの制度は新しい割当の選択肢に出さない */}
+                          {workPolicies
+                            .filter((p) => p.archivedAt === null)
+                            .map((p) => (
+                              <option key={p.id} value={p.id}>
+                                {p.name}
+                              </option>
+                            ))}
+                        </select>
+                        {/* 選択肢は名前だけにし(長いと選択欄で切れるため)、種類と所定はここに補足として出す。 */}
+                        {(() => {
+                          const selected = workPolicies.find((p) => p.id === workPolicyForm.workPolicyId);
+                          const summary = selected ? workPolicySummary(selected.kind, selected.effective?.standardDayMinutes ?? null) : null;
+                          return summary ? <span className="field__hint">{summary}</span> : null;
+                        })()}
+                        <span className="field__hint">
+                          {workPolicies.every((p) => p.archivedAt !== null) ? `${messages.members.workPolicyNoAssignable} ` : null}
+                          <Link to="/settings/attendance">{messages.members.workPolicyManageLink}</Link>
+                        </span>
+                      </div>
+                      <div className="field">
+                        <label htmlFor={`member-work-policy-effective-from-${member.id}`}>
+                          {messages.members.workPolicyEffectiveFromLabel}
+                        </label>
+                        <input
+                          id={`member-work-policy-effective-from-${member.id}`}
+                          type="date"
+                          min={todayDate}
+                          value={workPolicyForm.effectiveFrom}
+                          onChange={(e) =>
+                            setWorkPolicyForm((prev) => ({ ...prev, effectiveFrom: e.target.value }))
+                          }
+                          required
+                        />
+                        <span className="field__hint">
+                          {messages.members.workPolicyEffectiveFromHint}
+                        </span>
+                      </div>
+                      {workPolicyError ? (
+                        <p className="notice notice--danger" role="alert">
+                          {workPolicyError}
+                        </p>
+                      ) : null}
+                      {workPolicySuccess ? (
+                        <p className="notice notice--success">{messages.members.workPolicySubmitSuccess}</p>
+                      ) : null}
+
+                      <button
+                        type="submit"
+                        className="btn btn--primary"
+                        disabled={workPolicySaving}
+                      >
+                        {workPolicySaving ? messages.members.workPolicySubmitting : messages.members.workPolicySubmit}
+                      </button>
+                    </form>
+
+                    <h3 className="member-detail__section-title">{messages.members.workPolicyHistoryTitle}</h3>
+                    {!workPolicy || workPolicy.history.length === 0 ? (
+                      <p className="org-settings__empty">{messages.members.workPolicyHistoryEmpty}</p>
+                    ) : (
+                      <div className="org-settings__table-wrap">
+                        <table className="org-table">
+                          <thead>
+                            <tr>
+                              <th>{messages.members.workPolicyHistoryColumnEffectiveFrom}</th>
+                              <th>{messages.members.workPolicyHistoryColumnPolicy}</th>
+                              <th>{messages.members.workPolicyHistoryColumnKind}</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {[...workPolicy.history].reverse().map((h) => (
+                              <tr key={h.effectiveFrom}>
+                                <td className="tabular-nums">{formatEffectiveFrom(h.effectiveFrom)}</td>
+                                <td>{h.workPolicyName}</td>
+                                <td className="tabular-nums">
+                                  {workPolicySummary(h.kind, h.standardDayMinutes)}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </>
+                )}
+              </section>
+            ) : null}
+          </div>
+              );
+            })()}
+          </section>
         ) : null}
       </main>
 

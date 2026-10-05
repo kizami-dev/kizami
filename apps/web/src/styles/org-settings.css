@@ -393,12 +393,6 @@
   font-family: inherit;
 }
 
-/* td.org-table__detail-cell: 上の ".org-table th, .org-table td" と詳細度(0,1,1)を揃え、
-   ソース順(このルールの方が後)で勝たせる(!important 廃止、2026-08-23)。 */
-td.org-table__detail-cell {
-  background: color-mix(in srgb, var(--k-key) 2%, transparent);
-  padding: var(--space-5);
-}
 
 /* ---- 招待式登録(メンバー招待・再発行・取り消し、2026-08-23 追加) ---- */
 
@@ -510,22 +504,24 @@ td.org-table__detail-cell {
 
 /* ---- メンバー詳細(プリセット割当+実効権限ビュー) ---- */
 
+/*
+ * 2026-10-05: 詳細は表の中の1行(colspan)ではなく、表の直後のカード(MembersView の
+ * #member-detail-panel)に出す。表の行だと横スクロールの枠(表の min-width)の幅で組まれ、
+ * 本文からはみ出していた。2列(プリセット割当・有給付与の区分など)は、本文の幅で
+ * 1列あたり 22rem を確保できるときだけ並べ、足りなければ1列に落とす。
+ */
 .member-detail {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr));
   gap: var(--space-6);
-}
-
-@media (max-width: 760px) {
-  .member-detail {
-    grid-template-columns: 1fr;
-  }
 }
 
 .member-detail__section {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
+  /* グリッドの子は既定で min-width: auto のため、長い文言や表で列が広がるのを防ぐ */
+  min-width: 0;
 }
 
 .member-detail__section-title {
@@ -856,22 +852,18 @@ td.org-table__detail-cell {
   color: var(--k-ink-soft);
 }
 
+/* 2026-10-05: 制度・適用開始日・送信を縦に積み、フォームの幅(--width-form)に揃える
+   (横並びだと制度の選択欄が狭くなり、名前が切れていた)。 */
 .member-work-policy__form {
   display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: var(--space-4);
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+  max-width: var(--width-form);
 }
 
 .member-work-policy__form .field {
-  min-width: 12rem;
-}
-
-/* 制度の選択肢は「名前(種類・1日の所定)」で長くなるため、行の残りの幅を使って切れないようにする
-   (2026-10-05、名前付きの制度)。 */
-.member-work-policy__form .field:first-child {
-  flex: 1 1 18rem;
-  max-width: 32rem;
+  align-self: stretch;
 }
 
 /* ---- 退職処理(無効化)の確認ダイアログの影響一覧(2026-08-23 Tier 0 その4 追加) ---- */
@@ -919,12 +911,6 @@ td.org-table__detail-cell {
   flex-wrap: nowrap;
   align-items: center;
   gap: var(--space-2);
-}
-
-.member-basics {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-5);
 }
 
 .member-basics__hire-date {

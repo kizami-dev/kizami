@@ -1629,6 +1629,8 @@ export const zhHant = {
       monthly_variable: "基準所定時間(特休換算用,每天)",
     } satisfies Record<"flex" | "fixed" | "monthly_variable", string>,
     standardDayValue: (hm: string, minutes: number) => `${hm}(${minutes}分鐘)`,
+    /** 変形労働時間制で基準所定が未設定(0)のとき。所定は日ごとのシフトで決まる。 */
+    standardDayByShift: "所定時間由排班決定",
     assigneeCountLabel: "已分配人數(截至今天)",
     assigneeCountValue: (count: number) => `${count}人`,
     currentEffectiveFrom: "此版本的生效日期",
@@ -2119,7 +2121,10 @@ export const zhHant = {
     workPolicyHistoryColumnKind: "類型・所定",
     workPolicyFormTitle: "變更制度",
     workPolicyPolicyLabel: "工時制度",
-    workPolicyOption: (name: string, kind: string, hm: string) => `${name}(${kind}・每天${hm})`,
+    workPolicyOption: (name: string, summary: string) => `${name}(${summary})`,
+    /** 制度の種類と1日の所定の要約(選択欄の下の補足・現在値・履歴)。 */
+    workPolicySummary: (kind: string, standard: string) => `${kind}・${standard}`,
+    workPolicyStandardPerDay: (hm: string) => `每天${hm}`,
     workPolicyNoAssignable: "沒有可分配的制度。請在出勤規則中新增制度。",
     workPolicyManageLink: "新增・編輯工時制度 →",
     workPolicyEffectiveFromLabel: "生效日期",

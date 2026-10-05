@@ -1697,6 +1697,8 @@ export const ja = {
       monthly_variable: "基準所定(有給換算用、1日)",
     } satisfies Record<"flex" | "fixed" | "monthly_variable", string>,
     standardDayValue: (hm: string, minutes: number) => `${hm}(${minutes}分)`,
+    /** 変形労働時間制で基準所定が未設定(0)のとき。所定は日ごとのシフトで決まる。 */
+    standardDayByShift: "所定はシフトで決まる",
     assigneeCountLabel: "割り当てている人数(今日時点)",
     assigneeCountValue: (count: number) => `${count}人`,
     currentEffectiveFrom: "この版が有効になった日",
@@ -2199,7 +2201,10 @@ export const ja = {
     /** 制度の選択欄(2026-10-05、名前付きの制度)。kind ではなく制度を名前で選ぶ。 */
     workPolicyPolicyLabel: "労働時間制の制度",
     /** 選択肢・現在値の表示(制度名・種類・1日の所定)。 */
-    workPolicyOption: (name: string, kind: string, hm: string) => `${name}(${kind}・1日${hm})`,
+    workPolicyOption: (name: string, summary: string) => `${name}(${summary})`,
+    /** 制度の種類と1日の所定の要約(選択欄の下の補足・現在値・履歴)。 */
+    workPolicySummary: (kind: string, standard: string) => `${kind}・${standard}`,
+    workPolicyStandardPerDay: (hm: string) => `1日${hm}`,
     workPolicyNoAssignable: "割り当てられる制度がありません。勤怠ルールで制度を追加してください。",
     workPolicyManageLink: "労働時間制の制度を追加・編集する →",
     workPolicyEffectiveFromLabel: "適用開始日",

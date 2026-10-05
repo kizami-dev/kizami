@@ -51,8 +51,12 @@ export function summarizeCoreTime(core: CoreTimeDto | null): string {
   return messages.settingsAttendance.coreTimeSummary(minutesToHm(core.startMinutes), minutesToHm(core.endMinutes), weekdays);
 }
 
-/** 1日の所定の表示("6:00(360分)")。 */
-function formatStandardDay(minutes: number): string {
+/**
+ * 1日の所定の表示("6:00(360分)")。変形労働時間制で基準所定が 0(未設定)のときは、所定は日ごとの
+ * シフトで決まる旨を出す("0:00(0分)" と出すと所定が0時間のように読めるため)。
+ */
+function formatStandardDay(kind: WorkSystemKind, minutes: number): string {
+  if (kind === "monthly_variable" && minutes === 0) return messages.settingsWorkPolicies.standardDayByShift;
   return messages.settingsWorkPolicies.standardDayValue(formatDurationHm(minutes), minutes);
 }
 
@@ -60,7 +64,7 @@ function formatStandardDay(minutes: number): string {
 function summarizeVersion(v: WorkPolicyVersionDto): string {
   const parts = [
     kindLabel(v.kind),
-    `${messages.settingsWorkPolicies.standardDayLabel[v.kind]}: ${formatStandardDay(v.standardDayMinutes)}`,
+    `${messages.settingsWorkPolicies.standardDayLabel[v.kind]}: ${formatStandardDay(v.kind, v.standardDayMinutes)}`,
   ];
   if (v.kind === "flex") parts.push(`${messages.settingsAttendance.coreTimeLabel}: ${summarizeCoreTime(v.core)}`);
   return parts.join(" / ");
@@ -381,7 +385,7 @@ export function WorkPoliciesSection({ initial, todayDate, defaultEffectiveFrom, 
                     {current.kind === "fixed" ? <HelpTip helpKey="attendance.fixed-overtime" /> : null}
                     {current.kind === "flex" ? <HelpTip helpKey="attendance.flex-frame" /> : null}
                   </span>
-                  <span className="attendance-settings__current-value tabular-nums">{formatStandardDay(current.standardDayMinutes)}</span>
+                  <span className="attendance-settings__current-value tabular-nums">{formatStandardDay(current.kind, current.standardDayMinutes)}</span>
                 </div>
                 {current.kind === "flex" ? (
                   <div className="attendance-settings__current-row">

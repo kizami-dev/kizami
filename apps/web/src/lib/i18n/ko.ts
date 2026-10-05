@@ -1643,6 +1643,8 @@ export const ko = {
       monthly_variable: "기준 소정(연차 환산용, 1일)",
     } satisfies Record<"flex" | "fixed" | "monthly_variable", string>,
     standardDayValue: (hm: string, minutes: number) => `${hm}(${minutes}분)`,
+    /** 変形労働時間制で基準所定が未設定(0)のとき。所定は日ごとのシフトで決まる。 */
+    standardDayByShift: "소정은 시프트로 정해짐",
     assigneeCountLabel: "할당된 인원(오늘 기준)",
     assigneeCountValue: (count: number) => `${count}명`,
     currentEffectiveFrom: "이 버전이 적용된 날",
@@ -2136,7 +2138,10 @@ export const ko = {
     workPolicyHistoryColumnKind: "종류·소정",
     workPolicyFormTitle: "제도 변경",
     workPolicyPolicyLabel: "근로시간 제도",
-    workPolicyOption: (name: string, kind: string, hm: string) => `${name}(${kind}·1일 ${hm})`,
+    workPolicyOption: (name: string, summary: string) => `${name}(${summary})`,
+    /** 制度の種類と1日の所定の要約(選択欄の下の補足・現在値・履歴)。 */
+    workPolicySummary: (kind: string, standard: string) => `${kind}·${standard}`,
+    workPolicyStandardPerDay: (hm: string) => `1일 ${hm}`,
     workPolicyNoAssignable: "할당할 수 있는 제도가 없습니다. 근태 규칙에서 제도를 추가해 주세요.",
     workPolicyManageLink: "근로시간 제도 추가·편집 →",
     workPolicyEffectiveFromLabel: "적용 시작일",
