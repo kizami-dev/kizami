@@ -584,6 +584,16 @@ export function DashboardView() {
                 {flexDiff < 0 ? ` ${messages.monthly.flexShortLabel}` : ""}
               </span>
             </div>
+            {/*
+              契約上の枠(所定日数 × 標準時間、2026-10-05)の制度では、枠(frameMinutes)が
+              「契約上の枠 + 前月からの繰越」になる。何を基準にした収支かを1行で添える。
+            */}
+            {flex && flex.contractFrameMinutes !== null ? (
+              <p className="field__hint tabular-nums">
+                {messages.monthly.flexContractFrameLabel} {formatDurationHm(flex.contractFrameMinutes)}
+                {flex.carryInMinutes > 0 ? ` + ${messages.monthly.flexCarryInLabel} ${formatDurationHm(flex.carryInMinutes)}` : ""}
+              </p>
+            ) : null}
           </div>
           <Link to={`/monthly?month=${monthParam}`} className="dashboard-card__link">
             {messages.dashboard.monthFlexMoreLink}

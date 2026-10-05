@@ -10,6 +10,7 @@ import {
   type AttendanceSettingVersionDto,
   type AutoBreakRuleDto,
   type BreakRuleDto,
+  type HolidayCalendarSettingsDto,
   type LegalHolidayRuleDto,
   type WorkPoliciesDto,
 } from "../lib/api";
@@ -31,6 +32,7 @@ import { HelpTip } from "./HelpTip";
 import { SettingsNav } from "./SettingsNav";
 import { StateView } from "./ui/StateView";
 import { PageHeader } from "./ui/PageHeader";
+import { HolidayCalendarSection } from "./HolidayCalendarSection";
 import { WorkPoliciesSection } from "./WorkPoliciesSection";
 
 // モジュールレベルで messages のプロパティを取り出して定数化すると、import 時の言語
@@ -169,6 +171,9 @@ export function SettingsAttendanceView() {
   // 「フレックスの制度」のカードに統合した。
   const [workPolicies, setWorkPolicies] = useState<WorkPoliciesDto | null>(null);
   const [workPolicyForbidden, setWorkPolicyForbidden] = useState(false);
+  // 所定休日のカレンダー(2026-10-05)。権限は勤怠ルールと同じ calendar.manage なので、403 は
+  // attendanceForbidden と同じ扱いになる(区画を出さない)。
+  const [holidayCalendar, setHolidayCalendar] = useState<HolidayCalendarSettingsDto | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
@@ -187,8 +192,8 @@ export function SettingsAttendanceView() {
     setAttendanceForbidden(false);
     setWorkPolicyForbidden(false);
 
-    Promise.allSettled([api.getAttendanceSettings(), api.listWorkPolicies()])
-      .then(([attendanceRes, workPolicyRes]) => {
+    Promise.allSettled([api.getAttendanceSettings(), api.listWorkPolicies(), api.getHolidayCalendar()])
+      .then(([attendanceRes, workPolicyRes, holidayCalendarRes]) => {
         if (cancelled) return;
 
         if (attendanceRes.status === "fulfilled") {
@@ -201,6 +206,13 @@ export function SettingsAttendanceView() {
           setAttendanceForbidden(true);
         } else {
           setLoadError(messages.settingsAttendance.loadFailed);
+        }
+
+        if (holidayCalendarRes.status === "fulfilled") {
+          setHolidayCalendar(holidayCalendarRes.value);
+        } else if (!(holidayCalendarRes.reason instanceof ApiError && holidayCalendarRes.reason.status === 403)) {
+          // 401 は上の勤怠ルールの取得と同じ結果になるのでここでは扱わない。403 は区画を出さないだけ
+          setLoadError(messages.settingsHolidayCalendar.loadFailed);
         }
 
         if (workPolicyRes.status === "fulfilled") {
@@ -639,6 +651,15 @@ export function SettingsAttendanceView() {
               </div>
             )}
           </section>
+        ) : null}
+
+        {!attendanceForbidden && holidayCalendar ? (
+          <HolidayCalendarSection
+            initial={holidayCalendar}
+            todayDate={todayDate}
+            defaultEffectiveFrom={defaultNextMonthFirstDay()}
+            onUnauthorized={() => router.push("/login")}
+          />
         ) : null}
 
         {!workPolicyForbidden && workPolicies ? (

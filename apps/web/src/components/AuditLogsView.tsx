@@ -81,6 +81,8 @@ const KNOWN_ACTIONS: readonly string[] = [
   "permission_preset.delete",
   "permission_preset.update",
   "privacy_contact.update",
+  // 所定休日のカレンダー(2026-10-05)
+  "scheduled_holiday_calendar_version.create",
   "slack_link.create",
   "slack_settings.update",
   "tenant_profile.update",

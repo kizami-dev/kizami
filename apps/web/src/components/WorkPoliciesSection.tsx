@@ -7,6 +7,7 @@ import {
   UnauthorizedError,
   type CoreTimeDto,
   type CreateWorkPolicyVersionInput,
+  type FlexTotalHoursBasis,
   type WorkPoliciesDto,
   type WorkPolicyDto,
   type WorkPolicyVersionDto,
@@ -60,13 +61,27 @@ function formatStandardDay(kind: WorkSystemKind, minutes: number): string {
   return messages.settingsWorkPolicies.standardDayValue(formatDurationHm(minutes), minutes);
 }
 
+/** フレックスの総労働時間の決め方(2026-10-05)の表示 */
+function basisLabel(basis: FlexTotalHoursBasis): string {
+  return messages.settingsWorkPolicies.totalHoursBasisValue[basis];
+}
+
+/** 不足の繰越の表示 */
+function carryLabel(carry: boolean): string {
+  return carry ? messages.settingsWorkPolicies.carryOverShortfallValue.on : messages.settingsWorkPolicies.carryOverShortfallValue.off;
+}
+
 /** 版の履歴の「内容」欄。 */
 function summarizeVersion(v: WorkPolicyVersionDto): string {
   const parts = [
     kindLabel(v.kind),
     `${messages.settingsWorkPolicies.standardDayLabel[v.kind]}: ${formatStandardDay(v.kind, v.standardDayMinutes)}`,
   ];
-  if (v.kind === "flex") parts.push(`${messages.settingsAttendance.coreTimeLabel}: ${summarizeCoreTime(v.core)}`);
+  if (v.kind === "flex") {
+    parts.push(`${messages.settingsWorkPolicies.totalHoursBasisLabel}: ${basisLabel(v.totalHoursBasis)}`);
+    if (v.totalHoursBasis === "scheduled_days") parts.push(`${messages.settingsWorkPolicies.carryOverShortfallLabel}: ${carryLabel(v.carryOverShortfall)}`);
+    parts.push(`${messages.settingsAttendance.coreTimeLabel}: ${summarizeCoreTime(v.core)}`);
+  }
   return parts.join(" / ");
 }
 
@@ -81,6 +96,10 @@ interface VersionFormState {
   coreTimeEndHm: string;
   /** 曜日ごとの選択状態(index = 0..6、0=日曜) */
   coreTimeWeekdays: boolean[];
+  /** フレックスの総労働時間の決め方(2026-10-05)。既定は法定の枠 */
+  totalHoursBasis: FlexTotalHoursBasis;
+  /** フレックスで不足を翌月に繰り越すか。"scheduled_days" のときだけ送る */
+  carryOverShortfall: boolean;
 }
 
 function initialVersionForm(effectiveFrom: string, base: WorkPolicyVersionDto | null): VersionFormState {
@@ -93,6 +112,8 @@ function initialVersionForm(effectiveFrom: string, base: WorkPolicyVersionDto | 
     coreTimeStartHm: core ? minutesToHm(core.startMinutes) : "10:00",
     coreTimeEndHm: core ? minutesToHm(core.endMinutes) : "15:00",
     coreTimeWeekdays: ALL_WEEKDAYS.map((w) => selected.includes(w)),
+    totalHoursBasis: base?.kind === "flex" ? base.totalHoursBasis : "statutory_frame",
+    carryOverShortfall: base?.kind === "flex" ? base.carryOverShortfall : false,
   };
 }
 
@@ -116,7 +137,16 @@ function buildVersionInput(kind: WorkSystemKind, form: VersionFormState): Create
     if (weekdays.length === 0) return { error: "invalid_core_time_weekdays" };
     core = { startMinutes, endMinutes, weekdays };
   }
-  return { effectiveFrom: form.effectiveFrom, kind, settlementPeriod: "monthly", core, standardDayMinutes };
+  return {
+    effectiveFrom: form.effectiveFrom,
+    kind,
+    settlementPeriod: "monthly",
+    core,
+    standardDayMinutes,
+    totalHoursBasis: form.totalHoursBasis,
+    // 繰越は「所定日数 × 標準時間」のときだけ意味を持つ(API も他の組み合わせを 400 にする)
+    carryOverShortfall: form.totalHoursBasis === "scheduled_days" && form.carryOverShortfall,
+  };
 }
 
 function standardDayHint(kind: WorkSystemKind): string {
@@ -152,6 +182,43 @@ function VersionFields({
           required
         />
       </Field>
+
+      {/*
+        総労働時間の決め方と不足の繰越(2026-10-05、時短勤務の第2段階)。既定は法定の枠(従来どおり)。
+        繰越は「所定日数 × 標準時間」のときだけ選べる。
+      */}
+      {kind === "flex" ? (
+        <fieldset className="field attendance-settings__field">
+          <legend>
+            {messages.settingsWorkPolicies.totalHoursBasisLabel}
+            <HelpTip helpKey="attendance.flex-contract" />
+          </legend>
+          {(["statutory_frame", "scheduled_days"] as const).map((basis) => (
+            <label key={basis} className="attendance-settings__radio attendance-settings__radio--with-hint">
+              <input
+                type="radio"
+                name={`${idPrefix}-basis`}
+                checked={form.totalHoursBasis === basis}
+                onChange={() => onChange({ ...form, totalHoursBasis: basis })}
+              />
+              <span className="attendance-settings__radio-text">
+                {basisLabel(basis)}
+                <span className="attendance-settings__field-hint">{messages.settingsWorkPolicies.totalHoursBasisHint[basis]}</span>
+              </span>
+            </label>
+          ))}
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={form.totalHoursBasis === "scheduled_days" && form.carryOverShortfall}
+              disabled={form.totalHoursBasis !== "scheduled_days"}
+              onChange={(e) => onChange({ ...form, carryOverShortfall: e.target.checked })}
+            />
+            <span>{messages.settingsWorkPolicies.carryOverShortfallCheckbox}</span>
+          </label>
+          <p className="attendance-settings__field-hint">{messages.settingsWorkPolicies.carryOverShortfallHint}</p>
+        </fieldset>
+      ) : null}
 
       {/* コアタイム(labor law §32-3)。フレックスの任意設定なので既定は「設定しない」= スーパーフレックス。 */}
       {kind === "flex" ? (
@@ -387,6 +454,23 @@ export function WorkPoliciesSection({ initial, todayDate, defaultEffectiveFrom, 
                   </span>
                   <span className="attendance-settings__current-value tabular-nums">{formatStandardDay(current.kind, current.standardDayMinutes)}</span>
                 </div>
+                {current.kind === "flex" ? (
+                  <>
+                    <div className="attendance-settings__current-row">
+                      <span className="attendance-settings__current-label">
+                        {messages.settingsWorkPolicies.totalHoursBasisLabel}
+                        <HelpTip helpKey="attendance.flex-contract" />
+                      </span>
+                      <span className="attendance-settings__current-value">{basisLabel(current.totalHoursBasis)}</span>
+                    </div>
+                    {current.totalHoursBasis === "scheduled_days" ? (
+                      <div className="attendance-settings__current-row">
+                        <span className="attendance-settings__current-label">{messages.settingsWorkPolicies.carryOverShortfallLabel}</span>
+                        <span className="attendance-settings__current-value">{carryLabel(current.carryOverShortfall)}</span>
+                      </div>
+                    ) : null}
+                  </>
+                ) : null}
                 {current.kind === "flex" ? (
                   <div className="attendance-settings__current-row">
                     <span className="attendance-settings__current-label">{messages.settingsAttendance.coreTimeLabel}</span>

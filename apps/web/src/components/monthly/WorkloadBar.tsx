@@ -1,6 +1,6 @@
 "use client";
 
-import { type MonthlyAttendance } from "../../lib/api";
+import { type FlexBalance, type MonthlyAttendance } from "../../lib/api";
 import { messages } from "../../lib/messages";
 import { formatDurationHm } from "../../lib/time";
 import { HelpTip } from "../HelpTip";
@@ -110,6 +110,7 @@ export function WorkloadBar({ data }: WorkloadBarProps) {
           {(flex?.diffMinutes ?? 0) < 0 ? ` ${messages.monthly.flexShortLabel}` : ""}
         </span>
       </div>
+      {flex && flex.contractFrameMinutes !== null ? <FlexContractBreakdown flex={flex} overtimeMinutes={data.figures.totals.overtime} /> : null}
     </div>
   ) : (
     <div className="flex-balance">
@@ -137,6 +138,47 @@ export function WorkloadBar({ data }: WorkloadBarProps) {
             ? `+${formatDurationHm(overtimeOverLimit)} ${messages.monthly.overtimeBarOverLabel}`
             : `${messages.monthly.overtimeBarRemainingLabel} ${formatDurationHm(AGREEMENT36_MONTHLY_LIMIT_MINUTES - overtimeMinutes)}`}
         </span>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * フレックスの内訳(2026-10-05、契約上の枠)。総労働時間の決め方が「所定日数 × 標準時間」の
+ * 制度のときだけ、収支バーの下に3段の区分(枠内 → 法定内超過 → 法定外)と繰越をチップで並べる。
+ * 収支バー自体は「実績 / 枠(契約上の枠 + 前月からの繰越)」のまま。法定の枠の制度では出さない
+ * (従来の表示を変えないため。繰越・法定内超過は常に0)。
+ *
+ * 繰越の受け入れ・送り出しは0のときは出さない(繰り越さない制度や、繰越の無い月で並びを増やさない)。
+ * 法定外は totals.overtime(区分別合計の「残業」と同じ値)を、ここでは3段の最後として並べ直す。
+ */
+function FlexContractBreakdown({ flex, overtimeMinutes }: { flex: FlexBalance; overtimeMinutes: number }) {
+  const m = messages.monthly;
+  const chips: Array<{ key: string; label: string; minutes: number; tone?: "short" | "overtime" }> = [
+    { key: "contract", label: m.flexContractFrameLabel, minutes: flex.contractFrameMinutes ?? 0 },
+    ...(flex.carryInMinutes > 0 ? [{ key: "carryIn", label: m.flexCarryInLabel, minutes: flex.carryInMinutes }] : []),
+    { key: "statutory", label: m.flexStatutoryFrameLabel, minutes: flex.statutoryFrameMinutes },
+    { key: "excess", label: m.flexWithinStatutoryExcessLabel, minutes: flex.withinStatutoryExcessMinutes },
+    { key: "overtime", label: m.flexOvertimeLabel, minutes: overtimeMinutes, tone: "overtime" as const },
+    ...(flex.carryOutMinutes > 0 ? [{ key: "carryOut", label: m.flexCarryOutLabel, minutes: flex.carryOutMinutes }] : []),
+    { key: "confirmed", label: m.flexConfirmedShortfallLabel, minutes: flex.confirmedShortfallMinutes, tone: "short" as const },
+  ];
+  return (
+    <div className="flex-balance__breakdown" data-testid="flex-contract-breakdown">
+      <p className="field__hint">
+        {m.flexContractBasisNote}
+        <HelpTip helpKey="attendance.flex-contract" />
+      </p>
+      <div className="totals-row">
+        {chips.map((chip) => (
+          <span
+            key={chip.key}
+            className={`totals-chip${chip.tone === "overtime" ? " totals-chip--overtime" : ""}${chip.tone === "short" && chip.minutes > 0 ? " totals-chip--short" : ""}`}
+          >
+            <span className="totals-chip__label">{chip.label}</span>
+            <span className="totals-chip__value tabular-nums">{formatDurationHm(chip.minutes)}</span>
+          </span>
+        ))}
       </div>
     </div>
   );

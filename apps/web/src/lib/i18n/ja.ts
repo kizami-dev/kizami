@@ -676,6 +676,19 @@ export const ja = {
     flexBalanceLabel: "フレックス収支",
     flexBalanceUnit: "分",
     flexShortLabel: "不足",
+    /**
+     * フレックスの契約上の枠(2026-10-05、時短勤務の第2段階)。総労働時間の決め方が
+     * 「所定日数 × 標準時間」の制度でだけ、収支バーの下に3段の内訳と繰越を出す。
+     */
+    flexContractBreakdownLabel: "フレックスの内訳",
+    flexContractBasisNote: "過不足は契約上の枠(所定労働日数 × 標準労働時間)と比べています。",
+    flexContractFrameLabel: "契約上の枠",
+    flexCarryInLabel: "前月からの繰越",
+    flexStatutoryFrameLabel: "法定の枠",
+    flexWithinStatutoryExcessLabel: "法定内超過",
+    flexOvertimeLabel: "法定外",
+    flexCarryOutLabel: "翌月へ繰越",
+    flexConfirmedShortfallLabel: "確定した不足",
     /** 固定時間制での「フレックス収支バー」置き換え(2026-08-23 追加)。36協定の月45時間に対する時間外の位置。 */
     overtimeBarLabel: "時間外(36協定 月45時間の上限に対して)",
     overtimeBarUnit: "分",
@@ -764,6 +777,13 @@ export const ja = {
     core_time_late_arrival: "コアタイム遅刻 — コアタイムの開始より遅く出勤しました",
     core_time_early_leave: "コアタイム早退 — コアタイムの終了より早く退勤しました",
     core_time_absence: "コアタイム不在 — コアタイムのある日に実労働がありません",
+    /** フレックスの契約上の枠(2026-10-05)。期間全体についての警告。 */
+    flex_contract_frame_capped:
+      "所定労働日数 × 標準労働時間が法定の枠を超えたため、法定の枠を契約上の枠にしました。標準労働時間か所定休日のカレンダーを見直してください",
+    flex_carry_in_clipped: "前月から繰り越された不足が、この月に上乗せできる範囲(法定の枠まで)を超えたため切り詰めました",
+    flex_carry_chain_truncated:
+      "締めていない月をさかのぼれる上限(3か月)に達したため、それより前の繰越を0とみなしています。前の月を締めると解消します",
+    national_holiday_data_unavailable: "この年の国民の祝日のデータがまだ無いため、祝日を所定労働日として数えています",
   } satisfies Record<
     | "missing_clock_out"
     | "duplicate_clock_in"
@@ -781,7 +801,11 @@ export const ja = {
     | "shift_absence"
     | "core_time_late_arrival"
     | "core_time_early_leave"
-    | "core_time_absence",
+    | "core_time_absence"
+    | "flex_contract_frame_capped"
+    | "flex_carry_in_clipped"
+    | "flex_carry_chain_truncated"
+    | "national_holiday_data_unavailable",
     string
   >,
 
@@ -1699,6 +1723,22 @@ export const ja = {
     standardDayValue: (hm: string, minutes: number) => `${hm}(${minutes}分)`,
     /** 変形労働時間制で基準所定が未設定(0)のとき。所定は日ごとのシフトで決まる。 */
     standardDayByShift: "所定はシフトで決まる",
+    /** フレックスの総労働時間の決め方と不足の繰越(2026-10-05、時短勤務の第2段階)。 */
+    totalHoursBasisLabel: "総労働時間の決め方",
+    totalHoursBasisValue: {
+      statutory_frame: "法定の枠(週の法定労働時間 × 暦日数 ÷ 7)",
+      scheduled_days: "所定日数 × 標準時間",
+    } satisfies Record<"statutory_frame" | "scheduled_days", string>,
+    totalHoursBasisHint: {
+      statutory_frame: "これまでどおりの決め方です。過不足も時間外も法定の枠と比べます。",
+      scheduled_days:
+        "所定休日のカレンダーで数えた所定労働日数に標準労働時間を掛けた時間を総労働時間にします(時短勤務向け)。超えた分は法定の枠までが法定内超過、法定の枠を超えると法定外です。",
+    } satisfies Record<"statutory_frame" | "scheduled_days", string>,
+    carryOverShortfallLabel: "不足の繰越",
+    carryOverShortfallCheckbox: "不足を翌月に繰り越す",
+    carryOverShortfallHint:
+      "翌月の総労働時間に上乗せします。上乗せは翌月の法定の枠を超えない範囲までで、超える分はその月の不足として確定します。超過は繰り越しません(賃金の全額払いのため)。「所定日数 × 標準時間」のときだけ選べます。",
+    carryOverShortfallValue: { on: "繰り越す", off: "繰り越さない" },
     assigneeCountLabel: "割り当てている人数(今日時点)",
     assigneeCountValue: (count: number) => `${count}人`,
     currentEffectiveFrom: "この版が有効になった日",
@@ -1749,9 +1789,61 @@ export const ja = {
       invalid_standard_day_minutes: "1日の所定は、固定時間制では1〜480分、それ以外では1〜1440分の整数で入力してください",
       invalid_core_time: "コアタイムは開始より後の終了時刻で指定してください(日をまたぐ設定はできません)",
       invalid_core_time_weekdays: "コアタイムのある曜日を1つ以上選んでください",
+      invalid_total_hours_basis: "総労働時間の決め方を選んでください",
+      invalid_carry_over_shortfall: "不足の繰越の指定を確認してください",
+      carry_over_requires_scheduled_days: "不足の繰越は、総労働時間の決め方が「所定日数 × 標準時間」のときだけ選べます",
       effective_from_in_past: "適用開始日は本日以降のみ指定できます(過去の計算結果が変わってしまうため)",
       version_already_exists: "その適用開始日にはすでに版があります。別の日付を指定してください",
       not_found: "対象の制度が見つかりません",
+      forbidden: "この操作を行う権限がありません",
+      default: "処理に失敗しました。もう一度お試しください",
+    },
+  },
+
+  /**
+   * 所定休日のカレンダー(/settings/attendance の区画、2026-10-05、時短勤務の第2段階)。
+   * フレックスの総労働時間を「所定日数 × 標準時間」で決める制度で、所定労働日を数えるのに使う。
+   */
+  settingsHolidayCalendar: {
+    sectionTitle: "所定休日のカレンダー",
+    sectionLead:
+      "会社の休日(所定休日)を決めます。フレックスの総労働時間を「所定日数 × 標準時間」で決める制度で、所定労働日を数えるのに使います。法定の枠で決める制度の計算には影響しません。",
+    legalHolidayNote: "法定休日は所定休日の一部です。ここに入れなくても、法定休日(上の勤怠ルール)は必ず休日として数えます。",
+    loadFailed: "所定休日のカレンダーの取得に失敗しました。もう一度お試しください",
+    defaultInUse: "まだ保存していません。既定(土曜・日曜と国民の祝日)で数えています。",
+    weekdaysLabel: "所定休日の曜日",
+    weekdaysNone: "なし(曜日による休みはありません)",
+    nationalHolidaysLabel: "国民の祝日",
+    nationalHolidaysValue: { on: "所定休日にする", off: "所定休日にしない" },
+    nationalHolidaysCheckbox: "国民の祝日(振替休日・国民の休日を含む)を所定休日にする",
+    extraHolidaysLabel: "個別に休日にする日",
+    extraHolidaysHint: "年末年始・夏季休業など。YYYY-MM-DD をカンマか改行で区切って入力します。",
+    extraWorkdaysLabel: "休日から外して出勤日にする日",
+    extraWorkdaysHint: "祝日だが営業する日など。法定休日は外せません。YYYY-MM-DD をカンマか改行で区切って入力します。",
+    datesPlaceholder: "例: 2026-12-29, 2026-12-30",
+    none: "なし",
+    previewTitle: "所定労働日数の目安",
+    previewDays: (days: number) => `${days}日`,
+    previewHint: "法定休日は今日時点の勤怠ルールで判定しています。",
+    holidayDataRange: (first: number, last: number) => `国民の祝日のデータ: ${first}〜${last}年(毎年更新します)`,
+    holidayDataUnavailable: "祝日のデータがまだ無い年です。祝日を所定労働日として数えています",
+    formTitle: "新しい版を追加",
+    submit: "この内容で版を追加",
+    submitting: "追加中…",
+    submitSuccess: "新しい版を追加しました。",
+    historyTitle: "版の履歴",
+    historyColumnEffectiveFrom: "適用開始日",
+    historyColumnSummary: "内容",
+    errors: {
+      invalid_body: "入力内容を確認してください",
+      invalid_effective_from: "適用開始日を確認してください",
+      invalid_weekdays: "所定休日の曜日を確認してください(7曜日すべては選べません)",
+      invalid_national_holidays: "国民の祝日の扱いを確認してください",
+      invalid_extra_holidays: "個別に休日にする日を YYYY-MM-DD で入力してください(366件まで)",
+      invalid_extra_workdays: "出勤日にする日を YYYY-MM-DD で入力してください(366件まで)",
+      calendar_date_conflict: "同じ日を「休日にする日」と「出勤日にする日」の両方に入れることはできません",
+      effective_from_in_past: "適用開始日は本日以降のみ指定できます(過去の計算結果が変わってしまうため)",
+      version_already_exists: "その適用開始日にはすでに版があります。別の日付を指定してください",
       forbidden: "この操作を行う権限がありません",
       default: "処理に失敗しました。もう一度お試しください",
     },
