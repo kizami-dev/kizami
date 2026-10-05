@@ -10,3 +10,4 @@
 export { buildLawTimeline, listUpcomingChanges, resolveLawRules } from "./resolve.js";
 export type * from "./types.js";
 export { LAW_VERSIONS } from "./versions.js";
+export { isNationalHoliday, isNationalHolidayDataAvailable, NATIONAL_HOLIDAY_DATA_RANGE } from "./national-holidays.js";
