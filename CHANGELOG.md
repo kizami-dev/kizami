@@ -13,9 +13,37 @@ API・DB スキーマの互換方針とアップグレード手順は
 
 ## [Unreleased]
 
-時短勤務への対応の第1段階(固定時間制)。
+時短勤務への対応の第1段階(固定時間制)と第2段階(フレックスの契約上の枠と不足の繰越)。
 
 ### Added
+
+- **フレックスの総労働時間の決め方と不足の翌月繰越**([docs/design/work-systems.md](docs/design/work-systems.md)「フレックスの契約上の枠と不足の繰越」)
+  - フレックスの制度の版に「総労働時間の決め方」(`totalHoursBasis`: `statutory_frame` = 法定の枠〔既定〕/
+    `scheduled_days` = 所定日数 × 標準時間)と「不足を翌月に繰り越す」(`carryOverShortfall`、既定 false)を足した。
+    **既定は法定の枠で、既存の制度の計算結果は変わらない**
+  - 契約上の枠の制度は3段で計算する: 過不足は「契約上の枠 + 前月からの繰越」と比べ、契約上の枠〜法定の枠を
+    法定内超過(割増なし)、法定の枠超を法定外とする。契約上の枠が法定の枠を上回る設定は法定の枠で頭打ちにして
+    警告する(`flex_contract_frame_capped`)
+  - 不足の繰越は翌月の法定の枠を超えない範囲まで。超える分はその月の不足として確定する。超過は繰り越さない。
+    前月の繰越は締め済みならスナップショット、締め前ならその場で計算し、遡るのは3か月まで
+    (超えると `flex_carry_chain_truncated`)
+  - `GET /attendance/monthly` の `figures.flexBalance` に `statutoryFrameMinutes` / `contractFrameMinutes` /
+    `carryInMinutes` / `withinStatutoryExcessMinutes` / `carryOutMinutes` / `confirmedShortfallMinutes` を足した
+  - 新しい警告: `flex_contract_frame_capped` / `flex_carry_in_clipped` / `flex_carry_chain_truncated` /
+    `national_holiday_data_unavailable`
+  - 画面: 制度のカード・制度の追加・版の追加に2つの項目を足し、月次のフレックス収支に契約上の枠の制度だけ
+    内訳(契約上の枠・前月からの繰越・法定の枠・法定内超過・法定外・翌月へ繰越・確定した不足)を出す。
+    ホームの「今月のフレックス収支」は契約上の枠(+繰越)を基準にする。ヘルプに「フレックスの総労働時間の決め方と
+    不足の繰越」を新設し、「フレックスタイム制の総枠」に法令上の扱いを足した(5言語)
+- **所定休日のカレンダー**(同上「所定休日のカレンダー」)
+  - 所定休日の曜日(既定は土・日)・国民の祝日を所定休日にするか(既定はする)・個別の休日・休日から外す日を、
+    適用開始日つきの版で持つ。`GET/POST /settings/holiday-calendar`(権限は勤怠ルールと同じ
+    `tenant_settings.calendar.manage`、監査ログ `scheduled_holiday_calendar_version.create`)。
+    法定休日は所定休日の一部として、カレンダーの設定にかかわらず必ず休日にする
+  - 国民の祝日のデータ(内閣府の CSV、2000〜2027年)を `@kizami/law` に同梱した。毎年2月以降に
+    `pnpm --filter @kizami/law update:holidays` で翌年分を足す
+  - 画面: 勤怠ルールに「所定休日のカレンダー」の区画(今月から3か月の所定労働日数の目安つき)。ヘルプ
+    「所定休日のカレンダー」を新設(5言語)
 
 - **名前付きの労働時間制の制度**([docs/design/work-systems.md](docs/design/work-systems.md)「名前付きの制度と時短勤務」)
   - テナントは制度を名前付きで複数持てる(例:「固定(8時間)」「固定・時短(6時間)」)。
@@ -41,6 +69,25 @@ API・DB スキーマの互換方針とアップグレード手順は
   `workPolicyId` を足した。`POST /members/:id/work-policy` の応答にも制度の id と名前が入る
 - DB: `work_policies` に `archived_at`(integer、null 可)を足す(migration SQLite `0034`・PostgreSQL `0009`。
   D1 は SQLite と同じファイル)。既存の行は null(使用中)のまま。既定の制度は従来どおり最も古い制度で、
+  データの書き換えは要らない
+- **`flexBalance.frameMinutes`・CSV の `flex_frame_minutes` の意味**: 「過不足を比べる枠」になった。
+  法定の枠の制度では従来どおり法定の枠で値は変わらない。総労働時間を「所定日数 × 標準時間」にした制度では
+  「契約上の枠 + 前月からの繰越の受け入れ」になる。`flex_diff_minutes = flex_actual_minutes − flex_frame_minutes`
+  は常に成り立つ
+- **CSV(generic)に6列を足した**: `flex_statutory_frame_minutes` / `flex_contract_frame_minutes` /
+  `flex_carry_in_minutes` / `flex_within_statutory_excess_minutes` / `flex_carry_out_minutes` /
+  `flex_confirmed_shortfall_minutes`。位置は `fixed_extra_within_statutory_minutes` の後・手当の列の前で、
+  **手当の列と `closed` が6列後ろにずれる**(列名で取り込んでいれば影響なし)。`compare=original` の
+  `original_` / `diff_` にも同じ6列を足した
+- **freee 形式の「不足時間（分）」は、その月の不足として確定した分**(翌月へ繰り越した分を除く)。
+  契約上の枠の制度では法定内超過を「法定内残業時間（分）」に出す。繰り越さない・法定の枠の制度では従来と同じ値
+- 36協定の見込み(月の途中のアラート)は、フレックスでは法定の枠と比べる(契約上の枠の制度で法定内超過を
+  時間外に数えないため。既定の制度では同じ値)
+- 締めのスナップショットに区分を6つ足した(`flexStatutoryFrame` など)。契約上の枠の月にだけ書き、
+  法定の枠の月と以前に締めた月は既存の3行から読む。列の追加ではないので移行は要らない
+- DB: `work_policy_versions` に `flex_total_hours_basis`(既定 `'statutory_frame'`)と
+  `flex_carry_over_shortfall`(既定 0)、新しい表 `scheduled_holiday_calendar_versions`
+  (migration SQLite `0035`・PostgreSQL `0010`。D1 は SQLite と同じファイル)。既存の行は既定値のまま、
   データの書き換えは要らない
 
 ## [0.8.1] - 2026-10-05
