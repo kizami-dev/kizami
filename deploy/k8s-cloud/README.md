@@ -52,6 +52,24 @@ kubectl -n kizami-cloud create secret generic kizami-cloud-sentry --from-literal
 送信元を Amazon SES に替える場合も `smtpUrl` を差し替えるだけでよい(アプリは汎用 SMTP として送る)。
 kizami.dev は SES 側でもドメイン検証(Easy DKIM)済みで、予備の経路として残してある。
 
+## 環境変数(防御の強化)
+
+Secret ではない設定値は `cloud.yaml` の api / worker の `env` に直接書いてある(値の意味は同ファイルのコメント):
+
+| 変数 | 値 | 意味 |
+| --- | --- | --- |
+| `OUTBOUND_BLOCK_PRIVATE` | `true` | テナントが設定できる送り先(Webhook・SMTP・OIDC issuer・プッシュ)への接続で、プライベート・ループバック・リンクローカル等を拒否(アプリ側の SSRF 対策。二次防御) |
+| `OUTBOUND_DENY_CIDRS` | `161.33.2.65/32,161.33.46.89/32,133.242.209.71/32` | 追加で拒否する宛先 = クラスタのノードのグローバル IP(NetworkPolicy では塞げない) |
+| `OUTBOUND_ALLOW_HOSTS` | 未設定 | 許可するホスト(Cloud では使わない) |
+| `QUOTA_MAX_MEMBERS` | `50` | 在籍メンバー数(招待中を含む)の上限。Closed Beta の目安 |
+| `QUOTA_MAX_API_KEYS` | `20` | 有効な API キー数の上限 |
+| `QUOTA_OUTBOUND_NOTIFICATIONS_PER_DAY` | `2000` | 外向きの通知(Webhook・メール)の1日の送信数。api と worker の両方に同じ値 |
+| `QUOTA_INVITE_RESET_MAILS_PER_DAY` | `200` | 招待・パスワード再設定のメールの1日の送信数 |
+
+利用上限はテナント共通の値で、Closed Beta の様子を見て調整する(テナントごとの個別設定は課金の段階で扱う)。
+上限に達した回数は `/metrics` の `kizami_quota_limit_hits_total{limit}` で見える。
+`APP_BASE_URL` / `CORS_ORIGIN`(`https://app.kizami.dev`)はログインなど未認証 POST の Origin 検証の許可オリジンにもなる。
+
 ## 適用
 
 ```sh

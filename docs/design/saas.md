@@ -185,7 +185,12 @@ pnpm --filter @kizami/api operator tenant list
 
 - 同一メールで確認済みの既存アカウントへの「すでに登録があります」通知メール(現状は常に同じ確認メールを出す)
 - 規約・プライバシーポリシーへの同意チェック(法務ページ、フェーズ計画の Phase 2)
-- 既存の `POST /auth/login` 等には Origin 検証が無い(今回の対策は signup のみ)
+- ~~既存の `POST /auth/login` 等には Origin 検証が無い~~ — **対応済み(2026-10-05)**。セッション Cookie を発行する未認証の POST
+  (`POST /auth/login`・`/auth/login/totp`・`/auth/oidc/start`・`/invitations/:token/accept`・`/password-resets/:token/use`)にも
+  同じ Origin 検証 + JSON 必須化を掛けた(`app.ts` の `authPostOrigins`)。許可オリジンは**明示された** `APP_BASE_URL` と
+  `CORS_ORIGIN`(どちらも未設定の配備は従来どおり検証しない)。Bearer(API キー)の経路・OIDC の callback(IdP からの GET)・
+  Slack の署名検証の経路・認証済みの POST には掛けない。**`APP_BASE_URL` を設定した配備では、ユーザーがアクセスする
+  オリジンと一致させること**(別名のホストでアクセスすると 403 になる)
 
 ## 課金 — Stripe Checkout + Customer Portal + Webhook
 
@@ -257,5 +262,8 @@ pnpm --filter @kizami/api operator tenant list
    数字は変わらない。締めのスナップショット・CSV・給与ソフト形式に契約上の枠・繰越・確定した不足を
    足した。設計は [work-systems.md](./work-systems.md)「フレックスの契約上の枠と不足の繰越」。
    複数月の清算期間(3か月まで)は対象外。
-4. **テナント別クォータ** — 既存レート制限は IP/メール軸のみ。API キー数・通知送信数
-   などテナント軸の上限を Public Launch までに追加。
+4. ~~**テナント別クォータ**~~ — **対応済み(2026-10-05、配備共通の値)**。環境変数 `QUOTA_*` で、メンバー数(招待中を含む)・
+   API キー数・外向きの通知の1日の送信数・招待/再設定メールの1日の送信数に上限を掛けた。**未設定は無制限**、**打刻は止めない**。
+   あわせて、テナントが設定できる送り先を踏み台にした SSRF へのアプリ側の対策(`OUTBOUND_*`、既定は無効)を入れた。
+   設計は [テナントごとの利用上限](./tenant-quotas.md)・[外向きの接続の SSRF 対策](./outbound-ssrf.md)。
+   テナントごとの個別の上限は Phase 2(課金)で扱う。

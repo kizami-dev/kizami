@@ -54,6 +54,7 @@ KIZAMI は「1社1インスタンスのセルフホスト」を前提にした�
 | `kizami_users_total` | gauge | — | 登録ユーザー数(無効化済みを含む) |
 | `kizami_tenants_total` | gauge | — | テナント数 |
 | `kizami_punches_last24h` | gauge | — | 直近24時間の打刻イベント数 |
+| `kizami_quota_limit_hits_total` | counter | `limit` | テナントごとの利用上限に達して断った回数(`limit` は members / api_keys / outbound_notifications / invite_reset_mails。全テナント合計の累計。[tenant-quotas.md](./tenant-quotas.md)) |
 | `kizami_worker_last_run_timestamp_seconds` | gauge | `job` | 定期スキャンの最終実行時刻(Unix 秒) |
 | `kizami_worker_runs_total` | counter | `job`, `result` | 定期スキャンの実行回数(`result` は success / failure) |
 

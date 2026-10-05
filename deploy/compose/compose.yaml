@@ -70,6 +70,19 @@ services:
       SYSTEM_SMTP_URL: ${KIZAMI_SYSTEM_SMTP_URL:-}
       SYSTEM_MAIL_FROM: ${KIZAMI_SYSTEM_MAIL_FROM:-}
       APP_BASE_URL: ${KIZAMI_APP_BASE_URL:-}
+      # 防御の強化(任意。既定はすべて空 = 無効・無制限で、従来どおり。../../docs/design/outbound-ssrf.md、tenant-quotas.md)。
+      # OUTBOUND_BLOCK_PRIVATE=true: テナントが設定できる送り先(Webhook・SMTP・OIDC issuer・プッシュ)への接続で、
+      #   ループバック・プライベート・リンクローカル(メタデータ)等を拒否する。**社内 LAN の SMTP / Webhook を使う
+      #   セルフホストでは有効にしない**(使うなら OUTBOUND_ALLOW_HOSTS で許可するホストを列挙する)。
+      # OUTBOUND_DENY_CIDRS: 追加で拒否する宛先(カンマ区切りの CIDR)。OUTBOUND_ALLOW_HOSTS: 許可するホスト(`*.example.com` 可)。
+      OUTBOUND_BLOCK_PRIVATE: ${KIZAMI_OUTBOUND_BLOCK_PRIVATE:-}
+      OUTBOUND_DENY_CIDRS: ${KIZAMI_OUTBOUND_DENY_CIDRS:-}
+      OUTBOUND_ALLOW_HOSTS: ${KIZAMI_OUTBOUND_ALLOW_HOSTS:-}
+      # テナントごとの利用上限(全テナント共通。空 = 無制限)。メンバー数・API キー数・外向きの通知(1日)・招待/再設定メール(1日)。
+      QUOTA_MAX_MEMBERS: ${KIZAMI_QUOTA_MAX_MEMBERS:-}
+      QUOTA_MAX_API_KEYS: ${KIZAMI_QUOTA_MAX_API_KEYS:-}
+      QUOTA_OUTBOUND_NOTIFICATIONS_PER_DAY: ${KIZAMI_QUOTA_OUTBOUND_NOTIFICATIONS_PER_DAY:-}
+      QUOTA_INVITE_RESET_MAILS_PER_DAY: ${KIZAMI_QUOTA_INVITE_RESET_MAILS_PER_DAY:-}
     volumes:
       - data:/data
     restart: unless-stopped
@@ -91,6 +104,11 @@ services:
       SENTRY_DSN: ${KIZAMI_SENTRY_DSN:-}
       SENTRY_SERVER_NAME: ${KIZAMI_SENTRY_SERVER_NAME:-}
       SENTRY_ENVIRONMENT: ${KIZAMI_SENTRY_ENVIRONMENT:-}
+      # 防御の強化(api と同じ値を渡すこと。定期スキャンの通知の送信もここで検査・計数される)
+      OUTBOUND_BLOCK_PRIVATE: ${KIZAMI_OUTBOUND_BLOCK_PRIVATE:-}
+      OUTBOUND_DENY_CIDRS: ${KIZAMI_OUTBOUND_DENY_CIDRS:-}
+      OUTBOUND_ALLOW_HOSTS: ${KIZAMI_OUTBOUND_ALLOW_HOSTS:-}
+      QUOTA_OUTBOUND_NOTIFICATIONS_PER_DAY: ${KIZAMI_QUOTA_OUTBOUND_NOTIFICATIONS_PER_DAY:-}
     volumes:
       - data:/data
     depends_on: [valkey, api]
