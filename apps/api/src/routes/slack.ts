@@ -49,6 +49,7 @@ import { TZ_OFFSET_MINUTES_JST } from "../lib/settings.js";
 import { verifySlackSignature } from "../lib/slack-signature.js";
 import { nowMinutes } from "../lib/time.js";
 import { deriveStatus, resolveTodayWindow, type AttendanceState } from "./attendance.js";
+import { isTenantWithdrawing } from "../lib/tenant-withdrawal.js";
 
 /** `/punch link` が発行するワンタイムトークンの有効期限(依頼: 短命・15分)。 */
 export const SLACK_LINK_TOKEN_TTL_MINUTES = 15;
@@ -182,6 +183,10 @@ export function createSlackRoutes(db: Database, deps: SlackRoutesDeps = {}) {
     }
 
     const tenantId = settings.tenantId;
+    // 退会手続き中のテナントでは打刻も連携も受け付けない(docs/design/tenant-withdrawal.md)。
+    if (await isTenantWithdrawing(db, tenantId)) {
+      return c.json(ephemeral("このワークスペースの KIZAMI は退会の手続き中のため、打刻できません。管理者に確認してください。"));
+    }
     const [sub] = text.split(/\s+/).filter(Boolean);
 
     if (!sub) {

@@ -6,18 +6,26 @@
  * 対象は KIZAMI Cloud の運用者作業(docs/design/saas.md「運用者コンソールはまず CLI」):
  * サインアップ招待コードの発行・一覧・失効と、テナント一覧。suspend・プラン上書きは
  * Phase 2(課金)で作るのでここには無い。
+ *
+ * 2026-10-05: 退会したテナントの「今すぐ削除」(`tenant purge`)・削除の記録の一覧(`tenant purges`)・
+ * 同梱プリセットの権限の同期(`tenant sync-presets`)を足した(docs/design/tenant-withdrawal.md)。
  */
 
 import {
   createSignupInviteCode,
+  getTenantById,
   listSignupInviteCodes,
+  listTenantPurgeRecords,
   listTenantsWithActiveUserCount,
   revokeSignupInviteCode,
   type Database,
   type SignupInviteCode,
   type TenantOverviewRow,
+  type TenantPurgeRecord,
 } from "@kizami/db";
+import { purgeWithdrawnTenant, type TenantWithdrawalMailer } from "../tenant-purge.js";
 import { generateSignupInviteCode, hashSignupInviteCode } from "./signup-invite-code.js";
+import { syncSystemPresetGrants } from "./tenant-bootstrap.js";
 
 const DAY_MINUTES = 24 * 60;
 
@@ -98,6 +106,76 @@ export async function revokeInviteCode(db: Database, params: { id: string; nowMi
 /** テナント一覧(id / 名前 / 作成日 / 有効ユーザー数)。 */
 export async function listTenants(db: Database): Promise<TenantOverviewRow[]> {
   return listTenantsWithActiveUserCount(db);
+}
+
+/**
+ * 「今すぐ削除」の前に確認のために見せる内容。退会を申請していないテナントは削除できない
+ * (`withdrawing: false` を見て CLI が断る)。名前は運用者の確認のためだけに画面へ出し、
+ * 削除の記録には残さない。
+ */
+export interface PurgeCandidate {
+  id: string;
+  name: string;
+  withdrawing: boolean;
+  requestedAt: number | null;
+  scheduledPurgeAt: number | null;
+}
+
+export async function describePurgeCandidate(db: Database, tenantId: string): Promise<PurgeCandidate | null> {
+  const tenant = await getTenantById(db, tenantId);
+  if (!tenant) return null;
+  return {
+    id: tenant.id,
+    name: tenant.name,
+    withdrawing: tenant.withdrawalRequestedAt !== null,
+    requestedAt: tenant.withdrawalRequestedAt,
+    scheduledPurgeAt: tenant.withdrawalScheduledPurgeAt,
+  };
+}
+
+/**
+ * 退会を申請したテナントを、削除予定の時刻を待たずに今すぐ削除する(`tenant purge`)。
+ *
+ * 確認(`confirmTenantId` がテナント id と完全に一致すること)を**この関数の中で**行う — CLI の
+ * 対話を経ない呼び出し(テスト・将来の管理画面)でも、確認なしに消せないようにするため。
+ * 退会を申請していないテナントは消さない(@kizami/db の purgeTenant も同じ判定をする)。
+ */
+export async function purgeTenantNow(
+  db: Database,
+  params: { tenantId: string; confirmTenantId: string; nowMinutes: number; mailer: TenantWithdrawalMailer | null },
+): Promise<
+  | { status: "purged" | "already_purged"; record: TenantPurgeRecord; mailsSent: number }
+  | { status: "confirmation_mismatch" | "not_withdrawing" | "not_found" }
+> {
+  if (params.confirmTenantId.trim() !== params.tenantId) return { status: "confirmation_mismatch" };
+  const result = await purgeWithdrawnTenant(db, { tenantId: params.tenantId, nowMinutes: params.nowMinutes, mailer: params.mailer });
+  if (result.status === "purged" || result.status === "already_purged") {
+    return { status: result.status, record: result.record, mailsSent: result.mailsSent };
+  }
+  return { status: result.status };
+}
+
+/** 削除の記録の一覧(`tenant purges`)。個人情報は含まない(テナント id・時刻・行数だけ)。 */
+export async function listPurgeRecords(db: Database): Promise<Array<TenantPurgeRecord & { totalRows: number }>> {
+  const rows = await listTenantPurgeRecords(db);
+  return rows.map((r) => ({
+    ...r,
+    totalRows: Object.values(JSON.parse(r.deletedCounts) as Record<string, number>).reduce((a, b) => a + b, 0),
+  }));
+}
+
+/**
+ * 全テナントの同梱プリセットへ、権限カタログに増えた権限を追記する(`tenant sync-presets`)。
+ * 既存のテナントの「管理者」に `tenant.withdraw` のような新しい権限を届ける経路。
+ * 追加のみで削除はしない(syncSystemPresetGrants の docstring)。
+ */
+export async function syncPresetsForAllTenants(db: Database): Promise<Array<{ tenantId: string; added: Map<string, string[]> }>> {
+  const result: Array<{ tenantId: string; added: Map<string, string[]> }> = [];
+  for (const tenant of await listTenantsWithActiveUserCount(db)) {
+    const added = await syncSystemPresetGrants(db, tenant.id);
+    if (added.size > 0) result.push({ tenantId: tenant.id, added });
+  }
+  return result;
 }
 
 /** UTC エポック分 → "YYYY-MM-DD HH:mm"(UTC)。CLI の表示用。 */

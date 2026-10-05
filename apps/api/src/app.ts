@@ -5,6 +5,7 @@ import type { VapidKeys } from "@kizami/notify";
 import type { Encryptor } from "./lib/encryption.js";
 import { apiKeyScopeGuardMiddleware } from "./auth/api-key-scope-guard.js";
 import { authOrApiKeyMiddleware, type AppEnv } from "./auth/middleware.js";
+import { tenantWithdrawalGuardMiddleware } from "./auth/tenant-withdrawal-guard.js";
 import { ForbiddenError } from "./authz.js";
 import { MonthClosedError, MonthClosedRequiresUnlockError } from "./lib/closing-guard.js";
 import { createApiKeysRoutes } from "./routes/api-keys.js";
@@ -32,6 +33,7 @@ import { createPushRoutes } from "./routes/push.js";
 import { createSignupRoutes, type SignupDeps } from "./routes/signup.js";
 import { createSettingsRoutes, type SettingsRoutesDeps } from "./routes/settings/index.js";
 import { createShiftsRoutes } from "./routes/shifts.js";
+import { createTenantWithdrawalRoutes, type TenantWithdrawalMailDeps } from "./routes/tenant-withdrawal.js";
 import { createSlackRoutes } from "./routes/slack.js";
 import { createLeaveRoutes } from "./routes/leave.js";
 import { createMetricsRoutes } from "./routes/metrics.js";
@@ -139,6 +141,12 @@ export interface CreateAppDeps {
    * 常に渡さない(= 常に無効。nodemailer が動かないため)。
    */
   selfServiceReset?: SelfServiceResetDeps;
+  /**
+   * テナントの退会の申請を受け付けたときのメール(docs/design/tenant-withdrawal.md、2026-10-05)。
+   * **省略 = メールを出さない**(画面の表示だけ)。node.ts がシステムメール(SYSTEM_SMTP_URL /
+   * SYSTEM_MAIL_FROM / APP_BASE_URL)が揃っているときだけ渡す。Workers エントリは渡さない。
+   */
+  tenantWithdrawalMail?: TenantWithdrawalMailDeps;
 }
 
 /**
@@ -166,6 +174,7 @@ export function createApp(deps: CreateAppDeps) {
     release,
     signup,
     selfServiceReset,
+    tenantWithdrawalMail,
   } = deps;
   const app = new Hono<AppEnv>();
   // 外向きの通知の上限は通知の依存(notify)に載せて、各ルートの buildTenantChannels / buildPersonalChannels へ流す
@@ -359,6 +368,9 @@ export function createApp(deps: CreateAppDeps) {
   // エンドポイント許可表(apiKeyScopeGuardMiddleware)でさらに絞り込む。
   authed.use("*", authOrApiKeyMiddleware(db, { secureCookies }));
   authed.use("*", apiKeyScopeGuardMiddleware());
+  // 退会手続き中のテナントのリクエストを絞る(docs/design/tenant-withdrawal.md)。誰のリクエストか・
+  // どの権限を持つかが確定した後(上の2つの後ろ)に置く。
+  authed.use("*", tenantWithdrawalGuardMiddleware(db));
   authed.route("/me", createMeRoutes(db));
   // 二要素認証(TOTP)のセルフサービス(docs/design/two-factor-auth.md、2026-08-27)。
   // 認証済み本人のみ・権限チェック無し(routes/auth-totp.ts 冒頭コメント)。ログインの
@@ -407,6 +419,7 @@ export function createApp(deps: CreateAppDeps) {
   authed.route("/exports", createExportsRoutes(db));
   authed.route("/leave", createLeaveRoutes(db, { ...(notify ?? {}), encryptor: encryptor ?? null, vapid: vapid ?? null }));
   authed.route("/audit-logs", createAuditLogsRoutes(db));
+  authed.route("/tenant", createTenantWithdrawalRoutes(db, { mail: tenantWithdrawalMail ?? null }));
   app.route("/", authed);
 
   app.onError((err, c) => {

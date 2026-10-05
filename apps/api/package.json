@@ -26,6 +26,7 @@
     "@kizami/privacy-template": "workspace:*",
     "bullmq": "^6.2.0",
     "drizzle-orm": "0.45.2",
+    "fflate": "^0.8.3",
     "hono": "^4.13.3",
     "ioredis": "^6.0.0",
     "jose": "^6.2.10",

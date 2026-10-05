@@ -218,6 +218,8 @@ export interface TenantOverviewRow {
   name: string;
   createdAt: number;
   activeUserCount: number;
+  /** 退会手続き中なら削除予定の時刻(UTC エポック分)、通常の状態なら null(docs/design/tenant-withdrawal.md) */
+  withdrawalScheduledPurgeAt: number | null;
 }
 
 /** 運用者 CLI(`tenant list`)用。全テナントを作成順に、有効ユーザー数付きで返す。 */
@@ -234,5 +236,6 @@ export async function listTenantsWithActiveUserCount(db: Database): Promise<Tena
     name: t.name,
     createdAt: t.createdAt,
     activeUserCount: countByTenant.get(t.id) ?? 0,
+    withdrawalScheduledPurgeAt: t.withdrawalRequestedAt === null ? null : t.withdrawalScheduledPurgeAt,
   }));
 }

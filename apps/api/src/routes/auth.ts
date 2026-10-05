@@ -41,6 +41,7 @@ import {
 import { getClientIp } from "../lib/client-ip.js";
 import { decryptSecret, type Encryptor } from "../lib/encryption.js";
 import { rateLimitedResponse, type RateLimiter } from "../lib/rate-limit.js";
+import { isLoginBlockedByWithdrawal, TENANT_WITHDRAWING_ERROR } from "../lib/tenant-withdrawal.js";
 import { nowMinutes } from "../lib/time.js";
 
 interface LoginBody {
@@ -164,18 +165,29 @@ export function createAuthRoutes(db: Database, options: AuthRoutesOptions) {
     if (matches.length === 0) {
       return c.json({ error: "invalid_credentials" }, 401);
     }
-    if (matches.length > 1) {
+
+    // 退会手続き中のテナント(docs/design/tenant-withdrawal.md)では、tenant.withdraw を持つ人しか
+    // ログインできない。パスワードが合った後で判定するので、理由を伝えても列挙の材料にはならない。
+    // 同じメールで複数のテナントに居る人は、手続き中のテナントだけを候補から外す(全部が手続き中なら断る)。
+    const usable: typeof matches = [];
+    for (const m of matches) {
+      if (!(await isLoginBlockedByWithdrawal(db, { tenantId: m.tenantId, userId: m.id }))) usable.push(m);
+    }
+    if (usable.length === 0) {
+      return c.json({ error: TENANT_WITHDRAWING_ERROR }, 403);
+    }
+    if (usable.length > 1) {
       // パスワード検証を通過した相手にだけテナントの一覧(id と社名)を開示する。
       // 未認証の相手にテナント名が漏れることはない。
       const tenants = await Promise.all(
-        matches.map(async (m) => {
+        usable.map(async (m) => {
           const tenant = await getTenantById(db, m.tenantId);
           return { id: m.tenantId, name: tenant?.name ?? null };
         }),
       );
       return c.json({ error: "multiple_tenants", tenants }, 409);
     }
-    const activeUser = matches[0] as (typeof matches)[number];
+    const activeUser = usable[0] as (typeof usable)[number];
 
     // ---- 二要素認証(2026-08-27)------------------------------------------
     // パスワードが通っても、2FA が有効なら**セッションは発行しない**。代わりに
@@ -283,6 +295,11 @@ export function createAuthRoutes(db: Database, options: AuthRoutesOptions) {
     if (!user || !user.isActive) {
       deleteCookie(c, TOTP_TX_COOKIE_NAME, { path: "/" });
       return c.json({ error: "totp_expired" }, 401);
+    }
+    // 第1段階の後に退会が申請された可能性がある(docs/design/tenant-withdrawal.md)。
+    if (await isLoginBlockedByWithdrawal(db, { tenantId: tx.tenantId, userId: tx.userId })) {
+      deleteCookie(c, TOTP_TX_COOKIE_NAME, { path: "/" });
+      return c.json({ error: TENANT_WITHDRAWING_ERROR }, 403);
     }
     const row = await getUserTotp(db, { tenantId: tx.tenantId, userId: tx.userId });
     if (!row || row.enabledAt == null) {

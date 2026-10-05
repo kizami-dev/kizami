@@ -73,8 +73,9 @@ describe("GET /me", () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({
       user: { id: userId, email, displayName, tenantId },
-      // テナント名(社名)はヘッダー表示用(2026-08-23 追加)。setupTestDb() のテナント名
-      tenant: { name: "Test Tenant" },
+      // テナント名(社名)はヘッダー表示用(2026-08-23 追加)。setupTestDb() のテナント名。
+      // withdrawal は退会の状態(2026-10-05、通常の状態では null)
+      tenant: { name: "Test Tenant", withdrawal: null },
     });
   });
 

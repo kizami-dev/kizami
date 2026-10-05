@@ -141,6 +141,9 @@ const app = createApp({
           sendMail: systemMailSender,
           ...(turnstileConfig !== null ? { turnstile: turnstileConfig } : {}),
         },
+        // テナントの退会の申請を受け付けたときのメール(docs/design/tenant-withdrawal.md)。
+        // 再通知・削除の完了のメールは worker.ts が同じ環境変数から出す。
+        tenantWithdrawalMail: { appBaseUrl: systemMailConfig.appBaseUrl, sendMail: systemMailSender },
       }
     : {}),
   oidc: {

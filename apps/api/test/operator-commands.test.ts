@@ -5,15 +5,18 @@
 
 import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
-import { findSignupInviteCodeByHash, isSignupInviteCodeUsable, signupInviteCodes } from "@kizami/db";
+import { findSignupInviteCodeByHash, isSignupInviteCodeUsable, permissionPresets, requestTenantWithdrawal, signupInviteCodes } from "@kizami/db";
 import {
   argValue,
   createInviteCode,
   formatMinutesUtc,
   intArg,
   listInviteCodes,
+  listPurgeRecords,
   listTenants,
+  purgeTenantNow,
   revokeInviteCode,
+  syncPresetsForAllTenants,
 } from "../src/lib/operator-commands.js";
 import { hashSignupInviteCode } from "../src/lib/signup-invite-code.js";
 import { bootstrapTenant } from "../src/lib/tenant-bootstrap.js";
@@ -89,6 +92,43 @@ describe("tenant list", () => {
       { name: "B社", createdAt: 200, activeUserCount: 1 },
     ]);
     expect(rows[0]?.id).toBe(a.tenantId);
+  });
+});
+
+describe("テナントの退会まわり(tenant list / purges / sync-presets、docs/design/tenant-withdrawal.md)", () => {
+  it("tenant list は退会手続き中のテナントに削除予定を出し、purges は個人情報を含まない記録を返す", async () => {
+    const db = await createTestDatabase();
+    const a = await bootstrapTenant(db, { tenantName: "A社", adminEmail: "a@example.com", adminPassword: "correct horse battery", now: 100 });
+    await bootstrapTenant(db, { tenantName: "B社", adminEmail: "b@example.com", adminPassword: "correct horse battery", now: 200 });
+    await requestTenantWithdrawal(db, { tenantId: a.tenantId, requestedAt: NOW, scheduledPurgeAt: NOW + 30 * DAY });
+
+    const rows = await listTenants(db);
+    expect(rows.map((r) => [r.name, r.withdrawalScheduledPurgeAt])).toEqual([
+      ["A社", NOW + 30 * DAY],
+      ["B社", null],
+    ]);
+
+    expect((await purgeTenantNow(db, { tenantId: a.tenantId, confirmTenantId: a.tenantId, nowMinutes: NOW + 1, mailer: null })).status).toBe("purged");
+    const records = await listPurgeRecords(db);
+    expect(records).toHaveLength(1);
+    expect(records[0]).toMatchObject({ tenantId: a.tenantId, withdrawalRequestedAt: NOW, purgedAt: NOW + 1 });
+    expect(records[0]!.totalRows).toBeGreaterThan(5);
+    expect(JSON.stringify(records)).not.toContain("A社");
+    expect(JSON.stringify(records)).not.toContain("a@example.com");
+    expect((await listTenants(db)).map((r) => r.name)).toEqual(["B社"]);
+  });
+
+  it("sync-presets は既存テナントの「管理者」に、カタログに増えた権限(tenant.withdraw)を足す", async () => {
+    const db = await createTestDatabase();
+    const t = await bootstrapTenant(db, { tenantName: "A社", adminEmail: "a@example.com", adminPassword: "correct horse battery", now: 100 });
+    // この機能より前に作られたテナントを再現する(管理者プリセットから tenant.withdraw を外す)
+    const [admin] = await db.select().from(permissionPresets).where(eq(permissionPresets.id, t.adminPresetId));
+    const grants = (JSON.parse(admin!.grants) as Array<{ key: string }>).filter((g) => g.key !== "tenant.withdraw");
+    await db.update(permissionPresets).set({ grants: JSON.stringify(grants) }).where(eq(permissionPresets.id, t.adminPresetId));
+
+    const synced = await syncPresetsForAllTenants(db);
+    expect(synced).toEqual([{ tenantId: t.tenantId, added: new Map([["管理者", ["tenant.withdraw"]]]) }]);
+    expect(await syncPresetsForAllTenants(db)).toEqual([]);
   });
 });
 

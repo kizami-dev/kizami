@@ -30,7 +30,7 @@
  * BullMQ/Valkey には一切依存しない(reminders.ts / shift-variance-alerts.ts と同じ)。
  */
 
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import {
   createNotificationIfAbsent,
   findActiveLeaveGrantProposal,
@@ -41,6 +41,7 @@ import {
   listGrantedOnDates,
   listValidPunches,
   listValidShiftDaysInRange,
+  tenants,
   users,
   type Database,
   type LeaveGrantProposal,
@@ -120,7 +121,10 @@ interface ActiveUserWithHireDate {
   leaveGrantClass: string;
 }
 
-/** is_active なユーザーを入社日・付与区分つきで返す(reminders.ts の listActiveUsers に足したもの)。 */
+/**
+ * is_active なユーザーを入社日・付与区分つきで返す(reminders.ts の listActiveUsers に足したもの)。
+ * listActiveUsers と同じく、退会手続き中のテナントのユーザーは含めない(docs/design/tenant-withdrawal.md)。
+ */
 async function listActiveUsersWithHireDate(db: Database): Promise<ActiveUserWithHireDate[]> {
   return db
     .select({
@@ -131,7 +135,8 @@ async function listActiveUsersWithHireDate(db: Database): Promise<ActiveUserWith
       leaveGrantClass: users.leaveGrantClass,
     })
     .from(users)
-    .where(eq(users.isActive, true));
+    .innerJoin(tenants, eq(tenants.id, users.tenantId))
+    .where(and(eq(users.isActive, true), isNull(tenants.withdrawalRequestedAt)));
 }
 
 /**

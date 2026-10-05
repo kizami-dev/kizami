@@ -446,6 +446,86 @@ function buildHeader(columns: readonly AllowanceColumn[], compareOriginal: boole
     : [...base, ...FLEX_CONTRACT_COLUMNS];
 }
 
+/**
+ * 1か月分の CSV の行の材料(ユーザー + 区分別時間数)を集める。締め済みの月はスナップショット、
+ * 未締めの月はその場の計算から(このファイル冒頭の方針)。
+ *
+ * GET /attendance.csv と、テナントの全データのエクスポート(lib/tenant-export-archive.ts、
+ * 2026-10-05)が同じ材料・同じ列で CSV を作るために切り出した。どちらも結果は同じになる。
+ */
+export async function collectMonthlyExportEntries(
+  db: Database,
+  params: { tenantId: string; year: number; month: number; targetUsers: readonly MemberUser[]; compareOriginal: boolean },
+): Promise<{ entries: RowInput[]; closed: boolean; period: string }> {
+  const { tenantId, year, month, targetUsers, compareOriginal } = params;
+  const period = formatDate(year, month, 1).slice(0, 7);
+
+  const closingState = await getClosingState(db, { tenantId, period });
+  const closed = closingState.status === "closed";
+
+  // 行の材料(ユーザー + 区分別時間数)をまず集め、CSV への整形は形式ごとに後段で行う
+  // (2026-08-27 の format 追加でこの2段構えにした。以前はループ内で直接 CSV 行文字列を
+  // 組み立てていたが、freee/mf 形式では列も単位も違うため、収集と整形を分けた)。
+  const entries: RowInput[] = [];
+  if (closed) {
+    const snapshotsByUser = await getClosingSnapshotsForUsers(db, {
+      tenantId,
+      period,
+      userIds: targetUsers.map((u) => u.id),
+    });
+    const originalSnapshotsByUser = compareOriginal
+      ? await getOriginalClosingSnapshotsForUsers(db, { tenantId, period, userIds: targetUsers.map((u) => u.id) })
+      : null;
+    for (const u of targetUsers) {
+      const current = monthlyFiguresFromSnapshot(engineOutputFromSnapshots(snapshotsByUser.get(u.id) ?? []));
+      const original = originalSnapshotsByUser
+        ? monthlyFiguresFromSnapshot(engineOutputFromSnapshots(originalSnapshotsByUser.get(u.id) ?? []))
+        : undefined;
+      entries.push({ user: u, period, current, closed, original });
+    }
+  } else {
+    // N+1解消: 未締め月のCSVは対象ユーザー全員が同じテナント・同じ月なので、
+    // law/allowance/テナント設定版を1回だけ構築してユーザーごとの再取得を避ける
+    // (apps/api/src/lib/closing-amend.ts 冒頭の判断点参照)。構築自体が失敗した場合は
+    // 以前と同じく以降の per-user 呼び出しにフォールバックさせる(挙動不変。
+    // apps/api/src/routes/closings.ts の同種コメント参照)。
+    const tenantContext = await buildTenantMonthlyContext(db, { tenantId, year, month }).catch(() => undefined);
+    for (const u of targetUsers) {
+      try {
+        const { output } = await calculateMonthlyForUser(db, { tenantId, userId: u.id, year, month }, tenantContext);
+        const current = monthlyFiguresFromEngineOutput(output);
+        // 未締めの月には amend という概念が無い(そもそも確定値が存在しない)ため、
+        // compare=original が指定されていても current をそのまま original として扱う(diff=0)。
+        entries.push({ user: u, period, current, closed, original: compareOriginal ? current : undefined });
+      } catch {
+        // テナント設定・制度割当がまだ揃っていないユーザーはスキップする
+        // (apps/api/src/reminders.ts runReminderScan と同じ方針)。
+      }
+    }
+  }
+  return { entries, closed, period };
+}
+
+/**
+ * テナントの1か月分の汎用CSV(GET /attendance.csv の既定の形式と同じ列・同じ値)を、
+ * 指定したユーザー全員分で作る。テナントの全データのエクスポート(lib/tenant-export-archive.ts)が使う。
+ */
+export async function buildGenericAttendanceCsv(
+  db: Database,
+  params: { tenantId: string; year: number; month: number; targetUsers: readonly MemberUser[] },
+): Promise<RenderedCsv & { rowCount: number; closed: boolean }> {
+  const monthStartDate = formatDate(params.year, params.month, 1);
+  const monthEndDate = dateFromEpochDay(epochDayFromDate(monthStartDate) + daysInMonth(params.year, params.month) - 1);
+  const allowanceColumns = resolveAllowanceColumnsForPeriod(
+    await buildAllowanceTimeline(db, { tenantId: params.tenantId, fromDate: monthStartDate, toDate: monthEndDate }),
+    monthStartDate,
+  );
+  const sorted = [...params.targetUsers].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  const { entries, closed, period } = await collectMonthlyExportEntries(db, { ...params, targetUsers: sorted, compareOriginal: false });
+  const rendered = renderGenericCsv({ entries, columns: allowanceColumns, compareOriginal: false, period });
+  return { ...rendered, rowCount: entries.length, closed };
+}
+
 export function createExportsRoutes(db: Database) {
   const app = new Hono<AppEnv>();
 
@@ -497,49 +577,13 @@ export function createExportsRoutes(db: Database) {
     // CSV の行順は決定的にしておく(テスト容易性・差分の見やすさのため)
     targetUsers.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 
-    const closingState = await getClosingState(db, { tenantId: user.tenantId, period });
-    const closed = closingState.status === "closed";
-
-    // 行の材料(ユーザー + 区分別時間数)をまず集め、CSV への整形は形式ごとに後段で行う
-    // (2026-08-27 の format 追加でこの2段構えにした。以前はループ内で直接 CSV 行文字列を
-    // 組み立てていたが、freee/mf 形式では列も単位も違うため、収集と整形を分けた)。
-    const entries: RowInput[] = [];
-    if (closed) {
-      const snapshotsByUser = await getClosingSnapshotsForUsers(db, {
-        tenantId: user.tenantId,
-        period,
-        userIds: targetUsers.map((u) => u.id),
-      });
-      const originalSnapshotsByUser = compareOriginal
-        ? await getOriginalClosingSnapshotsForUsers(db, { tenantId: user.tenantId, period, userIds: targetUsers.map((u) => u.id) })
-        : null;
-      for (const u of targetUsers) {
-        const current = monthlyFiguresFromSnapshot(engineOutputFromSnapshots(snapshotsByUser.get(u.id) ?? []));
-        const original = originalSnapshotsByUser
-          ? monthlyFiguresFromSnapshot(engineOutputFromSnapshots(originalSnapshotsByUser.get(u.id) ?? []))
-          : undefined;
-        entries.push({ user: u, period, current, closed, original });
-      }
-    } else {
-      // N+1解消: 未締め月のCSVは対象ユーザー全員が同じテナント・同じ月なので、
-      // law/allowance/テナント設定版を1回だけ構築してユーザーごとの再取得を避ける
-      // (apps/api/src/lib/closing-amend.ts 冒頭の判断点参照)。構築自体が失敗した場合は
-      // 以前と同じく以降の per-user 呼び出しにフォールバックさせる(挙動不変。
-      // apps/api/src/routes/closings.ts の同種コメント参照)。
-      const tenantContext = await buildTenantMonthlyContext(db, { tenantId: user.tenantId, year, month }).catch(() => undefined);
-      for (const u of targetUsers) {
-        try {
-          const { output } = await calculateMonthlyForUser(db, { tenantId: user.tenantId, userId: u.id, year, month }, tenantContext);
-          const current = monthlyFiguresFromEngineOutput(output);
-          // 未締めの月には amend という概念が無い(そもそも確定値が存在しない)ため、
-          // compare=original が指定されていても current をそのまま original として扱う(diff=0)。
-          entries.push({ user: u, period, current, closed, original: compareOriginal ? current : undefined });
-        } catch {
-          // テナント設定・制度割当がまだ揃っていないユーザーはスキップする
-          // (apps/api/src/reminders.ts runReminderScan と同じ方針)。
-        }
-      }
-    }
+    const { entries, closed } = await collectMonthlyExportEntries(db, {
+      tenantId: user.tenantId,
+      year,
+      month,
+      targetUsers,
+      compareOriginal,
+    });
 
     const rendered =
       format === "generic"

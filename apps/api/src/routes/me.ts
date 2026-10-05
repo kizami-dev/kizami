@@ -5,6 +5,7 @@
 import { Hono } from "hono";
 import { getTenantById, type Database } from "@kizami/db";
 import type { AppEnv } from "../auth/middleware.js";
+import { withdrawalStateOf } from "../lib/tenant-withdrawal.js";
 
 export function createMeRoutes(db: Database) {
   const app = new Hono<AppEnv>();
@@ -15,9 +16,19 @@ export function createMeRoutes(db: Database) {
     // 示すために使う。ログイン画面には出さない — 認証前はテナントが確定せず、将来の
     // マルチテナントで「どの社名を出すか」を決められないため、表示は認証後に限る。
     const tenant = await getTenantById(db, user.tenantId);
+    // 退会の状態(2026-10-05、docs/design/tenant-withdrawal.md)。手続き中なら Web が全画面にバナーを出す。
+    // 手続き中にここまで来られるのは tenant.withdraw を持つ人だけ(auth/tenant-withdrawal-guard.ts)
+    // なので、削除予定の時刻を返してよい。通常の状態では null。
+    const withdrawal = withdrawalStateOf(tenant);
     return c.json({
       user: { id: user.id, email: user.email, displayName: user.displayName, tenantId: user.tenantId },
-      tenant: { name: tenant?.name ?? null },
+      tenant: {
+        name: tenant?.name ?? null,
+        withdrawal:
+          withdrawal.status === "withdrawing"
+            ? { requestedAt: withdrawal.requestedAt, scheduledPurgeAt: withdrawal.scheduledPurgeAt }
+            : null,
+      },
     });
   });
 

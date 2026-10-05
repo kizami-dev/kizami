@@ -21,6 +21,7 @@ import { hashPassword } from "../auth/password.js";
 import { isAcceptablePassword, MIN_PASSWORD_LENGTH } from "../auth/password-policy.js";
 import { createSession, setSessionCookie } from "../auth/session.js";
 import { nowMinutes } from "../lib/time.js";
+import { isTenantWithdrawing, TENANT_WITHDRAWING_ERROR } from "../lib/tenant-withdrawal.js";
 
 /** トークンから招待を探し、有効性を判定する。無効の理由まで返すのはこのファイル内部の利用のみ。 */
 async function resolveInvitation(db: Database, token: string) {
@@ -80,6 +81,12 @@ export function createInvitationsRoutes(db: Database, options: { secureCookies: 
     const resolved = await resolveInvitation(db, token);
     if (resolved.status === "not_found") return c.json({ error: "not_found" }, 404);
     if (resolved.status === "expired") return c.json({ error: "expired" }, 410);
+
+    // 退会手続き中のテナントには新しく参加させない(docs/design/tenant-withdrawal.md)。
+    // 受諾はアカウントを有効にする書き込みなので、権限に関係なく断る。
+    if (await isTenantWithdrawing(db, resolved.invitation.tenantId)) {
+      return c.json({ error: TENANT_WITHDRAWING_ERROR }, 403);
+    }
 
     const passwordHash = await hashPassword(password);
     const result = await acceptInvitation(db, { tokenHash: resolved.hash, passwordHash, nowMinutes: resolved.now });
