@@ -29,6 +29,7 @@ import {
   notifications,
   allowanceDefinitions,
   allowanceDefinitionVersions,
+  scheduledHolidayCalendarVersions,
   tenantSettingVersions,
   tenants,
   userPolicyAssignments,
@@ -108,6 +109,12 @@ interface DemoUserSpec {
    * 割り当てる。useFixedPolicy と同じ理由で、暦月の初日から効かせるため直接 INSERT する。
    */
   useShortPolicy?: boolean;
+  /**
+   * true の場合、params.shortFlexWorkPolicyId(2026-10-05、時短勤務の第2段階のフレックスの制度
+   * 「フレックス・時短(6時間)」— 総労働時間は所定日数 × 標準時間、不足は翌月に繰り越す)を
+   * 割り当てる。useShortPolicy と同じ理由で直接 INSERT する。
+   */
+  useShortFlexPolicy?: boolean;
 }
 
 const DEMO_USERS: DemoUserSpec[] = [
@@ -138,6 +145,16 @@ const DEMO_USERS: DemoUserSpec[] = [
     hireDate: "2022-04-01",
     department: "dev",
     useShortPolicy: true,
+  },
+  {
+    // 時短フレックスのデモメンバー(2026-10-05、契約上の枠と不足の繰越)。月次のフレックスの内訳
+    // (契約上の枠・前月からの繰越・法定内超過・法定外・確定した不足)に実データを乗せる。
+    key: "member5",
+    name: "山本 結衣",
+    email: "member5@kizami.example",
+    hireDate: "2023-04-01",
+    department: "dev",
+    useShortFlexPolicy: true,
   },
 ];
 
@@ -215,6 +232,56 @@ async function createShortHoursWorkPolicy(db: Database, tenantId: string): Promi
     createdAt: now,
   });
   return workPolicyId;
+}
+
+/**
+ * 時短フレックスのデモ用の名前付き制度「フレックス・時短(6時間)」を作る(2026-10-05、時短勤務の
+ * 第2段階)。総労働時間は所定日数 × 標準時間(契約上の枠)、不足は翌月に繰り越す。
+ * createShortHoursWorkPolicy と同じ理由で直接 INSERT する。
+ */
+async function createShortFlexWorkPolicy(db: Database, tenantId: string): Promise<string> {
+  const existingRows = await db.select().from(workPolicies).where(eq(workPolicies.tenantId, tenantId));
+  const existing = existingRows.find((p) => p.name === "フレックス・時短(6時間)");
+  if (existing) return existing.id;
+
+  const now = Math.floor(Date.now() / 60_000);
+  const workPolicyId = uuidv7();
+  await db.insert(workPolicies).values({ id: workPolicyId, tenantId, name: "フレックス・時短(6時間)", createdAt: now });
+  await db.insert(workPolicyVersions).values({
+    id: uuidv7(),
+    tenantId,
+    workPolicyId,
+    effectiveFrom: "1970-01-01",
+    kind: "flex",
+    settlementPeriod: "monthly",
+    core: null,
+    standardDayMinutes: 360,
+    flexTotalHoursBasis: "scheduled_days",
+    flexCarryOverShortfall: true,
+    createdAt: now,
+  });
+  return workPolicyId;
+}
+
+/**
+ * 所定休日のカレンダーの版を1つ入れる(2026-10-05)。今年の1月1日から、土日・国民の祝日に加えて
+ * 年末(12/29〜12/31)を所定休日にする。勤怠ルールの「所定休日のカレンダー」区画に現在の値と
+ * 版の履歴が写るようにする(HTTP では過去日の版を足せないため直接 INSERT する)。
+ */
+async function insertHolidayCalendarVersion(db: Database, tenantId: string): Promise<void> {
+  const existing = await db.select().from(scheduledHolidayCalendarVersions).where(eq(scheduledHolidayCalendarVersions.tenantId, tenantId));
+  if (existing.length > 0) return;
+  const year = jstToday().y;
+  await db.insert(scheduledHolidayCalendarVersions).values({
+    id: uuidv7(),
+    tenantId,
+    effectiveFrom: `${year}-01-01`,
+    weekdays: JSON.stringify([0, 6]),
+    nationalHolidays: true,
+    extraHolidays: JSON.stringify([`${year}-12-29`, `${year}-12-30`, `${year}-12-31`]),
+    extraWorkdays: JSON.stringify([]),
+    createdAt: Math.floor(Date.now() / 60_000),
+  });
 }
 
 /**
@@ -320,6 +387,7 @@ async function insertDemoUsers(
     fixedWorkPolicyId: string;
     variableWorkPolicyId: string;
     shortWorkPolicyId: string;
+    shortFlexWorkPolicyId: string;
     departmentIdByKey: Record<"hq" | "sales" | "dev", string>;
   },
 ): Promise<Array<{ key: string; id: string; email: string }>> {
@@ -352,7 +420,30 @@ async function insertDemoUsers(
       createdAt: now,
       updatedAt: now,
     });
-    await db.insert(userPolicyAssignments).values({
+    // 時短フレックスのメンバー(member5)は、先月の1日から時短フレックスの制度にする(それより前は
+    // テナント既定の制度)。1970年から繰り越す制度にすると、打刻の無い過去の月の不足が毎月繰り越されて
+    // 連鎖し、デモとして読めない数字(遡る上限の警告つき)になるため。
+    if (spec.useShortFlexPolicy) {
+      const today = jstToday();
+      const prev = today.m === 1 ? { y: today.y - 1, m: 12 } : { y: today.y, m: today.m - 1 };
+      await db.insert(userPolicyAssignments).values({
+        id: uuidv7(),
+        tenantId: params.tenantId,
+        userId,
+        workPolicyId: params.workPolicyId,
+        effectiveFrom: "1970-01-01",
+        createdAt: now,
+      });
+      await db.insert(userPolicyAssignments).values({
+        id: uuidv7(),
+        tenantId: params.tenantId,
+        userId,
+        workPolicyId: params.shortFlexWorkPolicyId,
+        effectiveFrom: `${prev.y}-${String(prev.m).padStart(2, "0")}-01`,
+        createdAt: now,
+      });
+    }
+    if (!spec.useShortFlexPolicy) await db.insert(userPolicyAssignments).values({
       id: uuidv7(),
       tenantId: params.tenantId,
       userId,
@@ -362,7 +453,9 @@ async function insertDemoUsers(
           ? params.variableWorkPolicyId
           : spec.useShortPolicy
             ? params.shortWorkPolicyId
-            : params.workPolicyId,
+            : spec.useShortFlexPolicy
+              ? params.shortFlexWorkPolicyId
+              : params.workPolicyId,
       effectiveFrom: "1970-01-01",
       createdAt: now,
     });
@@ -556,6 +649,9 @@ async function main(): Promise<void> {
   const variableWorkPolicyId = await createVariableWorkPolicy(db, tenantId);
   // 2026-10-05: 時短勤務(固定・所定6時間)の名前付き制度と、その制度のメンバー(member4)。
   const shortWorkPolicyId = await createShortHoursWorkPolicy(db, tenantId);
+  // 2026-10-05: 時短フレックス(契約上の枠・不足の繰越)の制度と、所定休日のカレンダーの版。
+  const shortFlexWorkPolicyId = await createShortFlexWorkPolicy(db, tenantId);
+  await insertHolidayCalendarVersion(db, tenantId);
 
   // 部署(本社をルート、営業部・開発部を配下に)。既存なら流用する(冪等)。
   const now = Math.floor(Date.now() / 60_000);
@@ -583,6 +679,7 @@ async function main(): Promise<void> {
     fixedWorkPolicyId,
     variableWorkPolicyId,
     shortWorkPolicyId,
+    shortFlexWorkPolicyId,
     departmentIdByKey: { hq: hqId, sales: salesId, dev: devId },
   });
 

@@ -2,7 +2,7 @@
 
 import { type FlexBalance, type MonthlyAttendance } from "../../lib/api";
 import { messages } from "../../lib/messages";
-import { formatDurationHm } from "../../lib/time";
+import { dateStrFromEpochMinutesJst, formatDurationHm, nowMinutes } from "../../lib/time";
 import { HelpTip } from "../HelpTip";
 
 /**
@@ -110,7 +110,9 @@ export function WorkloadBar({ data }: WorkloadBarProps) {
           {(flex?.diffMinutes ?? 0) < 0 ? ` ${messages.monthly.flexShortLabel}` : ""}
         </span>
       </div>
-      {flex && flex.contractFrameMinutes !== null ? <FlexContractBreakdown flex={flex} overtimeMinutes={data.figures.totals.overtime} /> : null}
+      {flex && flex.contractFrameMinutes !== null ? (
+        <FlexContractBreakdown flex={flex} overtimeMinutes={data.figures.totals.overtime} inProgress={isMonthInProgress(data)} />
+      ) : null}
     </div>
   ) : (
     <div className="flex-balance">
@@ -152,7 +154,7 @@ export function WorkloadBar({ data }: WorkloadBarProps) {
  * 繰越の受け入れ・送り出しは0のときは出さない(繰り越さない制度や、繰越の無い月で並びを増やさない)。
  * 法定外は totals.overtime(区分別合計の「残業」と同じ値)を、ここでは3段の最後として並べ直す。
  */
-function FlexContractBreakdown({ flex, overtimeMinutes }: { flex: FlexBalance; overtimeMinutes: number }) {
+function FlexContractBreakdown({ flex, overtimeMinutes, inProgress }: { flex: FlexBalance; overtimeMinutes: number; inProgress: boolean }) {
   const m = messages.monthly;
   const chips: Array<{ key: string; label: string; minutes: number; tone?: "short" | "overtime" }> = [
     { key: "contract", label: m.flexContractFrameLabel, minutes: flex.contractFrameMinutes ?? 0 },
@@ -160,8 +162,12 @@ function FlexContractBreakdown({ flex, overtimeMinutes }: { flex: FlexBalance; o
     { key: "statutory", label: m.flexStatutoryFrameLabel, minutes: flex.statutoryFrameMinutes },
     { key: "excess", label: m.flexWithinStatutoryExcessLabel, minutes: flex.withinStatutoryExcessMinutes },
     { key: "overtime", label: m.flexOvertimeLabel, minutes: overtimeMinutes, tone: "overtime" as const },
-    ...(flex.carryOutMinutes > 0 ? [{ key: "carryOut", label: m.flexCarryOutLabel, minutes: flex.carryOutMinutes }] : []),
-    { key: "confirmed", label: m.flexConfirmedShortfallLabel, minutes: flex.confirmedShortfallMinutes, tone: "short" as const },
+    // 翌月へ繰越・確定した不足は「月が終わった時点の不足」の行き先なので、まだ終わっていない月
+    // (締め前で今日が月末以前)には出さない — 月の途中の不足を「確定」と読ませないため。
+    ...(!inProgress && flex.carryOutMinutes > 0 ? [{ key: "carryOut", label: m.flexCarryOutLabel, minutes: flex.carryOutMinutes }] : []),
+    ...(!inProgress
+      ? [{ key: "confirmed", label: m.flexConfirmedShortfallLabel, minutes: flex.confirmedShortfallMinutes, tone: "short" as const }]
+      : []),
   ];
   return (
     <div className="flex-balance__breakdown" data-testid="flex-contract-breakdown">
@@ -182,4 +188,11 @@ function FlexContractBreakdown({ flex, overtimeMinutes }: { flex: FlexBalance; o
       </div>
     </div>
   );
+}
+
+/** 締め前で、月末がまだ来ていない(今日以降)月か。days は月の全日を昇順で持つ */
+function isMonthInProgress(data: MonthlyAttendance): boolean {
+  if (data.figures.source !== "live") return false;
+  const lastDate = data.days[data.days.length - 1]?.date;
+  return lastDate === undefined || lastDate >= dateStrFromEpochMinutesJst(nowMinutes());
 }
