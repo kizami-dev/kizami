@@ -189,6 +189,13 @@ export interface InsertWorkPolicyVersionParams {
    */
   core?: string | null;
   standardDayMinutes: number;
+  /**
+   * フレックスの総労働時間の決め方("statutory_frame" | "scheduled_days"、2026-10-05)。
+   * 省略時は "statutory_frame"(従来の挙動)。flex 以外の kind では意味を持たない
+   */
+  flexTotalHoursBasis?: string;
+  /** フレックスで不足を翌月に繰り越すか。省略時は false。値の組み合わせの検証は呼び出し側(apps/api)の責務 */
+  flexCarryOverShortfall?: boolean;
   /** UTC エポック分 */
   createdAt: number;
 }
@@ -209,6 +216,8 @@ export async function insertWorkPolicyVersion(db: Database | Transaction, params
       settlementPeriod: params.settlementPeriod,
       core: params.core ?? null,
       standardDayMinutes: params.standardDayMinutes,
+      flexTotalHoursBasis: params.flexTotalHoursBasis ?? "statutory_frame",
+      flexCarryOverShortfall: params.flexCarryOverShortfall ?? false,
       createdAt: params.createdAt,
     })
     .returning();

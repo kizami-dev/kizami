@@ -131,6 +131,19 @@ export const workPolicyVersions = sqliteTable(
     core: text("core"),
     /** 標準となる1日の労働時間(分)。有給日の枠算入に使う(engine の FlexSettings.standardDayMinutes 相当) */
     standardDayMinutes: integer("standard_day_minutes").notNull(),
+    /**
+     * フレックスの総労働時間の決め方(engine の `FlexTotalHoursBasis`、2026-10-05 時短勤務の第2段階):
+     * "statutory_frame"(法定の枠。従来の挙動)| "scheduled_days"(所定労働日数 × 標準労働時間)。
+     * flex 専用で、他の kind では "statutory_frame" を入れておく(列の意味が無い)。
+     * `.default("statutory_frame")` は既存の行を従来の挙動のまま残すため(マイグレーションで
+     * 既存のテナントの数字を変えない — docs/design/work-systems.md)。
+     */
+    flexTotalHoursBasis: text("flex_total_hours_basis").notNull().default("statutory_frame"),
+    /**
+     * フレックスで不足を翌月に繰り越すか(engine の `carryOverShortfall`)。flex かつ
+     * "scheduled_days" のときだけ true になりうる(API が検証する)。既定は false(繰り越さない)。
+     */
+    flexCarryOverShortfall: integer("flex_carry_over_shortfall", { mode: "boolean" }).notNull().default(false),
     createdAt: integer("created_at").notNull(),
   },
   (table) => [
@@ -157,4 +170,40 @@ export const userPolicyAssignments = sqliteTable(
     createdAt: integer("created_at").notNull(),
   },
   (table) => [index("user_policy_assignments_tenant_user_effective_idx").on(table.tenantId, table.userId, table.effectiveFrom)],
+);
+
+/**
+ * 所定休日のカレンダーの版(追記専用、2026-10-05 時短勤務の第2段階)。engine の
+ * `ScheduledHolidayCalendar` を写したもの。フレックスの契約上の枠(所定労働日数 × 標準労働時間)で
+ * 「どの日が所定労働日か」を決めるのに使う。
+ *
+ * tenant_setting_versions(日界・法定休日・休憩・GPS)とは別の表にした(判断点): 法定休日は
+ * 割増の区分を決める法律上の休日で、所定休日は就業規則で決める休日の全体(法定休日はその一部)
+ * という別の概念であり、編集の権限は同じでも画面の区画と版の系列を分けた方が「法定休日を
+ * 変えたつもりで所定休日も動いた」という取り違えが起きない。版が1行も無いテナントは
+ * engine の既定(土日・祝日)を使うので、既存のテナントに行を足すマイグレーションは要らない。
+ *
+ * 日付の集合・曜日の集合は可変長なので JSON 1列にする(legal_holiday_rule・core と同じ流儀)。
+ */
+export const scheduledHolidayCalendarVersions = sqliteTable(
+  "scheduled_holiday_calendar_versions",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id")
+      .notNull()
+      .references(() => tenants.id),
+    /** ローカル日付 "YYYY-MM-DD"。この日から有効 */
+    effectiveFrom: text("effective_from").notNull(),
+    /** 所定休日の曜日(0=日曜〜6=土曜)の JSON 配列。例: "[0,6]" */
+    weekdays: text("weekdays").notNull(),
+    /** 国民の祝日を所定休日にするか */
+    nationalHolidays: integer("national_holidays", { mode: "boolean" }).notNull(),
+    /** 個別に所定休日にする日("YYYY-MM-DD")の JSON 配列 */
+    extraHolidays: text("extra_holidays").notNull(),
+    /** 曜日・祝日の規則から外して所定労働日にする日("YYYY-MM-DD")の JSON 配列 */
+    extraWorkdays: text("extra_workdays").notNull(),
+    /** UTC エポック分(この版が記録された時刻) */
+    createdAt: integer("created_at").notNull(),
+  },
+  (table) => [index("scheduled_holiday_calendar_versions_tenant_effective_idx").on(table.tenantId, table.effectiveFrom)],
 );
