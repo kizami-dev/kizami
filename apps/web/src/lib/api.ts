@@ -674,6 +674,10 @@ export interface MemberDto {
    * 実際に計算へ使われる値は engine 側が effective-dated に解決する)。
    */
   workSystemKind: WorkSystemKind | null;
+  /** 現在割り当てられている制度の id(2026-10-05、名前付きの制度)。null = 割当が一度も無い。 */
+  workPolicyId: string | null;
+  /** 現在割り当てられている制度の名前(例:「固定・時短(6時間)」)。null = 割当が一度も無い。 */
+  workPolicyName: string | null;
   /**
    * 二要素認証(TOTP)を有効にしているか(2026-08-27 追加)。一覧のバッジと
    * 「2FAをリセット」ボタンの出し分けに使う(リセットは member.deactivate 権限が必要)。
@@ -725,6 +729,11 @@ export interface CreateMemberInput {
   /** "YYYY-MM-DD" */
   hireDate?: string;
   presetIds?: string[];
+  /**
+   * 入社日(未指定なら今日)から割り当てる労働時間制の制度(2026-10-05、名前付きの制度)。
+   * 省略するとテナントの既定の制度。指定には tenant_settings.flex.manage も要る。
+   */
+  workPolicyId?: string;
 }
 
 /** POST /members のレスポンス(招待発行を兼ねる)。 */
@@ -806,9 +815,11 @@ export interface PasswordResetPreviewDto {
  */
 export interface MemberWorkPolicyAssignmentDto {
   effectiveFrom: string;
+  /** 割り当てた制度の id(2026-10-05、名前付きの制度) */
+  workPolicyId: string;
+  workPolicyName: string;
   kind: WorkSystemKind;
   standardDayMinutes: number;
-  workPolicyName: string;
 }
 
 /** GET /members/:id/work-policy のレスポンス。 */
@@ -817,20 +828,22 @@ export interface MemberWorkPolicySettingsDto {
   history: MemberWorkPolicyAssignmentDto[];
 }
 
-/** POST /members/:id/work-policy の入力。 */
+/**
+ * POST /members/:id/work-policy の入力(2026-10-05 から制度の id で指定する)。
+ *
+ * API は後方互換のために `{ kind, effectiveFrom, standardDayMinutes? }`(その kind の既定の制度へ
+ * 割り当てる)も受け付けるが、画面はもう使わない — 所定は制度ごとに持つため、人ごとに違う所定は
+ * 制度を分けて表す。
+ */
 export interface CreateMemberWorkPolicyInput {
-  kind: WorkSystemKind;
+  workPolicyId: string;
   effectiveFrom: string;
-  /**
-   * 1日あたりの基準所定時間(分、1〜1440)。省略するとテナント既定ポリシーの値を引き継ぐ。
-   * kind: "monthly_variable" ではこの値が「有給1日を何分に換算するか」を意味する
-   * (シフトが無い日の有給換算に使う、v0.7 フェーズ4、2026-08-24 追加)。
-   */
-  standardDayMinutes?: number;
 }
 
-/** POST /members/:id/work-policy のレスポンス(workPolicyName は含まない — GET と異なる形なので別型にする)。 */
+/** POST /members/:id/work-policy のレスポンス。 */
 export interface CreateMemberWorkPolicyResultDto {
+  workPolicyId: string;
+  workPolicyName: string;
   kind: WorkSystemKind;
   effectiveFrom: string;
   standardDayMinutes: number;
@@ -1031,12 +1044,47 @@ export interface WorkPolicySettingsDto {
 
 export interface CreateWorkPolicyVersionInput {
   effectiveFrom: string;
-  /** 労働時間制の種別。この画面(フレックス設定)からは常に "flex" を送る */
+  /** 労働時間制の種別 */
   kind: WorkSystemKind;
-  settlementPeriod: string;
-  /** コアタイム。省略・null なら「コアタイムなし」 */
+  /** 清算期間。flex のときだけ意味を持つ("monthly" のみ)。他の制度では省略してよい */
+  settlementPeriod?: string;
+  /** コアタイム。省略・null なら「コアタイムなし」(flex のみ) */
   core?: CoreTimeDto | null;
+  /**
+   * 1日の所定労働時間(分)。flex は標準労働時間、fixed は所定労働時間(1〜480)、
+   * monthly_variable は有給換算用の基準所定。
+   */
   standardDayMinutes: number;
+}
+
+/**
+ * 名前付きの労働時間制の制度(2026-10-05、時短勤務対応の第1段階)。
+ * GET /settings/work-policies の要素と一致。
+ */
+export interface WorkPolicyDto {
+  id: string;
+  name: string;
+  /** 今日時点で有効な版の制度の種類(まだ有効な版が無ければ最初の版の種類)。版が無い稀な状態では null */
+  kind: WorkSystemKind | null;
+  /** テナントの既定の制度(招待したメンバーへ自動で割り当てる制度)か */
+  isDefault: boolean;
+  /** アーカイブした時刻(UTC エポック分)。null = 使用中。アーカイブ済みは新しい割当に出さない */
+  archivedAt: number | null;
+  createdAt: number;
+  /** 今日時点でこの制度が割り当てられている在籍中のメンバーの数 */
+  assigneeCount: number;
+  effective: WorkPolicyVersionDto | null;
+  history: WorkPolicyVersionDto[];
+}
+
+export interface WorkPoliciesDto {
+  defaultWorkPolicyId: string | null;
+  policies: WorkPolicyDto[];
+}
+
+/** POST /settings/work-policies の入力(名前+初版)。 */
+export interface CreateWorkPolicyInput extends CreateWorkPolicyVersionInput {
+  name: string;
 }
 
 /**
@@ -2180,6 +2228,29 @@ export const api = {
   /** POST /settings/work-policy。新しい版を1件追加する(UPDATE ではない)。 */
   async createWorkPolicyVersion(input: CreateWorkPolicyVersionInput): Promise<{ version: WorkPolicyVersionDto }> {
     return request("/settings/work-policy", { method: "POST", body: JSON.stringify(input) });
+  },
+
+  /** GET /settings/work-policies(tenant_settings.flex.manage)。名前付きの制度の一覧(2026-10-05)。 */
+  async listWorkPolicies(): Promise<WorkPoliciesDto> {
+    return request("/settings/work-policies");
+  },
+
+  /** POST /settings/work-policies。制度を初版と一緒に作る。 */
+  async createWorkPolicy(input: CreateWorkPolicyInput): Promise<{ policy: WorkPolicyDto }> {
+    return request("/settings/work-policies", { method: "POST", body: JSON.stringify(input) });
+  },
+
+  /** PATCH /settings/work-policies/:id。名前の変更・アーカイブ(どちらも集計には影響しない)。 */
+  async updateWorkPolicy(
+    id: string,
+    input: { name?: string; archived?: boolean },
+  ): Promise<{ policy: { id: string; name: string; archivedAt: number | null } }> {
+    return request(`/settings/work-policies/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(input) });
+  },
+
+  /** POST /settings/work-policies/:id/versions。制度に新しい版を1件追加する(UPDATE ではない)。 */
+  async addWorkPolicyVersion(id: string, input: CreateWorkPolicyVersionInput): Promise<{ version: WorkPolicyVersionDto }> {
+    return request(`/settings/work-policies/${encodeURIComponent(id)}/versions`, { method: "POST", body: JSON.stringify(input) });
   },
 
   /** GET /settings/allowances(tenant_settings.calendar.manage、勤怠設定と同じ権限)。定義ごとの現在有効な版+版の履歴。 */

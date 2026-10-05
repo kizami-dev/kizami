@@ -85,6 +85,11 @@ const KNOWN_ACTIONS: readonly string[] = [
   "slack_settings.update",
   "tenant_profile.update",
   "tenant_setting_version.create",
+  // 名前付きの労働時間制の制度(2026-10-05)。版の追加は既存の work_policy_version.create のまま。
+  "work_policy.archive",
+  "work_policy.create",
+  "work_policy.rename",
+  "work_policy.unarchive",
   "work_policy_version.create",
   "work_rules_url.update",
 ];

@@ -1395,7 +1395,7 @@ export const ja = {
     approvalFlowTitle: "多段承認",
     approvalFlowDesc: "打刻修正・休暇・休憩自動控除の打ち消しの各申請を、1段承認にするか2段(一次承認+二次承認)にするかを設定します。",
     attendanceTitle: "勤怠ルール",
-    attendanceDesc: "日界・法定休日・休憩ルール・GPS・フレックス設定を、版を追加する形で変更します。",
+    attendanceDesc: "日界・法定休日・休憩ルール・GPS・労働時間制の制度を、版を追加する形で変更します。",
     allowancesTitle: "手当対象時間",
     allowancesDesc: "特定日・曜日・時間帯の条件に一致した実労働時間を、手当支給の対象時間として定義します。",
     shiftPatternsTitle: "シフトパターン",
@@ -1562,7 +1562,7 @@ export const ja = {
    */
   settingsAttendance: {
     title: "勤怠ルール",
-    tagline: "日界・法定休日・休憩ルール・GPS・フレックス設定を、版を追加する形で変更します。",
+    tagline: "日界・法定休日・休憩ルール・GPS・労働時間制の制度を、版を追加する形で変更します。",
     noPermission: "この設定を変更する権限がありません",
     loadFailed: "設定の取得に失敗しました。もう一度お試しください",
 
@@ -1604,7 +1604,6 @@ export const ja = {
     gpsRetentionLabel: "GPS座標の保持期間",
     gpsRetentionSameAsAttendance: "勤怠データと同一",
     gpsRetentionDaysUnit: "日",
-    flexLabel: "フレックス設定",
     flexSettlementMonthly: "月次清算",
     flexStandardDayMinutesLabel: "標準労働時間(1日、分)",
     /**
@@ -1650,11 +1649,7 @@ export const ja = {
     submitting: "追加中…",
     submitSuccess: "新しい版を追加しました。",
 
-    workPolicyFormTitle: "フレックス設定の新しい版を追加",
-    workPolicyNoPermission: "フレックス設定を変更する権限がありません",
-
     historyTitle: "版の履歴",
-    workPolicyHistoryTitle: "フレックス設定の版の履歴",
     historyEmpty: "まだ履歴がありません",
     historyColumnEffectiveFrom: "適用開始日",
     historyColumnSummary: "内容",
@@ -1670,11 +1665,91 @@ export const ja = {
       invalid_gps_enabled: "入力内容を確認してください",
       invalid_gps_retention_days: "GPS座標の保持期間は1以上の整数で入力してください",
       invalid_settlement_period: "清算期間はこのバージョンでは「月次清算」のみ選べます",
-      invalid_standard_day_minutes: "標準労働時間は1〜1440の範囲(分)で入力してください",
+      invalid_standard_day_minutes: "標準労働時間は1〜1440の範囲(分)で入力してください(固定時間制の所定は1〜480分)",
       invalid_core_time: "コアタイムは開始より後の終了時刻で指定してください(日をまたぐ設定はできません)",
       invalid_core_time_weekdays: "コアタイムのある曜日を1つ以上選んでください",
       effective_from_in_past: "適用開始日は本日以降のみ指定できます(過去の計算結果が変わってしまうため)",
       version_already_exists: "その適用開始日にはすでに版があります。別の日付を指定してください",
+      forbidden: "この操作を行う権限がありません",
+      default: "処理に失敗しました。もう一度お試しください",
+    },
+  },
+
+  /**
+   * 労働時間制の制度(/settings/attendance の「労働時間制の制度」区画、2026-10-05 追加)。
+   * 所定労働時間ごとに名前付きの制度を持ち、メンバーには制度を割り当てる(時短勤務対応の第1段階)。
+   * 版の追加は settingsAttendance と同じ effective-dated の作法(過去の集計は変わらない)。
+   */
+  settingsWorkPolicies: {
+    sectionTitle: "労働時間制の制度",
+    sectionLead:
+      "所定労働時間ごとに制度を分け、名前を付けて管理します(例:「固定(8時間)」「固定・時短(6時間)」)。メンバーには、メンバーの詳細で制度を割り当てます。",
+    loadFailed: "労働時間制の制度の取得に失敗しました。もう一度お試しください",
+    empty: "まだ制度がありません",
+    defaultBadge: "既定",
+    archivedBadge: "アーカイブ済み",
+    defaultHint: "既定の制度は、招待したメンバーに自動で割り当てられます(招待のときに別の制度を選ぶこともできます)。",
+    kindLabel: "種類",
+    /** 所定の欄の見出し。制度の種類で意味が違う(フレックス=標準労働時間、変形=有給換算用の基準所定)。 */
+    standardDayLabel: {
+      flex: "標準労働時間(1日)",
+      fixed: "所定労働時間(1日)",
+      monthly_variable: "基準所定(有給換算用、1日)",
+    } satisfies Record<"flex" | "fixed" | "monthly_variable", string>,
+    standardDayValue: (hm: string, minutes: number) => `${hm}(${minutes}分)`,
+    assigneeCountLabel: "割り当てている人数(今日時点)",
+    assigneeCountValue: (count: number) => `${count}人`,
+    currentEffectiveFrom: "この版が有効になった日",
+    notEffectiveYet: "まだ有効な版がありません(適用開始日が未来の版のみ登録されています)",
+    historyTitle: "版の履歴",
+    historyColumnEffectiveFrom: "適用開始日",
+    historyColumnSummary: "内容",
+
+    addVersionButton: "版を追加",
+    addVersionTitle: "新しい版を追加",
+    renameButton: "名前を変更",
+    archiveButton: "アーカイブ",
+    unarchiveButton: "アーカイブを解除",
+    archiveHint: "アーカイブした制度は、新しい割当の選択肢に出なくなります。割り当て済みのメンバーの計算は変わりません。",
+    cancel: "やめる",
+
+    nameLabel: "制度の名前",
+    namePlaceholder: "例: 固定・時短(6時間)",
+    renameSubmit: "この名前にする",
+    kindSelectLabel: "労働時間制の種類",
+    standardDayMinutesLabel: "1日の所定(分)",
+    fixedStandardDayHint:
+      "1〜480分で入力します(8時間を超える所定は固定時間制では設定できません)。所定を超えて8時間までは法定内残業、8時間を超えると法定時間外になります。有給1日もこの時間で換算します。",
+    flexStandardDayHint: "有給取得日にこの分数が労働時間として清算期間の枠に算入されます。",
+    variableStandardDayHint: "日ごとの所定はシフトで決まります。この値は、シフトが無い日に有給を1日取ったときの換算に使います。",
+    initialEffectiveFromLabel: "適用開始日",
+    initialEffectiveFromHint:
+      "まだ誰にも割り当てていない制度なので、過去の日付も指定できます。入社日が過去のメンバーをこの制度で招待するときは、入社日以前の日付にしてください。",
+
+    addPolicyButton: "制度を追加",
+    addPolicyTitle: "制度を追加",
+    createSubmit: "この内容で制度を追加",
+    submitting: "保存中…",
+    createSuccess: "制度を追加しました。",
+    renameSuccess: "名前を変更しました。",
+    versionSuccess: "新しい版を追加しました。",
+    archiveSuccess: "アーカイブしました。",
+    unarchiveSuccess: "アーカイブを解除しました。",
+
+    errors: {
+      invalid_body: "入力内容を確認してください",
+      invalid_name: "制度の名前を1〜100文字で入力してください",
+      work_policy_name_taken: "同じ名前の制度がすでにあります。別の名前にしてください",
+      cannot_archive_default_work_policy: "既定の制度はアーカイブできません",
+      invalid_effective_from: "適用開始日を確認してください",
+      invalid_work_system_kind: "労働時間制の種類を選んでください",
+      invalid_settlement_period: "清算期間はこのバージョンでは「月次清算」のみ選べます",
+      invalid_standard_day_minutes: "1日の所定は、固定時間制では1〜480分、それ以外では1〜1440分の整数で入力してください",
+      invalid_core_time: "コアタイムは開始より後の終了時刻で指定してください(日をまたぐ設定はできません)",
+      invalid_core_time_weekdays: "コアタイムのある曜日を1つ以上選んでください",
+      effective_from_in_past: "適用開始日は本日以降のみ指定できます(過去の計算結果が変わってしまうため)",
+      version_already_exists: "その適用開始日にはすでに版があります。別の日付を指定してください",
+      not_found: "対象の制度が見つかりません",
       forbidden: "この操作を行う権限がありません",
       default: "処理に失敗しました。もう一度お試しください",
     },
@@ -2003,6 +2078,10 @@ export const ja = {
     inviteDepartmentLabel: "所属部署(任意)",
     inviteHireDateLabel: "入社日(任意)",
     invitePresetsLabel: "権限プリセット(任意)",
+    /** 招待時の労働時間制の制度(2026-10-05、tenant_settings.flex.manage を持つ人だけに出す)。 */
+    inviteWorkPolicyLabel: "労働時間制の制度(任意)",
+    inviteWorkPolicyDefaultOption: (name: string) => `既定の制度(${name})`,
+    inviteWorkPolicyHint: "入社日(未入力なら今日)からこの制度で計算します。短時間勤務の人は、ここで時短の制度を選んでください。",
     inviteCancel: "キャンセル",
     inviteSubmit: "招待リンクを発行",
     inviteSubmitting: "発行中…",
@@ -2107,25 +2186,24 @@ export const ja = {
      * GET も 403 になるため、セクション自体を表示しない(呼び出し側 MembersView の判断点)。
      */
     workPolicyTitle: "労働時間制",
-    workPolicyHint: "フレックスタイム制/固定時間制のどちらで月次を集計するかの割当です。変更は新しい割当を追加する形で行い、過去の集計は変わりません。",
+    workPolicyHint: "どの労働時間制の制度(所定労働時間)で月次・有給を計算するかの割当です。変更は新しい割当を追加する形で行い、過去の集計は変わりません。",
     workPolicyCurrentLabel: "現在の労働時間制",
     workPolicyCurrentEffectiveFrom: "この割当が適用された日",
     workPolicyNoneYet: "まだ割当がありません",
     workPolicyHistoryTitle: "割当履歴",
     workPolicyHistoryEmpty: "まだ履歴がありません",
     workPolicyHistoryColumnEffectiveFrom: "適用開始日",
-    workPolicyHistoryColumnKind: "制度",
+    workPolicyHistoryColumnPolicy: "制度",
+    workPolicyHistoryColumnKind: "種類・所定",
     workPolicyFormTitle: "制度を変更",
-    workPolicyKindLabel: "労働時間制",
+    /** 制度の選択欄(2026-10-05、名前付きの制度)。kind ではなく制度を名前で選ぶ。 */
+    workPolicyPolicyLabel: "労働時間制の制度",
+    /** 選択肢・現在値の表示(制度名・種類・1日の所定)。 */
+    workPolicyOption: (name: string, kind: string, hm: string) => `${name}(${kind}・1日${hm})`,
+    workPolicyNoAssignable: "割り当てられる制度がありません。勤怠ルールで制度を追加してください。",
+    workPolicyManageLink: "労働時間制の制度を追加・編集する →",
     workPolicyEffectiveFromLabel: "適用開始日",
     workPolicyEffectiveFromHint: "この変更は指定日以降の計算にのみ影響し、過去の集計は変わりません。",
-    /**
-     * 変形労働時間制(monthly_variable)のときだけ出す入力(v0.7 フェーズ4、2026-08-24 追加)。
-     * この制度では所定労働時間が日ごとにシフトで決まるため、standard_day_minutes は
-     * 「有給1日を何分として扱うか」の意味だけを持つ。
-     */
-    workPolicyStandardDayMinutesLabel: "1日あたりの基準所定時間(有給換算用)",
-    workPolicyStandardDayMinutesHint: "シフトが無い日に有給を1日取得したとき、何分の労働として扱うかの基準です(分、1〜1440)。既定は480分(8時間)。",
     workPolicySubmit: "この内容で変更",
     workPolicySubmitting: "変更中…",
     workPolicySubmitSuccess: "労働時間制を変更しました。",
@@ -2215,6 +2293,10 @@ export const ja = {
       invalid_effective_from: "適用開始日を確認してください",
       effective_from_in_past: "適用開始日は本日以降のみ指定できます(過去の計算結果が変わってしまうため)",
       assignment_already_exists: "その適用開始日には既に割当があります。別の日付を指定してください",
+      /** 制度の id による割当(2026-10-05、名前付きの制度)。 */
+      invalid_work_policy_id: "指定した制度が見つかりません",
+      work_policy_archived: "アーカイブ済みの制度は割り当てられません",
+      work_policy_not_effective_yet: "その日にはまだこの制度の版がありません。制度の適用開始日以降の日付を指定してください",
       /** 1日あたりの基準所定時間(有給換算用、v0.7 フェーズ4、2026-08-24 追加)。 */
       invalid_standard_day_minutes: "1日あたりの基準所定時間は1〜1440分の整数で入力してください",
       version_already_exists: "その適用開始日には既に同じ設定の版があります。別の日付を指定してください",

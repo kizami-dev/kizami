@@ -137,6 +137,11 @@ export const mapLeaveGrantProposalErrorMessage = makeErrorMapper(() => messages.
 export const mapHelpSettingsErrorMessage = makeErrorMapper(() => messages.settingsHelp.errors);
 /** 勤怠ルールの版管理(POST /settings/attendance・POST /settings/work-policy)のエラーマッピング(2026-08-22 追加)。 */
 export const mapAttendanceSettingsErrorMessage = makeErrorMapper(() => messages.settingsAttendance.errors);
+/**
+ * 労働時間制の制度(GET/POST /settings/work-policies・PATCH .../:id・POST .../:id/versions)の
+ * エラーマッピング(2026-10-05、名前付きの制度)。
+ */
+export const mapWorkPolicyErrorMessage = makeErrorMapper(() => messages.settingsWorkPolicies.errors);
 /** 休憩自動控除の打ち消し申請(POST /auto-break-waivers・:id/approve・reject・withdraw)のエラーマッピング(2026-08-23 追加)。 */
 export const mapAutoBreakWaiverErrorMessage = makeErrorMapper(() => messages.autoBreakWaiver.errors);
 /** APIキー発行/失効(POST・DELETE /api-keys)のエラーマッピング(v0.4 追加)。 */
