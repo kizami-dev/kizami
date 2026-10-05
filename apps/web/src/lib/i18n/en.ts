@@ -2375,6 +2375,7 @@ export const en = {
       cannot_erase_self: "You cannot erase your own personal data",
       forbidden: "You don't have permission to perform this action",
       member_limit_reached: "The member limit has been reached. Please contact the operator to request a higher limit",
+      invite_reset_limit_reached: "The daily limit for issuing invitation and password reset links has been reached. Please try again tomorrow or later",
       default: "Something went wrong. Please try again",
     },
   },

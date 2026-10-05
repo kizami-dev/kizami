@@ -132,7 +132,7 @@ spec:
             # テナントごとの利用上限(Closed Beta の目安。全テナント共通。Public Launch / 課金で見直す。
             # 未設定 = 無制限)。上限は管理操作と外向きの送信だけに掛かり、打刻は止まらない。
             #   メンバー 50(招待中を含む在籍者)/ API キー 20(有効なもの)/
-            #   外向きの通知(Webhook・メール)1日 2000 件 / 招待・パスワード再設定のメール 1日 200 通(日本時間 0 時区切り)
+            #   外向きの通知(Webhook・メール)1日 2000 件 / 管理者の招待・再設定リンク発行 1日 200 件(日本時間 0 時区切り)
             - {name: QUOTA_MAX_MEMBERS, value: "50"}
             - {name: QUOTA_MAX_API_KEYS, value: "20"}
             - {name: QUOTA_OUTBOUND_NOTIFICATIONS_PER_DAY, value: "2000"}

@@ -64,7 +64,7 @@ export interface NotificationPreferencesRoutesDeps {
   tenantFetchImpl?: typeof fetch;
   /** 保存時の SSRF 検査(routes/settings/shared.ts の `outbound` と同じ。省略 = 検査しない) */
   outbound?: OutboundChecker;
-  /** 外向きの通知の1日の送信数の上限(lib/tenant-quotas.ts)。省略 = 無制限。個人 Webhook のテスト送信も数える */
+  /** 利用上限(lib/tenant-quotas.ts)。省略 = 無制限。個人 Webhook のテスト送信は本人ごとの小さな上限で数える(テナントの枠は使わない) */
   quotas?: TenantQuotas;
   /** 未使用(将来 SMTP テスト送信を追加する場合のための予約)。現状は POST .../test は個人Webhookのみを対象にする */
   smtpSendFn?: SmtpSendFn;
@@ -266,7 +266,9 @@ export function createNotificationPreferencesRoutes(db: Database, deps: Notifica
       return c.json({ error: "decryption_failed" }, 503);
     }
 
-    if (deps.quotas && !(await deps.quotas.consumeOutboundNotification(db, user.tenantId))) {
+    // 本人が起こす送信はテナント全体の枠を消費しない(一般メンバーが繰り返して、管理者向けの通知や打刻忘れの
+    // リマインドを止められないように)。本人ごとの1日の小さな上限で守る(lib/tenant-quotas.ts)
+    if (deps.quotas && !(await deps.quotas.consumePersonalTestSend(db, user.tenantId, user.id))) {
       return c.json({ result: { channel: "webhook", ok: false, error: "notification_limit_reached" } });
     }
 

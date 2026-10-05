@@ -510,6 +510,11 @@ export function createMembersRoutes(db: Database, deps: { quotas?: TenantQuotas 
     const capacity = await deps.quotas?.checkMemberCapacity(db, actor.tenantId);
     if (capacity && !capacity.ok) return c.json({ error: "member_limit_reached", limit: capacity.limit }, 409);
 
+    // 招待・再設定リンクの発行数の上限(管理者の操作だけが使う枠。lib/tenant-quotas.ts)
+    if (deps.quotas && !(await deps.quotas.consumeInviteResetMail(db, actor.tenantId))) {
+      return c.json({ error: "invite_reset_limit_reached" }, 409);
+    }
+
     const now = nowMinutes();
     // トークンの生成自体は DB を伴わない純粋な計算(crypto乱数 + ハッシュ化)のため、
     // トランザクションの外で先に済ませておく(トランザクションの保持時間を必要最小限にする)。
@@ -659,6 +664,11 @@ export function createMembersRoutes(db: Database, deps: { quotas?: TenantQuotas 
       return c.json({ error: "already_active" }, 409);
     }
 
+    // 招待・再設定リンクの発行数の上限(管理者の操作だけが使う枠。lib/tenant-quotas.ts)
+    if (deps.quotas && !(await deps.quotas.consumeInviteResetMail(db, actor.tenantId))) {
+      return c.json({ error: "invite_reset_limit_reached" }, 409);
+    }
+
     const now = nowMinutes();
     const { token, hash } = await generateInvitationToken();
     const invitation = await createInvitation(db, {
@@ -752,6 +762,11 @@ export function createMembersRoutes(db: Database, deps: { quotas?: TenantQuotas 
 
     if (!(await userHasCredential(db, { tenantId: actor.tenantId, userId: id }))) {
       return c.json({ error: "not_active" }, 409);
+    }
+
+    // 招待・再設定リンクの発行数の上限(管理者の操作だけが使う枠。lib/tenant-quotas.ts)
+    if (deps.quotas && !(await deps.quotas.consumeInviteResetMail(db, actor.tenantId))) {
+      return c.json({ error: "invite_reset_limit_reached" }, 409);
     }
 
     const now = nowMinutes();

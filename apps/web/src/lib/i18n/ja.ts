@@ -2415,6 +2415,7 @@ export const ja = {
       cannot_erase_self: "自分自身の個人データを消去することはできません",
       forbidden: "この操作を行う権限がありません",
       member_limit_reached: "メンバー数の上限に達しています。上限の引き上げについては運営にお問い合わせください",
+      invite_reset_limit_reached: "本日の招待・パスワード再設定リンクの発行数の上限に達しました。明日以降に再度お試しください",
       default: "処理に失敗しました。もう一度お試しください",
     },
   },

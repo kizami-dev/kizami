@@ -2317,6 +2317,7 @@ export const zhHant = {
       cannot_erase_self: "無法清除自己的個人資料",
       forbidden: "沒有執行此操作的權限",
       member_limit_reached: "成員數量已達上限。如需提高上限,請聯絡營運方",
+      invite_reset_limit_reached: "今日邀請及密碼重設連結的發送數量已達上限。請明天或之後再試",
       default: "處理失敗,請重試",
     },
   },

@@ -12,8 +12,7 @@ import { notifications, type Database } from "@kizami/db";
 import { dispatch } from "@kizami/notify";
 import { createApp } from "../src/app.js";
 import { buildPersonalChannels, buildTenantChannels } from "../src/lib/notification-channels.js";
-import { createTenantQuotas, NotificationQuotaExceededError, parseQuotaEnv } from "../src/lib/tenant-quotas.js";
-import type { SelfServiceResetDeps } from "../src/routes/password-resets.js";
+import { createTenantQuotas, NotificationQuotaExceededError, parseQuotaEnv, PERSONAL_TEST_SENDS_PER_DAY } from "../src/lib/tenant-quotas.js";
 import { createTestDatabase, grantPermission, loginAndGetCookie, setupExtraUser, setupTestDb, testEncryptor } from "./support/setup.js";
 
 const NOW = Date.UTC(2026, 5, 15, 3, 0) / 60_000;
@@ -295,38 +294,96 @@ describe("外向きの通知の1日の上限", () => {
   });
 });
 
-describe("招待・パスワード再設定のメールの1日の上限", () => {
-  it("上限ちょうどまでメールを送り、次はトークンも発行せずメールを送らない(応答は常に 202)", async () => {
+describe("招待・パスワード再設定リンクの1日の上限(管理者の操作だけが使う枠)", () => {
+  it("未認証の本人用再設定を繰り返しても枠は減らず、管理者の招待・再設定リンクは発行できる", async () => {
     const db: Database = await createTestDatabase();
     const seeded = await setupTestDb(db);
-    const second = await setupExtraUser(db, { tenantId: seeded.tenantId, email: "second-reset@example.com", name: "S" });
+    await grantPermission(db, { tenantId: seeded.tenantId, userId: seeded.userId, permission: "member.invite", scope: "tenant" });
+    const other = await setupExtraUser(db, { tenantId: seeded.tenantId, email: "other-member@example.com", name: "T" });
     const mails: string[] = [];
     const background: Array<() => Promise<void>> = [];
-    const selfServiceReset: SelfServiceResetDeps = {
-      appBaseUrl: "https://app.example.com",
-      sendMail: async (mail) => {
-        mails.push(mail.to);
+    const app = createApp({
+      db,
+      selfServiceReset: {
+        appBaseUrl: "https://app.example.com",
+        sendMail: async (mail) => {
+          mails.push(mail.to);
+        },
+        runInBackground: (task) => {
+          background.push(task);
+        },
       },
-      runInBackground: (task) => {
-        background.push(task);
-      },
-    };
-    const app = createApp({ db, selfServiceReset, quotas: createTenantQuotas({ inviteResetMailsPerDay: 1 }), metricsToken: "tok" });
-    const request = async (email: string) => {
+      quotas: createTenantQuotas({ inviteResetMailsPerDay: 1 }, { nowMinutes: () => NOW }),
+      metricsToken: "tok",
+    });
+    const forgot = async (email: string, n: number) => {
       const res = await app.request("/password-resets", {
         method: "POST",
-        headers: { "content-type": "application/json", "cf-connecting-ip": `198.51.100.${Math.floor(Math.random() * 200)}` },
+        headers: { "content-type": "application/json", "cf-connecting-ip": `198.51.100.${n}` },
         body: JSON.stringify({ email }),
       });
       while (background.length > 0) await background.shift()!();
       return res.status;
     };
 
-    expect(await request(seeded.email)).toBe(202);
-    expect(await request(second.email)).toBe(202);
-    expect(mails).toEqual([seeded.email]);
+    // 未認証の第三者が繰り返す(別メール・別 IP でスロットルを避ける)。枠は 1 しか無いが、どれもメールが届く
+    expect(await forgot(seeded.email, 1)).toBe(202);
+    expect(await forgot(other.email, 2)).toBe(202);
+    expect(mails).toHaveLength(2);
+
+    // それでも管理者の招待の発行には枠が残っている(1 回目は通り、2 回目から断る)
+    const cookie = await loginAndGetCookie(app, seeded.email, seeded.password);
+    const first = await json(app, cookie, "POST", "/members", { email: "new1@example.com", name: "N1" });
+    expect(first.status).toBe(201);
+    const second = await json(app, cookie, "POST", "/members", { email: "new2@example.com", name: "N2" });
+    expect(second.status).toBe(409);
+    expect(await second.json()).toEqual({ error: "invite_reset_limit_reached" });
 
     const metrics = await (await app.request("/metrics", { headers: { authorization: "Bearer tok" } })).text();
     expect(metrics).toContain('kizami_quota_limit_hits_total{limit="invite_reset_mails"} 1');
+  });
+});
+
+describe("一般メンバーの操作がテナントの枠を使い切れない", () => {
+  it("個人 Webhook のテスト送信を繰り返しても、本人ごとの上限で止まり、業務通知(テナントの枠)は送れる", async () => {
+    const seeded = await setupTestDb();
+    const encryptor = testEncryptor();
+    const { upsertNotificationSettings } = await import("@kizami/db");
+    await upsertNotificationSettings(seeded.db, {
+      tenantId: seeded.tenantId,
+      webhookEnabled: true,
+      webhookUrl: await encryptor.encrypt("https://hooks.example.com/tenant"),
+      smtpEnabled: false,
+      smtpHost: null,
+      smtpPort: null,
+      smtpUser: null,
+      smtpFrom: null,
+      smtpPassword: null,
+      updatedAt: 0,
+      updatedBy: seeded.userId,
+    });
+    const quotas = createTenantQuotas({ outboundNotificationsPerDay: 3 }, { nowMinutes: () => NOW });
+    const fetchImpl = vi.fn(async () => new Response(null, { status: 200 }));
+    const app = createApp({ db: seeded.db, encryptor, quotas, notify: { fetchImpl: fetchImpl as unknown as typeof fetch } });
+    const cookie = await loginAndGetCookie(app, seeded.email, seeded.password);
+    const put = await json(app, cookie, "PUT", "/settings/notifications/me", { categories: {}, webhookUrl: "https://hooks.example.com/me" });
+    expect(put.status).toBe(200);
+
+    const results: boolean[] = [];
+    for (let i = 0; i < PERSONAL_TEST_SENDS_PER_DAY + 5; i += 1) {
+      const res = await json(app, cookie, "POST", "/settings/notifications/me/test");
+      results.push(((await res.json()) as { result: { ok: boolean } }).result.ok);
+    }
+    expect(results.filter(Boolean)).toHaveLength(PERSONAL_TEST_SENDS_PER_DAY);
+    expect(fetchImpl).toHaveBeenCalledTimes(PERSONAL_TEST_SENDS_PER_DAY);
+
+    // テナントの枠(3 件)は 1 件も減っていない: システムが送る業務通知は上限まで送れる
+    const build = () => buildTenantChannels(seeded.db, seeded.tenantId, { encryptor, fetchImpl: fetchImpl as unknown as typeof fetch, quotas });
+    for (let i = 0; i < 3; i += 1) {
+      const [r] = await dispatch(await build(), { to: {}, title: "t", body: "b" });
+      expect(r?.ok).toBe(true);
+    }
+    const [over] = await dispatch(await build(), { to: {}, title: "t", body: "b" });
+    expect(over?.ok).toBe(false);
   });
 });
