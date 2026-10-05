@@ -384,7 +384,7 @@ export function createApp(deps: CreateAppDeps) {
   );
   // ブラウザプッシュ通知の購読管理(GET /push/vapid-public-key, GET/POST/DELETE /push/subscriptions)。
   // 個人の通知設定と同じく権限チェック無し(認証済み本人のみ — routes/push.ts 冒頭コメント参照)。
-  authed.route("/push", createPushRoutes(db, { vapid: vapid ?? null }));
+  authed.route("/push", createPushRoutes(db, { vapid: vapid ?? null, ...(notify?.outbound ? { outbound: notify.outbound } : {}) }));
   authed.route("/help", createHelpRoutes(db));
   authed.route("/departments", createDepartmentsRoutes(db));
   authed.route("/members", createMembersRoutes(db));

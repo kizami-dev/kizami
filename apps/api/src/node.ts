@@ -5,6 +5,7 @@ import { createApp } from "./app.js";
 import { buildEncryptorFromEnv } from "./lib/encryption.js";
 import { buildErrorReporterFromEnv } from "./lib/error-report.js";
 import { authPostAllowedOrigins } from "./lib/json-post-guard.js";
+import { buildNotifyOutboundDeps, buildOutboundGuardFromEnv } from "./lib/outbound-guard.js";
 import { withStartupRetry } from "./lib/startup-retry.js";
 import { parseSignupEnv } from "./lib/signup-config.js";
 import { parseSystemMailEnv } from "./lib/system-mail-config.js";
@@ -79,6 +80,17 @@ const systemMailEnv = parseSystemMailEnv(process.env);
 for (const message of systemMailEnv.errors) console.warn(`[kizami] password self-service reset disabled: ${message}`);
 const systemMailConfig = systemMailEnv.config;
 const turnstileConfig = parseTurnstileEnv(process.env);
+
+// アプリ側の SSRF 対策(lib/outbound-policy.ts)。OUTBOUND_BLOCK_PRIVATE=true(または OUTBOUND_DENY_CIDRS)で
+// 有効、**既定は無効**。テナントが設定できる送り先(Webhook・SMTP・OIDC の issuer・プッシュの endpoint)への接続を、
+// 検査済みの IP にだけ行う。運用者が設定する送り先(SENTRY_DSN・SYSTEM_SMTP_URL・Turnstile)は対象外。
+// 形式が不正なら「設定したつもりで素通し」を避けるため起動時に落とす。
+const outboundEnv = buildOutboundGuardFromEnv(process.env);
+if (outboundEnv.errors.length > 0) {
+  for (const message of outboundEnv.errors) console.error(`[kizami] invalid outbound configuration: ${message}`);
+  process.exit(1);
+}
+const outboundGuard = outboundEnv.guard;
 // 送信関数(transport)は signup とパスワード再設定で1つを共有する。
 const systemMailSender =
   systemMailConfig !== null ? createSystemMailSender({ smtpUrl: systemMailConfig.systemSmtpUrl, from: systemMailConfig.systemMailFrom }) : null;
@@ -92,7 +104,7 @@ const app = createApp({
   // ログイン等の未認証 POST の Origin 検証。許可するのは**明示された** APP_BASE_URL / CORS_ORIGIN だけ
   // (corsOrigin の開発用既定値は含めない。lib/json-post-guard.ts)。どちらも未設定なら検証しない。
   authPostOrigins: authPostAllowedOrigins([process.env.APP_BASE_URL, process.env.CORS_ORIGIN]),
-  notify: { smtpSendFn: nodemailerSendFn },
+  notify: buildNotifyOutboundDeps(outboundGuard, nodemailerSendFn),
   encryptor,
   trustProxy,
   vapid,
@@ -123,6 +135,8 @@ const app = createApp({
   oidc: {
     ...(appBaseUrl !== undefined ? { appBaseUrl } : {}),
     ...(oidcRedirectUri !== undefined ? { redirectUri: oidcRedirectUri } : {}),
+    // OIDC の discovery・トークン・JWKS の取得も、SSRF ガード有効時は検査済みの IP にだけ接続する
+    ...(outboundGuard !== null ? { network: { fetchImpl: outboundGuard.fetch } } : {}),
   },
 });
 

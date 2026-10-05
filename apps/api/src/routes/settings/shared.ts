@@ -5,10 +5,23 @@
 
 import type { SmtpSendFn } from "@kizami/notify";
 import type { Encryptor } from "../../lib/encryption.js";
+import type { OutboundChecker } from "../../lib/outbound-policy.js";
 
 export interface SettingsRoutesDeps {
   /** webhookChannel の fetch 差し替え(テスト用)。省略時はグローバル fetch */
   fetchImpl?: typeof fetch;
+  /**
+   * **テナントが設定した送り先**(Webhook・ブラウザプッシュの endpoint)への送信に使う fetch。省略時は `fetchImpl`。
+   * SSRF ガード(lib/outbound-guard.ts)を有効にした配備だけが、検査済みの IP にだけ接続する fetch を渡す。
+   * 運用者が設定する送り先(環境変数 WEBHOOK_URL のフォールバック)は `fetchImpl` のまま。
+   */
+  tenantFetchImpl?: typeof fetch;
+  /**
+   * 保存時の検査(Webhook の URL・SMTP のホスト・OIDC の issuer・プッシュの endpoint がプライベートな宛先でないか)。
+   * 省略 = 検査しない(SSRF ガードが無効な配備)。DNS は後で変わりうるので、保存時の検査は先回りの
+   * 親切にすぎず、接続のたびの検査(tenantFetchImpl / smtpSendFn)が本体。lib/outbound-policy.ts 参照。
+   */
+  outbound?: OutboundChecker;
   /** smtp 送信関数。省略時 smtp チャネルは常に「未設定」扱いになる(テスト送信も 400) */
   smtpSendFn?: SmtpSendFn;
   /**

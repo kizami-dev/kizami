@@ -50,6 +50,7 @@ import {
   type CategoryChannelPrefs,
   type NotificationCategory,
 } from "../lib/notification-preferences.js";
+import type { OutboundChecker } from "../lib/outbound-policy.js";
 import { nowMinutes } from "../lib/time.js";
 
 const TEST_WEBHOOK_TITLE = "KIZAMI 個人Webhook通知テスト";
@@ -58,6 +59,10 @@ const TEST_WEBHOOK_BODY = "これは KIZAMI の個人 Webhook 設定を確認す
 export interface NotificationPreferencesRoutesDeps {
   /** webhookChannel の fetch 差し替え(テスト用)。省略時はグローバル fetch */
   fetchImpl?: typeof fetch;
+  /** 個人 Webhook(テナントのメンバーが設定した送り先)への送信に使う fetch。省略時は `fetchImpl`(routes/settings/shared.ts) */
+  tenantFetchImpl?: typeof fetch;
+  /** 保存時の SSRF 検査(routes/settings/shared.ts の `outbound` と同じ。省略 = 検査しない) */
+  outbound?: OutboundChecker;
   /** 未使用(将来 SMTP テスト送信を追加する場合のための予約)。現状は POST .../test は個人Webhookのみを対象にする */
   smtpSendFn?: SmtpSendFn;
   /** webhookUrl の暗号化・復号に使う。null/未設定の場合、PUT は webhookUrl を含む更新を 503 で拒否する */
@@ -198,6 +203,10 @@ export function createNotificationPreferencesRoutes(db: Database, deps: Notifica
     if (webhookUrlProvided && rawWebhookUrl !== null && !isValidHttpUrl(rawWebhookUrl)) {
       return c.json({ error: "invalid_webhook_url" }, 400);
     }
+    // SSRF ガード有効時: プライベートな宛先は保存させない(送信のたびの検査が本体。lib/outbound-policy.ts)
+    if (webhookUrlProvided && rawWebhookUrl !== null && deps.outbound && !(await deps.outbound.checkUrl(rawWebhookUrl)).ok) {
+      return c.json({ error: "outbound_destination_blocked", field: "webhookUrl" }, 400);
+    }
 
     // 暗号化の対象は「この PUT で新たに(空でない)値が指定された」webhookUrl のみ
     // (routes/settings.ts の PUT /notifications と同じ方針)。
@@ -254,7 +263,8 @@ export function createNotificationPreferencesRoutes(db: Database, deps: Notifica
       return c.json({ error: "decryption_failed" }, 503);
     }
 
-    const channel = webhookChannel(url, deps.fetchImpl ? { fetchImpl: deps.fetchImpl } : {});
+    const testFetch = deps.tenantFetchImpl ?? deps.fetchImpl;
+    const channel = webhookChannel(url, testFetch ? { fetchImpl: testFetch } : {});
     const [result] = await dispatch([channel], { to: { email: user.email }, title: TEST_WEBHOOK_TITLE, body: TEST_WEBHOOK_BODY });
 
     return c.json({

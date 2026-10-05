@@ -57,6 +57,7 @@ import { resolveNotificationCategory } from "./lib/notification-preferences.js";
 import { runLeaveAlertScan } from "./leave-alerts.js";
 import { runLeaveGrantProposalScan } from "./leave-grant-proposals.js";
 import { runOvertimeAlertScan } from "./overtime-alerts.js";
+import { buildNotifyOutboundDeps, buildOutboundGuardFromEnv } from "./lib/outbound-guard.js";
 import { nodemailerSendFn } from "./lib/smtp.js";
 import { runReminderScan } from "./reminders.js";
 import { runShiftVarianceAlertScan } from "./shift-variance-alerts.js";
@@ -90,6 +91,14 @@ const encryptor = buildEncryptorFromEnv();
 // ブラウザプッシュ通知の VAPID 鍵(docs/design/web-push.md)。未設定なら null =
 // 個人設定で push=true でも push チャネルは組み立てられない(静かに送らない)。
 const vapid = buildVapidFromEnv();
+// アプリ側の SSRF 対策(node.ts と同じ環境変数。lib/outbound-policy.ts)。テナントの Webhook・SMTP・プッシュの
+// 送り先への接続を検査済みの IP にだけ行う。既定は無効(従来どおり)。
+const outboundEnv = buildOutboundGuardFromEnv(process.env);
+if (outboundEnv.errors.length > 0) {
+  for (const message of outboundEnv.errors) console.error(`[kizami-reminders] invalid outbound configuration: ${message}`);
+  process.exit(1);
+}
+const notifyOutboundDeps = buildNotifyOutboundDeps(outboundEnv.guard, nodemailerSendFn);
 // エラー報告(docs/design/observability.md)。SENTRY_DSN 未設定なら no-op。
 const errorReporter = buildErrorReporterFromEnv(process.env, { release: resolveRelease(), runtime: "node" });
 
@@ -131,7 +140,7 @@ async function main(): Promise<void> {
           cached = buildPersonalChannels(
             db,
             { tenantId, userId, notificationType },
-            { smtpSendFn: nodemailerSendFn, encryptor, vapid, nowMinutes },
+            { ...notifyOutboundDeps, encryptor, vapid, nowMinutes },
           );
           channelCache.set(key, cached);
         }
@@ -215,7 +224,7 @@ async function main(): Promise<void> {
       try {
         const result = await runShiftVarianceAlertScan(db, {
           nowMinutes,
-          notifyDeps: { smtpSendFn: nodemailerSendFn, encryptor },
+          notifyDeps: { ...notifyOutboundDeps, encryptor },
           resolveChannels,
         });
         shiftVarianceScanned = result.scannedUserCount;
@@ -236,7 +245,7 @@ async function main(): Promise<void> {
       let grantProposalScanned = 0;
       let grantProposalCreated = 0;
       try {
-        const result = await runLeaveGrantProposalScan(db, { nowMinutes, notifyDeps: { smtpSendFn: nodemailerSendFn, encryptor } });
+        const result = await runLeaveGrantProposalScan(db, { nowMinutes, notifyDeps: { ...notifyOutboundDeps, encryptor } });
         grantProposalScanned = result.scannedUserCount;
         grantProposalCreated = result.created.length;
         console.log(

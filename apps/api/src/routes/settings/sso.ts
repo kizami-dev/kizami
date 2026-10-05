@@ -77,6 +77,10 @@ export function registerSsoRoutes(app: Hono<AppEnv>, db: Database, deps: Setting
     if (!issuerResult.ok) return c.json({ error: "invalid_issuer" }, 400);
     const issuer = issuerResult.value;
     if (issuer !== null && !isValidIssuer(issuer)) return c.json({ error: "invalid_issuer" }, 400);
+    // SSRF ガード有効時: issuer(= discovery・トークン・JWKS の取得先)がプライベートな宛先なら保存させない
+    if (issuer !== null && body.issuer !== undefined && deps.outbound && !(await deps.outbound.checkUrl(issuer)).ok) {
+      return c.json({ error: "outbound_destination_blocked", field: "issuer" }, 400);
+    }
 
     const clientIdResult = resolveStringField(body.clientId, existing?.clientId ?? null);
     if (!clientIdResult.ok) return c.json({ error: "invalid_client_id" }, 400);

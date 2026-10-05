@@ -24,6 +24,8 @@ export const nodemailerSendFn: SmtpSendFn = async (config: SmtpChannelConfig, ms
     host: config.host,
     port: config.port,
     secure: config.port === 465,
+    // SSRF ガードが host を検査済みの IP に差し替えたときの、TLS の検証に使う元のホスト名
+    ...(config.servername !== undefined ? { servername: config.servername } : {}),
     ...(config.user !== undefined && config.password !== undefined
       ? { auth: { user: config.user, pass: config.password } }
       : {}),
