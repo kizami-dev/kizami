@@ -146,6 +146,7 @@ export function PersonalNotificationSettingsView() {
     if (result.status === "permission_denied") setPushMessage(m.pushPermissionDenied);
     else if (result.status === "permission_dismissed") setPushMessage(m.pushPermissionDismissed);
     else if (result.status === "unavailable") setPushMessage(m.pushUnavailable);
+    else if (result.status === "destination_blocked") setPushMessage(m.pushDestinationBlocked);
     else setPushMessage(m.pushFailed);
   }
 
@@ -437,7 +438,11 @@ export function PersonalNotificationSettingsView() {
                           : messages.settingsPersonalNotifications.testSendFailed}
                       </span>
                       {!testResult.ok && testResult.error ? (
-                        <span className="test-result-item__error">{testResult.error}</span>
+                        <span className="test-result-item__error">
+                          {testResult.error === "notification_limit_reached"
+                            ? messages.settingsPersonalNotifications.testSendLimitReached
+                            : testResult.error}
+                        </span>
                       ) : null}
                     </li>
                   </ul>
