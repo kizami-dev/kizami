@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useMemo, useState } from "react";
-import { useRouter } from "waku";
+import { Link, useRouter } from "waku";
 import {
   api,
   ApiError,
@@ -12,12 +12,12 @@ import {
   type MemberWorkPolicySettingsDto,
   type PermissionCatalogEntryDto,
   type PermissionPresetDto,
-  type WorkSystemKind,
+  type WorkPolicyDto,
 } from "../lib/api";
 import { formatEffectiveFrom } from "../lib/effective-from";
 import { mapAssignmentErrorMessage, mapMemberErrorMessage, messages } from "../lib/messages";
 import { computeEffectivePermissions, hasEffectivePermission, matchAssignedPresetIds } from "../lib/permissions";
-import { dateStrFromEpochMinutesJst, nowMinutes } from "../lib/time";
+import { dateStrFromEpochMinutesJst, formatDurationHm, nowMinutes } from "../lib/time";
 import { useAuthGuard } from "../lib/useAuthGuard";
 import { useEffectivePermissions } from "../lib/useEffectivePermissions";
 import { AppHeader } from "./AppHeader";
@@ -31,10 +31,14 @@ import { StateView } from "./ui/StateView";
 import { PageHeader } from "./ui/PageHeader";
 
 /**
- * 「1日あたりの基準所定時間(有給換算用)」の初期値(分)。8時間 = 480分。
- * apps/api 側の FALLBACK_STANDARD_DAY_MINUTES と揃えている。
+ * 労働時間制の制度の表示(「固定・時短(6時間)(固定時間制・1日6:00)」)。選択肢と現在値で共通。
+ * 2026-10-05(名前付きの制度): 割当は kind ではなく制度を名前で選ぶ。同じ種類の制度が複数ありうるため、
+ * 種類と所定も添えて見分けられるようにする。
  */
-const DEFAULT_STANDARD_DAY_MINUTES = "480";
+function workPolicyLabel(name: string, kind: WorkPolicyDto["kind"], standardDayMinutes: number | null): string {
+  if (!kind || standardDayMinutes === null) return name;
+  return messages.members.workPolicyOption(name, messages.monthly.workSystemValue[kind], formatDurationHm(standardDayMinutes));
+}
 
 /** 有給付与の区分の選択肢(表示順。@kizami/leave の LeaveGrantClass と一致)。 */
 const LEAVE_GRANT_CLASS_OPTIONS: readonly LeaveGrantClass[] = ["full", "days4", "days3", "days2", "days1"];
@@ -148,11 +152,16 @@ export function MembersView() {
   const todayDate = dateStrFromEpochMinutesJst(nowMinutes());
   const [workPolicy, setWorkPolicy] = useState<MemberWorkPolicySettingsDto | null>(null);
   const [workPolicyLoading, setWorkPolicyLoading] = useState(false);
-  const [workPolicyForm, setWorkPolicyForm] = useState<{ kind: WorkSystemKind; effectiveFrom: string; standardDayMinutes: string }>({
-    kind: "flex",
+  const [workPolicyForm, setWorkPolicyForm] = useState<{ workPolicyId: string; effectiveFrom: string }>({
+    workPolicyId: "",
     effectiveFrom: todayDate,
-    standardDayMinutes: DEFAULT_STANDARD_DAY_MINUTES,
   });
+  /**
+   * テナントの労働時間制の制度(GET /settings/work-policies、tenant_settings.flex.manage)。
+   * 割当の選択肢と、招待フォームの制度の選択肢に使う。権限が無ければ 403 で空のまま
+   * (その場合は割当の区画も招待の選択欄も出さない)。
+   */
+  const [workPolicies, setWorkPolicies] = useState<WorkPolicyDto[]>([]);
   const [workPolicySaving, setWorkPolicySaving] = useState(false);
   const [workPolicyError, setWorkPolicyError] = useState<string | null>(null);
   const [workPolicySuccess, setWorkPolicySuccess] = useState(false);
@@ -170,15 +179,17 @@ export function MembersView() {
         setMembers(res.members);
         // 部署・プリセット・カタログは補助データのため個別に失敗しても致命的にしない
         // (メンバー一覧の権限はあるが部署/プリセット管理権限が無いケースがあり得るため)。
-        const [deptRes, presetRes, catalogRes] = await Promise.allSettled([
+        const [deptRes, presetRes, catalogRes, workPoliciesRes] = await Promise.allSettled([
           api.listDepartments(),
           api.listPresets(),
           api.getPresetCatalog(),
+          api.listWorkPolicies(),
         ]);
         if (cancelled) return;
         if (deptRes.status === "fulfilled") setDepartments(deptRes.value.departments);
         if (presetRes.status === "fulfilled") setPresets(presetRes.value.presets);
         if (catalogRes.status === "fulfilled") setCatalog(catalogRes.value.catalog);
+        if (workPoliciesRes.status === "fulfilled") setWorkPolicies(workPoliciesRes.value.policies);
       })
       .catch((err: unknown) => {
         if (cancelled) return;
@@ -242,7 +253,7 @@ export function MembersView() {
     setWorkPolicy(null);
     setWorkPolicyError(null);
     setWorkPolicySuccess(false);
-    setWorkPolicyForm({ kind: "flex", effectiveFrom: todayDate, standardDayMinutes: DEFAULT_STANDARD_DAY_MINUTES });
+    setWorkPolicyForm({ workPolicyId: member.workPolicyId ?? "", effectiveFrom: todayDate });
     // 権限が無ければ GET も 403 になるため呼ばない(このファイル冒頭の canManageWorkPolicy コメント参照)。
     // 依頼「権限が無ければセクションは読み取り専用」は、この API 設計(GET/POST が同一権限)の下では
     // 「フォームを出さない」以上の読み取り専用状態を提供できないため、セクション自体を非表示にする
@@ -253,14 +264,8 @@ export function MembersView() {
         .getMemberWorkPolicy(member.id)
         .then((res) => {
           setWorkPolicy(res);
-          // standardDayMinutes は既存値を引き継がず既定の480分から始める(monthly_variable の
-          // 既存版は「無意味な placeholder としての0」が入っていることがあり、そのまま初期値に
-          // すると 1〜1440 のバリデーションに引っかかるため)。
-          setWorkPolicyForm({
-            kind: res.effective?.kind ?? "flex",
-            effectiveFrom: todayDate,
-            standardDayMinutes: DEFAULT_STANDARD_DAY_MINUTES,
-          });
+          // 選択の初期値は今の制度(変えたいものだけ選び直せばよい)。
+          setWorkPolicyForm({ workPolicyId: res.effective?.workPolicyId ?? member.workPolicyId ?? "", effectiveFrom: todayDate });
         })
         .catch((err: unknown) => {
           if (err instanceof UnauthorizedError) {
@@ -383,6 +388,7 @@ export function MembersView() {
         ...(value.departmentId !== null ? { departmentId: value.departmentId } : {}),
         ...(value.hireDate !== "" ? { hireDate: value.hireDate } : {}),
         ...(value.presetIds.length > 0 ? { presetIds: value.presetIds } : {}),
+        ...(value.workPolicyId !== null ? { workPolicyId: value.workPolicyId } : {}),
       });
       setInviteFormOpen(false);
       setRevealLink({
@@ -610,33 +616,23 @@ export function MembersView() {
     setWorkPolicyError(null);
     setWorkPolicySuccess(false);
 
-    /*
-     * standardDayMinutes は変形労働時間制(monthly_variable)のときだけ送る(v0.7 フェーズ4、
-     * 2026-08-24 追加)。他の制度ではテナント既定ポリシーの値をそのまま引き継がせたいので、
-     * 画面にも出さず本文にも含めない。クライアント側の検証はサーバーと同じエラーコード
-     * (invalid_standard_day_minutes)の文言を使う。
-     */
-    let standardDayMinutes: number | undefined;
-    if (workPolicyForm.kind === "monthly_variable") {
-      const parsed = Number(workPolicyForm.standardDayMinutes);
-      if (!Number.isInteger(parsed) || parsed < 1 || parsed > 1440) {
-        setWorkPolicyError(messages.members.errors.invalid_standard_day_minutes);
-        return;
-      }
-      standardDayMinutes = parsed;
+    if (workPolicyForm.workPolicyId === "") {
+      setWorkPolicyError(messages.members.errors.invalid_work_policy_id);
+      return;
     }
 
     setWorkPolicySaving(true);
     try {
+      // 2026-10-05(名前付きの制度): 制度の id で割り当てる。所定は制度の版が持つため、
+      // 人ごとに所定を変えたいときは制度を分ける(勤怠ルールの「労働時間制の制度」)。
       await api.assignMemberWorkPolicy(memberId, {
-        kind: workPolicyForm.kind,
+        workPolicyId: workPolicyForm.workPolicyId,
         effectiveFrom: workPolicyForm.effectiveFrom,
-        ...(standardDayMinutes !== undefined ? { standardDayMinutes } : {}),
       });
       const res = await api.getMemberWorkPolicy(memberId);
       setWorkPolicy(res);
       setWorkPolicySuccess(true);
-      // 一覧のバッジ(workSystemKind)にも反映させる。
+      // 一覧のバッジ(workSystemKind・制度名)にも反映させる。
       setReloadKey((k) => k + 1);
     } catch (err) {
       if (err instanceof UnauthorizedError) {
@@ -815,7 +811,11 @@ export function MembersView() {
                           </td>
                           <td>
                             {member.workSystemKind ? (
-                              <span className="badge badge--neutral">{messages.monthly.workSystemValue[member.workSystemKind]}</span>
+                              <div className="badge-row">
+                                <span className="badge badge--neutral">{messages.monthly.workSystemValue[member.workSystemKind]}</span>
+                                {/* 制度名(2026-10-05)。同じ種類の制度が複数あるとき、どれかを見分けるため */}
+                                {member.workPolicyName ? <span>{member.workPolicyName}</span> : null}
+                              </div>
                             ) : (
                               <span className="org-table__muted">{messages.members.workSystemUnset}</span>
                             )}
@@ -1065,7 +1065,11 @@ export function MembersView() {
                                             <>
                                               <span>
                                                 {messages.members.workPolicyCurrentLabel}:{" "}
-                                                {messages.monthly.workSystemValue[workPolicy.effective.kind]}
+                                                {workPolicyLabel(
+                                                  workPolicy.effective.workPolicyName,
+                                                  workPolicy.effective.kind,
+                                                  workPolicy.effective.standardDayMinutes,
+                                                )}
                                               </span>
                                               <span className="member-work-policy__current-effective-from tabular-nums">
                                                 {messages.members.workPolicyCurrentEffectiveFrom}: {formatEffectiveFrom(workPolicy.effective.effectiveFrom)}
@@ -1082,20 +1086,30 @@ export function MembersView() {
                                           onSubmit={(e) => handleWorkPolicySubmit(e, member.id)}
                                         >
                                           <div className="field">
-                                            <label htmlFor={`member-work-policy-kind-${member.id}`}>
-                                              {messages.members.workPolicyKindLabel}
+                                            <label htmlFor={`member-work-policy-id-${member.id}`}>
+                                              {messages.members.workPolicyPolicyLabel}
                                             </label>
                                             <select
-                                              id={`member-work-policy-kind-${member.id}`}
-                                              value={workPolicyForm.kind}
+                                              id={`member-work-policy-id-${member.id}`}
+                                              value={workPolicyForm.workPolicyId}
                                               onChange={(e) =>
-                                                setWorkPolicyForm((prev) => ({ ...prev, kind: e.target.value as WorkSystemKind }))
+                                                setWorkPolicyForm((prev) => ({ ...prev, workPolicyId: e.target.value }))
                                               }
+                                              required
                                             >
-                                              <option value="flex">{messages.monthly.workSystemValue.flex}</option>
-                                              <option value="fixed">{messages.monthly.workSystemValue.fixed}</option>
-                                              <option value="monthly_variable">{messages.monthly.workSystemValue.monthly_variable}</option>
+                                              {/* アーカイブ済みの制度は新しい割当の選択肢に出さない */}
+                                              {workPolicies
+                                                .filter((p) => p.archivedAt === null)
+                                                .map((p) => (
+                                                  <option key={p.id} value={p.id}>
+                                                    {workPolicyLabel(p.name, p.kind, p.effective?.standardDayMinutes ?? null)}
+                                                  </option>
+                                                ))}
                                             </select>
+                                            <span className="field__hint">
+                                              {workPolicies.every((p) => p.archivedAt !== null) ? `${messages.members.workPolicyNoAssignable} ` : null}
+                                              <Link to="/settings/attendance">{messages.members.workPolicyManageLink}</Link>
+                                            </span>
                                           </div>
                                           <div className="field">
                                             <label htmlFor={`member-work-policy-effective-from-${member.id}`}>
@@ -1115,35 +1129,6 @@ export function MembersView() {
                                               {messages.members.workPolicyEffectiveFromHint}
                                             </span>
                                           </div>
-                                          {/*
-                                            変形労働時間制のときだけ出す(v0.7 フェーズ4、2026-08-24 追加)。
-                                            この制度では日ごとの所定はシフトで決まるため、この値は
-                                            「シフトが無い日に有給1日を何分として扱うか」だけを意味する。
-                                          */}
-                                          {workPolicyForm.kind === "monthly_variable" ? (
-                                            <div className="field">
-                                              <label htmlFor={`member-work-policy-standard-day-minutes-${member.id}`}>
-                                                {messages.members.workPolicyStandardDayMinutesLabel}
-                                              </label>
-                                              <input
-                                                id={`member-work-policy-standard-day-minutes-${member.id}`}
-                                                type="number"
-                                                inputMode="numeric"
-                                                min={1}
-                                                max={1440}
-                                                className="tabular-nums"
-                                                value={workPolicyForm.standardDayMinutes}
-                                                onChange={(e) =>
-                                                  setWorkPolicyForm((prev) => ({ ...prev, standardDayMinutes: e.target.value }))
-                                                }
-                                                required
-                                              />
-                                              <span className="field__hint">
-                                                {messages.members.workPolicyStandardDayMinutesHint}
-                                              </span>
-                                            </div>
-                                          ) : null}
-
                                           {workPolicyError ? (
                                             <p className="notice notice--danger" role="alert">
                                               {workPolicyError}
@@ -1171,6 +1156,7 @@ export function MembersView() {
                                               <thead>
                                                 <tr>
                                                   <th>{messages.members.workPolicyHistoryColumnEffectiveFrom}</th>
+                                                  <th>{messages.members.workPolicyHistoryColumnPolicy}</th>
                                                   <th>{messages.members.workPolicyHistoryColumnKind}</th>
                                                 </tr>
                                               </thead>
@@ -1178,7 +1164,10 @@ export function MembersView() {
                                                 {[...workPolicy.history].reverse().map((h) => (
                                                   <tr key={h.effectiveFrom}>
                                                     <td className="tabular-nums">{formatEffectiveFrom(h.effectiveFrom)}</td>
-                                                    <td>{messages.monthly.workSystemValue[h.kind]}</td>
+                                                    <td>{h.workPolicyName}</td>
+                                                    <td className="tabular-nums">
+                                                      {messages.monthly.workSystemValue[h.kind]} / {formatDurationHm(h.standardDayMinutes)}
+                                                    </td>
                                                   </tr>
                                                 ))}
                                               </tbody>
@@ -1207,6 +1196,8 @@ export function MembersView() {
         <InviteMemberDialog
           departments={departments}
           presets={presets}
+          // 制度の選択は tenant_settings.flex.manage を持つ人だけ(API も同じ権限を要求する)。
+          workPolicies={canManageWorkPolicy ? workPolicies.filter((p) => p.archivedAt === null) : []}
           pending={invitePending}
           error={inviteError}
           onSubmit={handleInviteSubmit}
