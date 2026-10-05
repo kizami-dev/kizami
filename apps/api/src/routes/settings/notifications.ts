@@ -244,6 +244,7 @@ export function registerNotificationsRoutes(app: Hono<AppEnv>, db: Database, dep
     const channels = await buildTenantChannels(db, user.tenantId, {
       ...(deps.fetchImpl ? { fetchImpl: deps.fetchImpl } : {}),
       ...(deps.tenantFetchImpl ? { tenantFetchImpl: deps.tenantFetchImpl } : {}),
+      ...(deps.quotas ? { quotas: deps.quotas } : {}),
       ...(deps.smtpSendFn ? { smtpSendFn: deps.smtpSendFn } : {}),
       encryptor: deps.encryptor ?? null,
     });

@@ -5,6 +5,7 @@ import { createApp } from "./app.js";
 import { buildEncryptorFromEnv } from "./lib/encryption.js";
 import { buildErrorReporterFromEnv } from "./lib/error-report.js";
 import { authPostAllowedOrigins } from "./lib/json-post-guard.js";
+import { createTenantQuotas, parseQuotaEnv } from "./lib/tenant-quotas.js";
 import { buildNotifyOutboundDeps, buildOutboundGuardFromEnv } from "./lib/outbound-guard.js";
 import { withStartupRetry } from "./lib/startup-retry.js";
 import { parseSignupEnv } from "./lib/signup-config.js";
@@ -91,6 +92,15 @@ if (outboundEnv.errors.length > 0) {
   process.exit(1);
 }
 const outboundGuard = outboundEnv.guard;
+
+// テナントごとの利用上限(lib/tenant-quotas.ts)。QUOTA_* 環境変数で配備ごとに決める。**既定は無制限**。
+// 値が不正なら「設定したつもりで無制限」を避けるため起動時に落とす。
+const quotaEnv = parseQuotaEnv(process.env);
+if (quotaEnv.errors.length > 0) {
+  for (const message of quotaEnv.errors) console.error(`[kizami] invalid quota configuration: ${message}`);
+  process.exit(1);
+}
+const quotas = createTenantQuotas(quotaEnv.limits);
 // 送信関数(transport)は signup とパスワード再設定で1つを共有する。
 const systemMailSender =
   systemMailConfig !== null ? createSystemMailSender({ smtpUrl: systemMailConfig.systemSmtpUrl, from: systemMailConfig.systemMailFrom }) : null;
@@ -105,6 +115,7 @@ const app = createApp({
   // (corsOrigin の開発用既定値は含めない。lib/json-post-guard.ts)。どちらも未設定なら検証しない。
   authPostOrigins: authPostAllowedOrigins([process.env.APP_BASE_URL, process.env.CORS_ORIGIN]),
   notify: buildNotifyOutboundDeps(outboundGuard, nodemailerSendFn),
+  quotas,
   encryptor,
   trustProxy,
   vapid,

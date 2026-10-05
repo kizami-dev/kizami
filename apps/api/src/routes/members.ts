@@ -125,6 +125,7 @@ import {
 import { resolveAccessibleDepartmentIds, resolveAccessibleUserIds } from "../lib/scope.js";
 import { nowMinutes, todayLocalDate } from "../lib/time.js";
 import { TZ_OFFSET_MINUTES_JST } from "../lib/settings.js";
+import type { TenantQuotas } from "../lib/tenant-quotas.js";
 import { ASSIGNMENT_MANAGE_PERMISSION, assignPresetsToMember, PRESET_MANAGE_PERMISSION } from "./presets.js";
 import { WORK_POLICY_PERMISSION } from "./settings/permissions.js";
 import {
@@ -278,7 +279,7 @@ function retentionStatusFor(params: {
   return evaluateRetention({ deactivatedDate, retentionYears, today });
 }
 
-export function createMembersRoutes(db: Database) {
+export function createMembersRoutes(db: Database, deps: { quotas?: TenantQuotas } = {}) {
   const app = new Hono<AppEnv>();
 
   app.get("/", async (c) => {
@@ -504,6 +505,10 @@ export function createMembersRoutes(db: Database) {
       if (!checked.ok) return c.json({ error: checked.error }, checked.status);
       chosenWorkPolicyId = checked.policy.id;
     }
+
+    // 利用上限(lib/tenant-quotas.ts)。在籍メンバー数(招待中を含む)が配備の上限に達していたら断る
+    const capacity = await deps.quotas?.checkMemberCapacity(db, actor.tenantId);
+    if (capacity && !capacity.ok) return c.json({ error: "member_limit_reached", limit: capacity.limit }, 409);
 
     const now = nowMinutes();
     // トークンの生成自体は DB を伴わない純粋な計算(crypto乱数 + ハッシュ化)のため、
@@ -994,6 +999,10 @@ export function createMembersRoutes(db: Database) {
     if (target.erasedAt !== null) {
       return c.json({ error: "already_erased" }, 409);
     }
+
+    // 再有効化も在籍者が1人増えるので、招待と同じ利用上限(lib/tenant-quotas.ts)を掛ける
+    const capacity = await deps.quotas?.checkMemberCapacity(db, actor.tenantId);
+    if (capacity && !capacity.ok) return c.json({ error: "member_limit_reached", limit: capacity.limit }, 409);
 
     const now = nowMinutes();
     await reactivateUser(db, { tenantId: actor.tenantId, userId: id });

@@ -50,6 +50,7 @@ import {
   type CategoryChannelPrefs,
   type NotificationCategory,
 } from "../lib/notification-preferences.js";
+import type { TenantQuotas } from "../lib/tenant-quotas.js";
 import type { OutboundChecker } from "../lib/outbound-policy.js";
 import { nowMinutes } from "../lib/time.js";
 
@@ -63,6 +64,8 @@ export interface NotificationPreferencesRoutesDeps {
   tenantFetchImpl?: typeof fetch;
   /** 保存時の SSRF 検査(routes/settings/shared.ts の `outbound` と同じ。省略 = 検査しない) */
   outbound?: OutboundChecker;
+  /** 外向きの通知の1日の送信数の上限(lib/tenant-quotas.ts)。省略 = 無制限。個人 Webhook のテスト送信も数える */
+  quotas?: TenantQuotas;
   /** 未使用(将来 SMTP テスト送信を追加する場合のための予約)。現状は POST .../test は個人Webhookのみを対象にする */
   smtpSendFn?: SmtpSendFn;
   /** webhookUrl の暗号化・復号に使う。null/未設定の場合、PUT は webhookUrl を含む更新を 503 で拒否する */
@@ -261,6 +264,10 @@ export function createNotificationPreferencesRoutes(db: Database, deps: Notifica
     const url = await decryptSecret(deps.encryptor, existing.webhookUrl);
     if (!url) {
       return c.json({ error: "decryption_failed" }, 503);
+    }
+
+    if (deps.quotas && !(await deps.quotas.consumeOutboundNotification(db, user.tenantId))) {
+      return c.json({ result: { channel: "webhook", ok: false, error: "notification_limit_reached" } });
     }
 
     const testFetch = deps.tenantFetchImpl ?? deps.fetchImpl;

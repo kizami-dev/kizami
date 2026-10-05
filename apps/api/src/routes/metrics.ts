@@ -28,7 +28,7 @@
  */
 
 import { Hono } from "hono";
-import { countObservabilityGauges, listWorkerHeartbeats, type Database } from "@kizami/db";
+import { countObservabilityGauges, listWorkerHeartbeats, sumQuotaLimitHits, type Database } from "@kizami/db";
 import {
   collectProcessMetrics,
   METRICS_CONTENT_TYPE,
@@ -91,6 +91,7 @@ export function createMetricsRoutes(db: Database, options: MetricsRoutesOptions)
       const nowMinutes = Math.floor(currentMs / 60_000);
       const counts = await countObservabilityGauges(db, nowMinutes);
       const heartbeats = await listWorkerHeartbeats(db);
+      const quotaHits = await sumQuotaLimitHits(db);
 
       families = [
         {
@@ -110,6 +111,16 @@ export function createMetricsRoutes(db: Database, options: MetricsRoutesOptions)
           help: "直近24時間に発生した打刻イベント数",
           type: "gauge",
           samples: [{ value: counts.punchesLast24h }],
+        },
+        {
+          name: "kizami_quota_limit_hits_total",
+          help: "テナントごとの利用上限に達して断った回数(上限の種別別・全テナント合計の累計。テナントは区別しない)",
+          type: "counter",
+          // 上限の4種別は常に出す(未到達でも 0 で見えるように。`rate()` が最初の増加を取りこぼさない)
+          samples: ["members", "api_keys", "outbound_notifications", "invite_reset_mails"].map((limit) => ({
+            labels: { limit },
+            value: quotaHits[limit] ?? 0,
+          })),
         },
         {
           name: "kizami_worker_last_run_timestamp_seconds",

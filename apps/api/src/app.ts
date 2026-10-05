@@ -39,6 +39,7 @@ import { createRateLimiter, ipRateLimitMiddleware, RATE_LIMITS } from "./lib/rat
 import { noopErrorReporter, type ErrorReporter } from "./lib/error-report.js";
 import { createHttpMetrics } from "./lib/metrics.js";
 import { jsonPostGuard } from "./lib/json-post-guard.js";
+import type { TenantQuotas } from "./lib/tenant-quotas.js";
 
 export interface CreateAppDeps {
   db: Database;
@@ -59,6 +60,12 @@ export interface CreateAppDeps {
    * **省略 / 空 = 掛けない**(開発・テスト・オリジンを宣言していない配備は従来どおり)。
    */
   authPostOrigins?: string[];
+  /**
+   * テナントごとの利用上限(メンバー数・API キー数・外向きの通知・招待/再設定メールの1日の送信数。
+   * lib/tenant-quotas.ts、docs/design/tenant-quotas.md)。**省略 = 無制限**(セルフホストの既定)。
+   * node.ts / workers.ts が QUOTA_* 環境変数から組み立てて渡す。打刻には一切掛けない。
+   */
+  quotas?: TenantQuotas;
   /**
    * POST /settings/notifications/test が使う通知チャネルの依存差し替え
    * (実際の送信を行う Node 実装は node.ts が渡す。テストは偽実装を注入して実送信しない)。
@@ -147,7 +154,8 @@ export function createApp(deps: CreateAppDeps) {
     secureCookies = false,
     corsOrigin,
     authPostOrigins = [],
-    notify,
+    quotas,
+    notify: notifyBase,
     encryptor,
     trustProxy = true,
     rateLimitNow,
@@ -160,6 +168,8 @@ export function createApp(deps: CreateAppDeps) {
     selfServiceReset,
   } = deps;
   const app = new Hono<AppEnv>();
+  // 外向きの通知の上限は通知の依存(notify)に載せて、各ルートの buildTenantChannels / buildPersonalChannels へ流す
+  const notify = quotas ? { ...(notifyBase ?? {}), quotas } : notifyBase;
 
   if (corsOrigin) {
     app.use("*", cors({ origin: corsOrigin, credentials: true }));
@@ -308,7 +318,11 @@ export function createApp(deps: CreateAppDeps) {
       ipRateLimitMiddleware(rateLimiters.passwordResetRequestPerIp, { trustProxy, appliesTo: (c) => c.req.method === "POST" }),
     );
   }
-  app.route("/password-resets", createPasswordResetsRoutes(db, { secureCookies, selfService: selfServiceReset ?? null, trustProxy }));
+  app.route("/password-resets", createPasswordResetsRoutes(db, {
+      secureCookies,
+      selfService: selfServiceReset ? { ...selfServiceReset, ...(quotas ? { quotas } : {}) } : null,
+      trustProxy,
+    }));
 
   // セルフサインアップ(未認証・公開、docs/design/saas.md)。無効な配備(signup 未指定)では
   // レート制限も掛けない — 全リクエストが 404 になるだけで、カウンタを消費する意味が無い。
@@ -363,7 +377,7 @@ export function createApp(deps: CreateAppDeps) {
     "/auth/password",
     createPasswordChangeRoutes(db, { rateLimit: { perIpUser: rateLimiters.passwordChangePerIpUser, trustProxy } }),
   );
-  authed.route("/api-keys", createApiKeysRoutes(db));
+  authed.route("/api-keys", createApiKeysRoutes(db, quotas ? { quotas } : {}));
   authed.route("/punches", createPunchesRoutes(db));
   authed.route("/attendance", createAttendanceRoutes(db));
   authed.route("/shifts", createShiftsRoutes(db));
@@ -387,7 +401,7 @@ export function createApp(deps: CreateAppDeps) {
   authed.route("/push", createPushRoutes(db, { vapid: vapid ?? null, ...(notify?.outbound ? { outbound: notify.outbound } : {}) }));
   authed.route("/help", createHelpRoutes(db));
   authed.route("/departments", createDepartmentsRoutes(db));
-  authed.route("/members", createMembersRoutes(db));
+  authed.route("/members", createMembersRoutes(db, quotas ? { quotas } : {}));
   authed.route("/presets", createPresetsRoutes(db));
   authed.route("/closings", createClosingsRoutes(db));
   authed.route("/exports", createExportsRoutes(db));

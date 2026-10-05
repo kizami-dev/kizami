@@ -57,6 +57,7 @@ import { resolveNotificationCategory } from "./lib/notification-preferences.js";
 import { runLeaveAlertScan } from "./leave-alerts.js";
 import { runLeaveGrantProposalScan } from "./leave-grant-proposals.js";
 import { runOvertimeAlertScan } from "./overtime-alerts.js";
+import { createTenantQuotas, parseQuotaEnv } from "./lib/tenant-quotas.js";
 import { buildNotifyOutboundDeps, buildOutboundGuardFromEnv } from "./lib/outbound-guard.js";
 import { nodemailerSendFn } from "./lib/smtp.js";
 import { runReminderScan } from "./reminders.js";
@@ -98,7 +99,13 @@ if (outboundEnv.errors.length > 0) {
   for (const message of outboundEnv.errors) console.error(`[kizami-reminders] invalid outbound configuration: ${message}`);
   process.exit(1);
 }
-const notifyOutboundDeps = buildNotifyOutboundDeps(outboundEnv.guard, nodemailerSendFn);
+// テナントごとの外向きの通知の1日の上限(node.ts と同じ環境変数。lib/tenant-quotas.ts)。既定は無制限。
+const quotaEnv = parseQuotaEnv(process.env);
+if (quotaEnv.errors.length > 0) {
+  for (const message of quotaEnv.errors) console.error(`[kizami-reminders] invalid quota configuration: ${message}`);
+  process.exit(1);
+}
+const notifyOutboundDeps = { ...buildNotifyOutboundDeps(outboundEnv.guard, nodemailerSendFn), quotas: createTenantQuotas(quotaEnv.limits) };
 // エラー報告(docs/design/observability.md)。SENTRY_DSN 未設定なら no-op。
 const errorReporter = buildErrorReporterFromEnv(process.env, { release: resolveRelease(), runtime: "node" });
 

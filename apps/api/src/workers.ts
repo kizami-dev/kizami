@@ -28,6 +28,7 @@ import { createApp } from "./app.js";
 import { buildEncryptorFromEnv } from "./lib/encryption.js";
 import { buildErrorReporterFromEnv } from "./lib/error-report.js";
 import { authPostAllowedOrigins } from "./lib/json-post-guard.js";
+import { createTenantQuotas, parseQuotaEnv } from "./lib/tenant-quotas.js";
 import { buildVapidFromEnv } from "./lib/web-push.js";
 
 /**
@@ -79,6 +80,12 @@ let cached: { binding: D1DatabaseBinding; app: ReturnType<typeof createWorkerApp
  * リバースプロキシのパス振り分け(kizami.example.com/api/* → ここ)をパス書き換えなしで
  * 受けられるよう、src/node.ts と同じく `/api` プレフィクス付きでも同じアプリを提供する。
  */
+function parseWorkerQuotaEnv(env: Record<string, string | undefined>) {
+  const { limits, errors } = parseQuotaEnv(env);
+  for (const message of errors) console.warn(`[kizami] ignoring an invalid quota setting: ${message}`);
+  return limits;
+}
+
 export function createWorkerApp(env: WorkerEnv) {
   const { db } = createD1Database(env.DB);
 
@@ -94,6 +101,8 @@ export function createWorkerApp(env: WorkerEnv) {
     ...(env.CORS_ORIGIN !== undefined ? { corsOrigin: env.CORS_ORIGIN } : {}),
     // ログイン等の未認証 POST の Origin 検証(Node 版と同じ。lib/json-post-guard.ts)
     authPostOrigins: authPostAllowedOrigins([env.APP_BASE_URL, env.CORS_ORIGIN]),
+    // テナントごとの利用上限(QUOTA_* の vars。不正な値は警告して無制限のまま)
+    quotas: createTenantQuotas(parseWorkerQuotaEnv(flatEnv)),
     // `signup` も渡さない = **セルフサインアップは常に無効**(`GET /signup/config` は
     // `{ mode: "off" }`、他の /signup/* は 404)。システムメールの送信(nodemailer)が workerd で
     // 動かず、確認フローが依存する db.transaction() も D1 では使えないため
