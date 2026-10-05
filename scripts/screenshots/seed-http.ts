@@ -107,6 +107,9 @@ export async function seedHttp(params: SeedHttpParams): Promise<SeedHttpResult> 
   await client.assignMemberPresets(member1Id, [memberPreset.id, accountingPreset.preset.id]);
   await client.assignMemberPresets(member2Id, [memberPreset.id]);
   await client.assignMemberPresets(member3Id, [memberPreset.id]);
+  // 時短勤務のデモメンバー(2026-10-05、名前付きの制度)。制度の割当は dev-screenshot-seed.ts が済ませている。
+  const member4Id = byKey.get("member4");
+  if (member4Id) await client.assignMemberPresets(member4Id, [memberPreset.id]);
 
   // 入社日を設定(法定付与の自動計算に必要)。管理者は約7年前入社にして複数回ぶんの
   // 付与履歴(6ヶ月・1.5年・2.5年…)が一度に生成されるようにする(有給休暇画面を賑やかにする独自判断)。

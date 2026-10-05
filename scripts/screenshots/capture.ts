@@ -188,6 +188,15 @@ async function captureOne(
   // Turnstile の代役(登録・再設定フォーム)が描かれるのを待つ。無い画面では何もしない。
   await page.locator(".signup-turnstile > div").first().waitFor({ timeout: 1500 }).catch(() => undefined);
 
+  if (screen.clickBeforeCapture) {
+    // 行を開いて出る詳細など、URL だけでは開けない状態を撮る(2026-10-05 追加)。
+    await page.locator(screen.clickBeforeCapture.selector).first().click();
+    if (screen.clickBeforeCapture.waitFor) {
+      await page.waitForSelector(screen.clickBeforeCapture.waitFor, { state: "visible", timeout: 15_000 });
+    }
+    await page.waitForTimeout(400);
+  }
+
   if (screen.tour) {
     // 実効権限の取得 → 対象要素の出現待ち → 実寸を測っての吹き出し配置、と数段構えのため、
     // 吹き出しが実際に見える状態になるまで待ってから撮る。
