@@ -71,6 +71,13 @@
       "when": 1791157740734,
       "tag": "0009_sharp_tyrannus",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1791195713989,
+      "tag": "0010_next_blindfold",
+      "breakpoints": true
     }
   ]
 }

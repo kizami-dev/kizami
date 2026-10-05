@@ -54,6 +54,7 @@ describe("migrate", () => {
         "preset_assignments",
         "punch_events",
         "push_subscriptions",
+        "scheduled_holiday_calendar_versions",
         "sessions",
         "shift_days",
         "shift_patterns",

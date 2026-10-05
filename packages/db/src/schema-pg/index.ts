@@ -44,6 +44,7 @@ export const {
   presetAssignments,
   punchEvents,
   pushSubscriptions,
+  scheduledHolidayCalendarVersions,
   sessions,
   shiftDays,
   shiftPatterns,
