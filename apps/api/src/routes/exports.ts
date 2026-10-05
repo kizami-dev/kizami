@@ -60,6 +60,7 @@ import {
 import type { CategorizedMinutes, EngineOutput, FlexBalance } from "@kizami/engine";
 import type { AppEnv } from "../auth/middleware.js";
 import { requirePermission } from "../authz.js";
+import { buildCsvRow } from "../lib/csv.js";
 import { buildAllowanceTimeline, resolveAllowanceColumnsForPeriod, type AllowanceColumn } from "../lib/allowances.js";
 import { engineOutputFromSnapshots, sumFixedBreakdown, type SnapshotTotals } from "../lib/closing-snapshot.js";
 import { buildTenantMonthlyContext } from "../lib/closing-amend.js";
@@ -173,17 +174,6 @@ const COMPARE_FLEX_CONTRACT_HEADER = [
   ...FLEX_CONTRACT_COLUMNS.map((name) => `diff_${name}`),
 ];
 
-/** RFC4180 準拠のフィールドエスケープ(カンマ・ダブルクォート・改行を含む場合のみ引用符で囲む)。 */
-function escapeCsvField(value: string): string {
-  if (/[",\r\n]/.test(value)) {
-    return `"${value.replace(/"/g, '""')}"`;
-  }
-  return value;
-}
-
-function buildCsvRow(fields: Array<string | number | boolean>): string {
-  return fields.map((f) => escapeCsvField(String(f))).join(",");
-}
 
 /**
  * CSV 1行分の入力。`flexBalance` はフレックス以外(固定時間制、または締め済みで snapshot に
