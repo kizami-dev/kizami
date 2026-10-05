@@ -24,6 +24,7 @@ const ADMIN_GRANTS: Grant[] = [
   "member.profile.edit",
   "member.deactivate",
   "member.erase",
+  "tenant.withdraw",
   "department.manage",
   "tenant_settings.calendar.manage",
   "tenant_settings.flex.manage",

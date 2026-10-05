@@ -68,7 +68,7 @@ export const PERMISSION_CATEGORIES: readonly { id: string; prefixes: readonly st
   { id: "leave", prefixes: ["leave."] },
   { id: "closing", prefixes: ["closing.", "export.", "alert."] },
   { id: "org", prefixes: ["member.", "department."] },
-  { id: "settings", prefixes: ["tenant_settings.", "notification.", "permission.", "audit_log.", "api_key."] },
+  { id: "settings", prefixes: ["tenant_settings.", "notification.", "permission.", "audit_log.", "api_key.", "tenant."] },
 ] as const;
 
 /** カタログのどの接頭辞にも一致しない項目のグループ ID。messages.permissions.categoryLabel.other に対応する。 */
