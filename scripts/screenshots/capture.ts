@@ -194,6 +194,12 @@ async function captureOne(
     if (screen.clickBeforeCapture.waitFor) {
       await page.waitForSelector(screen.clickBeforeCapture.waitFor, { state: "visible", timeout: 15_000 });
     }
+    // クリックのために横スクロールした表(スマホの幅の広い表)を左端へ戻し、撮る範囲を他の画面と揃える。
+    await page.evaluate(() => {
+      for (const el of Array.from(document.querySelectorAll<HTMLElement>("*"))) {
+        if (el.scrollLeft !== 0) el.scrollLeft = 0;
+      }
+    });
     await page.waitForTimeout(400);
   }
 
