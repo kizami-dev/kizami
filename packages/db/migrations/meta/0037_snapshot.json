@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "cc86479b-bf7f-4524-b2ba-64b4c0808fa8",
-  "prevId": "94221b43-ea1b-4129-a44c-371b559f3743",
+  "id": "2f3de3b3-5916-4025-85f8-0b8252275139",
+  "prevId": "3c570a2b-91a7-4b01-8552-3560926c6f9f",
   "tables": {
     "allowance_definition_versions": {
       "name": "allowance_definition_versions",
@@ -3778,6 +3778,62 @@
         }
       },
       "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "tenant_usage_counters": {
+      "name": "tenant_usage_counters",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "counter_key": {
+          "name": "counter_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "day": {
+          "name": "day",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "count": {
+          "name": "count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        }
+      },
+      "indexes": {
+        "tenant_usage_counters_key_idx": {
+          "name": "tenant_usage_counters_key_idx",
+          "columns": [
+            "counter_key"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "tenant_usage_counters_tenant_id_counter_key_day_pk": {
+          "columns": [
+            "tenant_id",
+            "counter_key",
+            "day"
+          ],
+          "name": "tenant_usage_counters_tenant_id_counter_key_day_pk"
+        }
+      },
       "uniqueConstraints": {},
       "checkConstraints": {}
     },

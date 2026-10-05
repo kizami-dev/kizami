@@ -81,6 +81,8 @@ export const TENANT_EXPORT_POLICY: Readonly<Record<string, TenantExportTablePoli
   user_totp: { omitColumns: ["secret_encrypted", "last_used_counter"] },
   scheduled_holiday_calendar_versions: { omitColumns: [] },
   tenant_setting_versions: { omitColumns: [] },
+  // 利用上限の日ごとのカウンタ。運用者が上限の執行に使う運用上の値で、テナントの業務データではない
+  tenant_usage_counters: { excludeReason: "利用上限の運用上のカウンタ(業務データではない)" },
   users: { omitColumns: [] },
 };
 

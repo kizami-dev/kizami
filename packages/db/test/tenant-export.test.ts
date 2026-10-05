@@ -59,7 +59,7 @@ describe("exportTenantData", () => {
     const text = JSON.stringify(data);
     expect(text).not.toContain(SECRET_MARKER);
     // 出さなかったテーブルと理由が分かる
-    expect(data!.excludedTables.map((t) => t.name).sort()).toEqual(["auth_credentials", "sessions", "user_totp_recovery_codes"]);
+    expect(data!.excludedTables.map((t) => t.name).sort()).toEqual(["auth_credentials", "sessions", "tenant_usage_counters", "user_totp_recovery_codes"]);
     const totp = data!.tables.find((t) => t.name === "user_totp");
     expect(totp?.omittedColumns).toContain("secret_encrypted");
     expect(totp?.rows[0]).not.toHaveProperty("secret_encrypted");
