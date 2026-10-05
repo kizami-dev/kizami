@@ -108,7 +108,7 @@ spec:
   selector: {app: kizami-demo}
   ports: [{port: 3001, targetPort: 3001, nodePort: 30096}]
 ---
-# 毎晩 JST 4:00(UTC 19:00)にデモをリセット(rollout restart → emptyDir 消滅 → 再シード)
+# 毎晩 JST 4:00 にデモをリセット(rollout restart → emptyDir 消滅 → 再シード)
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -139,7 +139,9 @@ metadata:
   name: demo-reset
   namespace: kizami-demo
 spec:
-  schedule: "0 19 * * *"
+  # timeZone を書かないとコントローラのローカル時刻(このクラスタは JST)で解釈され、19:00 JST に走っていた
+  schedule: "0 4 * * *"
+  timeZone: Asia/Tokyo
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 1
   failedJobsHistoryLimit: 2
@@ -149,7 +151,15 @@ spec:
         spec:
           serviceAccountName: demo-reset
           restartPolicy: Never
+          # 起動直後の Pod は、kube-router が Pod ごとの許可チェーンを作り終えるまで同じノードの
+          # apiserver へ届かないことがある(2026-10-02/04 に samurai-watch で `no route to host`)。
+          # kubectl のイメージには shell が無いので、待ちは initContainer で入れる。
+          initContainers:
+            - name: wait-network
+              image: busybox:1.37
+              command: ["sleep", "5"]
           containers:
             - name: restart
-              image: bitnami/kubectl:latest
-              command: ["kubectl", "-n", "kizami-demo", "rollout", "restart", "deployment/kizami-demo"]
+              # クラスタ(k3s v1.35.5)と版をそろえて固定する。entrypoint が kubectl なので args だけ渡す
+              image: rancher/kubectl:v1.35.5
+              args: ["-n", "kizami-demo", "rollout", "restart", "deployment/kizami-demo"]
