@@ -425,6 +425,16 @@ export const SCREENS: Screen[] = [
     authAs: "withdrawing-admin",
   },
   {
+    slug: "settings-withdrawal-pending-zh-hant",
+    path: "/settings/withdrawal",
+    title: "設定: テナントの退会(手続き中・繁体中文)",
+    caption: "繁体中文(台湾)の表示。退会は台湾の SaaS で一般的な「終止服務」と呼び、データが消えることを明示する。",
+    requiresAuth: true,
+    mobile: false,
+    authAs: "withdrawing-admin",
+    locale: "zh-Hant",
+  },
+  {
     slug: "dashboard-withdrawing",
     path: "/",
     title: "ダッシュボード(退会の手続き中)",
