@@ -86,6 +86,16 @@ a{color:inherit}
 .code{background:var(--ink);color:#EDEDE8;border-radius:10px;padding:1.5rem 1.7rem;overflow-x:auto;font-family:var(--mono);font-size:.83rem;line-height:1.85;margin:0}
 .code__c{color:#8B9AA0}
 
+/* cloud */
+.badge{display:inline-block;vertical-align:middle;font-family:var(--mono);font-weight:600;font-size:.7rem;letter-spacing:.08em;padding:.15rem .6rem;border:1.5px solid var(--cyan);color:var(--cyan);border-radius:999px;margin-left:.4rem;white-space:nowrap}
+.cloud{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:3rem;align-items:start}
+@media(max-width:860px){.cloud{grid-template-columns:1fr;gap:2rem}}
+.cloud .selfhost__points{margin-top:0}
+.cloud code{font-family:var(--mono);font-size:.88em}
+.cloud__join{border:1px solid var(--line);border-radius:10px;background:#fff;padding:1.5rem 1.6rem}
+.cloud__join h3{margin:0 0 .5rem;font-size:1.02rem}
+.cloud__join p{margin:0 0 1.2rem;font-size:.9rem;color:var(--soft)}
+
 /* kicker */
 .section--kicker{border-top:1px solid var(--line);text-align:center}
 .kicker__line{font-family:var(--serif);font-weight:600;font-size:clamp(1.3rem,3vw,1.9rem);line-height:1.9;margin:0 0 2rem;letter-spacing:.06em}
