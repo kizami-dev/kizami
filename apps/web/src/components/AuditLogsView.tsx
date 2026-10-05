@@ -85,6 +85,11 @@ const KNOWN_ACTIONS: readonly string[] = [
   "scheduled_holiday_calendar_version.create",
   "slack_link.create",
   "slack_settings.update",
+  // テナントの退会と全データのエクスポート(2026-10-05、docs/design/tenant-withdrawal.md)。
+  // 削除が終わるとテナントの監査ログごと消えるので、ここに出るのは猶予期間中と取り消した後だけ。
+  "tenant.export",
+  "tenant.withdrawal.cancel",
+  "tenant.withdrawal.request",
   "tenant_profile.update",
   "tenant_setting_version.create",
   // 名前付きの労働時間制の制度(2026-10-05)。版の追加は既存の work_policy_version.create のまま。

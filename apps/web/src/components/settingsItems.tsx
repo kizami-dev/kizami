@@ -27,7 +27,8 @@ export type SettingsSection =
   | "tenantProfile"
   | "help"
   | "privacy"
-  | "auditLogs";
+  | "auditLogs"
+  | "withdrawal";
 
 export type SettingsRoute =
   | "/settings/security"
@@ -49,7 +50,8 @@ export type SettingsRoute =
   | "/settings/tenant-profile"
   | "/settings/help"
   | "/settings/privacy"
-  | "/settings/audit-logs";
+  | "/settings/audit-logs"
+  | "/settings/withdrawal";
 
 export type SettingsGroupKey = "personal" | "org" | "attendance" | "integrations" | "records";
 
@@ -106,6 +108,8 @@ const ITEMS: readonly SettingsItemDef[] = [
   { key: "help", to: "/settings/help", group: "records", icon: "M5 4h12a2 2 0 0 1 2 2v14H7a2 2 0 0 1-2-2Z M5 18a2 2 0 0 1 2-2h12" },
   { key: "privacy", to: "/settings/privacy", group: "records", icon: "M2 12s3.5-6.5 10-6.5S22 12 22 12s-3.5 6.5-10 6.5S2 12 2 12Z M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z" },
   { key: "auditLogs", to: "/settings/audit-logs", group: "records", icon: "M6 3h9l4 4v14H6Z M14 3v5h5 M9 13h7 M9 17h7" },
+  // テナントの退会(2026-10-05)。保存義務・個人データの扱いと地続きなので「法令・記録」の末尾に置く。
+  { key: "withdrawal", to: "/settings/withdrawal", group: "records", icon: "M4 7h16 M9 7V4h6v3 M6 7l1 13h10l1-13 M10 11v6 M14 11v6" },
 ];
 
 export interface SettingsItem {

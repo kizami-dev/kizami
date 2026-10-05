@@ -810,3 +810,38 @@ select.input {
 .page-header__lead {
   word-break: auto-phrase;
 }
+
+/* ======================================================================
+ * 全画面の上部に出す知らせ(退会手続き中のバナー、2026-10-05)
+ * ヘッダーの直下に置き、本文(.page)と同じ外枠・左右の余白に揃える。中身は .notice。
+ * ====================================================================== */
+.app-banner {
+  width: 100%;
+  max-width: var(--width-content-wide);
+  margin: 0 auto;
+  padding: var(--space-4) var(--space-4) 0;
+}
+
+/* テナントの退会の画面(/settings/withdrawal)。手続き中の申請日時・削除予定日時の並びと、申請の影響の箇条書き。 */
+.withdrawal-status {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: var(--space-2) var(--space-4);
+  margin: 0;
+  font-size: var(--text-sm);
+}
+
+.withdrawal-status dt {
+  color: var(--k-ink-soft);
+}
+
+.withdrawal-status dd {
+  margin: 0;
+}
+
+.withdrawal-impacts {
+  margin: 0;
+  padding-left: 1.25rem;
+  font-size: var(--text-sm);
+  line-height: 1.7;
+}
