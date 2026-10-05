@@ -44,6 +44,11 @@ export interface SeedHttpResult {
    * セッション(monthly-flex-contract 画面用)。member5 が作られていなければ null。
    */
   shortFlexMemberSessionCookie: string | null;
+  /**
+   * 2026-10-05: 退会手続き中の別テナントの管理者(apps/api/src/dev-screenshot-seed.ts が作る)としてログインした
+   * セッション(テナントの退会の手続き中の画面・全画面のお知らせの撮影用)。
+   */
+  withdrawingAdminSessionCookie: string;
   /** v0.7: シフト制メンバー(member3)のuserId。管理者の /shifts?userId= ディープリンク撮影用。 */
   variableMemberId: string;
   /** v0.7: 確定済みシフト表のID(将来の履歴画面撮影等で使う可能性を見込んで返しておく)。 */
@@ -527,12 +532,17 @@ export async function seedHttp(params: SeedHttpParams): Promise<SeedHttpResult> 
   // 使用はしない(トークンが有効なまま残り、メンバー一覧の「リセット発行中」バッジも写る)。
   const reset = await client.issuePasswordReset(member1Id);
 
+  // 退会手続き中の別テナントの管理者(退会の権限を持つので、手続き中でもログインできる)。
+  const withdrawingClient = new ApiClient(params.apiBaseUrl);
+  await withdrawingClient.login("withdrawing-admin@example.com", ADMIN_PASSWORD);
+
   return {
     sessionCookie: client.getSessionCookie(),
     adminId,
     fixedMemberSessionCookie,
     variableMemberSessionCookie,
     shortFlexMemberSessionCookie,
+    withdrawingAdminSessionCookie: withdrawingClient.getSessionCookie(),
     variableMemberId: member3Id,
     variableMemberShiftPlanId: shiftPlan.plan.id,
     inviteToken: invited.invitation.token,
