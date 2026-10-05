@@ -122,6 +122,21 @@ spec:
               valueFrom: {secretKeyRef: {name: kizami-cloud-metrics, key: token, optional: true}}
             - name: SENTRY_DSN
               valueFrom: {secretKeyRef: {name: kizami-cloud-sentry, key: dsn, optional: true}}
+            # アプリ側の SSRF 対策(二次防御。一次防御は下の NetworkPolicy)。テナントが設定する送り先
+            # (Webhook・SMTP・OIDC issuer・プッシュ)への接続を、名前解決した IP を検査してその IP にだけ行い、
+            # ループバック・プライベート・リンクローカル・CGNAT・IPv6 の ULA 等を拒否する。
+            # OUTBOUND_DENY_CIDRS はノード(samurai-matrix / samurai-watch / 133.242 のホスト)のグローバル IP:
+            # NetworkPolicy はグローバル IP 宛て(ノード自身のポート)を塞げないので、アプリ側でも拒否する。
+            - {name: OUTBOUND_BLOCK_PRIVATE, value: "true"}
+            - {name: OUTBOUND_DENY_CIDRS, value: "161.33.2.65/32,161.33.46.89/32,133.242.209.71/32"}
+            # テナントごとの利用上限(Closed Beta の目安。全テナント共通。Public Launch / 課金で見直す。
+            # 未設定 = 無制限)。上限は管理操作と外向きの送信だけに掛かり、打刻は止まらない。
+            #   メンバー 50(招待中を含む在籍者)/ API キー 20(有効なもの)/
+            #   外向きの通知(Webhook・メール)1日 2000 件 / 招待・パスワード再設定のメール 1日 200 通(日本時間 0 時区切り)
+            - {name: QUOTA_MAX_MEMBERS, value: "50"}
+            - {name: QUOTA_MAX_API_KEYS, value: "20"}
+            - {name: QUOTA_OUTBOUND_NOTIFICATIONS_PER_DAY, value: "2000"}
+            - {name: QUOTA_INVITE_RESET_MAILS_PER_DAY, value: "200"}
           readinessProbe:
             httpGet: {path: /healthz, port: 3001}
             initialDelaySeconds: 3
@@ -181,6 +196,15 @@ spec:
             - {name: REDIS_URL, value: "redis://127.0.0.1:6379"}
             - name: SENTRY_DSN
               valueFrom: {secretKeyRef: {name: kizami-cloud-sentry, key: dsn, optional: true}}
+            # アプリ側の SSRF 対策(二次防御。一次防御は下の NetworkPolicy。api と同じ値)。テナントが設定する送り先
+            # (Webhook・SMTP・OIDC issuer・プッシュ)への接続を、名前解決した IP を検査してその IP にだけ行い、
+            # ループバック・プライベート・リンクローカル・CGNAT・IPv6 の ULA 等を拒否する。
+            # OUTBOUND_DENY_CIDRS はノード(samurai-matrix / samurai-watch / 133.242 のホスト)のグローバル IP:
+            # NetworkPolicy はグローバル IP 宛て(ノード自身のポート)を塞げないので、アプリ側でも拒否する。
+            - {name: OUTBOUND_BLOCK_PRIVATE, value: "true"}
+            - {name: OUTBOUND_DENY_CIDRS, value: "161.33.2.65/32,161.33.46.89/32,133.242.209.71/32"}
+            # 外向きの通知の1日の上限(api と同じ値。定期スキャンの通知もここで数える)
+            - {name: QUOTA_OUTBOUND_NOTIFICATIONS_PER_DAY, value: "2000"}
           resources:
             requests: {cpu: 25m, memory: 128Mi}
             limits: {memory: 384Mi}
@@ -280,6 +304,8 @@ spec:
 #   テナントが設定できる Webhook・SMTP・OIDC issuer の URL を踏み台に、クラスタ内部
 #   (apiserver・他 namespace・kubelet)や LAN の管理系へ到達させない(SSRF)。
 #   Cloudflare の SMTP 送信・Turnstile・Sentry relay(relay.bktsk.com)はいずれも公開アドレスなので影響しない。
+#   NetworkPolicy だけではノードのグローバル IP(ノード自身のポート)を塞げないため、アプリ側でも
+#   OUTBOUND_BLOCK_PRIVATE / OUTBOUND_DENY_CIDRS で同じ宛先を拒否している(二次防御。api / worker の env 参照)。
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:

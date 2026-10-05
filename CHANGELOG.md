@@ -15,8 +15,30 @@ API・DB スキーマの互換方針とアップグレード手順は
 
 時短勤務への対応の第1段階(固定時間制)と第2段階(フレックスの契約上の枠と不足の繰越)。
 
+### Security
+
+- **ログイン等の未認証 POST に Origin 検証と JSON 必須化**(ログイン CSRF 対策。[saas.md](docs/design/saas.md))
+  - セッション Cookie を発行する未認証の POST(`/auth/login`・`/auth/login/totp`・`/auth/oidc/start`・
+    `/invitations/:token/accept`・`/password-resets/:token/use`)に、signup と同じ検証を掛けた。別オリジンは 403、JSON 以外は 415。
+    許可オリジンは明示された `APP_BASE_URL` と `CORS_ORIGIN`。**どちらも未設定の配備は従来どおり**。
+    Bearer(API キー)の経路・OIDC の callback・認証済みの POST には掛けない。
+    **`APP_BASE_URL` を設定している配備は、ユーザーがアクセスするオリジンと一致していることを確認すること**
+- **アプリ側の SSRF 対策**(環境変数で有効化、**既定は無効**。[docs/design/outbound-ssrf.md](docs/design/outbound-ssrf.md))
+  - `OUTBOUND_BLOCK_PRIVATE=true` で、テナントが設定できる送り先(Webhook・個人の Webhook・SMTP・OIDC の discovery/トークン/JWKS・
+    ブラウザプッシュ)への接続で、ループバック・プライベート・リンクローカル(メタデータ)・CGNAT・未指定・マルチキャスト・
+    IPv6 の ULA/リンクローカル・IPv4 を内包する IPv6 を拒否する。`OUTBOUND_DENY_CIDRS` で追加の拒否先、`OUTBOUND_ALLOW_HOSTS` で許可するホスト
+  - DNS rebinding 対策として、名前解決は1回だけ行い、検査した IP にそのまま接続する(リダイレクトは追わない)。
+    設定の保存時にも検査して `outbound_destination_blocked`(400)を返し、画面で説明する(5言語)
+  - 運用者が設定する送り先(`SENTRY_DSN`・`SYSTEM_SMTP_URL`)は対象外。Workers は対象外
+
 ### Added
 
+- **テナントごとの利用上限**(環境変数 `QUOTA_*`、**未設定は無制限**。[docs/design/tenant-quotas.md](docs/design/tenant-quotas.md))
+  - メンバー数(招待中を含む在籍者。超えると招待・再有効化が 409 `member_limit_reached`)・API キー数(409 `api_key_limit_reached`)・
+    外向きの通知(Webhook・メール)の1日の送信数・招待/再設定メールの1日の送信数。**打刻は止めない**
+  - 外向きの通知が上限に達したら送信をやめ、管理者にアプリ内通知を1日1回だけ出す
+  - `/metrics` に `kizami_quota_limit_hits_total{limit}`(全テナント合計の上限到達回数)。新テーブル `tenant_usage_counters`(マイグレーション 0036 / pg 0011)
+  - KIZAMI Cloud の Closed Beta は メンバー 50 / API キー 20 / 通知 1日 2000 / 招待・再設定メール 1日 200
 - **フレックスの総労働時間の決め方と不足の翌月繰越**([docs/design/work-systems.md](docs/design/work-systems.md)「フレックスの契約上の枠と不足の繰越」)
   - フレックスの制度の版に「総労働時間の決め方」(`totalHoursBasis`: `statutory_frame` = 法定の枠〔既定〕/
     `scheduled_days` = 所定日数 × 標準時間)と「不足を翌月に繰り越す」(`carryOverShortfall`、既定 false)を足した。
