@@ -4,7 +4,7 @@
 
 **[kizami.dev](https://kizami.dev/)** — プロダクト紹介 / **[docs.kizami.dev](https://docs.kizami.dev/)** — ドキュメント / **[demo.kizami.dev](https://demo.kizami.dev/)** — デモ(`demo@kizami.dev` / `kizami-demo`、毎晩リセット)
 
-**Status: beta — [v0.8.1](https://github.com/kizami-dev/kizami/releases/tag/v0.8.1)**
+**Status: beta — [v0.9.0](https://github.com/kizami-dev/kizami/releases/tag/v0.9.0)**
 フレックスタイム制・固定時間制・1ヶ月単位の変形労働時間制(シフト制)、
 有給休暇(法定・基準日・比例付与、付与の予告→承認→本人通知)、月次締め、監査ログ、
 権限プリセット、5言語 UI(日英韓中〔簡体・繁体〕)、MCP サーバーまで実装済み。作者環境で実運用中。
@@ -59,7 +59,7 @@ docker compose run --rm seed   # 初回のみ: 初期管理者を作成(冪等)
 ```
 
 イメージは既定で `:latest` を追います。本番のセルフホストでは `.env` の `KIZAMI_TAG` に
-版タグ(例 `KIZAMI_TAG=0.8.1`)を指定して固定することを推奨します
+版タグ(例 `KIZAMI_TAG=0.9.0`)を指定して固定することを推奨します
 ([理由と使い分け](docs/design/release-process.md))。
 
 http://localhost:8080 にアクセスし、設定した管理者でログインしてください。

@@ -13,23 +13,23 @@ API・DB スキーマの互換方針とアップグレード手順は
 
 ## [Unreleased]
 
-時短勤務への対応の第1段階(固定時間制)と第2段階(フレックスの契約上の枠と不足の繰越)、テナントの退会と全データのエクスポート。
+## [0.9.0] - 2026-10-06
 
-### Security
+時短勤務への対応(固定時間制の名前付きの制度、フレックスの契約上の枠と不足の繰越、所定休日のカレンダー)、
+テナントの退会と全データのエクスポート、SaaS 公開前の防御の強化(SSRF 対策・テナントごとの利用上限・
+Origin 検証の拡張)、月次の日別の表の祝日の印。
 
-- **ログイン等の未認証 POST に Origin 検証と JSON 必須化**(ログイン CSRF 対策。[saas.md](docs/design/saas.md))
-  - セッション Cookie を発行する未認証の POST(`/auth/login`・`/auth/login/totp`・`/auth/oidc/start`・
-    `/invitations/:token/accept`・`/password-resets/:token/use`)に、signup と同じ検証を掛けた。別オリジンは 403、JSON 以外は 415。
-    許可オリジンは明示された `APP_BASE_URL` と `CORS_ORIGIN`。**どちらも未設定の配備は従来どおり**。
-    Bearer(API キー)の経路・OIDC の callback・認証済みの POST には掛けない。
-    **`APP_BASE_URL` を設定している配備は、ユーザーがアクセスするオリジンと一致していることを確認すること**
-- **アプリ側の SSRF 対策**(環境変数で有効化、**既定は無効**。[docs/design/outbound-ssrf.md](docs/design/outbound-ssrf.md))
-  - `OUTBOUND_BLOCK_PRIVATE=true` で、テナントが設定できる送り先(Webhook・個人の Webhook・SMTP・OIDC の discovery/トークン/JWKS・
-    ブラウザプッシュ)への接続で、ループバック・プライベート・リンクローカル(メタデータ)・CGNAT・未指定・マルチキャスト・
-    IPv6 の ULA/リンクローカル・IPv4 を内包する IPv6 を拒否する。`OUTBOUND_DENY_CIDRS` で追加の拒否先、`OUTBOUND_ALLOW_HOSTS` で許可するホスト
-  - DNS rebinding 対策として、名前解決は1回だけ行い、検査した IP にそのまま接続する(リダイレクトは追わない)。
-    設定の保存時にも検査して `outbound_destination_blocked`(400)を返し、画面で説明する(5言語)
-  - 運用者が設定する送り先(`SENTRY_DSN`・`SYSTEM_SMTP_URL`)は対象外。Workers は対象外
+**アップグレード時の注意**
+
+- `APP_BASE_URL` / `CORS_ORIGIN` を設定している配備では、ログイン・2FA・招待の受諾・パスワード再設定の
+  使用などに Origin 検証が掛かる。利用者がアクセスするオリジンと一致していないとログインが 403 になる
+- generic CSV の末尾に、フレックスの契約上の枠の6列が増える(既存の列の位置は変わらないが、`closed` は
+  最後の列ではなくなる)
+- 既存のテナントには退会の権限 `tenant.withdraw` が自動では付かない。反映後に運用者 CLI
+  `operator tenant sync-presets` を1回実行する
+- 退会の通知メールを worker が送るため、システムメールを使う配備では worker にも `SYSTEM_SMTP_URL` /
+  `SYSTEM_MAIL_FROM` / `APP_BASE_URL` を渡す
+- SSRF 対策(`OUTBOUND_*`)と利用上限(`QUOTA_*`)は既定で無効・無制限。セルフホストの挙動は変わらない
 
 ### Added
 
@@ -139,6 +139,22 @@ API・DB スキーマの互換方針とアップグレード手順は
   `flex_carry_over_shortfall`(既定 0)、新しい表 `scheduled_holiday_calendar_versions`
   (migration SQLite `0035`・PostgreSQL `0010`。D1 は SQLite と同じファイル)。既存の行は既定値のまま、
   データの書き換えは要らない
+
+### Security
+
+- **ログイン等の未認証 POST に Origin 検証と JSON 必須化**(ログイン CSRF 対策。[saas.md](docs/design/saas.md))
+  - セッション Cookie を発行する未認証の POST(`/auth/login`・`/auth/login/totp`・`/auth/oidc/start`・
+    `/invitations/:token/accept`・`/password-resets/:token/use`)に、signup と同じ検証を掛けた。別オリジンは 403、JSON 以外は 415。
+    許可オリジンは明示された `APP_BASE_URL` と `CORS_ORIGIN`。**どちらも未設定の配備は従来どおり**。
+    Bearer(API キー)の経路・OIDC の callback・認証済みの POST には掛けない。
+    **`APP_BASE_URL` を設定している配備は、ユーザーがアクセスするオリジンと一致していることを確認すること**
+- **アプリ側の SSRF 対策**(環境変数で有効化、**既定は無効**。[docs/design/outbound-ssrf.md](docs/design/outbound-ssrf.md))
+  - `OUTBOUND_BLOCK_PRIVATE=true` で、テナントが設定できる送り先(Webhook・個人の Webhook・SMTP・OIDC の discovery/トークン/JWKS・
+    ブラウザプッシュ)への接続で、ループバック・プライベート・リンクローカル(メタデータ)・CGNAT・未指定・マルチキャスト・
+    IPv6 の ULA/リンクローカル・IPv4 を内包する IPv6 を拒否する。`OUTBOUND_DENY_CIDRS` で追加の拒否先、`OUTBOUND_ALLOW_HOSTS` で許可するホスト
+  - DNS rebinding 対策として、名前解決は1回だけ行い、検査した IP にそのまま接続する(リダイレクトは追わない)。
+    設定の保存時にも検査して `outbound_destination_blocked`(400)を返し、画面で説明する(5言語)
+  - 運用者が設定する送り先(`SENTRY_DSN`・`SYSTEM_SMTP_URL`)は対象外。Workers は対象外
 
 ## [0.8.1] - 2026-10-05
 
@@ -745,7 +761,8 @@ KIZAMI Cloud(PostgreSQL 構成)の入れ替え時の安定化。
   タグ名ではなくマイルストーン末尾のコミット SHA で範囲を示している。
 -->
 
-[Unreleased]: https://github.com/kizami-dev/kizami/compare/v0.8.1...HEAD
+[Unreleased]: https://github.com/kizami-dev/kizami/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/kizami-dev/kizami/compare/v0.8.1...v0.9.0
 [0.8.1]: https://github.com/kizami-dev/kizami/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/kizami-dev/kizami/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/kizami-dev/kizami/compare/ece25ba...v0.7.0
