@@ -340,6 +340,9 @@ describe("members API", () => {
       hasPendingPasswordReset: false,
       // setupSecondUser は work_policy 割当を行わないため未割当(null)。
       workSystemKind: null,
+      // 割当先の制度(2026-10-05、名前付きの制度)。未割当なので null。
+      workPolicyId: null,
+      workPolicyName: null,
       // 二要素認証(2026-08-27 追加)。有効化していないので false。
       twoFactorEnabled: false,
     });

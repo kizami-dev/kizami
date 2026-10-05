@@ -59,7 +59,13 @@ describe("GET/POST /members/:id/work-policy", () => {
     const res = await app.request(`/members/${userId}/work-policy`, { headers: { cookie } });
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.effective).toEqual({ effectiveFrom: "1970-01-01", kind: "flex", standardDayMinutes: 480, workPolicyName: "Flex" });
+    expect(body.effective).toEqual({
+      effectiveFrom: "1970-01-01",
+      workPolicyId: expect.any(String),
+      workPolicyName: "Flex",
+      kind: "flex",
+      standardDayMinutes: 480,
+    });
     expect(body.history).toHaveLength(1);
 
     const second = await setupSecondUser(db, tenantId);
@@ -135,12 +141,27 @@ describe("GET/POST /members/:id/work-policy", () => {
     });
     expect(res.status).toBe(201);
     const body = await res.json();
-    expect(body.assignment).toEqual({ kind: "fixed", effectiveFrom: "2026-05-01", standardDayMinutes: 480 });
+    // kind 入力(後方互換)は、その kind の既定の制度(無ければ作る)に割り当てる。
+    expect(body.assignment).toEqual({
+      workPolicyId: expect.any(String),
+      workPolicyName: "標準(固定時間制)",
+      kind: "fixed",
+      effectiveFrom: "2026-05-01",
+      standardDayMinutes: 480,
+    });
 
     const rows = await db.select().from(auditLogs).where(eq(auditLogs.tenantId, tenantId));
     const entry = rows.find((r) => r.action === "member.work_policy.assign");
     expect(entry).toBeDefined();
-    expect(JSON.parse(entry?.afterDigest ?? "{}")).toEqual({ before: "flex", after: "fixed", effectiveFrom: "2026-05-01" });
+    expect(JSON.parse(entry?.afterDigest ?? "{}")).toEqual({
+      before: "flex",
+      after: "fixed",
+      effectiveFrom: "2026-05-01",
+      beforeWorkPolicyId: expect.any(String),
+      beforeWorkPolicyName: "Flex",
+      afterWorkPolicyId: body.assignment.workPolicyId,
+      afterWorkPolicyName: "標準(固定時間制)",
+    });
 
     const getRes = await app.request(`/members/${userId}/work-policy`, { headers: { cookie } });
     const getBody = await getRes.json();
@@ -202,5 +223,212 @@ describe("GET/POST /members/:id/work-policy", () => {
     expect(mayRes.status).toBe(200);
     const mayBody = await mayRes.json();
     expect(mayBody.workSystem).toBe("fixed");
+  });
+  describe("制度の id で割り当てる(2026-10-05、名前付きの制度)", () => {
+    async function createPolicy(app: ReturnType<typeof createApp>, cookie: string, body: Record<string, unknown>): Promise<string> {
+      const res = await app.request("/settings/work-policies", {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie },
+        body: JSON.stringify(body),
+      });
+      expect(res.status).toBe(201);
+      return ((await res.json()) as { policy: { id: string } }).policy.id;
+    }
+
+    function assign(app: ReturnType<typeof createApp>, cookie: string, userId: string, body: Record<string, unknown>) {
+      return app.request(`/members/${userId}/work-policy`, {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie },
+        body: JSON.stringify(body),
+      });
+    }
+
+    it("assigns the named policy, reports it in GET and in GET /members, and audits the policy names", async () => {
+      const { db, tenantId, userId, email, password } = await setupTestDb();
+      await grantPermission(db, { tenantId, userId, permission: PERMISSION, scope: "tenant" });
+      await grantPermission(db, { tenantId, userId, permission: "member.view", scope: "tenant" });
+      const app = createApp({ db });
+      const cookie = await loginAndGetCookie(app, email, password);
+      const shortId = await createPolicy(app, cookie, { name: "固定・時短(6時間)", kind: "fixed", effectiveFrom: "2026-04-01", standardDayMinutes: 360 });
+
+      const res = await assign(app, cookie, userId, { workPolicyId: shortId, effectiveFrom: "2026-04-15" });
+      expect(res.status).toBe(201);
+      expect((await res.json()).assignment).toEqual({
+        workPolicyId: shortId,
+        workPolicyName: "固定・時短(6時間)",
+        kind: "fixed",
+        effectiveFrom: "2026-04-15",
+        standardDayMinutes: 360,
+      });
+
+      const getBody = await (await app.request(`/members/${userId}/work-policy`, { headers: { cookie } })).json();
+      expect(getBody.effective).toMatchObject({ workPolicyId: shortId, workPolicyName: "固定・時短(6時間)", kind: "fixed", standardDayMinutes: 360 });
+
+      const list = await (await app.request("/members", { headers: { cookie } })).json();
+      const me = list.members.find((m: { id: string }) => m.id === userId);
+      expect(me).toMatchObject({ workSystemKind: "fixed", workPolicyId: shortId, workPolicyName: "固定・時短(6時間)" });
+
+      const rows = await db.select().from(auditLogs).where(eq(auditLogs.tenantId, tenantId));
+      const entry = rows.find((r) => r.action === "member.work_policy.assign");
+      expect(JSON.parse(entry?.afterDigest ?? "{}")).toMatchObject({
+        before: "flex",
+        after: "fixed",
+        beforeWorkPolicyName: "Flex",
+        afterWorkPolicyId: shortId,
+        afterWorkPolicyName: "固定・時短(6時間)",
+      });
+    });
+
+    it("rejects an unknown or other-tenant policy id (400), an archived policy (409) and a policy not yet effective on the date (409)", async () => {
+      const { db, tenantId, userId, email, password } = await setupTestDb();
+      await grantPermission(db, { tenantId, userId, permission: PERMISSION, scope: "tenant" });
+      const app = createApp({ db });
+      const cookie = await loginAndGetCookie(app, email, password);
+
+      const unknown = await assign(app, cookie, userId, { workPolicyId: "00000000-0000-0000-0000-000000000000", effectiveFrom: "2026-05-01" });
+      expect(unknown.status).toBe(400);
+      expect(await unknown.json()).toEqual({ error: "invalid_work_policy_id" });
+
+      const other = await setupTestDb();
+      await grantPermission(other.db, { tenantId: other.tenantId, userId: other.userId, permission: PERMISSION, scope: "tenant" });
+      const otherApp = createApp({ db: other.db });
+      const otherCookie = await loginAndGetCookie(otherApp, other.email, other.password);
+      const otherPolicyId = await createPolicy(otherApp, otherCookie, { name: "他社の制度", kind: "fixed", effectiveFrom: "2026-04-01", standardDayMinutes: 360 });
+      const crossTenant = await assign(app, cookie, userId, { workPolicyId: otherPolicyId, effectiveFrom: "2026-05-01" });
+      expect(crossTenant.status).toBe(400);
+      expect(await crossTenant.json()).toEqual({ error: "invalid_work_policy_id" });
+
+      const futureId = await createPolicy(app, cookie, { name: "6月からの制度", kind: "fixed", effectiveFrom: "2026-06-01", standardDayMinutes: 360 });
+      const notYet = await assign(app, cookie, userId, { workPolicyId: futureId, effectiveFrom: "2026-05-01" });
+      expect(notYet.status).toBe(409);
+      expect(await notYet.json()).toEqual({ error: "work_policy_not_effective_yet" });
+      // 初版の日付以降からなら割り当てられる
+      expect((await assign(app, cookie, userId, { workPolicyId: futureId, effectiveFrom: "2026-06-01" })).status).toBe(201);
+
+      const archivedId = await createPolicy(app, cookie, { name: "使わなくなった制度", kind: "fixed", effectiveFrom: "2026-04-01", standardDayMinutes: 420 });
+      const patch = await app.request(`/settings/work-policies/${archivedId}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json", cookie },
+        body: JSON.stringify({ archived: true }),
+      });
+      expect(patch.status).toBe(200);
+      const archived = await assign(app, cookie, userId, { workPolicyId: archivedId, effectiveFrom: "2026-07-01" });
+      expect(archived.status).toBe(409);
+      expect(await archived.json()).toEqual({ error: "work_policy_archived" });
+    });
+
+    it("does not accept kind or standardDayMinutes together with workPolicyId (400 invalid_body)", async () => {
+      const { db, tenantId, userId, email, password } = await setupTestDb();
+      await grantPermission(db, { tenantId, userId, permission: PERMISSION, scope: "tenant" });
+      const app = createApp({ db });
+      const cookie = await loginAndGetCookie(app, email, password);
+      const id = await createPolicy(app, cookie, { name: "固定・時短(6時間)", kind: "fixed", effectiveFrom: "2026-04-01", standardDayMinutes: 360 });
+
+      for (const extra of [{ standardDayMinutes: 300 }, { kind: "fixed" }]) {
+        const res = await assign(app, cookie, userId, { workPolicyId: id, effectiveFrom: "2026-05-01", ...extra });
+        expect(res.status).toBe(400);
+        expect(await res.json()).toEqual({ error: "invalid_body" });
+      }
+    });
+
+    it("legacy kind input picks the oldest non-archived policy of that kind (the default one for the kind)", async () => {
+      const { db, tenantId, userId, email, password } = await setupTestDb();
+      await grantPermission(db, { tenantId, userId, permission: PERMISSION, scope: "tenant" });
+      const app = createApp({ db });
+      const cookie = await loginAndGetCookie(app, email, password);
+      const fullId = await createPolicy(app, cookie, { name: "固定(8時間)", kind: "fixed", effectiveFrom: "2000-01-01", standardDayMinutes: 480 });
+      const shortId = await createPolicy(app, cookie, { name: "固定・時短(6時間)", kind: "fixed", effectiveFrom: "2000-01-01", standardDayMinutes: 360 });
+
+      const res = await assign(app, cookie, userId, { kind: "fixed", effectiveFrom: "2026-05-01" });
+      expect(res.status).toBe(201);
+      expect((await res.json()).assignment).toMatchObject({ workPolicyId: fullId, workPolicyName: "固定(8時間)" });
+
+      // 先頭の固定時間制の制度をアーカイブすると、次に古い固定時間制の制度が選ばれる
+      await app.request(`/settings/work-policies/${fullId}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json", cookie },
+        body: JSON.stringify({ archived: true }),
+      });
+      const res2 = await assign(app, cookie, userId, { kind: "fixed", effectiveFrom: "2026-06-01" });
+      expect((await res2.json()).assignment).toMatchObject({ workPolicyId: shortId });
+    });
+
+    it("legacy kind input rejects a fixed standardDayMinutes over 480", async () => {
+      const { db, tenantId, userId, email, password } = await setupTestDb();
+      await grantPermission(db, { tenantId, userId, permission: PERMISSION, scope: "tenant" });
+      const app = createApp({ db });
+      const cookie = await loginAndGetCookie(app, email, password);
+      const res = await assign(app, cookie, userId, { kind: "fixed", effectiveFrom: "2026-05-01", standardDayMinutes: 540 });
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error: "invalid_standard_day_minutes" });
+    });
+  });
+
+  describe("招待で制度を選ぶ(POST /members の workPolicyId)", () => {
+    async function invite(app: ReturnType<typeof createApp>, cookie: string, body: Record<string, unknown>) {
+      return app.request("/members", {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie },
+        body: JSON.stringify({ email: "new@example.com", name: "New Member", ...body }),
+      });
+    }
+
+    async function newMemberId(res: Response): Promise<string> {
+      return ((await res.json()) as { member: { id: string } }).member.id;
+    }
+
+    it("assigns the chosen policy from the hire date instead of the default policy", async () => {
+      const { db, tenantId, userId, email, password } = await setupTestDb();
+      await grantPermission(db, { tenantId, userId, permission: PERMISSION, scope: "tenant" });
+      await grantPermission(db, { tenantId, userId, permission: "member.invite", scope: "tenant" });
+      const app = createApp({ db });
+      const cookie = await loginAndGetCookie(app, email, password);
+      const created = await app.request("/settings/work-policies", {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie },
+        body: JSON.stringify({ name: "固定・時短(6時間)", kind: "fixed", effectiveFrom: "2000-01-01", standardDayMinutes: 360 }),
+      });
+      const shortId = ((await created.json()) as { policy: { id: string } }).policy.id;
+
+      const res = await invite(app, cookie, { hireDate: "2026-04-01", workPolicyId: shortId });
+      expect(res.status).toBe(201);
+      const newUserId = await newMemberId(res);
+
+      const wp = await (await app.request(`/members/${newUserId}/work-policy`, { headers: { cookie } })).json();
+      expect(wp.history).toEqual([expect.objectContaining({ effectiveFrom: "2026-04-01", workPolicyId: shortId, standardDayMinutes: 360 })]);
+    });
+
+    it("falls back to the default policy when workPolicyId is omitted", async () => {
+      const { db, tenantId, userId, email, password } = await setupTestDb();
+      await grantPermission(db, { tenantId, userId, permission: PERMISSION, scope: "tenant" });
+      await grantPermission(db, { tenantId, userId, permission: "member.invite", scope: "tenant" });
+      const app = createApp({ db });
+      const cookie = await loginAndGetCookie(app, email, password);
+
+      const res = await invite(app, cookie, {});
+      expect(res.status).toBe(201);
+      const newUserId = await newMemberId(res);
+      const wp = await (await app.request(`/members/${newUserId}/work-policy`, { headers: { cookie } })).json();
+      expect(wp.history).toEqual([expect.objectContaining({ effectiveFrom: "2026-04-15", workPolicyName: "Flex" })]);
+    });
+
+    it("requires tenant_settings.flex.manage to choose a policy (403), and validates the policy (400) before creating the member", async () => {
+      const { db, tenantId, userId, email, password } = await setupTestDb();
+      await grantPermission(db, { tenantId, userId, permission: "member.invite", scope: "tenant" });
+      const app = createApp({ db });
+      const cookie = await loginAndGetCookie(app, email, password);
+
+      const forbidden = await invite(app, cookie, { workPolicyId: "x" });
+      expect(forbidden.status).toBe(403);
+
+      await grantPermission(db, { tenantId, userId, permission: PERMISSION, scope: "tenant" });
+      const cookie2 = await loginAndGetCookie(app, email, password);
+      const invalid = await invite(app, cookie2, { workPolicyId: "00000000-0000-0000-0000-000000000000" });
+      expect(invalid.status).toBe(400);
+      expect(await invalid.json()).toEqual({ error: "invalid_work_policy_id" });
+
+      // 検証で止めた招待ではメンバーが作られていない(同じメールアドレスで招待し直せる)
+      expect((await invite(app, cookie2, {})).status).toBe(201);
+    });
   });
 });
