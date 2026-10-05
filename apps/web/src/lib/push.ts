@@ -28,6 +28,8 @@ export type PushSubscribeResult =
   | { status: "permission_denied" }
   /** この配備は VAPID 鍵が未設定(サーバーが 404 push_unavailable を返した) */
   | { status: "unavailable" }
+  /** 登録先(endpoint)が社内・ローカルのアドレスを指しているとサーバーが拒否した(400 outbound_destination_blocked、SSRF 対策) */
+  | { status: "destination_blocked" }
   | { status: "failed"; error: unknown };
 
 /** この環境(ブラウザ)でプッシュ通知が使えるか。SSR 中は常に false。 */
@@ -118,6 +120,9 @@ export async function enablePush(): Promise<PushSubscribeResult> {
     return { status: "subscribed", endpoint: json.endpoint };
   } catch (err) {
     if (err instanceof ApiError && err.status === 404) return { status: "unavailable" };
+    if (err instanceof ApiError && err.status === 400 && (err.body as { error?: unknown } | null)?.error === "outbound_destination_blocked") {
+      return { status: "destination_blocked" };
+    }
     return { status: "failed", error: err };
   }
 }

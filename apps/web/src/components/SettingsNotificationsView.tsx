@@ -348,7 +348,9 @@ export function SettingsNotificationsView() {
                       <span className="test-result-item__status">
                         {r.ok ? messages.settingsNotifications.testSendOk : messages.settingsNotifications.testSendFailed}
                       </span>
-                      {!r.ok && r.error ? <span className="test-result-item__error">{r.error}</span> : null}
+                      {!r.ok && r.error ? <span className="test-result-item__error">
+                          {r.error === "notification_limit_reached" ? messages.settingsNotifications.testSendLimitReached : r.error}
+                        </span> : null}
                     </li>
                   ))}
                 </ul>
