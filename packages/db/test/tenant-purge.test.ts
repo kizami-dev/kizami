@@ -24,6 +24,8 @@ import { migrateDb, supportsTransactions, type Database } from "./support/db.js"
 import { seedFullTenant, type FullTenant } from "./support/full-tenant.js";
 import {
   cancelTenantWithdrawal,
+  claimTenantPurge,
+  TenantPurgeMarkerLostError,
   getTenantPurgeRecord,
   listTenantsDueForPurge,
   listTenantsDueForWithdrawalReminder,
@@ -357,6 +359,90 @@ describe("purgeTenant", () => {
       expect(JSON.parse(retried.record.deletedCounts).tenants).toBe(1);
     }
     expect(await db.select().from(tenantPurgeRecords)).toHaveLength(1);
+  });
+});
+
+describe("確認と削除のすき間(TOCTOU)— 迷ったら消さない側に倒れる", () => {
+  let db: Database;
+  let target: FullTenant;
+
+  beforeEach(async () => {
+    const dbPath = join(tmpdir(), `kizami-db-test-${randomUUID()}.db`);
+    ({ db } = await migrateDb({ url: `file:${dbPath}` }));
+    target = await seedFullTenant(db, "target");
+    await seedFullTenant(db, "other");
+    await requestTenantWithdrawal(db, { tenantId: target.tenantId, requestedAt: 1000, scheduledPurgeAt: 1000 + 30 * DAY });
+  });
+
+  async function tenantRow() {
+    const [row] = await db.select().from(tenants).where(eq(tenants.id, target.tenantId));
+    return row;
+  }
+
+  it("確認の後・削除の前に取り消しが入ると、「削除中」の印を取れず何も消さない(not_claimed)", async () => {
+    const before = await rowsOfTenant(db, target.tenantId);
+    const result = await purgeTenant(db, {
+      tenantId: target.tenantId,
+      now: 99_000,
+      transactional: supportsTransactions,
+      beforeClaim: async () => {
+        expect(await cancelTenantWithdrawal(db, { tenantId: target.tenantId })).not.toBeNull();
+      },
+    });
+    expect(result.status).toBe("not_claimed");
+    expect(await rowsOfTenant(db, target.tenantId)).toEqual(before);
+    expect((await tenantRow())?.withdrawalRequestedAt).toBeNull();
+    expect(await getTenantPurgeRecord(db, target.tenantId)).toBeNull();
+  });
+
+  it("削除予定の時刻の前は印を取れない(requireDue)。運用者の「今すぐ削除」(requireDue: false)だけが待たずに進む", async () => {
+    const early = await purgeTenant(db, { tenantId: target.tenantId, now: 1000 + 30 * DAY - 1, transactional: supportsTransactions });
+    expect(early.status).toBe("not_claimed");
+    expect((await tenantRow())?.withdrawalPurgeStartedAt).toBeNull();
+    const now = await purgeTenant(db, { tenantId: target.tenantId, now: 2000, requireDue: false, transactional: supportsTransactions });
+    expect(now.status).toBe("purged");
+  });
+
+  it("印を取った後は取り消しが効かない(条件付き UPDATE で null)。削除の途中の取り消しも効かず、削除は完了する", async () => {
+    const claimed = await claimTenantPurge(db, { tenantId: target.tenantId, now: 99_000, requireDue: true });
+    expect(claimed?.withdrawalPurgeStartedAt).toBe(99_000);
+    expect(await claimTenantPurge(db, { tenantId: target.tenantId, now: 99_001, requireDue: true })).toBeNull();
+    expect(await cancelTenantWithdrawal(db, { tenantId: target.tenantId })).toBeNull();
+
+    // 印のあるテナントは、予定の判定なしに続きから削除される(再実行の経路)
+    const cancelAttempts: Array<unknown> = [];
+    const result = await purgeTenant(db, {
+      tenantId: target.tenantId,
+      now: 99_500,
+      transactional: false,
+      afterTableDeleted: async (name) => {
+        if (name === "audit_logs") cancelAttempts.push(await cancelTenantWithdrawal(db, { tenantId: target.tenantId }));
+      },
+    });
+    expect(cancelAttempts).toEqual([null]);
+    expect(result.status).toBe("purged");
+    if (result.status === "purged") expect(result.record.purgeStartedAt).toBe(99_000);
+    expect(Object.values(await rowsOfTenant(db, target.tenantId)).every((n) => n === 0)).toBe(true);
+  });
+
+  it("削除の途中で印が自分のものでなくなったら、次のテーブルを消す前に止まる", async () => {
+    // 別の接続から印を書き換えるので、ロックの取り合いにならないトランザクションなしの経路で確かめる
+    // (1トランザクションの経路も、各テーブルの前に同じ確認をしてから消す)
+    await expect(
+      purgeTenant(db, {
+        tenantId: target.tenantId,
+        now: 99_000,
+        transactional: false,
+        afterTableDeleted: async (name) => {
+          if (name === "punch_events") await db.update(tenants).set({ withdrawalPurgeStartedAt: 12_345 }).where(eq(tenants.id, target.tenantId));
+        },
+      }),
+    ).rejects.toBeInstanceOf(TenantPurgeMarkerLostError);
+    const after = await rowsOfTenant(db, target.tenantId);
+    // punch_events の次(leave_grant_proposals)からは消していない
+    expect(after.leave_grant_proposals).toBeGreaterThan(0);
+    expect(after.users).toBe(2);
+    expect(after.tenants).toBe(1);
   });
 });
 

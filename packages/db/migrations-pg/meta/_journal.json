@@ -85,6 +85,13 @@
       "when": 1791203205971,
       "tag": "0011_mighty_starbolt",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1791204628691,
+      "tag": "0012_purple_kingpin",
+      "breakpoints": true
     }
   ]
 }

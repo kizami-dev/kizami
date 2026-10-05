@@ -106,6 +106,7 @@ import {
   workPolicyVersions,
 } from "../schema/index.js";
 import { uuidv7 } from "../uuid.js";
+import { claimTenantPurge } from "./tenant-withdrawal.js";
 
 /**
  * tenant_id を持つ全テーブルを、**外部キーの子 → 親**の順に並べたもの(削除の順序)。
@@ -197,9 +198,19 @@ export interface PurgeTenantParams {
   /** 削除の時刻(UTC エポック分) */
   now: number;
   /**
+   * 削除予定の時刻を過ぎていることを「削除中」の印を取る条件に含めるか(既定 true)。
+   * 定期ジョブは true、運用者 CLI の「今すぐ削除」だけが false(予定を待たない)。
+   */
+  requireDue?: boolean;
+  /**
    * 1トランザクションで行うか(既定 true)。D1 では false にする(ファイル冒頭「トランザクションと D1」)。
    */
   transactional?: boolean;
+  /**
+   * テナント行を読んで「消してよいか」を確かめた直後、「削除中」の印を取る直前に呼ぶ(テスト用。
+   * 確認と削除のすき間に取り消しが入る状況を作る)。本番のコードからは渡さない。
+   */
+  beforeClaim?: () => void | Promise<void>;
   /**
    * テーブルを1つ消すたびに呼ぶ(テスト用。途中で例外を投げて「途中で失敗した」状況を作る)。
    * 本番のコードからは渡さない。
@@ -214,18 +225,64 @@ export type PurgeTenantResult =
   | { status: "already_purged"; record: TenantPurgeRecord }
   /** 退会を申請していないテナント(何もしていない)。申請の無いテナントは決して消さない */
   | { status: "not_withdrawing" }
+  /**
+   * 「削除中」の印を取れなかった(確認の後に取り消された・削除予定の時刻の前)。何もしていない。
+   * 迷ったら消さない側に倒す(ファイル冒頭「確認と削除のすき間」)
+   */
+  | { status: "not_claimed" }
   /** テナントも削除の記録も無い(存在しない id) */
   | { status: "not_found" };
+
+/** 削除の途中で「削除中」の印が自分のものでなくなった(削除を止めた。トランザクションなら巻き戻る)。 */
+export class TenantPurgeMarkerLostError extends Error {
+  constructor(tenantId: string) {
+    super(`purgeTenant: purge marker of tenant ${tenantId} changed during the purge; aborted`);
+    this.name = "TenantPurgeMarkerLostError";
+  }
+}
 
 /**
  * 退会を申請したテナントのすべての行を物理削除し、削除の記録(tenant_purge_records)を残す。
  *
- * **削除予定日の判定はしない**(定期ジョブは予定日を過ぎたテナントだけを渡し、運用者 CLI の
- * 「今すぐ削除」は予定日を待たずに渡す)。ここが守るのは「退会を申請していないテナントは消さない」
- * の一点だけ。冪等で、完了済みなら `already_purged` を返して何もしない。
+ * ## 確認と削除のすき間(2026-10-05 セキュリティレビュー)
+ *
+ * 「申請中で予定を過ぎている」と確かめてから実際に消すまでの間に管理者が取り消すと、取り消した
+ * テナントが消えうる。そこで削除は次の順で、**迷ったら消さない側**に倒す:
+ *
+ * 1. `claimTenantPurge` の条件付き UPDATE で「削除中」の印を取る(申請中・印が無い・予定を過ぎている、を
+ *    すべて WHERE に含める)。取れなければ何もせず `not_claimed`。取り消しの側も「印が無い」を WHERE に
+ *    含めるので、両者のどちらか一方だけが成功する。**印はトランザクションの外で確定させる** — 削除が途中で
+ *    失敗しても印は残り、取り消しは効かず(409)、次の実行が印のあるテナントの削除を続ける
+ * 2. 印が既にある(前回の実行が途中で止まった)なら、その印のまま続ける(冪等)
+ * 3. テーブルを1つ消す前に毎回、テナント行の印が手順1・2で得た値のままであることを確かめる。
+ *    違えば `TenantPurgeMarkerLostError` で止める(トランザクションなら何も消えない)
+ *
+ * 削除予定の時刻の判定は手順1の WHERE に入っている(`requireDue: false` の運用者 CLI だけが予定を待たない)。
+ * 完了済みなら `already_purged` を返して何もしない。
  */
 export async function purgeTenant(db: Database, params: PurgeTenantParams): Promise<PurgeTenantResult> {
-  const run = (q: Database | Transaction) => purgeTenantSteps(q, params);
+  const { tenantId, now } = params;
+  const [tenant] = await db.select().from(tenants).where(eq(tenants.id, tenantId)).limit(1);
+  if (!tenant) {
+    const record = await findPurgeRecord(db, tenantId);
+    if (!record) return { status: "not_found" };
+    if (record.purgedAt !== null) return { status: "already_purged", record };
+    // tenants 行を消した直後、記録を「完了」にする前に止まった(D1 のみ起こりうる)。
+    // 消すものはもう無いので、記録を完了にして終える。
+    const [completed] = await db.update(tenantPurgeRecords).set({ purgedAt: now }).where(eq(tenantPurgeRecords.id, record.id)).returning();
+    return { status: "purged", record: completed ?? record };
+  }
+  if (tenant.withdrawalRequestedAt === null) return { status: "not_withdrawing" };
+
+  let marker = tenant.withdrawalPurgeStartedAt;
+  if (marker === null) {
+    await params.beforeClaim?.();
+    const claimed = await claimTenantPurge(db, { tenantId, now, requireDue: params.requireDue ?? true });
+    if (!claimed || claimed.withdrawalPurgeStartedAt === null) return { status: "not_claimed" };
+    marker = claimed.withdrawalPurgeStartedAt;
+  }
+
+  const run = (q: Database | Transaction) => purgeTenantSteps(q, params, marker);
   if (params.transactional === false) return run(db);
   return db.transaction(async (tx) => run(tx));
 }
@@ -235,26 +292,15 @@ async function findPurgeRecord(q: Database | Transaction, tenantId: string): Pro
   return row ?? null;
 }
 
-async function purgeTenantSteps(q: Database | Transaction, params: PurgeTenantParams): Promise<PurgeTenantResult> {
+/** 印を取った後の削除の本体。`marker` は自分が取った(または前回の実行が取った)「削除中」の印。 */
+async function purgeTenantSteps(q: Database | Transaction, params: PurgeTenantParams, marker: number): Promise<PurgeTenantResult> {
   const { tenantId, now } = params;
   const [tenant] = await q.select().from(tenants).where(eq(tenants.id, tenantId)).limit(1);
-  let record = await findPurgeRecord(q, tenantId);
-
-  if (!tenant) {
-    if (!record) return { status: "not_found" };
-    if (record.purgedAt !== null) return { status: "already_purged", record };
-    // tenants 行を消した直後、記録を「完了」にする前に止まった(D1 のみ起こりうる)。
-    // 消すものはもう無いので、記録を完了にして終える。
-    const [completed] = await q
-      .update(tenantPurgeRecords)
-      .set({ purgedAt: now })
-      .where(eq(tenantPurgeRecords.id, record.id))
-      .returning();
-    return { status: "purged", record: completed ?? record };
+  if (!tenant || tenant.withdrawalRequestedAt === null || tenant.withdrawalPurgeStartedAt !== marker) {
+    throw new TenantPurgeMarkerLostError(tenantId);
   }
 
-  if (tenant.withdrawalRequestedAt === null) return { status: "not_withdrawing" };
-
+  let record = await findPurgeRecord(q, tenantId);
   if (!record) {
     const [inserted] = await q
       .insert(tenantPurgeRecords)
@@ -262,7 +308,7 @@ async function purgeTenantSteps(q: Database | Transaction, params: PurgeTenantPa
         id: uuidv7(),
         tenantId,
         withdrawalRequestedAt: tenant.withdrawalRequestedAt,
-        purgeStartedAt: now,
+        purgeStartedAt: marker,
         purgedAt: null,
         deletedCounts: "{}",
       })
@@ -274,7 +320,18 @@ async function purgeTenantSteps(q: Database | Transaction, params: PurgeTenantPa
   // 前回の途中までの行数に足し合わせる(D1 で途中から再開した場合。1トランザクションなら常に空から)
   const counts: TenantPurgeCounts = JSON.parse(record.deletedCounts) as TenantPurgeCounts;
 
+  /** 次のテーブルを消す前に、「削除中」の印がまだ自分のものであることを確かめる。 */
+  const assertMarker = async (): Promise<void> => {
+    const [row] = await q
+      .select({ requestedAt: tenants.withdrawalRequestedAt, startedAt: tenants.withdrawalPurgeStartedAt })
+      .from(tenants)
+      .where(eq(tenants.id, tenantId))
+      .limit(1);
+    if (!row || row.requestedAt === null || row.startedAt !== marker) throw new TenantPurgeMarkerLostError(tenantId);
+  };
+
   const deleteWhere = async (table: SQLiteTable, column: Column, value: string): Promise<void> => {
+    await assertMarker();
     const name = tableNameOf(table);
     const [row] = await q.select({ n: count() }).from(table).where(eq(column, value));
     await q.delete(table).where(eq(column, value));

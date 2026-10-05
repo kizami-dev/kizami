@@ -39,7 +39,8 @@
  *   「今この瞬間、この記録を消してよいか」の判断であり、常に**現在値**で評価するのが正しい。
  *   よって work_rules_url 等と同じ単純な現在値としてここに1列持つ。
  *   GET/PUT /settings/data-retention(apps/api/src/routes/settings/privacy.ts)が読み書きする。
- * - `withdrawal_requested_at` / `withdrawal_scheduled_purge_at` / `withdrawal_reminder_sent_at`
+ * - `withdrawal_requested_at` / `withdrawal_scheduled_purge_at` / `withdrawal_reminder_sent_at` /
+ *   `withdrawal_purge_started_at`
  *   (2026-10-05、テナントの退会 — docs/design/tenant-withdrawal.md): 退会の申請から物理削除までの
  *   **猶予期間の状態**。`withdrawal_requested_at` が null でなければ「退会手続き中」で、ログイン・打刻・
  *   日次ジョブが止まる。判断点: 別表(tenant_withdrawals 等)にはしない。状態は「今、手続き中か」の
@@ -89,6 +90,13 @@ export const tenants = sqliteTable("tenants", {
    * 埋めて、定期ジョブが何度走っても1通しか出さないための印。取り消すと null に戻す。
    */
   withdrawalReminderSentAt: integer("withdrawal_reminder_sent_at"),
+  /**
+   * 物理削除を始めた時刻(UTC エポック分)= 「削除中」の印。null = まだ始めていない。
+   * 削除は**条件付き UPDATE でこの印を取れた1行だけ**が進み、取り消しは印が null のときしか効かない
+   * (queries/tenant-withdrawal.ts の claimTenantPurge / cancelTenantWithdrawal)。確認と削除のすき間に
+   * 取り消しが入っても、削除の側には倒れない(2026-10-05 セキュリティレビュー、docs/design/tenant-withdrawal.md)。
+   */
+  withdrawalPurgeStartedAt: integer("withdrawal_purge_started_at"),
   /** UTC エポック分 */
   createdAt: integer("created_at").notNull(),
 });
