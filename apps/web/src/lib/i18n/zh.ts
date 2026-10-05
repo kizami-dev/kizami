@@ -2317,6 +2317,7 @@ export const zh = {
       cannot_erase_self: "无法清除自己的个人数据",
       forbidden: "没有执行此操作的权限",
       member_limit_reached: "成员数量已达上限。如需提高上限,请联系运营方",
+      invite_reset_limit_reached: "今日邀请及密码重置链接的发放数量已达上限。请明天或之后再试",
       default: "处理失败,请重试",
     },
   },

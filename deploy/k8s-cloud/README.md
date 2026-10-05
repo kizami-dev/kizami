@@ -64,7 +64,7 @@ Secret ではない設定値は `cloud.yaml` の api / worker の `env` に直�
 | `QUOTA_MAX_MEMBERS` | `50` | 在籍メンバー数(招待中を含む)の上限。Closed Beta の目安 |
 | `QUOTA_MAX_API_KEYS` | `20` | 有効な API キー数の上限 |
 | `QUOTA_OUTBOUND_NOTIFICATIONS_PER_DAY` | `2000` | 外向きの通知(Webhook・メール)の1日の送信数。api と worker の両方に同じ値 |
-| `QUOTA_INVITE_RESET_MAILS_PER_DAY` | `200` | 招待・パスワード再設定のメールの1日の送信数 |
+| `QUOTA_INVITE_RESET_MAILS_PER_DAY` | `200` | 管理者の招待・再設定リンクの1日の発行数 |
 
 利用上限はテナント共通の値で、Closed Beta の様子を見て調整する(テナントごとの個別設定は課金の段階で扱う)。
 上限に達した回数は `/metrics` の `kizami_quota_limit_hits_total{limit}` で見える。

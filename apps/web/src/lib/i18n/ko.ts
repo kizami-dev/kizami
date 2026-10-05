@@ -2337,6 +2337,7 @@ export const ko = {
       cannot_erase_self: "자기 자신의 개인 데이터는 지울 수 없습니다",
       forbidden: "이 작업을 수행할 권한이 없습니다",
       member_limit_reached: "멤버 수 상한에 도달했습니다. 상한 증설은 운영자에게 문의해 주세요",
+      invite_reset_limit_reached: "오늘 초대 및 비밀번호 재설정 링크 발급 건수의 상한에 도달했습니다. 내일 이후에 다시 시도해 주세요",
       default: "처리에 실패했습니다. 다시 시도해 주세요",
     },
   },

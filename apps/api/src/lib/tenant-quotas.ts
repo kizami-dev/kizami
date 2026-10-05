@@ -15,13 +15,31 @@
  * | `QUOTA_MAX_MEMBERS` | 在籍メンバー数(**招待中を含む**) | 招待・再有効化が 409 `member_limit_reached` |
  * | `QUOTA_MAX_API_KEYS` | 有効な API キー数 | 発行が 409 `api_key_limit_reached` |
  * | `QUOTA_OUTBOUND_NOTIFICATIONS_PER_DAY` | 外向きの通知(Webhook・メール)の1日の送信数 | 送信をやめ、管理者にアプリ内通知(1日1回) |
- * | `QUOTA_INVITE_RESET_MAILS_PER_DAY` | 招待・パスワード再設定のメールの1日の送信数 | メールを送らない(応答は変えない) |
+ * | `QUOTA_INVITE_RESET_MAILS_PER_DAY` | **管理者が行う**招待・パスワード再設定リンクの1日の発行数 | 発行が 409 `invite_reset_limit_reached` |
  *
  * 1日は日本時間の 0 時区切り。ブラウザプッシュとアプリ内通知は「外向きの通知」に数えない
  * (プッシュは本人のブラウザ宛、アプリ内は外部へ出ないため)。メンバー数に招待中を含めるのは、招待した時点で
  * users 行ができて席を占めるため(受諾を待って数えると、招待だけ大量に出して上限を回避できる)。
  *
- * ## 判定の精度
+ * ## 枠を消費できる操作(原則: 守りたい側の操作だけ)
+
+枠を消費できるのは、その枠で守りたい側(管理者・システム)の操作だけ。未認証の操作や一般メンバーの操作が、
+テナント全体の枠を使い切って管理者・業務を止められてはならない(上限そのものを妨害に使わせない)。
+
+| 操作 | 数える先 |
+| --- | --- |
+| システムが送る業務通知(打刻忘れ・36協定・有給・シフトのスキャン、承認依頼・結果の Webhook/メール) | テナントの外向きの通知の枠 |
+| 管理者の通知設定のテスト送信(`POST /settings/notifications/test`) | テナントの外向きの通知の枠(通知設定の管理権限が要る) |
+| 一般メンバーの個人 Webhook のテスト送信(`POST /settings/notifications/me/test`) | **本人ごとの1日 5 回**(テナントの枠は使わない) |
+| 管理者の招待・招待の再発行・パスワード再設定リンクの発行 | テナントの招待・再設定の枠 |
+| 未認証の本人用「パスワードを忘れた」 | **テナントの枠は使わない**(IP ごとのレート制限 + メールごとの 5 分スロットルで守る) |
+| メンバー数・API キー数 | 管理者の発行・招待だけが増やす(現在の数で判定。一般メンバーは増やせない) |
+
+残る注意: 一般メンバーの業務操作(修正申請・休暇申請など)が承認者宛の通知を起こし、それがテナントの枠に数えられる。
+通知の発生はメンバーの業務操作に紐づく(1操作 = 数件)ため大量には起こしにくいが、悪意のあるメンバーが申請を連打すれば
+消費しうる。必要になれば申請側のレート制限を足す。
+
+## 判定の精度
  *
  * 日次の送信数は 1 文の UPSERT で原子的に数える(上限を超えて通らない)。メンバー数・API キー数は「数えてから作る」
  * ので、同時リクエストで上限を数件超えうる(管理操作で頻度が低く、厳密さより単純さを取った)。
@@ -91,9 +109,17 @@ export interface TenantQuotas {
   checkApiKeyCapacity(db: Database, tenantId: string): Promise<CapacityVerdict>;
   /** 外向きの通知を1件送ってよいか(送るなら +1 する)。断ったら hit を記録し、その日の初回は管理者にアプリ内で知らせる */
   consumeOutboundNotification(db: Database, tenantId: string): Promise<boolean>;
-  /** 招待・再設定のメールを1通送ってよいか(送るなら +1 する)。断ったら hit を記録する */
+  /**
+   * 本人が起こす送信(個人 Webhook のテスト送信)をしてよいか。**本人ごとの1日の小さな上限**
+   * (`PERSONAL_TEST_SENDS_PER_DAY`)で、テナントの枠は使わない。外向きの通知の上限が設定されている配備だけで働く。
+   */
+  consumePersonalTestSend(db: Database, tenantId: string, userId: string): Promise<boolean>;
+  /** 管理者が行う招待・再設定リンクの発行をしてよいか(発行するなら +1 する)。断ったら hit を記録する */
   consumeInviteResetMail(db: Database, tenantId: string): Promise<boolean>;
 }
+
+/** 一般メンバーの個人 Webhook のテスト送信の、本人ごとの1日の上限。 */
+export const PERSONAL_TEST_SENDS_PER_DAY = 5;
 
 const NOTIFICATION_SETTINGS_PERMISSION = "notification.settings.manage";
 const QUOTA_NOTICE_TYPE = "quota_notification_limit";
@@ -161,6 +187,17 @@ export function createTenantQuotas(limits: TenantQuotaLimits, options: { nowMinu
       const allowed = await consumeDaily(db, tenantId, "outbound_notifications", limits.outboundNotificationsPerDay);
       if (!allowed) await notifyAdminsOutboundLimit(db, tenantId);
       return allowed;
+    },
+    async consumePersonalTestSend(db, tenantId, userId) {
+      if (limits.outboundNotificationsPerDay === undefined) return true;
+      return (
+        await consumeTenantDailyCounter(db, {
+          tenantId,
+          counterKey: `personal_test_send:${userId}`,
+          day: usageDayFromMinutes(nowMinutes()),
+          limit: PERSONAL_TEST_SENDS_PER_DAY,
+        })
+      ).allowed;
     },
     consumeInviteResetMail(db, tenantId) {
       return consumeDaily(db, tenantId, "invite_reset_mails", limits.inviteResetMailsPerDay);

@@ -77,7 +77,6 @@ import {
 import { createSession, setSessionCookie } from "../auth/session.js";
 import { getClientIp } from "../lib/client-ip.js";
 import { jsonPostGuard } from "../lib/json-post-guard.js";
-import type { TenantQuotas } from "../lib/tenant-quotas.js";
 import type { SystemMailSendFn } from "../lib/system-mail.js";
 import { nowMinutes } from "../lib/time.js";
 import { verifyTurnstile } from "../lib/turnstile.js";
@@ -91,11 +90,6 @@ export interface SelfServiceResetDeps {
   appBaseUrl: string;
   /** システムメールの送信関数(実装は node.ts が渡す。テストは偽実装) */
   sendMail: SystemMailSendFn;
-  /**
-   * 利用上限(招待・再設定のメールの1日の送信数、lib/tenant-quotas.ts)。省略 = 無制限。上限に達したテナントの
-   * アカウントは、トークンを発行せずメールにも含めない(応答は変えない — 列挙の手掛かりにしない)。
-   */
-  quotas?: TenantQuotas;
   /** Turnstile(secret / site key の両方が設定されている配備のみ。無ければ不要) */
   turnstile?: { secretKey: string; siteKey: string };
   /** Turnstile siteverify に使う fetch(テストの差し替え用。省略時は globalThis.fetch) */
@@ -167,8 +161,9 @@ async function processSelfServiceRequest(
 
     const resetUrls: string[] = [];
     for (const target of targets) {
-      // テナントごとの1日のメール上限。断ったテナントのアカウントは飛ばす(1通のメールに載せる分も数える)
-      if (deps.quotas && !(await deps.quotas.consumeInviteResetMail(db, target.tenantId))) continue;
+      // 未認証の本人用再設定は**テナントの利用上限(招待・再設定の枠)を消費しない**: 未認証の第三者が繰り返して
+      // 枠を使い切り、管理者の招待・再設定リンクを止められるため。守るのは IP ごとのレート制限と
+      // メールごとの 5 分スロットル(lib/tenant-quotas.ts 冒頭「枠を消費できる操作」)。
       const { token, hash } = await generatePasswordResetToken();
       await issueSelfServicePasswordResetToken(db, {
         tenantId: target.tenantId,
@@ -179,7 +174,6 @@ async function processSelfServiceRequest(
       });
       resetUrls.push(`${deps.appBaseUrl}/reset/${token}`);
     }
-    if (resetUrls.length === 0) return;
     await deps.sendMail(buildSelfServiceResetMail({ to: params.email, resetUrls }));
   } catch (err) {
     console.error("password-reset: self-service request failed:", err);

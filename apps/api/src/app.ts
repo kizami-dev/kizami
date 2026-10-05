@@ -320,7 +320,7 @@ export function createApp(deps: CreateAppDeps) {
   }
   app.route("/password-resets", createPasswordResetsRoutes(db, {
       secureCookies,
-      selfService: selfServiceReset ? { ...selfServiceReset, ...(quotas ? { quotas } : {}) } : null,
+      selfService: selfServiceReset ?? null,
       trustProxy,
     }));
 

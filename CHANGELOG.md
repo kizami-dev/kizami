@@ -35,10 +35,10 @@ API・DB スキーマの互換方針とアップグレード手順は
 
 - **テナントごとの利用上限**(環境変数 `QUOTA_*`、**未設定は無制限**。[docs/design/tenant-quotas.md](docs/design/tenant-quotas.md))
   - メンバー数(招待中を含む在籍者。超えると招待・再有効化が 409 `member_limit_reached`)・API キー数(409 `api_key_limit_reached`)・
-    外向きの通知(Webhook・メール)の1日の送信数・招待/再設定メールの1日の送信数。**打刻は止めない**
+    外向きの通知(Webhook・メール)の1日の送信数・招待/再設定リンクの1日の発行数(管理者の操作だけが枠を使う。未認証の本人用再設定と一般メンバーのテスト送信はテナントの枠を使わない)。**打刻は止めない**
   - 外向きの通知が上限に達したら送信をやめ、管理者にアプリ内通知を1日1回だけ出す
   - `/metrics` に `kizami_quota_limit_hits_total{limit}`(全テナント合計の上限到達回数)。新テーブル `tenant_usage_counters`(マイグレーション 0036 / pg 0011)
-  - KIZAMI Cloud の Closed Beta は メンバー 50 / API キー 20 / 通知 1日 2000 / 招待・再設定メール 1日 200
+  - KIZAMI Cloud の Closed Beta は メンバー 50 / API キー 20 / 通知 1日 2000 / 管理者の招待・再設定リンク 1日 200
 - **フレックスの総労働時間の決め方と不足の翌月繰越**([docs/design/work-systems.md](docs/design/work-systems.md)「フレックスの契約上の枠と不足の繰越」)
   - フレックスの制度の版に「総労働時間の決め方」(`totalHoursBasis`: `statutory_frame` = 法定の枠〔既定〕/
     `scheduled_days` = 所定日数 × 標準時間)と「不足を翌月に繰り越す」(`carryOverShortfall`、既定 false)を足した。
