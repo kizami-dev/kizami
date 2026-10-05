@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "waku";
 import { api, UnauthorizedError, type AuthTenant, type AuthUser } from "./api";
+import { isTenantWithdrawingError, setTenantWithdrawalNoticeFromTenant } from "./tenantWithdrawal";
 
 export type AuthGuardStatus = "loading" | "authed" | "error";
 
@@ -17,6 +18,10 @@ export interface AuthGuardResult {
 /**
  * 保護ページ用の認証ガード。マウント時に GET /me を確認し、未認証(401)なら
  * /login へ誘導する。それ以外のエラー(ネットワーク断等)は画面側に委ねる。
+ *
+ * 2026-10-05: 退会手続き中のテナントで退会の権限を持たない人のセッションは 401 `tenant_withdrawing`
+ * になる(docs/design/tenant-withdrawal.md)。ログイン画面へ戻すときに理由を出せるよう `?error=` を付ける。
+ * 読んだ退会の状態は、全画面のバナーのために lib/tenantWithdrawal.ts のストアへ置く。
  */
 export function useAuthGuard(): AuthGuardResult {
   const router = useRouter();
@@ -28,12 +33,14 @@ export function useAuthGuard(): AuthGuardResult {
     api
       .me()
       .then(({ user, tenant }) => {
-        if (!cancelled) setState({ status: "authed", user, tenant, error: null });
+        if (cancelled) return;
+        setTenantWithdrawalNoticeFromTenant(tenant);
+        setState({ status: "authed", user, tenant, error: null });
       })
       .catch((err: unknown) => {
         if (cancelled) return;
         if (err instanceof UnauthorizedError) {
-          router.push("/login");
+          router.push(isTenantWithdrawingError(err.body) ? "/login?error=tenant_withdrawing" : "/login");
           return;
         }
         setState({ status: "error", user: null, tenant: null, error: err });

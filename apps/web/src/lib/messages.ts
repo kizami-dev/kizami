@@ -179,3 +179,6 @@ export function mapShiftPlanCreateErrorMessage(body: unknown): string {
   }
   return mapShiftsErrorMessage(body);
 }
+
+/** テナントの退会(POST /tenant/withdrawal・/cancel、2026-10-05)のエラーマッピング。 */
+export const mapTenantWithdrawalErrorMessage = makeErrorMapper(() => messages.settingsWithdrawal.errors);

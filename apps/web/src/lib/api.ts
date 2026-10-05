@@ -98,9 +98,26 @@ export interface AuthUser {
   tenantId?: string;
 }
 
-/** GET /me が併せて返すテナント情報(2026-08-23 追加)。表示専用の最小限(社名のみ)。 */
+/** GET /me が併せて返すテナント情報(2026-08-23 追加)。表示専用の最小限(社名と退会の状態)。 */
 export interface AuthTenant {
   name: string | null;
+  /**
+   * 退会手続き中なら申請と削除予定の時刻(UTC エポック分)、通常の状態なら null
+   * (2026-10-05、docs/design/tenant-withdrawal.md)。手続き中は全画面にバナーを出す。
+   * 古い API(このフィールドが無い)では undefined になりうるので、null と同じに扱う。
+   */
+  withdrawal?: { requestedAt: number; scheduledPurgeAt: number } | null;
+}
+
+/** 退会の状態(GET /tenant/withdrawal ほか、apps/api/src/lib/tenant-withdrawal.ts の TenantWithdrawalState)。 */
+export type TenantWithdrawalStateDto = { status: "active" } | { status: "withdrawing"; requestedAt: number; scheduledPurgeAt: number };
+
+export interface TenantWithdrawalDto {
+  withdrawal: TenantWithdrawalStateDto;
+  /** 猶予期間(日)。申請から削除まで */
+  graceDays: number;
+  /** 申請・削除の前にメールが届く配備か(システムメールの有無) */
+  mailNotifications: boolean;
 }
 
 /**
@@ -1675,6 +1692,21 @@ export const api = {
     return request("/me");
   },
 
+  /** GET /tenant/withdrawal(tenant.withdraw、2026-10-05)。退会の状態。 */
+  async getTenantWithdrawal(): Promise<TenantWithdrawalDto> {
+    return request("/tenant/withdrawal");
+  },
+
+  /** POST /tenant/withdrawal。テナント名の再入力(サーバーでも照合する)を添えて退会を申請する。 */
+  async requestTenantWithdrawal(confirmTenantName: string): Promise<TenantWithdrawalDto> {
+    return request("/tenant/withdrawal", { method: "POST", body: JSON.stringify({ confirmTenantName }) });
+  },
+
+  /** POST /tenant/withdrawal/cancel。退会の申請を取り消す。 */
+  async cancelTenantWithdrawal(): Promise<TenantWithdrawalDto> {
+    return request("/tenant/withdrawal/cancel", { method: "POST" });
+  },
+
   /**
    * GET /me/effective-permissions(2026-08-23 API側新設)。認証ユーザー自身の実効権限の最終形
    * (プリセットの合算・「操作は閲覧を含意」の展開・セルフサービス権限込み)を返す。
@@ -2602,6 +2634,36 @@ export async function downloadAttendanceCsv(
   const disposition = res.headers.get("content-disposition") ?? "";
   const match = /filename="?([^";]+)"?/i.exec(disposition);
   const filename = match?.[1] ?? `kizami-${month}.csv`;
+  const blob = await res.blob();
+  return { blob, filename };
+}
+
+/**
+ * GET /tenant/export(tenant.withdraw、2026-10-05)を blob として取得する。全データの zip。
+ * JSON ではないので request<T> を使わない(downloadAttendanceCsv と同じ作法)。
+ */
+export async function downloadTenantExport(): Promise<AttendanceCsvDownload> {
+  let res: Response;
+  try {
+    res = await fetch(`${BASE_URL}/tenant/export`, { credentials: "include" });
+  } catch (cause) {
+    throw new ApiError(0, { error: "network_error", cause });
+  }
+  if (!res.ok) {
+    let body: unknown = null;
+    try {
+      body = await res.json();
+    } catch {
+      // レスポンスボディが無い/JSON でない場合は無視する
+    }
+    if (res.status === 401) {
+      throw new UnauthorizedError(body);
+    }
+    throw new ApiError(res.status, body);
+  }
+  const disposition = res.headers.get("content-disposition") ?? "";
+  const match = /filename="?([^";]+)"?/i.exec(disposition);
+  const filename = match?.[1] ?? "kizami-export.zip";
   const blob = await res.blob();
   return { blob, filename };
 }

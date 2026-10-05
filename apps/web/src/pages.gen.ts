@@ -66,6 +66,8 @@ import type { getConfig as File_SettingsSso_getConfig } from './pages/settings/s
 // prettier-ignore
 import type { getConfig as File_SettingsTenantProfile_getConfig } from './pages/settings/tenant-profile';
 // prettier-ignore
+import type { getConfig as File_SettingsWithdrawal_getConfig } from './pages/settings/withdrawal';
+// prettier-ignore
 import type { getConfig as File_Shifts_getConfig } from './pages/shifts';
 // prettier-ignore
 import type { getConfig as File_ShiftsMe_getConfig } from './pages/shifts/me';
@@ -108,6 +110,7 @@ type Page =
 | ({ path: '/settings/slack' } & GetConfigResponse<typeof File_SettingsSlack_getConfig>)
 | ({ path: '/settings/sso' } & GetConfigResponse<typeof File_SettingsSso_getConfig>)
 | ({ path: '/settings/tenant-profile' } & GetConfigResponse<typeof File_SettingsTenantProfile_getConfig>)
+| ({ path: '/settings/withdrawal' } & GetConfigResponse<typeof File_SettingsWithdrawal_getConfig>)
 | ({ path: '/shifts' } & GetConfigResponse<typeof File_Shifts_getConfig>)
 | ({ path: '/shifts/me' } & GetConfigResponse<typeof File_ShiftsMe_getConfig>)
 | ({ path: '/signup' } & GetConfigResponse<typeof File_Signup_getConfig>)

@@ -10,6 +10,7 @@ import { useSettingsAccess } from "../lib/useSettingsAccess";
 import { CorrectionsTabIcon, HomeTabIcon, MonthlyTabIcon, MoreTabIcon, PunchTabIcon } from "./NavIcons";
 import { KizamiMark } from "./KizamiMark";
 import { NotificationBell } from "./NotificationBell";
+import { TenantWithdrawalBanner } from "./TenantWithdrawalBanner";
 
 /**
  * "notifications"(通知一覧画面、2026-08-22 追加)はどのタブ・デスクトップナビにも対応させない
@@ -194,6 +195,9 @@ export function AppHeader({ displayName, email, tenantName, active }: AppHeaderP
           </details>
         </div>
       </header>
+
+      {/* 退会手続き中のお知らせ(2026-10-05)。全画面のヘッダーの直下に出す。通常の状態では何も描かない。 */}
+      <TenantWithdrawalBanner />
 
       {/* モバイルのみ表示(CSS でデスクトップ時 display:none)。 */}
       <nav className="k-tabbar" aria-label={messages.appName}>

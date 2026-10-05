@@ -47,6 +47,11 @@ export interface SettingsAccess {
   auditLogs: boolean;
   /** /settings/shift-patterns(v0.7 フェーズ3、2026-08-24 追加)。shift.manage(tenant スコープ)。 */
   shiftPatterns: boolean;
+  /**
+   * /settings/withdrawal(テナントの退会と全データのエクスポート、2026-10-05)。
+   * routes/tenant-withdrawal.ts が全エンドポイントで tenant.withdraw を tenant スコープで要求する。
+   */
+  withdrawal: boolean;
 }
 
 /**
@@ -118,5 +123,6 @@ export function useSettingsAccess(): SettingsAccess {
     // shift-patterns.ts が GET/POST/:id/archive すべてで SHIFT_MANAGE_PERMISSION を tenant
     // スコープで要求する(routes/settings/shift-patterns.ts 冒頭コメント参照)ため、それに揃える。
     shiftPatterns: has("shift.manage", "tenant"),
+    withdrawal: has("tenant.withdraw", "tenant"),
   };
 }
