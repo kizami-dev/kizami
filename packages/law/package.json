@@ -9,6 +9,7 @@
   },
   "scripts": {
     "test": "vitest run",
+    "update:holidays": "node scripts/update-national-holidays.mjs",
     "typecheck": "tsc --noEmit"
   }
 }
