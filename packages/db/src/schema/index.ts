@@ -27,6 +27,7 @@ export * from "./signup.js";
 export * from "./shifts.js";
 export * from "./slack.js";
 export * from "./tenant-usage.js";
+export * from "./tenant-purges.js";
 export * from "./tenants.js";
 export * from "./users.js";
 export * from "./worker-heartbeats.js";
