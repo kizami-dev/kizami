@@ -195,6 +195,7 @@ export default defineConfig({
           { text: "多段承認(承認フロー)", link: "/design/approval-flows" },
           { text: "マルチテナントとテナント分離", link: "/design/multi-tenancy" },
           { text: "退職者データの保持と消去", link: "/design/data-retention" },
+          { text: "テナントの退会", link: "/design/tenant-withdrawal" },
           { text: "SSO(OIDC)ログイン", link: "/design/sso-oidc" },
           { text: "二要素認証(TOTP)", link: "/design/two-factor-auth" },
           { text: "ブラウザプッシュ通知(Web Push)", link: "/design/web-push" },

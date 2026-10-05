@@ -13,7 +13,7 @@ API・DB スキーマの互換方針とアップグレード手順は
 
 ## [Unreleased]
 
-時短勤務への対応の第1段階(固定時間制)と第2段階(フレックスの契約上の枠と不足の繰越)。
+時短勤務への対応の第1段階(固定時間制)と第2段階(フレックスの契約上の枠と不足の繰越)、テナントの退会と全データのエクスポート。
 
 ### Security
 
@@ -39,6 +39,27 @@ API・DB スキーマの互換方針とアップグレード手順は
   - 外向きの通知が上限に達したら送信をやめ、管理者にアプリ内通知を1日1回だけ出す
   - `/metrics` に `kizami_quota_limit_hits_total{limit}`(全テナント合計の上限到達回数)。新テーブル `tenant_usage_counters`(マイグレーション 0036 / pg 0011)
   - KIZAMI Cloud の Closed Beta は メンバー 50 / API キー 20 / 通知 1日 2000 / 管理者の招待・再設定リンク 1日 200
+- **テナントの退会**([docs/design/tenant-withdrawal.md](docs/design/tenant-withdrawal.md))。申請 → 30日の猶予 → 物理削除
+  - 新しい危険権限 `tenant.withdraw`(テナント全体のみ。全データのエクスポートも同じ権限)。同梱プリセットでは管理者だけ。
+    既存のテナントへは `operator tenant sync-presets` で届ける
+  - 設定の「テナントの退会」(法令・記録)から、影響の列挙と会社名の再入力を経て申請する
+    (`POST /tenant/withdrawal`、監査ログ `tenant.withdrawal.request`)。取り消しは `POST /tenant/withdrawal/cancel`
+  - 退会手続き中は、`tenant.withdraw` を持つ人だけがログインでき(他の人の既存のセッションは 401 `tenant_withdrawing`)、
+    API キー・Slack の打刻、招待の受諾、管理者以外のパスワード再設定を断り、管理者も閲覧と取り消し以外の書き込みは
+    409。定期ジョブ(リマインド・36協定・有給・シフトの乖離・有給の予告)の対象から外す。管理者の全画面に削除予定の
+    お知らせを出す。セッションと API キーは消さないので、取り消せば元どおりに使える
+  - 削除予定(申請の30日後)を過ぎたら worker が物理削除する(ジョブ `tenant-withdrawal`)。tenant_id を持つ全テーブル・
+    確認済みのサインアップの記録・テナント行を外部キーの子から親の順に1トランザクションで消し(D1 では1文ずつ冪等に)、
+    個人情報を含まない削除の記録をシステム表 `tenant_purge_records` に残す。削除は条件付き UPDATE で「削除中」の印を
+    取れたときだけ進み、取り消しと競合したら消さない側に倒れる(削除中の取り消しは 409 `purge_in_progress`)。
+    スキーマから tenant_id を持つテーブルを列挙し、削除の一覧から漏れたらテストが落ちる
+  - 運用者 CLI: `tenant purge`(確認つきの今すぐ削除。`--after-restore` でバックアップの復元後の削除し直し)・
+    `tenant purges`(削除の記録)・`tenant sync-presets`。`tenant list` に削除予定を出す
+  - システムメールがある配備では、`tenant.withdraw` を持つ全員へ申請時・削除の7日前・削除後にメールを送る
+    (本文にテナント名などの入力を入れない)。worker にも `SYSTEM_SMTP_URL` / `SYSTEM_MAIL_FROM` / `APP_BASE_URL` が要る
+- **全データのエクスポート**(`GET /tenant/export`、`tenant.withdraw`、監査ログ `tenant.export`)。退会と関係なく使える。
+  全テーブルの JSON(パスワード・2FA・API キー・トークンのハッシュと暗号化した秘密は除く)、月ごとの集計 CSV
+  (汎用CSVと同じ列)、メンバーごと・月ごとの出勤簿相当の CSV を1つの zip にまとめる(依存に fflate〔MIT〕を足した)
 - **フレックスの総労働時間の決め方と不足の翌月繰越**([docs/design/work-systems.md](docs/design/work-systems.md)「フレックスの契約上の枠と不足の繰越」)
   - フレックスの制度の版に「総労働時間の決め方」(`totalHoursBasis`: `statutory_frame` = 法定の枠〔既定〕/
     `scheduled_days` = 所定日数 × 標準時間)と「不足を翌月に繰り越す」(`carryOverShortfall`、既定 false)を足した。
@@ -88,6 +109,10 @@ API・DB スキーマの互換方針とアップグレード手順は
 - **月次の日別の表に休日の印**。国民の祝日と、所定休日のカレンダーで個別に足した休日の日付を
   マゼンタにし、「祝」「休」の印を付ける(曜日による土日・営業日にした祝日・祝日を休日にしない
   設定のテナントでは付けない)。月次の応答に `holidayMarks`(日付 → `national` / `company`)を追加
+- **CSV エクスポートの数式インジェクション対策**。氏名などの入力値が `=` `+` `-` `@` タブ・CR で始まると、
+  表計算ソフトで開いたときに数式として評価されていた。先頭に `'` を付けて文字列として扱わせる(汎用・freee・MF の
+  勤怠の CSV と全データのエクスポート。数値・日付・時刻の列は変わらない)
+- `GET /me` の `tenant` に `withdrawal`(退会手続き中なら申請と削除予定の時刻、通常は `null`)を足した
 - **固定時間制の所定労働時間は 1〜480 分に制限する**(すべての版の追加の経路)。1日8時間を超える所定は
   通常の固定時間制では成り立たないため、`400 invalid_standard_day_minutes` を返す
 - `GET /members` の各メンバーに `workPolicyId` / `workPolicyName`、`GET /members/:id/work-policy` の各割当に

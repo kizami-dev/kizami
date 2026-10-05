@@ -168,13 +168,19 @@ pnpm --filter @kizami/api operator invite-code create [--max-uses N] [--expires-
 pnpm --filter @kizami/api operator invite-code list
 pnpm --filter @kizami/api operator invite-code revoke <id>
 pnpm --filter @kizami/api operator tenant list
+pnpm --filter @kizami/api operator tenant purge <tenant-id> [--confirm <tenant-id>] [--after-restore]
+pnpm --filter @kizami/api operator tenant purges
+pnpm --filter @kizami/api operator tenant sync-presets
 ```
 
 - 招待コードは `XXXX-XXXX-XXXX-XXXX`(紛らわしい文字を除いた32文字・80ビットの乱数)。**平文は `create` の
   出力に1度だけ**表示され、DB には SHA-256 のみ保存される(`list` に平文は出ない)。既定は1回限り・無期限。
 - 消費は確認完了のトランザクション内の条件付き UPDATE(失効・期限・上限を WHERE に含める)なので、
   同じコードを持つ pending が複数あっても、作られるテナント数は `max_uses` を超えない。
-- `tenant list` は id・名前・作成日・有効ユーザー数。suspend・プラン上書きは Phase 2(課金)で作る。
+- `tenant list` は id・名前・作成日・有効ユーザー数・退会手続き中なら削除予定。suspend・プラン上書きは Phase 2(課金)で作る。
+- `tenant purge` は退会を申請したテナントを予定を待たずに削除する(テナント id の再入力で確認)。
+  `tenant purges` は削除の記録の一覧。`tenant sync-presets` は全テナントの同梱プリセットに、権限カタログに
+  増えた権限(例 `tenant.withdraw`)を足す(デプロイの後に1回流す)。[テナントの退会](./tenant-withdrawal.md)
 
 ### システム表
 
@@ -217,7 +223,7 @@ pnpm --filter @kizami/api operator tenant list
 | 正常 / トライアル中 | ○ | ○ |
 | 支払い失敗(猶予期間) | ○ | ○ + 全画面バナー |
 | 猶予超過 / 無料枠超過 | ○(記録は守る) | ロック(閲覧のみ)。招待不可 |
-| 解約後 | エクスポート案内 → 一定期間後にテナント削除 | エクスポートのみ可 |
+| 解約後 | エクスポート案内 → 一定期間後にテナント削除([テナントの退会](./tenant-withdrawal.md)の流れに乗せる) | エクスポートのみ可 |
 
 ## 法務・運用の要件
 
@@ -239,14 +245,19 @@ pnpm --filter @kizami/api operator tenant list
    締めまで通ること。
 2. **Billing** — `packages/billing`(Checkout / Portal / Webhook / シート同期 / 執行)、
    法務ページ、トライアル・無料枠。
-3. **Public Launch** — テナント退会(下記ギャップ1)、招待コード撤廃、
+3. **Public Launch** — テナント退会(下記ギャップ1、対応済み)、招待コード撤廃、
    テナント別クォータ。
 
 ## 公開前に塞ぐべき既知のギャップ
 
-1. **テナント一括削除(退会)が未実装** — `member.erase` は個人単位のみ。
-   全データエクスポート→物理削除の退会フローは公開ローンチのブロッカー
-   ([退職者データの保持と消去](./data-retention.md) の対になるテナント版)。
+1. ~~**テナント一括削除(退会)が未実装**~~ — **対応済み(2026-10-05)**。申請 → 30日の猶予 → 物理削除。
+   猶予期間は全データのエクスポートと取り消しだけができ、管理者以外のログイン・打刻・通知は止まる。
+   削除は worker の定期ジョブ(または運用者 CLI の `tenant purge`)が、tenant_id を持つ全テーブルを
+   外部キーの子から親の順に1トランザクションで消し、個人情報を含まない記録だけを残す。
+   全データのエクスポート(JSON + 勤怠の CSV の zip)は通常の状態でも使える。
+   R2 のバックアップには削除済みのテナントが期限(最長400日)まで残るので、復元したときは削除し直す
+   (`deploy/k8s-cloud/README.md`「復旧手順」)。プライバシーポリシーに書く事項も含め、設計は
+   [テナントの退会](./tenant-withdrawal.md)。
 2. ~~**人ごとの所定労働時間(時短勤務)**~~ — **対応済み(固定時間制、2026-10-05)**。
    労働時間制の制度を名前付きで複数持てるようにし(例:「固定(8時間)」「固定・時短(6時間)」)、
    メンバーには制度を割り当てる形にした(`/settings/work-policies`、勤怠ルール画面の

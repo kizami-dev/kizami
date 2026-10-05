@@ -49,6 +49,8 @@ drizzle の `db.transaction(async (tx) => …)` は内部で `begin` を発行�
 | `apps/api/src/routes/leave.ts` | 休暇申請の承認・取消 |
 | `apps/api/src/routes/members.ts` | メンバーの停止・再開 |
 | `apps/api/src/routes/auto-break-waivers.ts` | 自動休憩控除の免除申請 |
+| `apps/api/src/routes/tenant-withdrawal.ts` | テナントの退会の申請・取り消し(全データのエクスポートは動く) |
+| `packages/db/src/queries/tenant-purge.ts` | テナントの物理削除(既定。`transactional: false` なら D1 でも1文ずつ冪等に動く — [tenant-withdrawal.md](./tenant-withdrawal.md)) |
 
 D1 が原子的な複数文実行に用意しているのは `batch()` だけで、drizzle の `db.transaction()` の
 ような命令的なコールバック API には自動変換できない。`batch()` へ書き換えると今度は
