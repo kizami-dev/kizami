@@ -44,6 +44,7 @@ import { and, eq } from "drizzle-orm";
 import { exportTenantData, leaveRequests, listTenantUsers, punchEvents, type Database, type MemberUser } from "@kizami/db";
 import type { DailyBreakdown } from "@kizami/engine";
 import { buildTenantMonthlyContext } from "./closing-amend.js";
+import { buildCsvRow } from "./csv.js";
 import { TZ_OFFSET_MINUTES_JST } from "./settings.js";
 import { nowMinutes } from "./time.js";
 import { calculateMonthlyForUser } from "../reminders.js";
@@ -105,15 +106,12 @@ async function recordMonthRangeByUser(db: Database, tenantId: string, currentMon
   return ranges;
 }
 
-/** RFC4180 のフィールドのエスケープ(routes/exports.ts と同じ規則)。 */
-function csvField(value: string | number | boolean): string {
-  const text = String(value);
-  return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
-}
-
-/** UTF-8 BOM + CRLF(Excel で開けるように。既存の CSV エクスポートと同じ)。 */
+/**
+ * UTF-8 BOM + CRLF(Excel で開けるように。既存の CSV エクスポートと同じ)。フィールドは lib/csv.ts の
+ * buildCsvRow を通す — 氏名などの入力値が数式として評価されないよう無害化する(数値の列は変えない)。
+ */
 function buildCsv(header: readonly string[], rows: ReadonlyArray<ReadonlyArray<string | number | boolean>>): string {
-  return "﻿" + [header, ...rows].map((r) => r.map(csvField).join(",")).join("\r\n") + "\r\n";
+  return "\uFEFF" + [header, ...rows].map((r) => buildCsvRow(r)).join("\r\n") + "\r\n";
 }
 
 /** UTC エポック分 → 日本時間の "YYYY-MM-DD HH:mm"。 */
