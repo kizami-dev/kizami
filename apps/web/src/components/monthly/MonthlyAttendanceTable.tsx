@@ -235,9 +235,13 @@ export function MonthlyAttendanceTable({ data, leaveByDate, onCorrect }: Monthly
               ];
               // 警告のある行は「Y」マーク(2026-08-23 廃止)の代わりに行全体の背景で示す
               // (warningLabel の文言そのものが隣にあり、非色覚的な手掛かりは既に足りている)。
+              const holidayMark = data.holidayMarks?.[day.date];
               const rowClassName =
                 [
                   day.isLegalHoliday ? "monthly-table__row--holiday" : null,
+                  // 祝日・会社の休日は日付をマゼンタにするが、行の意味(法定休日の割増)とは別物なので
+                  // クラスを分け、下の印(文字)で区別できるようにする
+                  !day.isLegalHoliday && holidayMark ? "monthly-table__row--scheduled-holiday" : null,
                   !day.isLegalHoliday && new Date(`${day.date}T00:00:00Z`).getUTCDay() === 6 ? "monthly-table__row--saturday" : null,
                   hasWarning ? "monthly-table__row--warning" : null,
                 ]
@@ -247,6 +251,9 @@ export function MonthlyAttendanceTable({ data, leaveByDate, onCorrect }: Monthly
                 <tr key={day.date} className={rowClassName}>
                   <td className="monthly-table__date">
                     {formatDateLabel(day.date)}
+                    {holidayMark ? (
+                      <span className="badge badge--neutral monthly-table__holiday-badge">{messages.monthly.holidayMark[holidayMark]}</span>
+                    ) : null}
                     {/* 承認済み休暇のマーカー(2026-08-23)。事前申請した将来の休暇日も
                         「この日は休みの予定」と月次から読めるようにする。時間単位は分数を添える。 */}
                     {(leaveByDate.get(day.date) ?? []).map((req) => (

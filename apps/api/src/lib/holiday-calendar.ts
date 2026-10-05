@@ -7,7 +7,8 @@
  */
 
 import { listScheduledHolidayCalendarVersions, type Database, type ScheduledHolidayCalendarVersion, type Transaction } from "@kizami/db";
-import type { CalendarTimelineSpan, ScheduledHolidayCalendar, Weekday } from "@kizami/engine";
+import { findCalendarForDate, type CalendarTimelineSpan, type ScheduledHolidayCalendar, type Weekday } from "@kizami/engine";
+import { isNationalHoliday } from "@kizami/law";
 
 const LOCAL_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -44,4 +45,37 @@ function parseJsonArray(raw: string, column: string): unknown[] {
 export async function buildCalendarTimeline(db: Database | Transaction, tenantId: string): Promise<CalendarTimelineSpan[]> {
   const rows = await listScheduledHolidayCalendarVersions(db, tenantId);
   return rows.map((row) => ({ from: row.effectiveFrom, calendar: parseCalendarVersion(row) }));
+}
+
+/**
+ * 月次の日別の表に付ける休日の印(2026-10-06 追加)。`national` = 国民の祝日、`company` = カレンダーで
+ * 個別に足した所定休日(年末年始など)。
+ *
+ * 判断点: 曜日による所定休日(土日)には印を付けない。表は曜日を見れば分かるうえ、土曜(C)・
+ * 法定休日(M)の色分けが既にあるため。印は「曜日だけでは分からない休日」に限る。
+ * カレンダーの extraWorkdays(祝日だが営業する日など)は印を付けない。
+ * 祝日を所定休日にしない設定(nationalHolidays=false)のテナントでは、祝日にも印を付けない —
+ * 表の印は「その会社にとって休日か」を表すもので、暦の注記ではないため。
+ */
+export type HolidayMark = "national" | "company";
+
+export async function buildHolidayMarks(
+  db: Database | Transaction,
+  params: { tenantId: string; year: number; month: number },
+): Promise<Record<string, HolidayMark>> {
+  const timeline = await buildCalendarTimeline(db, params.tenantId);
+  const marks: Record<string, HolidayMark> = {};
+  const lastDay = new Date(Date.UTC(params.year, params.month, 0)).getUTCDate();
+  const prefix = `${params.year}-${String(params.month).padStart(2, "0")}-`;
+  for (let d = 1; d <= lastDay; d++) {
+    const date = `${prefix}${String(d).padStart(2, "0")}`;
+    const calendar = findCalendarForDate(date, timeline);
+    if (calendar.extraWorkdays.includes(date)) continue;
+    if (calendar.extraHolidays.includes(date)) {
+      marks[date] = "company";
+    } else if (calendar.nationalHolidays && isNationalHoliday(date)) {
+      marks[date] = "national";
+    }
+  }
+  return marks;
 }

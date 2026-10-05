@@ -5,7 +5,7 @@
  *
  * 集計値そのものの正しさ(法定内・時間外の計算等)は他のテストが担う。ここでの関心は
  * 「返ってくるJSONの形」だけ: 新形のキー構成(user/workSystem/days/warnings/figures/
- * allowanceDefinitions/closing)になっていること、旧形のフラットなキー(totals/flexBalance/
+ * allowanceDefinitions/holidayMarks/closing)になっていること、旧形のフラットなキー(totals/flexBalance/
  * closed/amended等)がトップレベルに残っていないこと、figures.source が live/snapshot を
  * 正しく反映すること、amend 時のみ figures.original が現れること。
  */
@@ -28,7 +28,7 @@ async function postPunch(app: RequestLike, cookie: string, kind: string, occurre
 }
 
 describe("GET /attendance/monthly response contract", () => {
-  it("live (open) month: top-level keys are exactly {user, workSystem, days, warnings, figures, allowanceDefinitions, closing}; no legacy flat keys", async () => {
+  it("live (open) month: top-level keys are exactly {user, workSystem, days, warnings, figures, allowanceDefinitions, holidayMarks, closing}; no legacy flat keys", async () => {
     const { db, userId, email, password } = await setupTestDb();
     const app = createApp({ db });
     const cookie = await loginAndGetCookie(app, email, password);
@@ -40,7 +40,7 @@ describe("GET /attendance/monthly response contract", () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as Record<string, unknown>;
 
-    expect(new Set(Object.keys(body))).toEqual(new Set(["user", "workSystem", "days", "warnings", "figures", "allowanceDefinitions", "closing"]));
+    expect(new Set(Object.keys(body))).toEqual(new Set(["user", "workSystem", "days", "warnings", "figures", "allowanceDefinitions", "holidayMarks", "closing"]));
     // 旧形のキーが混入していないこと(互換層を残していないことの確認)。
     for (const legacyKey of ["totals", "flexBalance", "closed", "amended", "originalTotals", "originalFlexBalance", "originalAllowanceTotals", "allowanceTotals"]) {
       expect(body).not.toHaveProperty(legacyKey);

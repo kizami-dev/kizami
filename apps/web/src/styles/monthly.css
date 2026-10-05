@@ -250,11 +250,13 @@
 
 /* 休日の日付: 土曜は C、日曜・法定休日は M。太さ・書体は同じにそろえる */
 .monthly-table tr.monthly-table__row--holiday td:first-child,
+.monthly-table tr.monthly-table__row--scheduled-holiday td:first-child,
 .monthly-table tr.monthly-table__row--saturday td:first-child {
   font-weight: var(--weight-bold);
 }
 
-.monthly-table tr.monthly-table__row--holiday td:first-child {
+.monthly-table tr.monthly-table__row--holiday td:first-child,
+.monthly-table tr.monthly-table__row--scheduled-holiday td:first-child {
   color: var(--k-magenta-ink);
 }
 
@@ -669,12 +671,14 @@
  * 事前申請した将来の休暇は集計(フレックス枠算入)には効いていたのに月次の行では
  * 見えなかった — 「打刻が無いのに問題ない日」の理由を行自体が語れるようにする。
  */
-.monthly-table__leave-badge {
+.monthly-table__leave-badge,
+.monthly-table__holiday-badge {
   margin-left: var(--space-2);
 }
 
 @media (max-width: 640px) {
-  .monthly-table__leave-badge {
+  .monthly-table__leave-badge,
+  .monthly-table__holiday-badge {
     margin-left: var(--space-1);
   }
 }
