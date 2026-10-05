@@ -13,6 +13,36 @@ API・DB スキーマの互換方針とアップグレード手順は
 
 ## [Unreleased]
 
+時短勤務への対応の第1段階(固定時間制)。
+
+### Added
+
+- **名前付きの労働時間制の制度**([docs/design/work-systems.md](docs/design/work-systems.md)「名前付きの制度と時短勤務」)
+  - テナントは制度を名前付きで複数持てる(例:「固定(8時間)」「固定・時短(6時間)」)。
+    「一般は所定8時間、育児の短時間勤務の人だけ所定6時間」が表現できるようになった
+  - API: `GET/POST /settings/work-policies`、`PATCH /settings/work-policies/:id`(名前の変更・アーカイブ)、
+    `POST /settings/work-policies/:id/versions`(版の追加。過去の集計は変わらない)。
+    権限は勤怠ルールの労働時間制と同じ `tenant_settings.flex.manage`
+  - `POST /members/:id/work-policy` は `workPolicyId` で割当先の制度を指定できる。従来の `kind` 入力は
+    その種類の既定の制度への割当として残る。`POST /members`(招待)でも `workPolicyId` を任意で受け付ける
+  - 制度は削除せず、アーカイブ(新しい割当の選択肢に出さない)にとどめる。既定の制度(最も古い制度)は
+    アーカイブできない
+  - 監査ログ: `work_policy.create` / `work_policy.rename` / `work_policy.archive` / `work_policy.unarchive`。
+    `work_policy_version.create` と `member.work_policy.assign` の detail に制度の id と名前を足した
+  - 画面: 勤怠ルールに「労働時間制の制度」の区画(制度ごとのカードに所定・割当人数・版の履歴・版の追加)。
+    従来のフレックス設定の区画はフレックスの制度のカードに統合した。メンバーの詳細と招待のダイアログでは
+    制度を名前で選ぶ。ヘルプ「労働時間制と時間外の意味」に時短の制度の作り方を足した(5言語)
+
+### Changed
+
+- **固定時間制の所定労働時間は 1〜480 分に制限する**(すべての版の追加の経路)。1日8時間を超える所定は
+  通常の固定時間制では成り立たないため、`400 invalid_standard_day_minutes` を返す
+- `GET /members` の各メンバーに `workPolicyId` / `workPolicyName`、`GET /members/:id/work-policy` の各割当に
+  `workPolicyId` を足した。`POST /members/:id/work-policy` の応答にも制度の id と名前が入る
+- DB: `work_policies` に `archived_at`(integer、null 可)を足す(migration SQLite `0034`・PostgreSQL `0009`。
+  D1 は SQLite と同じファイル)。既存の行は null(使用中)のまま。既定の制度は従来どおり最も古い制度で、
+  データの書き換えは要らない
+
 ## [0.8.1] - 2026-10-05
 
 KIZAMI Cloud(PostgreSQL 構成)の入れ替え時の安定化。
