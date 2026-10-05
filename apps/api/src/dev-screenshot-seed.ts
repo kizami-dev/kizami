@@ -22,6 +22,7 @@
 
 import { eq } from "drizzle-orm";
 import {
+  requestTenantWithdrawal,
   authCredentials,
   departments as departmentsTable,
   leaveGrantProposals,
@@ -41,6 +42,27 @@ import {
 } from "@kizami/db";
 import { migrateDb } from "@kizami/db/node";
 import { hashPassword } from "./auth/password.js";
+import { bootstrapTenant, findUsersByEmail } from "./lib/tenant-bootstrap.js";
+
+/**
+ * 退会手続き中の別テナント(2026-10-05、docs/design/tenant-withdrawal.md)。設定の「テナントの退会」の
+ * 手続き中の表示と、全画面のお知らせを撮るためだけに作る。デモのテナントとは別の会社にして、
+ * 他の画面の撮影に影響させない。申請は5日前(削除予定は25日後)。冪等(既にあれば何もしない)。
+ */
+const WITHDRAWING_ADMIN_EMAIL = "withdrawing-admin@example.com";
+
+async function ensureWithdrawingTenant(db: Database, password: string): Promise<void> {
+  if ((await findUsersByEmail(db, WITHDRAWING_ADMIN_EMAIL)).length > 0) return;
+  const now = Math.floor(Date.now() / 60_000);
+  const { tenantId } = await bootstrapTenant(db, {
+    tenantName: "株式会社みなと商会",
+    adminEmail: WITHDRAWING_ADMIN_EMAIL,
+    adminPassword: password,
+    adminName: "港 一郎",
+  });
+  const requestedAt = now - 5 * 24 * 60;
+  await requestTenantWithdrawal(db, { tenantId, requestedAt, scheduledPurgeAt: requestedAt + 30 * 24 * 60 });
+}
 
 const MINUTES_PER_DAY = 1440;
 const TZ_OFFSET_MINUTES_JST = 9 * 60;
@@ -691,6 +713,9 @@ async function main(): Promise<void> {
   if (shiftProposalUserId && calendarProposalUserId) {
     await insertLeaveGrantProposals(db, { tenantId, shiftUserId: shiftProposalUserId, calendarUserId: calendarProposalUserId });
   }
+
+  const withdrawingPassword = process.env.WITHDRAWING_ADMIN_PASSWORD;
+  if (withdrawingPassword) await ensureWithdrawingTenant(db, withdrawingPassword);
 
   console.log(JSON.stringify({ users: createdUsers, departments: { hq: hqId, sales: salesId, dev: devId } }));
 }

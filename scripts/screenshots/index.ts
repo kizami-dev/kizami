@@ -87,7 +87,8 @@ async function main(): Promise<void> {
     console.log("[screenshots] [2/7] 追加ユーザー・部署・通知を直接投入中...");
     const extraSeedStdout = await runCommand("pnpm", ["--filter", "@kizami/api", "run", "dev:seed-screenshots"], {
       cwd: ROOT_DIR,
-      env: { ...commonEnv, ADMIN_EMAIL },
+      // WITHDRAWING_ADMIN_PASSWORD: 退会手続き中の別テナントの管理者(テナントの退会の画面・お知らせの撮影用)
+      env: { ...commonEnv, ADMIN_EMAIL, WITHDRAWING_ADMIN_PASSWORD: ADMIN_PASSWORD },
       logPrefix: "[extra seed]",
     });
     const jsonLine = extraSeedStdout
@@ -117,7 +118,16 @@ async function main(): Promise<void> {
     await waitForHttp(WEB_BASE_URL, { timeoutMs: 30_000 });
 
     console.log("[screenshots] [5/7] デモデータ(打刻・修正申請・有給・設定)を投入中...");
-    const { sessionCookie, fixedMemberSessionCookie, variableMemberSessionCookie, shortFlexMemberSessionCookie, variableMemberId, inviteToken, resetToken } =
+    const {
+      sessionCookie,
+      fixedMemberSessionCookie,
+      variableMemberSessionCookie,
+      shortFlexMemberSessionCookie,
+      withdrawingAdminSessionCookie,
+      variableMemberId,
+      inviteToken,
+      resetToken,
+    } =
       await seedHttp({
         apiBaseUrl: API_BASE_URL,
         extraUsers: extra.users,
@@ -133,6 +143,7 @@ async function main(): Promise<void> {
         "fixed-member": fixedMemberSessionCookie,
         "variable-member": variableMemberSessionCookie,
         ...(shortFlexMemberSessionCookie ? { "short-flex-member": shortFlexMemberSessionCookie } : {}),
+        "withdrawing-admin": withdrawingAdminSessionCookie,
       },
     });
 
