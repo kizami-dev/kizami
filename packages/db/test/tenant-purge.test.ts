@@ -43,7 +43,7 @@ const DAY = 24 * 60;
 
 /** スキーマの全テーブル(SQLiteTable)。 */
 function allTables(): SQLiteTable[] {
-  return Object.values(schema).filter((v): v is SQLiteTable => v instanceof SQLiteTable);
+  return Object.values(schema as Record<string, unknown>).filter((v): v is SQLiteTable => v instanceof SQLiteTable);
 }
 
 function hasTenantIdColumn(table: SQLiteTable): boolean {
