@@ -1675,6 +1675,8 @@ export const en = {
       monthly_variable: "Base scheduled hours (for paid leave, per day)",
     } satisfies Record<"flex" | "fixed" | "monthly_variable", string>,
     standardDayValue: (hm: string, minutes: number) => `${hm} (${minutes} min)`,
+    /** 変形労働時間制で基準所定が未設定(0)のとき。所定は日ごとのシフトで決まる。 */
+    standardDayByShift: "Set by the shift plan",
     assigneeCountLabel: "Members assigned (as of today)",
     assigneeCountValue: (count: number) => (count === 1 ? "1 member" : `${count} members`),
     currentEffectiveFrom: "This version took effect on",
@@ -2173,7 +2175,10 @@ export const en = {
     workPolicyHistoryColumnKind: "Type / scheduled",
     workPolicyFormTitle: "Change work system",
     workPolicyPolicyLabel: "Work-hour policy",
-    workPolicyOption: (name: string, kind: string, hm: string) => `${name} (${kind}, ${hm}/day)`,
+    workPolicyOption: (name: string, summary: string) => `${name} (${summary})`,
+    /** 制度の種類と1日の所定の要約(選択欄の下の補足・現在値・履歴)。 */
+    workPolicySummary: (kind: string, standard: string) => `${kind}, ${standard}`,
+    workPolicyStandardPerDay: (hm: string) => `${hm}/day`,
     workPolicyNoAssignable: "No policy can be assigned. Add one under Attendance rules.",
     workPolicyManageLink: "Add or edit work-hour policies →",
     workPolicyEffectiveFromLabel: "Effective from",

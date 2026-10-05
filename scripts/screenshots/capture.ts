@@ -199,6 +199,9 @@ async function captureOne(
       for (const el of Array.from(document.querySelectorAll<HTMLElement>("*"))) {
         if (el.scrollLeft !== 0) el.scrollLeft = 0;
       }
+      // 開いた区画へ縦にもスクロールしているため先頭へ戻す。戻さないと sticky の設定ナビが
+      // 全体撮影の途中(スクロール位置)に写り込む。
+      window.scrollTo(0, 0);
     });
     await page.waitForTimeout(400);
   }
