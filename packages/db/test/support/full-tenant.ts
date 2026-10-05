@@ -48,6 +48,7 @@ import {
   tenants,
   tenantSettingVersions,
   tenantSlackSettings,
+  tenantUsageCounters,
   userNotificationSettings,
   userPolicyAssignments,
   users,
@@ -268,6 +269,9 @@ export async function seedFullTenant(db: Database, label: string): Promise<FullT
   await db.insert(closingEvents).values({ id: closingEventId, tenantId, period: "2026-04", event: "close", actorId: adminId, occurredAt: 1 });
   await db.insert(closingEvents).values({ id: uuidv7(), tenantId, period: "2026-04", event: "amend", actorId: adminId, correctionRequestId: correctionId, leaveRequestId, occurredAt: 2 });
   await db.insert(closingSnapshots).values({ id: uuidv7(), tenantId, closingEventId, userId: memberId, category: "statutory", minutes: 480 });
+
+  // ---- 利用上限のカウンタ(外部キーなし) ----
+  await db.insert(tenantUsageCounters).values({ tenantId, counterKey: "outbound_notifications", day: 20_000, count: 3 });
 
   // ---- システム表のうちテナントを参照するもの(確認済みのサインアップの記録) ----
   await db.insert(pendingSignups).values({

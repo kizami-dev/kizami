@@ -9,6 +9,7 @@
  * ## 何を消すか
  *
  * - `TENANT_PURGE_ORDER` に並べた、tenant_id を持つ全テーブルの `tenant_id = 対象` の行
+ *   (外部キーを持たない利用上限のカウンタ tenant_usage_counters も含む)
  * - システム表のうち tenants を参照する `pending_signups` の行(下記「システム表」)
  * - 最後に tenants の行そのもの
  *
@@ -97,6 +98,7 @@ import {
   tenants,
   tenantSettingVersions,
   tenantSlackSettings,
+  tenantUsageCounters,
   userNotificationSettings,
   userPolicyAssignments,
   users,
@@ -163,6 +165,9 @@ export const TENANT_PURGE_ORDER: readonly SQLiteTable[] = [
   // テナントだけを参照するもの
   scheduledHolidayCalendarVersions,
   tenantSettingVersions,
+  // 利用上限のカウンタ(docs/design/tenant-quotas.md)。外部キーは無いが tenant_id を持つので同じ経路で消し、
+  // 削除の記録に行数を残す(queries/tenant-usage.ts の deleteTenantUsageCounters と同じ条件)
+  tenantUsageCounters,
   // 最後に users(上のほぼすべてが参照している)
   users,
 ];

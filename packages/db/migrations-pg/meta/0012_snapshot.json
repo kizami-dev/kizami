@@ -1,6 +1,6 @@
 {
-  "id": "56189dbb-c75e-47a7-a4ba-5bb36c4834d7",
-  "prevId": "f67b6432-fdd5-48be-a736-561afdb38a3c",
+  "id": "4ce8eb97-7b74-4831-8711-368a39005222",
+  "prevId": "2eaea6ff-d5e2-4199-8ed9-f679ff7d82bb",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -5058,6 +5058,69 @@
         }
       },
       "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.tenant_usage_counters": {
+      "name": "tenant_usage_counters",
+      "schema": "",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "counter_key": {
+          "name": "counter_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "day": {
+          "name": "day",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "count": {
+          "name": "count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        }
+      },
+      "indexes": {
+        "tenant_usage_counters_key_idx": {
+          "name": "tenant_usage_counters_key_idx",
+          "columns": [
+            {
+              "expression": "counter_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "tenant_usage_counters_tenant_id_counter_key_day_pk": {
+          "name": "tenant_usage_counters_tenant_id_counter_key_day_pk",
+          "columns": [
+            "tenant_id",
+            "counter_key",
+            "day"
+          ]
+        }
+      },
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},

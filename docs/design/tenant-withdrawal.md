@@ -47,7 +47,7 @@
 
 ### 何を消すか
 
-- tenant_id を持つ**全テーブル**の `tenant_id = 対象` の行(`TENANT_PURGE_ORDER`、42表)
+- tenant_id を持つ**全テーブル**の `tenant_id = 対象` の行(`TENANT_PURGE_ORDER`、43表。外部キーを持たない利用上限のカウンタ `tenant_usage_counters` も含め、削除の記録に行数を残す)
 - システム表 `pending_signups` のうち、そのテナントを作った確認済みの申込み(下記)
 - 最後に `tenants` の行そのもの
 
@@ -127,7 +127,7 @@ tenants への外部キーは張らない(参照先が消えた後に残るた�
 (`sessions` ごと、id がトークンのハッシュ)、2FA のリカバリコード(`user_totp_recovery_codes` ごと)・
 共有鍵とカウンタ、API キー・招待・パスワード再設定・Slack 連携のトークンのハッシュ、プッシュ通知の endpoint と鍵、
 暗号化して保存している秘密情報(会社・個人の Webhook の URL、SMTP のパスワード、SSO の client secret、
-Slack の signing secret)。
+Slack の signing secret)。利用上限の日ごとのカウンタ(`tenant_usage_counters`)も出さない(運用上の値で、業務データではない)。
 
 CSV は数式インジェクション対策(`lib/csv.ts`、先頭の `= + - @` タブ・CR に `'` を付ける。数値は変えない)を
 通す。既存の勤怠の CSV も同じ関数を通る。
