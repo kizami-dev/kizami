@@ -867,6 +867,13 @@ td.org-table__detail-cell {
   min-width: 12rem;
 }
 
+/* 制度の選択肢は「名前(種類・1日の所定)」で長くなるため、行の残りの幅を使って切れないようにする
+   (2026-10-05、名前付きの制度)。 */
+.member-work-policy__form .field:first-child {
+  flex: 1 1 18rem;
+  max-width: 32rem;
+}
+
 /* ---- 退職処理(無効化)の確認ダイアログの影響一覧(2026-08-23 Tier 0 その4 追加) ---- */
 
 .deactivate-confirm__impact {
