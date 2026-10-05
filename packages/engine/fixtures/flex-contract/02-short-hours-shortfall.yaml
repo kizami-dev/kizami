@@ -1,0 +1,20 @@
+# 時短フレックスで110時間しか働かなかった月(不足10時間)。繰り越さない設定なので、不足はこの月で確定する。
+name: 時短フレックス — 110時間(不足10時間がこの月で確定)
+law_reference: 労働基準法32条の3(フレックスタイム制)
+settings:
+  tz_offset: 540
+  day_boundary: "00:00"
+  legal_holiday: { weekday: sunday }
+  flex: { standard_day: "06:00", total_hours_basis: scheduled_days, carry_over_shortfall: false }
+calendar: { weekdays: [saturday, sunday], national_holidays: true }
+months:
+  - period: 2026-08
+    work:
+      - { dates: scheduled, in: "09:00", out: "15:30", break: ["12:00", "13:00"] } # 5時間30分 × 20日 = 6600
+    expected:
+      scheduled_work_days: 20
+      # 契約上の枠 7200 − 実績 6600 = 不足 600(10時間)。法定の枠(10628)と比べた不足 4028 ではない
+      totals: { statutory: 6600, overtime: 0, overtime60h: 0, lateNight: 0, statutoryHoliday: 0 }
+      flex_balance:
+        { frame: 7200, actual: 6600, diff: -600, statutory_frame: 10628, contract_frame: 7200, carry_in: 0, within_statutory_excess: 0, carry_out: 0, confirmed_shortfall: 600 }
+      warnings: []

@@ -21,3 +21,18 @@
 `golden.test.ts` の `readdirSync(fixturesDir)` がトップレベルの `.yaml` しか拾わない
 (ディレクトリはフィルタで自然に除外される)ことを利用して、既存ローダーでの
 誤パースを避けるため。
+
+## flex-contract/ サブディレクトリ
+
+`flex-contract/` 配下は、フレックスの**契約上の枠**(所定労働日数 × 標準労働時間)と
+**不足の翌月繰越**のフィクスチャ置き場(2026-10-05、docs/design/work-systems.md
+「フレックスの契約上の枠と不足の繰越」)。`test/flex-contract-golden.test.ts` が
+`test/support/load-flex-contract-fixture.ts` で読む。トップレベルのスキーマと違い、
+
+- `calendar`(所定休日のカレンダー)を持ち、所定労働日はエンジンの `listScheduledWorkDates` で数える
+- `months` に複数の月を並べられ、前の月の繰越(carry_out)を次の月の受け入れ(carry_in)に、
+  次の月の上乗せの余地を前の月の送り出しの上限に、順に渡して計算する
+- 打刻は `work`(日付の集合 × 出退勤・休憩)で生成できる
+
+既定(法定の枠)の制度が従来と1分も変わらないことは、`11-statutory-basis-unchanged.yaml` と
+`test/flex-contract.test.ts`(トップレベルの全フィクスチャで再確認)が固定している。

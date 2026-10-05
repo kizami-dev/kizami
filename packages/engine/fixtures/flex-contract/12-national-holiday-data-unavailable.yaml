@@ -1,0 +1,20 @@
+# 同梱している国民の祝日のデータ(内閣府の CSV)に無い年の月。祝日を所定休日にするカレンダーでも
+# その年の祝日は判定できないため、所定労働日として数えたうえで警告する(黙って「祝日なし」にしない)。
+# データの年次更新の手順は packages/law/scripts/update-national-holidays.mjs を参照。
+name: 祝日のデータが無い年 — 祝日を所定労働日として数え、警告する
+law_reference: 国民の祝日に関する法律
+settings:
+  tz_offset: 540
+  day_boundary: "00:00"
+  legal_holiday: { weekday: sunday }
+  flex: { standard_day: "06:00", total_hours_basis: scheduled_days, carry_over_shortfall: false }
+calendar: { weekdays: [saturday, sunday], national_holidays: true }
+months:
+  - period: 2099-01
+    # 2099-01 は31日・1日が木曜。土日9日 → 22日(元日・成人の日も判定できず所定労働日に入る)
+    expected:
+      scheduled_work_days: 22
+      totals: { statutory: 0, overtime: 0, overtime60h: 0, lateNight: 0, statutoryHoliday: 0 }
+      flex_balance:
+        { frame: 7920, actual: 0, diff: -7920, statutory_frame: 10628, contract_frame: 7920, carry_in: 0, within_statutory_excess: 0, carry_out: 0, confirmed_shortfall: 7920 }
+      warnings: [national_holiday_data_unavailable]

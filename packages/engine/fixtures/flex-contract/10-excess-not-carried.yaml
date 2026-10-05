@@ -1,0 +1,31 @@
+# 繰り越す設定でも、超過(余剰)は繰り越さない。8月の超過10時間は8月の法定内超過として
+# その月に精算され、9月の枠は減らない(当月の労働の賃金を翌月に回すことは労基法24条の全額払いに反する)。
+name: 不足の繰越 — 超過は繰り越さない
+law_reference: 労働基準法24条(賃金の全額払い)、昭和63年1月1日 基発1号
+settings:
+  tz_offset: 540
+  day_boundary: "00:00"
+  legal_holiday: { weekday: sunday }
+  flex: { standard_day: "06:00", total_hours_basis: scheduled_days, carry_over_shortfall: true }
+calendar: { weekdays: [saturday, sunday], national_holidays: true }
+months:
+  - period: 2026-08
+    work:
+      - { dates: scheduled, in: "09:00", out: "16:30", break: ["12:00", "13:00"] } # 6時間30分 × 20日 = 7800
+    expected:
+      scheduled_work_days: 20
+      totals: { statutory: 7800, overtime: 0, overtime60h: 0, lateNight: 0, statutoryHoliday: 0 }
+      flex_balance:
+        { frame: 7200, actual: 7800, diff: 600, statutory_frame: 10628, contract_frame: 7200, carry_in: 0, within_statutory_excess: 600, carry_out: 0, confirmed_shortfall: 0 }
+      warnings: []
+  - period: 2026-09
+    next_period_capacity: 0
+    work:
+      - { dates: scheduled, in: "09:00", out: "16:00", break: ["12:00", "13:00"] } # 6時間 × 19日 = 6840
+    expected:
+      scheduled_work_days: 19
+      # 8月の超過は来ないので、枠は契約上の枠 6840 のまま。実績 6840 → 過不足0
+      totals: { statutory: 6840, overtime: 0, overtime60h: 0, lateNight: 0, statutoryHoliday: 0 }
+      flex_balance:
+        { frame: 6840, actual: 6840, diff: 0, statutory_frame: 10285, contract_frame: 6840, carry_in: 0, within_statutory_excess: 0, carry_out: 0, confirmed_shortfall: 0 }
+      warnings: []

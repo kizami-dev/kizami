@@ -1,0 +1,42 @@
+# 2か月連続の繰越(7月 → 8月 → 9月)。8月は7月からの繰越を受け入れたうえで、自分も不足を出して9月へ送る。
+name: 不足の繰越 — 2か月連続で繰り越す
+law_reference: 労働基準法32条の3、昭和63年1月1日 基発1号
+settings:
+  tz_offset: 540
+  day_boundary: "00:00"
+  legal_holiday: { weekday: sunday }
+  flex: { standard_day: "06:00", total_hours_basis: scheduled_days, carry_over_shortfall: true }
+calendar: { weekdays: [saturday, sunday], national_holidays: true }
+months:
+  - period: 2026-07
+    work:
+      - { dates: scheduled, in: "09:00", out: "15:30", break: ["12:00", "13:00"] } # 5時間30分 × 22日 = 7260
+    expected:
+      # 2026-07: 31日・土日8日・海の日(7/20)→ 所定22日、契約上の枠 7920、法定の枠 10628
+      scheduled_work_days: 22
+      # 不足 660 → 8月の余地 3428 以内なので全額繰り越す
+      totals: { statutory: 7260, overtime: 0, overtime60h: 0, lateNight: 0, statutoryHoliday: 0 }
+      flex_balance:
+        { frame: 7920, actual: 7260, diff: -660, statutory_frame: 10628, contract_frame: 7920, carry_in: 0, within_statutory_excess: 0, carry_out: 660, confirmed_shortfall: 0 }
+      warnings: []
+  - period: 2026-08
+    work:
+      - { dates: scheduled, in: "09:00", out: "16:00", break: ["12:00", "13:00"] } # 6時間 × 20日 = 7200
+    expected:
+      scheduled_work_days: 20
+      # 枠 = 7200 + 660 = 7860。実績 7200 → 不足 660 → 9月の余地 3445 以内なので全額繰り越す
+      totals: { statutory: 7200, overtime: 0, overtime60h: 0, lateNight: 0, statutoryHoliday: 0 }
+      flex_balance:
+        { frame: 7860, actual: 7200, diff: -660, statutory_frame: 10628, contract_frame: 7200, carry_in: 660, within_statutory_excess: 0, carry_out: 660, confirmed_shortfall: 0 }
+      warnings: []
+  - period: 2026-09
+    next_period_capacity: 0
+    work:
+      - { dates: scheduled, in: "09:00", out: "16:30", break: ["12:00", "13:00"] } # 6時間30分 × 19日 = 7410
+    expected:
+      scheduled_work_days: 19
+      # 枠 = 6840 + 660 = 7500。実績 7410 → 不足 90。翌月の余地0なのでこの月で確定
+      totals: { statutory: 7410, overtime: 0, overtime60h: 0, lateNight: 0, statutoryHoliday: 0 }
+      flex_balance:
+        { frame: 7500, actual: 7410, diff: -90, statutory_frame: 10285, contract_frame: 6840, carry_in: 660, within_statutory_excess: 0, carry_out: 0, confirmed_shortfall: 90 }
+      warnings: []

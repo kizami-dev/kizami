@@ -38,6 +38,15 @@ export type * from "./types.js";
  */
 export { shiftScheduledMinutes } from "./variable.js";
 
+/**
+ * フレックスの契約上の枠(2026-10-05)のための純関数を公開 API に出す。API は「所定休日のカレンダー
+ * → 所定労働日」と「翌月が受け入れられる繰越の上限(翌月の法定の枠 − 契約上の枠)」を
+ * 計算する必要があり、枠と所定労働日の定義を apps/api 側で再実装するとエンジンとずれる余地が
+ * 生まれるため(shiftScheduledMinutes と同じ理由)。
+ */
+export { DEFAULT_SCHEDULED_HOLIDAY_CALENDAR, findCalendarForDate, listScheduledWorkDates, type ScheduledWorkDates } from "./calendar.js";
+export { computeFlexFrames, type FlexFrames } from "./flex.js";
+
 export function calculate(input: EngineInput): EngineOutput {
   const { workedSegments: rawWorkedSegments, breakSegments, warnings, stretches: rawStretches } = deriveSegments(
     input.punches,
@@ -183,12 +192,13 @@ export function calculate(input: EngineInput): EngineOutput {
     };
   }
 
-  const { totals, flexBalance } = calculateFlexBalance(
+  const { totals, flexBalance, warnings: flexWarnings } = calculateFlexBalance(
     days,
     input.settingsTimeline,
     input.lawTimeline,
     input.period,
     input.paidLeave,
+    input.flexContract,
   );
   // コアタイムの予実乖離(労基法32条の3、docs/design/work-systems.md「コアタイム」)。
   // totals・flexBalance には反映しない(コアタイムを外れても清算期間の総枠は変わらない)。
@@ -199,7 +209,9 @@ export function calculate(input: EngineInput): EngineOutput {
     totals,
     flexBalance,
     workSystem: "flex",
-    warnings: [...warnings, ...breakWarnings, ...coreTimeWarnings, ...mixedWarning],
+    // flexWarnings(契約上の枠の頭打ち・繰越の切り詰めなど)は粒度が「期間全体」なので、
+    // mixed_work_system と同じく末尾側に置く(上の「警告の合流順序」の判断点参照)。
+    warnings: [...warnings, ...breakWarnings, ...coreTimeWarnings, ...flexWarnings, ...mixedWarning],
     allowanceTotals,
   };
 }

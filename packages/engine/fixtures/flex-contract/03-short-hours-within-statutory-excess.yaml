@@ -1,0 +1,20 @@
+# 時短フレックスで130時間働いた月。契約上の枠(120時間)を超えた10時間は法定の枠の内側なので「法定内超過」。
+name: 時短フレックス — 130時間(法定内超過10時間、法定外0)
+law_reference: 労働基準法32条の3(フレックスタイム制)、労働基準法37条(割増賃金は法定労働時間を超えた部分)
+settings:
+  tz_offset: 540
+  day_boundary: "00:00"
+  legal_holiday: { weekday: sunday }
+  flex: { standard_day: "06:00", total_hours_basis: scheduled_days, carry_over_shortfall: false }
+calendar: { weekdays: [saturday, sunday], national_holidays: true }
+months:
+  - period: 2026-08
+    work:
+      - { dates: scheduled, in: "09:00", out: "16:30", break: ["12:00", "13:00"] } # 6時間30分 × 20日 = 7800
+    expected:
+      scheduled_work_days: 20
+      # 枠内 7200 + 法定内超過 600 = totals.statutory 7800。法定の枠(10628)以内なので法定外は0
+      totals: { statutory: 7800, overtime: 0, overtime60h: 0, lateNight: 0, statutoryHoliday: 0 }
+      flex_balance:
+        { frame: 7200, actual: 7800, diff: 600, statutory_frame: 10628, contract_frame: 7200, carry_in: 0, within_statutory_excess: 600, carry_out: 0, confirmed_shortfall: 0 }
+      warnings: []

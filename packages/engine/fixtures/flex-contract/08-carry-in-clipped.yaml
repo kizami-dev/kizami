@@ -1,0 +1,25 @@
+# 受け入れ側の守り: 前月から送られてきた繰越が、この月の上乗せの余地を超えていたら切り詰めて警告する。
+# 通常は送り出す側(前月)が翌月の余地で切り詰めるので起きないが、繰越を送り出した後に
+# この月の設定(標準労働時間・カレンダー)が変わると起こりうる。
+name: 不足の繰越 — 受け入れ側でも法定の枠を超えないよう切り詰める
+law_reference: 労働基準法32条の3、昭和63年1月1日 基発1号
+settings:
+  tz_offset: 540
+  day_boundary: "00:00"
+  legal_holiday: { weekday: sunday }
+  flex: { standard_day: "06:00", total_hours_basis: scheduled_days, carry_over_shortfall: true }
+calendar: { weekdays: [saturday, sunday], national_holidays: true }
+months:
+  - period: 2026-08
+    carry_in: 4000
+    next_period_capacity: 0
+    work:
+      - { dates: scheduled, in: "09:00", out: "16:00", break: ["12:00", "13:00"] } # 6時間 × 20日 = 7200
+    expected:
+      scheduled_work_days: 20
+      # 余地 3428 < 4000 → 受け入れは 3428(警告)。枠 = 7200 + 3428 = 10628(= 法定の枠)
+      # 実績 7200 → 不足 3428。翌月の余地0なので全額この月で確定
+      totals: { statutory: 7200, overtime: 0, overtime60h: 0, lateNight: 0, statutoryHoliday: 0 }
+      flex_balance:
+        { frame: 10628, actual: 7200, diff: -3428, statutory_frame: 10628, contract_frame: 7200, carry_in: 3428, within_statutory_excess: 0, carry_out: 0, confirmed_shortfall: 3428 }
+      warnings: [flex_carry_in_clipped]
