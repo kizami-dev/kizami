@@ -66,6 +66,13 @@ export interface BuildNotificationChannelsOptions {
    * 返る)。ブラウザプッシュとアプリ内通知は数えない。
    */
   quotas?: TenantQuotas;
+  /**
+   * 一般メンバーの申請(修正・休暇・自動休憩の打ち消し)が起こす送信のときに、申請者の userId を渡す。
+   * 指定すると、テナントの枠の前に**申請者本人ごとの1日の上限**を数える(`consumeMemberTriggeredOutbound`)。
+   * メンバー1人の連打でテナントの枠を使い切らせないため。承認・却下など承認者が起こす送信やシステムの送信では渡さない。
+   * `quotas` が無ければ何も数えない。
+   */
+  triggeredByMember?: string;
   /** smtp 送信関数(Node なら apps/api/src/lib/smtp.ts の nodemailerSendFn、テストなら偽実装)。省略時 smtp チャネルは作らない */
   smtpSendFn?: SmtpSendFn;
   /** テナントに tenant_notification_settings の行が1つも無い場合だけ使う webhook URL フォールバック(環境変数 WEBHOOK_URL)。buildTenantChannels のみで使う */
@@ -95,12 +102,17 @@ function withOutboundQuota(
   db: Database,
   tenantId: string,
   quotas: TenantQuotas | undefined,
+  triggeredByMember?: string,
 ): NotificationChannel {
   if (!quotas) return channel;
   return {
     name: channel.name,
     async send(msg) {
-      if (!(await quotas.consumeOutboundNotification(db, tenantId))) throw new NotificationQuotaExceededError();
+      const allowed =
+        triggeredByMember !== undefined
+          ? await quotas.consumeMemberTriggeredOutbound(db, tenantId, triggeredByMember)
+          : await quotas.consumeOutboundNotification(db, tenantId);
+      if (!allowed) throw new NotificationQuotaExceededError();
       await channel.send(msg);
     },
   };
@@ -140,7 +152,7 @@ export async function buildTenantChannels(
       const url = await decryptSecret(options.encryptor, settings.webhookUrl);
       if (url) {
         channels.push(
-          withOutboundQuota(webhookChannel(url, fetchOption(options.tenantFetchImpl ?? options.fetchImpl)), db, tenantId, options.quotas),
+          withOutboundQuota(webhookChannel(url, fetchOption(options.tenantFetchImpl ?? options.fetchImpl)), db, tenantId, options.quotas, options.triggeredByMember),
         );
       } else {
         console.warn(
@@ -181,6 +193,7 @@ export async function buildTenantChannels(
             db,
             tenantId,
             options.quotas,
+            options.triggeredByMember,
           ),
         );
       }
@@ -266,7 +279,7 @@ export async function buildPersonalChannels(
         options.smtpSendFn,
       );
       // 宛先を個人の解決済みアドレスに固定する(呼び出し元が渡す msg.to.email は無視する)。
-      const quotaSmtp = withOutboundQuota(smtp, db, tenantId, options.quotas);
+      const quotaSmtp = withOutboundQuota(smtp, db, tenantId, options.quotas, options.triggeredByMember);
       channels.push({
         name: smtp.name,
         send: (msg) => quotaSmtp.send({ ...msg, to: { email: emailAddress } }),
@@ -278,7 +291,7 @@ export async function buildPersonalChannels(
     const url = await decryptSecret(options.encryptor, prefsRow.webhookUrl);
     if (url) {
       channels.push(
-        withOutboundQuota(webhookChannel(url, fetchOption(options.tenantFetchImpl ?? options.fetchImpl)), db, tenantId, options.quotas),
+        withOutboundQuota(webhookChannel(url, fetchOption(options.tenantFetchImpl ?? options.fetchImpl)), db, tenantId, options.quotas, options.triggeredByMember),
       );
     } else {
       console.warn(

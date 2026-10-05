@@ -353,7 +353,7 @@ export function createCorrectionsRoutes(db: Database, deps: CorrectionsRoutesDep
         createdAt: created.createdAt,
       });
       if (notification) {
-        const channels = await buildPersonalChannels(db, { tenantId: user.tenantId, userId: approverId, notificationType }, deps);
+        const channels = await buildPersonalChannels(db, { tenantId: user.tenantId, userId: approverId, notificationType }, { ...deps, triggeredByMember: user.id });
         if (channels.length > 0) {
           await dispatch(channels, { to: {}, title, body: notificationBody });
         }
@@ -363,7 +363,7 @@ export function createCorrectionsRoutes(db: Database, deps: CorrectionsRoutesDep
     // テナント共有 Webhook にも1件(理由・時刻等の個人の詳細は書かない — ヘッダコメント参照)。
     // 承認者が(自己承認除外の結果)1人もいない場合でも、テナント側の共有チャネルが
     // 設定されていれば送る(buildTenantChannels が未設定なら自然に空配列になる)。
-    const tenantChannels = await buildTenantChannels(db, user.tenantId, deps);
+    const tenantChannels = await buildTenantChannels(db, user.tenantId, { ...deps, triggeredByMember: user.id });
     if (tenantChannels.length > 0) {
       await dispatch(tenantChannels, {
         to: {},

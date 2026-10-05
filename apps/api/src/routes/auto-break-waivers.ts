@@ -241,7 +241,7 @@ export function createAutoBreakWaiversRoutes(db: Database, deps: AutoBreakWaiver
         createdAt: created.createdAt,
       });
       if (notification) {
-        const channels = await buildPersonalChannels(db, { tenantId: user.tenantId, userId: approverId, notificationType }, deps);
+        const channels = await buildPersonalChannels(db, { tenantId: user.tenantId, userId: approverId, notificationType }, { ...deps, triggeredByMember: user.id });
         if (channels.length > 0) {
           await dispatch(channels, { to: {}, title, body: notificationBody });
         }
@@ -250,7 +250,7 @@ export function createAutoBreakWaiversRoutes(db: Database, deps: AutoBreakWaiver
 
     // テナント共有 Webhook にも1件(routes/corrections.ts の POST / と同じ判断: 承認者が
     // 1人もいなくてもテナント側の共有チャネルが設定されていれば送る)。
-    const tenantChannels = await buildTenantChannels(db, user.tenantId, deps);
+    const tenantChannels = await buildTenantChannels(db, user.tenantId, { ...deps, triggeredByMember: user.id });
     if (tenantChannels.length > 0) {
       await dispatch(tenantChannels, {
         to: {},

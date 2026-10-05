@@ -8,12 +8,12 @@
 
 import { eq } from "drizzle-orm";
 import { describe, expect, it, vi } from "vitest";
-import { notifications, type Database } from "@kizami/db";
+import { getTenantDailyCounter, notifications, upsertNotificationSettings, usageDayFromMinutes, type Database } from "@kizami/db";
 import { dispatch } from "@kizami/notify";
 import { createApp } from "../src/app.js";
 import { buildPersonalChannels, buildTenantChannels } from "../src/lib/notification-channels.js";
-import { createTenantQuotas, NotificationQuotaExceededError, parseQuotaEnv, PERSONAL_TEST_SENDS_PER_DAY } from "../src/lib/tenant-quotas.js";
-import { createTestDatabase, grantPermission, loginAndGetCookie, setupExtraUser, setupTestDb, testEncryptor } from "./support/setup.js";
+import { createTenantQuotas, MEMBER_TRIGGERED_SENDS_PER_DAY, NotificationQuotaExceededError, parseQuotaEnv, PERSONAL_TEST_SENDS_PER_DAY } from "../src/lib/tenant-quotas.js";
+import { createTestDatabase, grantPermission, jstMinutes, loginAndGetCookie, setupExtraUser, setupTestDb, testEncryptor } from "./support/setup.js";
 
 const NOW = Date.UTC(2026, 5, 15, 3, 0) / 60_000;
 
@@ -385,5 +385,104 @@ describe("一般メンバーの操作がテナントの枠を使い切れない"
     }
     const [over] = await dispatch(await build(), { to: {}, title: "t", body: "b" });
     expect(over?.ok).toBe(false);
+  });
+});
+
+describe("一般メンバーの申請が起こす承認依頼の通知(本人ごとの枠 + テナントの枠の二段)", () => {
+  const DAY = usageDayFromMinutes(NOW);
+  const tenantCount = (db: Database, tenantId: string) => getTenantDailyCounter(db, { tenantId, counterKey: "outbound_notifications", day: DAY });
+  const ownCount = (db: Database, tenantId: string, userId: string) =>
+    getTenantDailyCounter(db, { tenantId, counterKey: `member_triggered:${userId}`, day: DAY });
+
+  it("テナントの上限が未設定なら無制限(何も数えない)", async () => {
+    const { db, tenantId, userId } = await setupTestDb();
+    const quotas = createTenantQuotas({}, { nowMinutes: () => NOW, memberTriggeredSendsPerDay: 1 });
+    for (let i = 0; i < 5; i += 1) expect(await quotas.consumeMemberTriggeredOutbound(db, tenantId, userId)).toBe(true);
+    expect(await ownCount(db, tenantId, userId)).toBe(0);
+    expect(await tenantCount(db, tenantId)).toBe(0);
+  });
+
+  it("本人の上限(既定 100)で止まり、止まったあとはテナントの枠に触れず、管理者にも知らせない。hit は outbound_notifications に記録する", async () => {
+    const { db, tenantId, userId } = await setupTestDb();
+    await grantPermission(db, { tenantId, userId, permission: "notification.settings.manage", scope: "tenant" });
+    const quotas = createTenantQuotas({ outboundNotificationsPerDay: 100000 }, { nowMinutes: () => NOW });
+    for (let i = 0; i < MEMBER_TRIGGERED_SENDS_PER_DAY; i += 1) {
+      expect(await quotas.consumeMemberTriggeredOutbound(db, tenantId, userId)).toBe(true);
+    }
+    expect(await tenantCount(db, tenantId)).toBe(MEMBER_TRIGGERED_SENDS_PER_DAY);
+    for (let i = 0; i < 3; i += 1) expect(await quotas.consumeMemberTriggeredOutbound(db, tenantId, userId)).toBe(false);
+    expect(await tenantCount(db, tenantId)).toBe(MEMBER_TRIGGERED_SENDS_PER_DAY);
+    expect(await getTenantDailyCounter(db, { tenantId, counterKey: "hit:outbound_notifications", day: DAY })).toBe(3);
+    expect(await db.select().from(notifications).where(eq(notifications.type, "quota_notification_limit"))).toHaveLength(0);
+  });
+
+  it("本人ごとに別の枠を持つ(1人が使い切っても、もう1人は送れる)", async () => {
+    const { db, tenantId, userId } = await setupTestDb();
+    const other = await setupExtraUser(db, { tenantId, email: "m2@example.com", name: "M2" });
+    const quotas = createTenantQuotas({ outboundNotificationsPerDay: 100 }, { nowMinutes: () => NOW, memberTriggeredSendsPerDay: 2 });
+    expect(await quotas.consumeMemberTriggeredOutbound(db, tenantId, userId)).toBe(true);
+    expect(await quotas.consumeMemberTriggeredOutbound(db, tenantId, userId)).toBe(true);
+    expect(await quotas.consumeMemberTriggeredOutbound(db, tenantId, userId)).toBe(false);
+    expect(await quotas.consumeMemberTriggeredOutbound(db, tenantId, other.userId)).toBe(true);
+    expect(await quotas.consumeMemberTriggeredOutbound(db, tenantId, other.userId)).toBe(true);
+    expect(await quotas.consumeMemberTriggeredOutbound(db, tenantId, other.userId)).toBe(false);
+    expect(await tenantCount(db, tenantId)).toBe(4);
+  });
+
+  it("テナントの枠も1件ずつ数え、尽きたら本人の枠が残っていても断って管理者へ知らせる。本人の枠は戻さない", async () => {
+    const { db, tenantId, userId } = await setupTestDb();
+    await grantPermission(db, { tenantId, userId, permission: "notification.settings.manage", scope: "tenant" });
+    const quotas = createTenantQuotas({ outboundNotificationsPerDay: 2 }, { nowMinutes: () => NOW, memberTriggeredSendsPerDay: 10 });
+    expect(await quotas.consumeMemberTriggeredOutbound(db, tenantId, userId)).toBe(true);
+    expect(await quotas.consumeMemberTriggeredOutbound(db, tenantId, userId)).toBe(true);
+    expect(await quotas.consumeMemberTriggeredOutbound(db, tenantId, userId)).toBe(false);
+    expect(await tenantCount(db, tenantId)).toBe(2);
+    expect(await ownCount(db, tenantId, userId)).toBe(3);
+    expect(await db.select().from(notifications).where(eq(notifications.type, "quota_notification_limit"))).toHaveLength(1);
+    // 日本時間の 0 時を越えれば本人の枠もテナントの枠も数え直す
+    const next = createTenantQuotas({ outboundNotificationsPerDay: 2 }, { nowMinutes: () => NOW + 24 * 60, memberTriggeredSendsPerDay: 10 });
+    expect(await next.consumeMemberTriggeredOutbound(db, tenantId, userId)).toBe(true);
+  });
+
+  it("経路: メンバーが修正申請を連打しても、テナントの枠は本人の上限までしか減らず、承認者のアプリ内通知は作られ続ける", async () => {
+    const seeded = await setupTestDb();
+    const { db, tenantId } = seeded;
+    const encryptor = testEncryptor();
+    await upsertNotificationSettings(db, {
+      tenantId,
+      webhookEnabled: true,
+      webhookUrl: await encryptor.encrypt("https://hooks.example.com/tenant"),
+      smtpEnabled: false,
+      smtpHost: null,
+      smtpPort: null,
+      smtpUser: null,
+      smtpFrom: null,
+      smtpPassword: null,
+      updatedAt: 0,
+      updatedBy: seeded.userId,
+    });
+    // 承認者 = seeded のユーザー(テナント全体の承認権限)。申請者 = 一般メンバー
+    await grantPermission(db, { tenantId, userId: seeded.userId, permission: "attendance.correction.approve", scope: "tenant" });
+    const member = await setupExtraUser(db, { tenantId, email: "member@example.com", name: "Member" });
+    const CAP = 3;
+    const quotas = createTenantQuotas({ outboundNotificationsPerDay: 100 }, { nowMinutes: () => NOW, memberTriggeredSendsPerDay: CAP });
+    const fetchImpl = vi.fn(async () => new Response(null, { status: 200 }));
+    const app = createApp({ db, encryptor, quotas, notify: { fetchImpl: fetchImpl as unknown as typeof fetch } });
+    const cookie = await loginAndGetCookie(app, member.email, member.password);
+
+    for (let i = 0; i < CAP + 4; i += 1) {
+      const res = await json(app, cookie, "POST", "/corrections", {
+        proposedKind: "clock_in",
+        proposedOccurredAt: jstMinutes(2026, 4, 1, 9, i),
+        reason: "reason",
+      });
+      expect(res.status).toBe(201);
+    }
+    // 申請1件につきテナント共有 Webhook へ1件。本人の上限(CAP)までしか送られず、テナントの枠もそこまでしか減らない
+    expect(fetchImpl).toHaveBeenCalledTimes(CAP);
+    expect(await tenantCount(db, tenantId)).toBe(CAP);
+    // アプリ内通知は上限に関係なく、申請のたびに承認者へ作られる
+    const inApp = await db.select().from(notifications).where(eq(notifications.userId, seeded.userId));
+    expect(inApp.filter((n) => n.type === "approval_request_correction")).toHaveLength(CAP + 4);
   });
 });
