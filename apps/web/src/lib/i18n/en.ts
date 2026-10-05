@@ -607,6 +607,8 @@ export const en = {
     nextMonth: "Next month",
     columnDate: "Date",
     /** Column for punch times (clock in → clock out), added 2026-08-23. */
+    /** Marks for days off that the weekday alone does not show (national holidays and company days off from the calendar) */
+    holidayMark: { national: "Holiday", company: "Day off" },
     columnStretches: "Shift",
     /**
      * On wider viewports, the single "Shift" column splits into separate clock-in and

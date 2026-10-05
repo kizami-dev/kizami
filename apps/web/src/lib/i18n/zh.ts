@@ -579,6 +579,8 @@ export const zh = {
     nextMonth: "下月",
     columnDate: "日期",
     /** 打卡时间(上班→下班)列。 */
+    /** 仅凭星期无法判断的休息日标记(日本国民节日、在休息日日历中追加的休息日) */
+    holidayMark: { national: "节日", company: "休息日" },
     columnStretches: "工作时段",
     /**
      * 在较宽的视口下,将「工作时段」1列拆分为上班、下班2列。

@@ -345,6 +345,11 @@ export interface MonthlyAttendance {
   figures: MonthlyFigures;
   /** 定義ID → 名前(表示用、締め済み・未締めを問わず常に付く。締め保護の対象外)。 */
   allowanceDefinitions: Record<string, string>;
+  /**
+   * 日付 → 休日の印(2026-10-06)。`national` = 国民の祝日、`company` = 所定休日のカレンダーで
+   * 個別に足した休日。曜日による所定休日(土日)と、印の無い日はキー自体が無い。表示専用。
+   */
+  holidayMarks?: Record<string, "national" | "company">;
   closing: { closed: boolean; amended: boolean };
 }
 

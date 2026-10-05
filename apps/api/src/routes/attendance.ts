@@ -65,6 +65,7 @@ import { buildLawTimelineForTenant, buildSettingsTimelineWithBaseDayMinutes, TZ_
 import { makeLeaveStandardMinutesResolver } from "../lib/leave-minutes.js";
 import { computeMonthlyOutputForUser } from "../lib/closing-amend.js";
 import { resolveFlexContractInput } from "../lib/flex-contract.js";
+import { buildHolidayMarks } from "../lib/holiday-calendar.js";
 
 /** docs/design/permission-catalog.md §1.3(勤怠記録閲覧)。 */
 const RECORD_VIEW_PERMISSION = "attendance.record.view";
@@ -313,6 +314,10 @@ export function createAttendanceRoutes(db: Database) {
         computeMonthlyOutputForUser(db, { tenantId: user.tenantId, userId: targetUserId, ...previous, carryChainDepth }),
     );
 
+    // 日別の表に付ける休日の印(祝日・カレンダーで足した所定休日、lib/holiday-calendar.ts)。
+    // 集計には使わない表示専用の値なので、締め済みの月でもその時点のカレンダーから引く。
+    const holidayMarks = await buildHolidayMarks(db, { tenantId: user.tenantId, year, month });
+
     const input: EngineInput = {
       punches,
       settingsTimeline: effectiveSettingsTimeline,
@@ -390,6 +395,7 @@ export function createAttendanceRoutes(db: Database) {
             },
           },
           allowanceDefinitions,
+          holidayMarks,
           closing: { closed: true, amended: true },
         });
       }
@@ -401,6 +407,7 @@ export function createAttendanceRoutes(db: Database) {
         warnings: output.warnings,
         figures: { source: "snapshot", totals, flexBalance, fixedBreakdown, allowanceTotals, variablePeriod: null },
         allowanceDefinitions,
+        holidayMarks,
         closing: { closed: true, amended: false },
       });
     }
@@ -420,6 +427,7 @@ export function createAttendanceRoutes(db: Database) {
         variablePeriod: output.variablePeriod ?? null,
       },
       allowanceDefinitions,
+      holidayMarks,
       closing: { closed: false, amended: false },
     });
   });
