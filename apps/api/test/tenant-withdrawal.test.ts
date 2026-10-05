@@ -18,6 +18,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   auditLogs,
   authCredentials,
+  claimTenantPurge,
+  listTenantsDueForPurge,
   insertPunchEvent,
   invitations,
   passwordResetTokens,
@@ -36,7 +38,7 @@ import { bootstrapTenant } from "../src/lib/tenant-bootstrap.js";
 import { WITHDRAWAL_GRACE_MINUTES, WITHDRAWAL_REMINDER_LEAD_MINUTES } from "../src/lib/tenant-withdrawal.js";
 import { runLeaveGrantProposalScan } from "../src/leave-grant-proposals.js";
 import { listActiveUsers } from "../src/reminders.js";
-import { runTenantWithdrawalScan } from "../src/tenant-purge.js";
+import { purgeWithdrawnTenant, runTenantWithdrawalScan } from "../src/tenant-purge.js";
 import { grantPermission, jstMinutes, loginAndGetCookie, setupSecondUser, setupTestDb } from "./support/setup.js";
 
 const FIXED_NOW = new Date("2026-06-15T03:00:00.000Z");
@@ -423,6 +425,40 @@ describe("テナントの退会", () => {
       const retried = await runTenantWithdrawalScan(h.db, { nowMinutes: withdrawal.scheduledPurgeAt + 15, mailer: null });
       expect(retried.purgedTenantIds).toEqual([h.tenantId]);
       expect(await h.db.select().from(users).where(eq(users.tenantId, h.tenantId))).toEqual([]);
+    });
+  });
+
+  describe("確認と削除のすき間(TOCTOU)— 削除しない側に倒れる", () => {
+    it("削除の対象と確かめた後・削除の前に管理者が取り消すと、テナントは削除されず元どおりに使える", async () => {
+      const h = await harness();
+      const cookie = await loginAndGetCookie(h.app, h.admin.email, h.admin.password);
+      const { withdrawal } = await requestWithdrawal(h, cookie);
+
+      // 定期ジョブの「確認」(削除予定を過ぎたテナントの一覧)
+      const due = await listTenantsDueForPurge(h.db, { now: withdrawal.scheduledPurgeAt });
+      expect(due.map((t) => t.id)).toEqual([h.tenantId]);
+      // その直後に取り消しが入る
+      expect((await post(h.app, "/tenant/withdrawal/cancel", cookie)).status).toBe(200);
+      // 削除: 「削除中」の印を取れず、何も消さない
+      const result = await purgeWithdrawnTenant(h.db, { tenantId: h.tenantId, nowMinutes: withdrawal.scheduledPurgeAt, mailer: null });
+      expect(result.status).toBe("not_withdrawing");
+      expect(await h.db.select().from(users).where(eq(users.tenantId, h.tenantId))).toHaveLength(2);
+      expect((await login(h.app, h.member.email, h.member.password)).status).toBe(200);
+    });
+
+    it("削除が始まった(「削除中」の印がある)テナントの取り消しは 409 purge_in_progress。削除は次の実行で完了する", async () => {
+      const h = await harness();
+      const cookie = await loginAndGetCookie(h.app, h.admin.email, h.admin.password);
+      const { withdrawal } = await requestWithdrawal(h, cookie);
+      expect(await claimTenantPurge(h.db, { tenantId: h.tenantId, now: withdrawal.scheduledPurgeAt, requireDue: true })).not.toBeNull();
+
+      const cancel = await post(h.app, "/tenant/withdrawal/cancel", cookie);
+      expect(cancel.status).toBe(409);
+      expect(await cancel.json()).toEqual({ error: "purge_in_progress" });
+
+      const scan = await runTenantWithdrawalScan(h.db, { nowMinutes: withdrawal.scheduledPurgeAt + 15, mailer: null });
+      expect(scan.purgedTenantIds).toEqual([h.tenantId]);
+      expect(await h.db.select().from(tenants).where(eq(tenants.id, h.tenantId))).toEqual([]);
     });
   });
 

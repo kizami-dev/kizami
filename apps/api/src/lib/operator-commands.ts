@@ -145,10 +145,16 @@ export async function purgeTenantNow(
   params: { tenantId: string; confirmTenantId: string; nowMinutes: number; mailer: TenantWithdrawalMailer | null },
 ): Promise<
   | { status: "purged" | "already_purged"; record: TenantPurgeRecord; mailsSent: number }
-  | { status: "confirmation_mismatch" | "not_withdrawing" | "not_found" }
+  | { status: "confirmation_mismatch" | "not_withdrawing" | "not_claimed" | "not_found" }
 > {
   if (params.confirmTenantId.trim() !== params.tenantId) return { status: "confirmation_mismatch" };
-  const result = await purgeWithdrawnTenant(db, { tenantId: params.tenantId, nowMinutes: params.nowMinutes, mailer: params.mailer });
+  // 定期ジョブと同じ経路(「削除中」の印を条件付き UPDATE で取る)。予定の時刻だけを待たない。
+  const result = await purgeWithdrawnTenant(db, {
+    tenantId: params.tenantId,
+    nowMinutes: params.nowMinutes,
+    mailer: params.mailer,
+    requireDue: false,
+  });
   if (result.status === "purged" || result.status === "already_purged") {
     return { status: result.status, record: result.record, mailsSent: result.mailsSent };
   }

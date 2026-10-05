@@ -47,16 +47,26 @@ async function sendAll(mailer: TenantWithdrawalMailer, recipients: readonly stri
 
 /**
  * 退会を申請したテナント1つを物理削除し、システムメールがあれば完了を知らせる。
- * 削除予定の時刻は見ない(定期ジョブは予定を過ぎたテナントだけを渡し、運用者 CLI は待たずに渡す)。
+ * 削除予定の時刻は「削除中」の印を取る条件として purgeTenant が見る(`requireDue`)。
  */
 export async function purgeWithdrawnTenant(
   db: Database,
-  params: { tenantId: string; nowMinutes: number; mailer: TenantWithdrawalMailer | null; transactional?: boolean },
+  params: {
+    tenantId: string;
+    nowMinutes: number;
+    mailer: TenantWithdrawalMailer | null;
+    /** 削除予定の時刻を過ぎていることを求めるか(既定 true)。運用者 CLI の「今すぐ削除」だけが false */
+    requireDue?: boolean;
+    transactional?: boolean;
+  },
 ): Promise<PurgeTenantResult & { mailsSent: number }> {
   const recipients = params.mailer ? await listWithdrawalNoticeRecipients(db, params.tenantId) : [];
+  // 実際に消すかどうかは purgeTenant の中の条件付き UPDATE(「削除中」の印)で決まる。ここまでの確認の後に
+  // 取り消されていれば not_claimed で何も消さない(@kizami/db の purgeTenant「確認と削除のすき間」)。
   const result = await purgeTenant(db, {
     tenantId: params.tenantId,
     now: params.nowMinutes,
+    requireDue: params.requireDue ?? true,
     ...(params.transactional !== undefined ? { transactional: params.transactional } : {}),
   });
   let mailsSent = 0;

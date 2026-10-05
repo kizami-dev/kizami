@@ -140,7 +140,14 @@ export function createTenantWithdrawalRoutes(db: Database, deps: { mail: TenantW
       });
       return row;
     });
-    if (!cancelled) return c.json({ error: "not_withdrawing" }, 409);
+    if (!cancelled) {
+      // 削除が始まっている(「削除中」の印がある)テナントは取り消せない — 確認と削除のすき間で
+      // 取り消しと削除がぶつかったとき、削除の側にも取り消しの側にも中途半端に倒れないようにするため
+      // (@kizami/db の claimTenantPurge / cancelTenantWithdrawal)。
+      const tenant = await getTenantById(db, user.tenantId);
+      if (tenant?.withdrawalPurgeStartedAt != null) return c.json({ error: "purge_in_progress" }, 409);
+      return c.json({ error: "not_withdrawing" }, 409);
+    }
     return c.json({ withdrawal: withdrawalStateOf(cancelled), graceDays: WITHDRAWAL_GRACE_DAYS, mailNotifications: deps.mail !== null });
   });
 

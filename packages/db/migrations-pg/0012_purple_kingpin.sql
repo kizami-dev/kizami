@@ -1,0 +1,1 @@
+ALTER TABLE "tenants" ADD COLUMN "withdrawal_purge_started_at" integer;
