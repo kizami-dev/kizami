@@ -56,6 +56,9 @@ describe("GET/POST /settings/work-policy", () => {
       // シードの初版はコアタイムなし(スーパーフレックス)
       core: null,
       standardDayMinutes: 480,
+      // 総労働時間の決め方・不足の繰越(2026-10-05)。既存の版は既定値(法定の枠・繰り越さない)
+      totalHoursBasis: "statutory_frame",
+      carryOverShortfall: false,
       createdAt: 0,
     });
     expect(body.history).toHaveLength(1);

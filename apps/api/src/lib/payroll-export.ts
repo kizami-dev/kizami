@@ -101,9 +101,13 @@ export interface PayrollCategories {
  * 労働時間制ごとの扱い(判断点):
  * - **固定時間制**: 所定内 / 法定内残業の内訳をそのまま使う。
  * - **フレックス**: 日ごとの「所定」という概念が無く、清算期間の総枠との差分だけで時間外が決まる
- *   (docs/design/work-systems.md)。総枠内の労働(= `totals.statutory`)が実質的に所定内に
- *   あたるため、**所定内 = totals.statutory / 法定内残業 = 0** として出す。フレックスに
- *   「法定内残業」に相当する区分は存在しない(総枠を超えた瞬間に法定時間外になる)。
+ *   (docs/design/work-systems.md)。総労働時間の決め方が法定の枠(既定)なら、総枠内の労働
+ *   (= `totals.statutory`)が実質的に所定内にあたるため、**所定内 = totals.statutory /
+ *   法定内残業 = 0** として出す(総枠を超えた瞬間に法定時間外になる)。
+ *   契約上の枠(所定労働日数 × 標準時間、2026-10-05)の制度では、契約上の枠〜法定の枠が
+ *   **法定内超過**(`flexBalance.withinStatutoryExcessMinutes`)になるので、それを法定内残業に、
+ *   残り(totals.statutory − 法定内超過)を所定内に出す。法定の枠の制度では法定内超過が常に0なので、
+ *   この式は従来と同じ値を返す。
  * - **シフト制(monthly_variable)**: 内訳を持たない(routes/exports.ts の MonthlyFigures 参照)。
  *   フレックスと同じく totals.statutory を丸ごと所定内として出す。変形労働の期間時間外は
  *   既に `totals.overtime` に含まれている。
@@ -117,9 +121,11 @@ export function derivePayrollCategories(figures: PayrollFigures): PayrollCategor
   const extraWithinStatutory = figures.fixedExtraWithinStatutoryMinutes;
   const hasFixedBreakdown = withinScheduled !== null && extraWithinStatutory !== null;
 
+  // フレックスの法定内超過(契約上の枠の制度だけ非0。法定の枠の制度・シフト制では0)
+  const flexExcess = figures.flexBalance?.withinStatutoryExcessMinutes ?? 0;
   return {
-    withinScheduledMinutes: hasFixedBreakdown ? withinScheduled : totals.statutory,
-    extraWithinStatutoryMinutes: hasFixedBreakdown ? extraWithinStatutory : 0,
+    withinScheduledMinutes: hasFixedBreakdown ? withinScheduled : totals.statutory - flexExcess,
+    extraWithinStatutoryMinutes: hasFixedBreakdown ? extraWithinStatutory : flexExcess,
     // overtime60h は overtime の部分集合(上記 JSDoc 参照)。負にならないよう max を噛ませる
     // (法令版の切り替わり等で理論上ずれた場合でも「時間外がマイナス」という不正な CSV を出さない)。
     overtimeUpTo60hMinutes: Math.max(0, totals.overtime - totals.overtime60h),
@@ -157,10 +163,14 @@ export function formatDecimalHours(minutes: number): string {
 /**
  * フレックスの不足時間（分）。清算期間の総枠に足りなかった分を正の数で返す。
  * フレックス以外(内訳を持たない)では null。
+ *
+ * 2026-10-05(不足の繰越): 翌月へ繰り越した分はこの月の給与で控除しないため、**この月の不足として
+ * 確定した分**(`confirmedShortfallMinutes`)を出す。繰り越さない制度では不足そのもの
+ * (max(0, −diff))と同じ値なので、従来の出力は変わらない。
  */
 function flexShortageMinutes(figures: PayrollFigures): number | null {
   if (figures.flexBalance === null) return null;
-  return Math.max(0, -figures.flexBalance.diffMinutes);
+  return figures.flexBalance.confirmedShortfallMinutes;
 }
 
 /** 1ユーザー・1ヶ月分の行を組み立てるための入力。 */

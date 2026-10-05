@@ -22,6 +22,7 @@ import type { AppEnv } from "../../auth/middleware.js";
 import { registerAllowancesRoutes } from "./allowances.js";
 import { registerApprovalFlowRoutes } from "./approval-flow.js";
 import { registerAttendanceRoutes } from "./attendance.js";
+import { registerHolidayCalendarRoutes } from "./holiday-calendar.js";
 import { registerLeaveRoutes } from "./leave.js";
 import { registerNotificationsRoutes } from "./notifications.js";
 import { registerPrivacyRoutes } from "./privacy.js";
@@ -43,6 +44,8 @@ export function createSettingsRoutes(db: Database, deps: SettingsRoutesDeps = {}
   registerTenantProfileRoutes(app, db, deps);
   registerPrivacyRoutes(app, db, deps);
   registerAttendanceRoutes(app, db, deps);
+  // 所定休日のカレンダー(2026-10-05、フレックスの契約上の枠)。勤怠ルールと同じ権限。
+  registerHolidayCalendarRoutes(app, db, deps);
   registerWorkPolicyRoutes(app, db, deps);
   // 名前付きの労働時間制の制度(2026-10-05、時短勤務対応の第1段階)。パスは /work-policies で
   // 既存の /work-policy と重ならない。

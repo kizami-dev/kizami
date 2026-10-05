@@ -106,6 +106,12 @@ describe("GET /exports/attendance.csv", () => {
       "flex_diff_minutes",
       "fixed_within_scheduled_minutes",
       "fixed_extra_within_statutory_minutes",
+      "flex_statutory_frame_minutes",
+      "flex_contract_frame_minutes",
+      "flex_carry_in_minutes",
+      "flex_within_statutory_excess_minutes",
+      "flex_carry_out_minutes",
+      "flex_confirmed_shortfall_minutes",
       "closed",
     ]);
     expect(rows).toHaveLength(1);

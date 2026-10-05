@@ -63,6 +63,8 @@ import {
 } from "../lib/time.js";
 import { buildLawTimelineForTenant, buildSettingsTimelineWithBaseDayMinutes, TZ_OFFSET_MINUTES_JST } from "../lib/settings.js";
 import { makeLeaveStandardMinutesResolver } from "../lib/leave-minutes.js";
+import { computeMonthlyOutputForUser } from "../lib/closing-amend.js";
+import { resolveFlexContractInput } from "../lib/flex-contract.js";
 
 /** docs/design/permission-catalog.md §1.3(勤怠記録閲覧)。 */
 const RECORD_VIEW_PERMISSION = "attendance.record.view";
@@ -302,6 +304,15 @@ export function createAttendanceRoutes(db: Database) {
       minutes: resolveUsageMinutes(r.unit as LeaveUnit, leaveMinutes.forDate(r.leaveDate), r.minutes ?? undefined),
     }));
 
+    // フレックスの契約上の枠と不足の繰越(2026-10-05、lib/flex-contract.ts)。契約上の枠の制度で
+    // なければ undefined(追加の問い合わせもしない)。締め前の前月は computeMonthlyForUser で計算する。
+    const flexContract = await resolveFlexContractInput(
+      db,
+      { tenantId: user.tenantId, userId: targetUserId, year, month, settingsTimeline },
+      (previous, carryChainDepth) =>
+        computeMonthlyOutputForUser(db, { tenantId: user.tenantId, userId: targetUserId, ...previous, carryChainDepth }),
+    );
+
     const input: EngineInput = {
       punches,
       settingsTimeline: effectiveSettingsTimeline,
@@ -315,6 +326,7 @@ export function createAttendanceRoutes(db: Database) {
       // 以前は monthly_variable(shift_absence)だけに渡していたが、コアタイム不在
       // (core_time_absence、2026-08-24 追加)も同じ誤報を起こすため、制度によらず常に渡す。
       asOfDate: todayLocalDate(tz),
+      ...(flexContract ? { flexContract } : {}),
     };
 
     const output = calculate(input);

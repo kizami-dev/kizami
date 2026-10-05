@@ -17,7 +17,7 @@ import {
   type Transaction,
   type TenantSettingVersion,
 } from "@kizami/db";
-import type { BreakRule, CalcSettings, CoreTime, LawTimelineSpan, LegalHolidayRule, SettingsSpan, WorkSystem } from "@kizami/engine";
+import type { BreakRule, CalcSettings, CoreTime, FlexTotalHoursBasis, LawTimelineSpan, LegalHolidayRule, SettingsSpan, WorkSystem } from "@kizami/engine";
 import { buildLawTimeline } from "@kizami/law";
 
 /** Asia/Tokyo 固定(分)。テナントTZが設定可能になるのは v1.0 以降の想定。 */
@@ -47,6 +47,10 @@ export type WorkPolicyVersionRow = {
   /** work_policy_versions.core(コアタイムの JSON 文字列)。未設定なら null */
   core: string | null;
   standardDayMinutes: number;
+  /** work_policy_versions.flex_total_hours_basis("statutory_frame" | "scheduled_days"、2026-10-05) */
+  flexTotalHoursBasis: string;
+  /** work_policy_versions.flex_carry_over_shortfall(2026-10-05) */
+  flexCarryOverShortfall: boolean;
 };
 
 /**
@@ -101,6 +105,8 @@ export async function fetchWorkPolicyVersionRowsForTenant(db: Database | Transac
       settlementPeriod: workPolicyVersions.settlementPeriod,
       core: workPolicyVersions.core,
       standardDayMinutes: workPolicyVersions.standardDayMinutes,
+      flexTotalHoursBasis: workPolicyVersions.flexTotalHoursBasis,
+      flexCarryOverShortfall: workPolicyVersions.flexCarryOverShortfall,
     })
     .from(workPolicyVersions)
     .where(eq(workPolicyVersions.tenantId, tenantId))
@@ -270,6 +276,10 @@ export async function buildSettingsTimelineWithBaseDayMinutes(
                 // コアタイム(labor law §32-3、2026-08-24 追加)。列は flex のときだけ意味を持つ。
                 core: parseCoreTime(version.core),
                 standardDayMinutes: version.standardDayMinutes,
+                // 総労働時間の決め方・不足の繰越(2026-10-05、時短勤務の第2段階)。既定値
+                // (法定の枠・繰り越さない)のときはキー自体を付けない — engine の既定と同じ意味で、
+                // 既存の制度の SettingsSpan を2026-10-05より前と同じ形のまま保つため。
+                ...flexContractSettings(version),
               },
       breakRule: JSON.parse(tenantVersion.breakRule) as BreakRule,
     };
@@ -282,6 +292,21 @@ export async function buildSettingsTimelineWithBaseDayMinutes(
   }
 
   return { timeline, baseDayMinutes };
+}
+
+/**
+ * work_policy_versions の総労働時間の決め方・不足の繰越を engine の flex 設定へ写す。
+ * 未知の決め方(DB を直接書き換えた等)は例外にする — 契約上の枠は過不足・法定内超過という
+ * 集計値に直結するため、toWeekday と同じく「集計に効く値は黙って丸めない」側に倒す。
+ */
+function flexContractSettings(version: WorkPolicyVersionRow): { totalHoursBasis?: FlexTotalHoursBasis; carryOverShortfall?: boolean } {
+  if (version.flexTotalHoursBasis !== "statutory_frame" && version.flexTotalHoursBasis !== "scheduled_days") {
+    throw new Error(`invalid flex_total_hours_basis in work_policy_versions: ${version.flexTotalHoursBasis}`);
+  }
+  return {
+    ...(version.flexTotalHoursBasis === "scheduled_days" ? { totalHoursBasis: "scheduled_days" as const } : {}),
+    ...(version.flexCarryOverShortfall ? { carryOverShortfall: true } : {}),
+  };
 }
 
 /**

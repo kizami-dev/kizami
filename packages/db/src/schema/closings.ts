@@ -53,6 +53,13 @@ import { users } from "./users.js";
  * 参照)。この2つが無いと、月次 totals.statutory(所定内+法定内残業の合計)からは締めた瞬間に
  * 内訳が復元不能になる — 給与計算では基本給扱いか時間外手当扱いかが変わるため、締め済み月でも
  * 区別が要る(docs/design/work-systems.md 参照)。
+ *
+ * flexStatutoryFrame 〜 flexConfirmedShortfall(2026-10-05、フレックスの契約上の枠)は、総労働時間の
+ * 決め方が「所定日数 × 標準時間」(契約上の枠)のフレックスの月にだけ書かれる。法定の枠(既定)の
+ * 月は従来どおり flexFrame/flexActual/flexDiff の3行だけで、新しい6項目はそこから導ける値
+ * (法定の枠 = flexFrame、繰越・法定内超過は0、確定した不足 = 不足)になるため書かない —
+ * 2026-10-05 より前に締めた月のスナップショットもこの規則で読める(apps/api/src/lib/closing-snapshot.ts)。
+ * 列を足すマイグレーションは要らない(category が素の text のため)。
  */
 export const CLOSING_SNAPSHOT_CATEGORIES = [
   "statutory",
@@ -65,6 +72,12 @@ export const CLOSING_SNAPSHOT_CATEGORIES = [
   "flexDiff",
   "fixedWithinScheduled",
   "fixedExtraWithinStatutory",
+  "flexStatutoryFrame",
+  "flexContractFrame",
+  "flexCarryIn",
+  "flexWithinStatutoryExcess",
+  "flexCarryOut",
+  "flexConfirmedShortfall",
 ] as const;
 export type ClosingSnapshotCategory = (typeof CLOSING_SNAPSHOT_CATEGORIES)[number];
 

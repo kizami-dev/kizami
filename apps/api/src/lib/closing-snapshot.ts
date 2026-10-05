@@ -76,6 +76,21 @@ export function snapshotInputsFromEngineOutput(params: {
           { ...base, category: "flexDiff", minutes: output.flexBalance.diffMinutes },
         ];
 
+  // フレックスの契約上の枠(2026-10-05)。総労働時間の決め方が契約上の枠の月だけ6行を足す。
+  // 法定の枠(既定)の月は上の3行から導ける値しか持たないので書かない(packages/db の
+  // CLOSING_SNAPSHOT_CATEGORIES のコメント参照 — 行の有無が「決め方」の見分けになる)。
+  const flexContractRows: NewClosingSnapshotInput[] =
+    output.flexBalance === null || output.flexBalance.contractFrameMinutes === null
+      ? []
+      : [
+          { ...base, category: "flexStatutoryFrame", minutes: output.flexBalance.statutoryFrameMinutes },
+          { ...base, category: "flexContractFrame", minutes: output.flexBalance.contractFrameMinutes },
+          { ...base, category: "flexCarryIn", minutes: output.flexBalance.carryInMinutes },
+          { ...base, category: "flexWithinStatutoryExcess", minutes: output.flexBalance.withinStatutoryExcessMinutes },
+          { ...base, category: "flexCarryOut", minutes: output.flexBalance.carryOutMinutes },
+          { ...base, category: "flexConfirmedShortfall", minutes: output.flexBalance.confirmedShortfallMinutes },
+        ];
+
   const fixedBreakdown = output.workSystem === "fixed" ? sumFixedBreakdown(output.days) : null;
   const fixedRows: NewClosingSnapshotInput[] =
     fixedBreakdown === null
@@ -96,7 +111,7 @@ export function snapshotInputsFromEngineOutput(params: {
     minutes: t.minutes,
   }));
 
-  return [...timeRows, ...flexRows, ...fixedRows, ...allowanceRows];
+  return [...timeRows, ...flexRows, ...flexContractRows, ...fixedRows, ...allowanceRows];
 }
 
 export interface SnapshotTotals {
@@ -145,6 +160,8 @@ export function engineOutputFromSnapshots(snapshots: ClosingSnapshot[]): Snapsho
   let flexActualMinutes = 0;
   let flexDiffMinutes = 0;
   let hasFlexRow = false;
+  // 契約上の枠の6項目(2026-10-05)。行が無ければ法定の枠の月(または2026-10-05より前に締めた月)
+  const flexContract = new Map<string, number>();
   let fixedWithinScheduledMinutes = 0;
   let fixedExtraWithinStatutoryMinutes = 0;
   let hasFixedRow = false;
@@ -184,6 +201,14 @@ export function engineOutputFromSnapshots(snapshots: ClosingSnapshot[]): Snapsho
         hasFlexRow = true;
         flexDiffMinutes = row.minutes;
         break;
+      case "flexStatutoryFrame":
+      case "flexContractFrame":
+      case "flexCarryIn":
+      case "flexWithinStatutoryExcess":
+      case "flexCarryOut":
+      case "flexConfirmedShortfall":
+        flexContract.set(category, row.minutes);
+        break;
       case "fixedWithinScheduled":
         hasFixedRow = true;
         fixedWithinScheduledMinutes = row.minutes;
@@ -197,12 +222,51 @@ export function engineOutputFromSnapshots(snapshots: ClosingSnapshot[]): Snapsho
 
   return {
     totals,
-    flexBalance: hasFlexRow
-      ? { frameMinutes: flexFrameMinutes, actualMinutes: flexActualMinutes, diffMinutes: flexDiffMinutes }
-      : null,
+    flexBalance: hasFlexRow ? flexBalanceFromSnapshotValues(flexFrameMinutes, flexActualMinutes, flexDiffMinutes, flexContract) : null,
     fixedBreakdown: hasFixedRow
       ? { withinScheduledMinutes: fixedWithinScheduledMinutes, extraWithinStatutoryMinutes: fixedExtraWithinStatutoryMinutes }
       : null,
     allowanceTotals,
+  };
+}
+
+/**
+ * スナップショットの値から FlexBalance を組み立てる(2026-10-05)。
+ *
+ * 契約上の枠の行(flexContractFrame)が無い月は「法定の枠が基準」の月として、新しい項目を
+ * flexFrame/flexDiff から導く: 法定の枠 = 枠、契約上の枠 = null、繰越・法定内超過 = 0、
+ * 確定した不足 = 不足。エンジンが法定の枠の月について返す値と同じ(packages/engine の flex.ts)なので、
+ * 2026-10-05 より前に締めた月も、締めていない月と同じ形で読める。
+ */
+function flexBalanceFromSnapshotValues(
+  frameMinutes: number,
+  actualMinutes: number,
+  diffMinutes: number,
+  contract: ReadonlyMap<string, number>,
+): FlexBalance {
+  const contractFrameMinutes = contract.get("flexContractFrame");
+  if (contractFrameMinutes === undefined) {
+    return {
+      frameMinutes,
+      actualMinutes,
+      diffMinutes,
+      statutoryFrameMinutes: frameMinutes,
+      contractFrameMinutes: null,
+      carryInMinutes: 0,
+      withinStatutoryExcessMinutes: 0,
+      carryOutMinutes: 0,
+      confirmedShortfallMinutes: Math.max(0, -diffMinutes),
+    };
+  }
+  return {
+    frameMinutes,
+    actualMinutes,
+    diffMinutes,
+    statutoryFrameMinutes: contract.get("flexStatutoryFrame") ?? frameMinutes,
+    contractFrameMinutes,
+    carryInMinutes: contract.get("flexCarryIn") ?? 0,
+    withinStatutoryExcessMinutes: contract.get("flexWithinStatutoryExcess") ?? 0,
+    carryOutMinutes: contract.get("flexCarryOut") ?? 0,
+    confirmedShortfallMinutes: contract.get("flexConfirmedShortfall") ?? Math.max(0, -diffMinutes),
   };
 }

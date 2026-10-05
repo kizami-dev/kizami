@@ -79,6 +79,11 @@ const WARNING_LABEL: Readonly<Record<string, string>> = {
   duplicate_break_start: "休憩中に重複した休憩開始打刻があり、無効化されています",
   unmatched_break_end: "休憩中でない状態での休憩終了打刻があり、無効化されています",
   clock_out_during_break: "休憩中に退勤打刻があり、休憩を終えて退勤したものとして扱われています",
+  // フレックスの契約上の枠(2026-10-05)
+  flex_contract_frame_capped: "所定労働日数 × 標準労働時間が法定の枠を超えたため、法定の枠を契約上の枠にしています",
+  flex_carry_in_clipped: "前月から繰り越された不足が上乗せの余地を超えたため、法定の枠までに切り詰めました",
+  flex_carry_chain_truncated: "締めていない月をさかのぼる上限に達したため、それより前の繰越を0とみなしています(前の月を締めると解消します)",
+  national_holiday_data_unavailable: "この年の国民の祝日のデータが無いため、祝日を所定労働日として数えています",
 };
 
 export function warningLabel(kind: string): string {
