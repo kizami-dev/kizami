@@ -72,9 +72,11 @@ const EXPORT_PERMISSION = "export.attendance.run";
 
 /**
  * フレックスの契約上の枠と不足の繰越の列(2026-10-05、docs/design/work-systems.md)。
- * `fixed_extra_within_statutory_minutes` の後・手当の列の前に置く(手当の列は元から本数が動くので、
- * 列名で参照する取り込み側には影響しない。列の位置で取り込んでいる場合は、手当の列と `closed` が
- * 6列後ろにずれる — CHANGELOG に記載)。
+ *
+ * **行の末尾に足す**(判断点): 既存の列(手当の列と `closed`、`compare=original` の `original_` / `diff_` の
+ * 20列を含む)の位置は1つも動かさない。列の位置で取り込んでいる給与ソフトの設定やスクリプトが、
+ * 列の挿入で黙って別の値を読むようになるのを避けるため。並びは
+ * 「既存の列すべて → この6列 →(compare=original のとき)original_ の6列 → diff_ の6列」。
  *
  * - flex_statutory_frame_minutes: 法定の枠(週の法定労働時間 × 暦日数 ÷ 7)
  * - flex_contract_frame_minutes: 契約上の枠(所定労働日数 × 標準労働時間、法定の枠で頭打ち)。
@@ -133,14 +135,14 @@ const BASE_CSV_HEADER_BEFORE_ALLOWANCES = [
   "flex_diff_minutes",
   "fixed_within_scheduled_minutes",
   "fixed_extra_within_statutory_minutes",
-  ...FLEX_CONTRACT_COLUMNS,
 ];
 const CLOSED_COLUMN = "closed";
 
 /**
- * ?compare=original のときだけ末尾に追加する列。区分別5種+flex3種+固定内訳2種+フレックスの
- * 契約上の枠6種それぞれに original_ と diff_ の列を持つ(BASE_CSV_HEADER の値列と同じ並び・
- * 同じ16種で揃える)。
+ * ?compare=original のときだけ末尾に追加する列。区分別5種+flex3種+固定内訳2種それぞれに
+ * original_ と diff_ の列を持つ(BASE_CSV_HEADER の値列と同じ並び・同じ10種で揃える)。
+ * フレックスの契約上の枠6種の original_ / diff_ は、さらにその後ろ(行の末尾)に置く
+ * (FLEX_CONTRACT_COLUMNS のコメント参照)。
  */
 const COMPARE_CSV_HEADER = [
   "original_statutory_minutes",
@@ -153,7 +155,6 @@ const COMPARE_CSV_HEADER = [
   "original_flex_diff_minutes",
   "original_fixed_within_scheduled_minutes",
   "original_fixed_extra_within_statutory_minutes",
-  ...FLEX_CONTRACT_COLUMNS.map((name) => `original_${name}`),
   "diff_statutory_minutes",
   "diff_overtime_minutes",
   "diff_overtime60h_minutes",
@@ -164,6 +165,11 @@ const COMPARE_CSV_HEADER = [
   "diff_flex_diff_minutes",
   "diff_fixed_within_scheduled_minutes",
   "diff_fixed_extra_within_statutory_minutes",
+];
+
+/** compare=original のとき、行の末尾(契約上の枠の6列の後)に足す original_ / diff_ の列 */
+const COMPARE_FLEX_CONTRACT_HEADER = [
+  ...FLEX_CONTRACT_COLUMNS.map((name) => `original_${name}`),
   ...FLEX_CONTRACT_COLUMNS.map((name) => `diff_${name}`),
 ];
 
@@ -243,7 +249,6 @@ function buildRow({ user, period, current, closed, original, columns }: RowInput
     orEmpty(current.flexBalance?.diffMinutes ?? null),
     orEmpty(current.fixedWithinScheduledMinutes),
     orEmpty(current.fixedExtraWithinStatutoryMinutes),
-    ...flexContractValues(current.flexBalance).map(orEmpty),
     ...allowanceFieldsForColumns(current.allowanceTotals, columns),
     closed,
   ];
@@ -274,7 +279,6 @@ function buildRow({ user, period, current, closed, original, columns }: RowInput
       orEmpty(original.flexBalance?.diffMinutes ?? null),
       orEmpty(original.fixedWithinScheduledMinutes),
       orEmpty(original.fixedExtraWithinStatutoryMinutes),
-      ...flexContractValues(original.flexBalance).map(orEmpty),
       current.totals.statutory - original.totals.statutory,
       current.totals.overtime - original.totals.overtime,
       current.totals.overtime60h - original.totals.overtime60h,
@@ -285,8 +289,21 @@ function buildRow({ user, period, current, closed, original, columns }: RowInput
       diffFlex((f) => f.flexBalance?.diffMinutes),
       diffFixed((f) => f.fixedWithinScheduledMinutes),
       diffFixed((f) => f.fixedExtraWithinStatutoryMinutes),
-      // 契約上の枠の6種も、どちらかが空欄なら差分も空欄(fixed 系と同じ考え方)
-      ...FLEX_CONTRACT_COLUMNS.map((_, i) => diffFixed((f) => flexContractValues(f.flexBalance)[i] ?? null)),
+    );
+  }
+
+  // フレックスの契約上の枠の列は行の末尾(既存の列の位置を動かさない — FLEX_CONTRACT_COLUMNS 参照)。
+  fields.push(...flexContractValues(current.flexBalance).map(orEmpty));
+  if (original) {
+    const originalValues = flexContractValues(original.flexBalance);
+    const currentValues = flexContractValues(current.flexBalance);
+    fields.push(
+      ...originalValues.map(orEmpty),
+      // どちらかが空欄なら差分も空欄(fixed 系と同じ考え方)
+      ...currentValues.map((c, i): CsvField => {
+        const o = originalValues[i] ?? null;
+        return c !== null && o !== null ? c - o : "";
+      }),
     );
   }
 
@@ -424,7 +441,9 @@ function renderPayrollCsv(params: {
 function buildHeader(columns: readonly AllowanceColumn[], compareOriginal: boolean): string[] {
   const allowanceHeader = columns.map((col) => `allowance_${col.name}`);
   const base = [...BASE_CSV_HEADER_BEFORE_ALLOWANCES, ...allowanceHeader, CLOSED_COLUMN];
-  return compareOriginal ? [...base, ...COMPARE_CSV_HEADER] : base;
+  return compareOriginal
+    ? [...base, ...COMPARE_CSV_HEADER, ...FLEX_CONTRACT_COLUMNS, ...COMPARE_FLEX_CONTRACT_HEADER]
+    : [...base, ...FLEX_CONTRACT_COLUMNS];
 }
 
 export function createExportsRoutes(db: Database) {

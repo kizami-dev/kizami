@@ -42,6 +42,12 @@ async function getCsv(app: RequestLike, cookie: string, month: string, query = "
 }
 
 /** CRLF 区切り・先頭行=ヘッダの CSV をシンプルにパースする(引用符を含むフィールドは無い前提のテスト用)。 */
+/**
+ * 手当の列が無いときの `closed` 列の位置。2026-10-05 にフレックスの契約上の枠の6列を行の末尾に足したため、
+ * `closed` はもう最後の列ではない(既存の列の位置は変えていない)。
+ */
+const CLOSED_INDEX = 15;
+
 function parseCsv(text: string): { header: string[]; rows: string[][] } {
   const withoutBom = text.replace(/^﻿/, "");
   const lines = withoutBom.split("\r\n").filter((l) => l.length > 0);
@@ -106,13 +112,13 @@ describe("GET /exports/attendance.csv", () => {
       "flex_diff_minutes",
       "fixed_within_scheduled_minutes",
       "fixed_extra_within_statutory_minutes",
+      "closed",
       "flex_statutory_frame_minutes",
       "flex_contract_frame_minutes",
       "flex_carry_in_minutes",
       "flex_within_statutory_excess_minutes",
       "flex_carry_out_minutes",
       "flex_confirmed_shortfall_minutes",
-      "closed",
     ]);
     expect(rows).toHaveLength(1);
     const row = rows[0] as string[];
@@ -122,7 +128,7 @@ describe("GET /exports/attendance.csv", () => {
     expect(row[9]).toBe("flex"); // work_system
     expect(row[13]).toBe(""); // fixed_within_scheduled_minutes(フレックスなので空)
     expect(row[14]).toBe(""); // fixed_extra_within_statutory_minutes(フレックスなので空)
-    expect(row[row.length - 1]).toBe("false"); // closed
+    expect(row[CLOSED_INDEX]).toBe("false"); // closed
   });
 
   it("computes rows on-demand for an open month, and audit-logs the export", async () => {
@@ -136,7 +142,7 @@ describe("GET /exports/attendance.csv", () => {
 
     const { text: openText } = await getCsv(app, cookie, "2026-04");
     const openRow = parseCsv(openText).rows[0] as string[];
-    expect(openRow[openRow.length - 1]).toBe("false");
+    expect(openRow[CLOSED_INDEX]).toBe("false");
     // 9時間労働(休憩なし)→ statutory は8時間=480分に収まるはず
     expect(Number(openRow[4])).toBeGreaterThan(0);
 
@@ -165,7 +171,7 @@ describe("GET /exports/attendance.csv", () => {
 
     const { text: afterCloseText } = await getCsv(app, cookie, "2026-04");
     const afterRow = parseCsv(afterCloseText).rows[0] as string[];
-    expect(afterRow[afterRow.length - 1]).toBe("true"); // closed
+    expect(afterRow[CLOSED_INDEX]).toBe("true"); // closed
     expect(afterRow.slice(4, 9)).toEqual(beforeRow.slice(4, 9)); // 区分別時間数は締め前と一致
     expect(afterRow[9]).toBe(beforeRow[9]); // work_system
     expect(afterRow.slice(10, 13)).toEqual(beforeRow.slice(10, 13)); // flex収支は締め前と一致
@@ -226,7 +232,7 @@ describe("GET /exports/attendance.csv", () => {
     const { rows } = parseCsv(afterCloseText);
     expect(rows).toHaveLength(1);
     const afterRow = rows[0] as string[];
-    expect(afterRow[afterRow.length - 1]).toBe("true"); // closed
+    expect(afterRow[CLOSED_INDEX]).toBe("true"); // closed
     // 本題: 締め済み月でも fixed 列が空文字に潰れず、締め前と同じ実値のまま出る。
     expect(afterRow[13]).not.toBe("");
     expect(afterRow[14]).not.toBe("");

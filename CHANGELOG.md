@@ -76,9 +76,9 @@ API・DB スキーマの互換方針とアップグレード手順は
   は常に成り立つ
 - **CSV(generic)に6列を足した**: `flex_statutory_frame_minutes` / `flex_contract_frame_minutes` /
   `flex_carry_in_minutes` / `flex_within_statutory_excess_minutes` / `flex_carry_out_minutes` /
-  `flex_confirmed_shortfall_minutes`。位置は `fixed_extra_within_statutory_minutes` の後・手当の列の前で、
-  **手当の列と `closed` が6列後ろにずれる**(列名で取り込んでいれば影響なし)。`compare=original` の
-  `original_` / `diff_` にも同じ6列を足した
+  `flex_confirmed_shortfall_minutes`。**行の末尾に6列を追加し、既存の列の位置は変えない**
+  (手当の列・`closed`・`compare=original` の既存の `original_` / `diff_` の列より後ろ)。`compare=original` の
+  ときは、さらにその後ろに同じ6列の `original_` / `diff_` を足す
 - **freee 形式の「不足時間（分）」は、その月の不足として確定した分**(翌月へ繰り越した分を除く)。
   契約上の枠の制度では法定内超過を「法定内残業時間（分）」に出す。繰り越さない・法定の枠の制度では従来と同じ値
 - 36協定の見込み(月の途中のアラート)は、フレックスでは法定の枠と比べる(契約上の枠の制度で法定内超過を
