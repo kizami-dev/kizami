@@ -39,6 +39,11 @@ export interface SeedHttpResult {
   fixedMemberSessionCookie: string;
   /** v0.7: シフト制メンバー(member3)としてログインしたセッション(shifts-me・monthly-variable 画面用)。 */
   variableMemberSessionCookie: string;
+  /**
+   * 2026-10-05: 時短フレックス(契約上の枠・不足の繰越)のメンバー(member5)としてログインした
+   * セッション(monthly-flex-contract 画面用)。member5 が作られていなければ null。
+   */
+  shortFlexMemberSessionCookie: string | null;
   /** v0.7: シフト制メンバー(member3)のuserId。管理者の /shifts?userId= ディープリンク撮影用。 */
   variableMemberId: string;
   /** v0.7: 確定済みシフト表のID(将来の履歴画面撮影等で使う可能性を見込んで返しておく)。 */
@@ -110,6 +115,10 @@ export async function seedHttp(params: SeedHttpParams): Promise<SeedHttpResult> 
   // 時短勤務のデモメンバー(2026-10-05、名前付きの制度)。制度の割当は dev-screenshot-seed.ts が済ませている。
   const member4Id = byKey.get("member4");
   if (member4Id) await client.assignMemberPresets(member4Id, [memberPreset.id]);
+  // 時短フレックスのデモメンバー(2026-10-05、契約上の枠と不足の繰越)。制度の割当は dev-screenshot-seed.ts。
+  const member5Id = byKey.get("member5");
+  const member5Email = emailByKey.get("member5");
+  if (member5Id) await client.assignMemberPresets(member5Id, [memberPreset.id]);
 
   // 入社日を設定(法定付与の自動計算に必要)。管理者は約7年前入社にして複数回ぶんの
   // 付与履歴(6ヶ月・1.5年・2.5年…)が一度に生成されるようにする(有給休暇画面を賑やかにする独自判断)。
@@ -202,6 +211,26 @@ export async function seedHttp(params: SeedHttpParams): Promise<SeedHttpResult> 
       reason: "私用のため",
     });
     await client.approveLeaveRequest(prevLeaveReq.request.id);
+  }
+
+  // 時短フレックスのメンバー(member5、標準6時間・所定日数 × 標準時間・不足を翌月に繰り越す)。
+  // 先月は平日に5時間ずつ、月末の3日は休んで不足を出す → 締めのスナップショットに「翌月へ繰越」が
+  // 残り、今月の月次に「前月からの繰越」として上乗せされる(2026-10-05)。締めより前に打刻する。
+  let shortFlexMemberSessionCookie: string | null = null;
+  if (member5Email) {
+    const shortFlexClient = new ApiClient(params.apiBaseUrl);
+    await shortFlexClient.login(member5Email, ADMIN_PASSWORD);
+    for (const date of prevMonthAllWeekdays.slice(0, -3)) {
+      await punchNormalDay(shortFlexClient, date, { start: 9, end: 15, breakStart: 12, breakEnd: 13 });
+    }
+    // 今月の過去の平日は6時間30分ずつ(契約上の枠を超えた分が法定内超過として写る)。
+    for (const date of weekdaysBeforeTodayInCurrentMonth()) {
+      await shortFlexClient.punch("clock_in", jstMinutes(date, 9, 0));
+      await shortFlexClient.punch("break_start", jstMinutes(date, 12, 0));
+      await shortFlexClient.punch("break_end", jstMinutes(date, 13, 0));
+      await shortFlexClient.punch("clock_out", jstMinutes(date, 16, 30));
+    }
+    shortFlexMemberSessionCookie = shortFlexClient.getSessionCookie();
   }
 
   const prevMonthPeriod = fmtMonth(prevMonth);
@@ -503,6 +532,7 @@ export async function seedHttp(params: SeedHttpParams): Promise<SeedHttpResult> 
     adminId,
     fixedMemberSessionCookie,
     variableMemberSessionCookie,
+    shortFlexMemberSessionCookie,
     variableMemberId: member3Id,
     variableMemberShiftPlanId: shiftPlan.plan.id,
     inviteToken: invited.invitation.token,

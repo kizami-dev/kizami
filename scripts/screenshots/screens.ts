@@ -160,6 +160,25 @@ export const SCREENS: Screen[] = [
     authAs: "variable-member",
   },
   {
+    slug: "monthly-flex-contract",
+    path: "/monthly",
+    title: "月次(時短フレックス・契約上の枠)",
+    caption:
+      "総労働時間を「所定日数 × 標準時間」で決めるフレックスのメンバー本人の今月分。収支バーの枠は契約上の枠 + 前月からの繰越で、下に法定の枠・法定内超過・法定外・確定した不足の内訳が並ぶ。",
+    requiresAuth: true,
+    mobile: true,
+    authAs: "short-flex-member",
+  },
+  {
+    slug: "monthly-flex-contract-prev",
+    path: "/monthly?month={prevMonth}",
+    title: "月次(時短フレックス・締め済みの前月)",
+    caption: "同じメンバーの締め済みの前月。不足のうち翌月へ繰り越した分と、その月の不足として確定した分がスナップショットから出る。",
+    requiresAuth: true,
+    mobile: false,
+    authAs: "short-flex-member",
+  },
+  {
     slug: "corrections",
     path: "/corrections",
     title: "修正申請",
@@ -229,7 +248,7 @@ export const SCREENS: Screen[] = [
     path: "/settings/attendance",
     title: "設定: 勤怠ルール・労働時間制の制度",
     caption:
-      "日界・法定休日・休憩ルール・GPSの版と、名前付きの労働時間制の制度(「固定・時短(6時間)」など)。制度ごとに所定・割当人数・版の履歴を並べる。",
+      "日界・法定休日・休憩ルール・GPSの版、所定休日のカレンダー(所定労働日数の目安つき)、名前付きの労働時間制の制度(「固定・時短(6時間)」「フレックス・時短(6時間)」など)。制度ごとに所定・総労働時間の決め方・割当人数・版の履歴を並べる。",
     requiresAuth: true,
     mobile: true,
   },
