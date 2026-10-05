@@ -68,6 +68,9 @@ export const ADMIN_GRANTS: Grant[] = (
     // 同梱プリセットでは管理者のみ — マネージャーには渡さない(カタログ上 TENANT_ONLY であり、
     // マネージャーの grants は department_and_descendants で組み立てているため技術的にも載らない)。
     "member.erase",
+    // テナントの退会と全データのエクスポート(2026-10-05 追加、docs/design/tenant-withdrawal.md)。
+    // 管理者のみ。退会手続き中にログインできるのはこの権限を持つ人だけになる。
+    "tenant.withdraw",
     "department.manage",
     "tenant_settings.calendar.manage",
     "tenant_settings.flex.manage",
