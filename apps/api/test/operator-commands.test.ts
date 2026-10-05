@@ -118,6 +118,20 @@ describe("テナントの退会まわり(tenant list / purges / sync-presets、d
     expect((await listTenants(db)).map((r) => r.name)).toEqual(["B社"]);
   });
 
+  it("--after-restore は、復元で通常の状態に戻ったテナントも削除し直せる(通常の経路では申請していないテナントは消せない)", async () => {
+    const db = await createTestDatabase();
+    const a = await bootstrapTenant(db, { tenantName: "A社", adminEmail: "a@example.com", adminPassword: "correct horse battery", now: 100 });
+    expect((await purgeTenantNow(db, { tenantId: a.tenantId, confirmTenantId: a.tenantId, nowMinutes: NOW, mailer: null })).status).toBe("not_withdrawing");
+    expect(
+      (await purgeTenantNow(db, { tenantId: a.tenantId, confirmTenantId: "wrong", nowMinutes: NOW, mailer: null, afterRestore: true })).status,
+    ).toBe("confirmation_mismatch");
+    expect((await listTenants(db)).map((r) => r.name)).toEqual(["A社"]);
+    expect((await purgeTenantNow(db, { tenantId: a.tenantId, confirmTenantId: a.tenantId, nowMinutes: NOW, mailer: null, afterRestore: true })).status).toBe(
+      "purged",
+    );
+    expect(await listTenants(db)).toEqual([]);
+  });
+
   it("sync-presets は既存テナントの「管理者」に、カタログに増えた権限(tenant.withdraw)を足す", async () => {
     const db = await createTestDatabase();
     const t = await bootstrapTenant(db, { tenantName: "A社", adminEmail: "a@example.com", adminPassword: "correct horse battery", now: 100 });

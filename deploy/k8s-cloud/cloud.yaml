@@ -170,7 +170,7 @@ metadata:
   namespace: kizami-cloud
   labels: {app: kizami-cloud-worker}
 spec:
-  # 日次スキャン(リマインド・36協定アラート・有給予告・pending_signups 掃除)の二重実行を
+  # 日次スキャン(リマインド・36協定アラート・有給予告・pending_signups 掃除・退会したテナントの削除)の二重実行を
   # 避けるため 1 固定。更新時も新旧が並ばないよう Recreate
   replicas: 1
   strategy: {type: Recreate}
@@ -194,6 +194,12 @@ spec:
             # キューは同一 Pod 内のサイドカー(deploy/k8s と同じ理由: 起動トリガーでしかなく、
             # 正しさは DB の定期スキャンが担保する)
             - {name: REDIS_URL, value: "redis://127.0.0.1:6379"}
+            # テナントの退会の再通知(削除の7日前)・削除の完了のメール(docs/design/tenant-withdrawal.md)。
+            # api と同じシステムメール。3つ揃っていなければメールなしで削除だけを行う
+            - {name: APP_BASE_URL, value: "https://app.kizami.dev"}
+            - name: SYSTEM_SMTP_URL
+              valueFrom: {secretKeyRef: {name: kizami-cloud-mail, key: smtpUrl}}
+            - {name: SYSTEM_MAIL_FROM, value: "KIZAMI <no-reply@kizami.dev>"}
             - name: SENTRY_DSN
               valueFrom: {secretKeyRef: {name: kizami-cloud-sentry, key: dsn, optional: true}}
             # アプリ側の SSRF 対策(二次防御。一次防御は下の NetworkPolicy。api と同じ値)。テナントが設定する送り先

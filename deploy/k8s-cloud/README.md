@@ -118,6 +118,16 @@ kubectl -n kizami-cloud exec deploy/kizami-cloud -c api -- \
 
 平文コードはこの1回しか表示されない。
 
+## 権限カタログに増えた権限を既存のテナントへ届ける
+
+権限カタログに項目が増えたリリース(例: テナントの退会の `tenant.withdraw`)を反映した後に1回流す。
+同梱プリセット(管理者・マネージャー・メンバー)へ足りない権限を追記するだけで、削除はしない。
+
+```sh
+kubectl -n kizami-cloud exec deploy/kizami-cloud -c api -- \
+  node_modules/.bin/tsx src/operator.ts tenant sync-presets
+```
+
 ## バックアップと復旧
 
 - **dump**: CronJob `pg-dump`(JST 3:20)→ samurai-matrix の `/var/backups/kizami-cloud/kizami-cloud.dump`
@@ -131,6 +141,11 @@ kubectl -n kizami-cloud exec deploy/kizami-cloud -c api -- \
 ### 復旧手順(公開前に必ず1回通すこと — saas.md「実行基盤」)
 
 ```sh
+# 0. 復元の前に、いまの削除の記録を控える(復元すると dump の時点に戻り、それより後に削除した
+#    テナントが生き返るため。記録は個人情報を含まない: テナント id・日時・行数だけ)
+kubectl -n kizami-cloud exec deploy/kizami-cloud -c api -- \
+  node_modules/.bin/tsx src/operator.ts tenant purges > ./purges-before-restore.tsv
+
 # 1. dump を取得(R2 から、または samurai-matrix のローカルファイル)
 rclone copyto r2backups:backups/kizami-cloud/<date>/kizami-cloud.dump ./kizami-cloud.dump
 
@@ -144,7 +159,22 @@ kubectl -n kizami-cloud exec postgres-0 -- sh -c \
 
 # 4. 再開して確認(ログイン・月次画面・監査ログ)
 kubectl -n kizami-cloud scale deploy/kizami-cloud deploy/kizami-cloud-worker --replicas=1
+
+# 5. 削除済みのテナントを削除し直す(docs/design/tenant-withdrawal.md §7)。手順0の記録にあって、
+#    `tenant list` に再び現れたテナントごとに実行する(--after-restore は申請していない状態に
+#    戻っていても削除できる。メールは送らない)
+kubectl -n kizami-cloud exec deploy/kizami-cloud -c api -- \
+  node_modules/.bin/tsx src/operator.ts tenant list
+kubectl -n kizami-cloud exec deploy/kizami-cloud -c api -- \
+  node_modules/.bin/tsx src/operator.ts tenant purge <tenant-id> --confirm <tenant-id> --after-restore
 ```
+
+### バックアップに残る削除済みのテナント
+
+R2 のバックアップ(日次30日・月次400日)には、退会して削除したテナントのデータも**期限まで残る**
+(dump はデータベース全体の単位で、テナントごとには消せない)。バックアップは障害からの復旧にだけ使い、
+復旧したときは上の手順5で削除済みのテナントを削除し直す。プライバシーポリシーにはこの扱い(最長で約13か月
+バックアップに残ること・復旧の目的でだけ使うこと)を書く(docs/design/tenant-withdrawal.md §7)。
 
 リハーサルは本番 DB を壊さないよう、別 namespace に同じ StatefulSet を立てて手順 3 を
 流し、テーブル行数を比較する形で行う。

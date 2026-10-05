@@ -6,7 +6,7 @@
  * pnpm --filter @kizami/api operator invite-code list
  * pnpm --filter @kizami/api operator invite-code revoke <id>
  * pnpm --filter @kizami/api operator tenant list
- * pnpm --filter @kizami/api operator tenant purge <tenant-id> [--confirm <tenant-id>]
+ * pnpm --filter @kizami/api operator tenant purge <tenant-id> [--confirm <tenant-id>] [--after-restore]
  * pnpm --filter @kizami/api operator tenant purges
  * pnpm --filter @kizami/api operator tenant sync-presets
  * ```
@@ -19,6 +19,8 @@
  *   物理削除する(docs/design/tenant-withdrawal.md)。申請していないテナントは消せない。確認として
  *   テナント id の再入力を求める(対話。`--confirm <tenant-id>` で対話を省ける)。システムメールの
  *   環境変数があれば、管理者へ削除の完了のメールも送る(定期ジョブと同じ)
+ * - `tenant purge --after-restore` はバックアップから復元した後、復元の前に削除済みだったテナントを
+ *   削除し直す(申請していない状態に戻っていても削除できる。メールは送らない。deploy/k8s-cloud/README.md)
  * - `tenant purges` は削除の記録(テナント id・申請日時・削除日時・行数。個人情報は含まない)の一覧
  * - `tenant sync-presets` は全テナントの同梱プリセットへ、権限カタログに増えた権限を追記する
  *   (既存テナントの「管理者」に tenant.withdraw を届ける等)
@@ -52,7 +54,7 @@ const USAGE = `usage:
   operator invite-code list
   operator invite-code revoke <id>
   operator tenant list
-  operator tenant purge <tenant-id> [--confirm <tenant-id>]
+  operator tenant purge <tenant-id> [--confirm <tenant-id>] [--after-restore]
   operator tenant purges
   operator tenant sync-presets`;
 
@@ -120,7 +122,8 @@ async function main(): Promise<void> {
   }
 
   if (group === "tenant" && action === "purge") {
-    const tenantId = rest.find((a) => !a.startsWith("--") && a !== argValue(rest, "confirm"));
+    // tenant id は最初の位置引数(`--confirm <id>` と同じ値になるので、値で探すと取り違える)
+    const tenantId = rest[0] !== undefined && !rest[0].startsWith("--") ? rest[0] : undefined;
     if (!tenantId) {
       console.error(USAGE);
       process.exitCode = 1;
@@ -132,7 +135,8 @@ async function main(): Promise<void> {
       process.exitCode = 1;
       return;
     }
-    if (!candidate.withdrawing) {
+    const afterRestore = rest.includes("--after-restore");
+    if (!candidate.withdrawing && !afterRestore) {
       console.error(`tenant ${tenantId} has not requested withdrawal. Only tenants in withdrawal can be purged.`);
       process.exitCode = 1;
       return;
@@ -157,6 +161,7 @@ async function main(): Promise<void> {
       tenantId,
       confirmTenantId: confirmation,
       nowMinutes: now,
+      afterRestore,
       mailer:
         systemMail !== null
           ? { appBaseUrl: systemMail.appBaseUrl, sendMail: createSystemMailSender({ smtpUrl: systemMail.systemSmtpUrl, from: systemMail.systemMailFrom }) }

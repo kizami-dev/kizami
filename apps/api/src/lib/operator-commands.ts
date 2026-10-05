@@ -17,6 +17,7 @@ import {
   listSignupInviteCodes,
   listTenantPurgeRecords,
   listTenantsWithActiveUserCount,
+  requestTenantWithdrawal,
   revokeSignupInviteCode,
   type Database,
   type SignupInviteCode,
@@ -139,20 +140,30 @@ export async function describePurgeCandidate(db: Database, tenantId: string): Pr
  * 確認(`confirmTenantId` がテナント id と完全に一致すること)を**この関数の中で**行う — CLI の
  * 対話を経ない呼び出し(テスト・将来の管理画面)でも、確認なしに消せないようにするため。
  * 退会を申請していないテナントは消さない(@kizami/db の purgeTenant も同じ判定をする)。
+ *
+ * `afterRestore`(`--after-restore`): バックアップから復元した後に、**復元の前に削除済みだった**テナントを
+ * 削除し直すための経路(deploy/k8s-cloud/README.md「復旧手順」)。復元した dump が申請より前のものだと
+ * テナントは通常の状態に戻っているので、申請の状態にしてから(予定 = 今)同じ経路で削除する。
+ * 運用者が復元前の削除の記録(`tenant purges` の出力)と照らして id を渡すこと。メールは送らない
+ * (テナントには既に完了を知らせている)。
  */
 export async function purgeTenantNow(
   db: Database,
-  params: { tenantId: string; confirmTenantId: string; nowMinutes: number; mailer: TenantWithdrawalMailer | null },
+  params: { tenantId: string; confirmTenantId: string; nowMinutes: number; mailer: TenantWithdrawalMailer | null; afterRestore?: boolean },
 ): Promise<
   | { status: "purged" | "already_purged"; record: TenantPurgeRecord; mailsSent: number }
   | { status: "confirmation_mismatch" | "not_withdrawing" | "not_claimed" | "not_found" }
 > {
   if (params.confirmTenantId.trim() !== params.tenantId) return { status: "confirmation_mismatch" };
+  if (params.afterRestore) {
+    // 既に申請の状態なら何も変わらない(条件付き UPDATE)
+    await requestTenantWithdrawal(db, { tenantId: params.tenantId, requestedAt: params.nowMinutes, scheduledPurgeAt: params.nowMinutes });
+  }
   // 定期ジョブと同じ経路(「削除中」の印を条件付き UPDATE で取る)。予定の時刻だけを待たない。
   const result = await purgeWithdrawnTenant(db, {
     tenantId: params.tenantId,
     nowMinutes: params.nowMinutes,
-    mailer: params.mailer,
+    mailer: params.afterRestore ? null : params.mailer,
     requireDue: false,
   });
   if (result.status === "purged" || result.status === "already_purged") {
