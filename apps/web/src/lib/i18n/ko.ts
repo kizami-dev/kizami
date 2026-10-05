@@ -634,6 +634,16 @@ export const ko = {
     flexBalanceLabel: "플렉스 수지",
     flexBalanceUnit: "분",
     flexShortLabel: "부족",
+    /** 플렉스의 계약상 틀(2026-10-05). 총 근로시간을 "소정일수 × 표준시간"으로 정하는 제도에서만 표시한다. */
+    flexContractBreakdownLabel: "플렉스 내역",
+    flexContractBasisNote: "과부족은 계약상 틀(소정근로일수 × 표준근로시간)과 비교합니다.",
+    flexContractFrameLabel: "계약상 틀",
+    flexCarryInLabel: "전월에서 이월",
+    flexStatutoryFrameLabel: "법정 틀",
+    flexWithinStatutoryExcessLabel: "법정 내 초과",
+    flexOvertimeLabel: "법정 외",
+    flexCarryOutLabel: "다음 달로 이월",
+    flexConfirmedShortfallLabel: "확정된 부족",
     /** 고정시간제에서의 「플렉스 수지 바」대체(2026-08-23 추가). 36협정의 월 45시간 상한에 대한 연장근로 위치. */
     overtimeBarLabel: "연장근로(36협정 월 45시간 상한 대비)",
     overtimeBarUnit: "분",
@@ -720,6 +730,11 @@ export const ko = {
     core_time_late_arrival: "코어타임 지각 — 코어타임 시작보다 늦게 출근했습니다",
     core_time_early_leave: "코어타임 조퇴 — 코어타임 종료보다 일찍 퇴근했습니다",
     core_time_absence: "코어타임 부재 — 코어타임이 있는 날에 실근로가 없습니다",
+    flex_contract_frame_capped:
+      "소정근로일수 × 표준근로시간이 법정 틀을 넘어, 법정 틀을 계약상 틀로 사용했습니다. 표준근로시간이나 소정휴일 캘린더를 확인해 주세요",
+    flex_carry_in_clipped: "전월에서 이월된 부족이 이번 달에 더할 수 있는 범위(법정 틀까지)를 넘어 잘라냈습니다",
+    flex_carry_chain_truncated: "마감하지 않은 달을 거슬러 올라갈 수 있는 한도(3개월)에 도달해 그 이전의 이월을 0으로 간주했습니다. 이전 달을 마감하면 해소됩니다",
+    national_holiday_data_unavailable: "이 해의 국민의 축일 데이터가 아직 없어, 축일을 소정근로일로 세고 있습니다",
   } satisfies Record<
     | "missing_clock_out"
     | "duplicate_clock_in"
@@ -737,7 +752,11 @@ export const ko = {
     | "shift_absence"
     | "core_time_late_arrival"
     | "core_time_early_leave"
-    | "core_time_absence",
+    | "core_time_absence"
+    | "flex_contract_frame_capped"
+    | "flex_carry_in_clipped"
+    | "flex_carry_chain_truncated"
+    | "national_holiday_data_unavailable",
     string
   >,
 
@@ -1645,6 +1664,21 @@ export const ko = {
     standardDayValue: (hm: string, minutes: number) => `${hm}(${minutes}분)`,
     /** 変形労働時間制で基準所定が未設定(0)のとき。所定は日ごとのシフトで決まる。 */
     standardDayByShift: "소정은 시프트로 정해짐",
+    totalHoursBasisLabel: "총 근로시간 결정 방법",
+    totalHoursBasisValue: {
+      statutory_frame: "법정 틀(주 법정근로시간 × 역일수 ÷ 7)",
+      scheduled_days: "소정일수 × 표준시간",
+    } satisfies Record<"statutory_frame" | "scheduled_days", string>,
+    totalHoursBasisHint: {
+      statutory_frame: "기존 방식입니다. 과부족과 시간외 모두 법정 틀과 비교합니다.",
+      scheduled_days:
+        "소정휴일 캘린더로 센 소정근로일수에 표준근로시간을 곱한 시간을 총 근로시간으로 합니다(단시간 근무용). 초과분은 법정 틀까지가 법정 내 초과, 법정 틀을 넘으면 법정 외입니다.",
+    } satisfies Record<"statutory_frame" | "scheduled_days", string>,
+    carryOverShortfallLabel: "부족 이월",
+    carryOverShortfallCheckbox: "부족을 다음 달로 이월한다",
+    carryOverShortfallHint:
+      "다음 달 총 근로시간에 더합니다. 더하는 것은 다음 달 법정 틀을 넘지 않는 범위까지이며, 넘는 분은 그 달의 부족으로 확정됩니다. 초과는 이월하지 않습니다(임금 전액 지급 원칙). \"소정일수 × 표준시간\"일 때만 선택할 수 있습니다.",
+    carryOverShortfallValue: { on: "이월함", off: "이월하지 않음" },
     assigneeCountLabel: "할당된 인원(오늘 기준)",
     assigneeCountValue: (count: number) => `${count}명`,
     currentEffectiveFrom: "이 버전이 적용된 날",
@@ -1689,9 +1723,58 @@ export const ko = {
       invalid_standard_day_minutes: "1일 소정은 고정시간제에서는 1~480분, 그 외에는 1~1440분의 정수로 입력해 주세요",
       invalid_core_time: "코어타임은 시작보다 늦은 종료 시각으로 지정해 주세요(날짜를 넘는 설정은 할 수 없습니다)",
       invalid_core_time_weekdays: "코어타임이 있는 요일을 하나 이상 선택해 주세요",
+      invalid_total_hours_basis: "총 근로시간 결정 방법을 선택해 주세요",
+      invalid_carry_over_shortfall: "부족 이월 설정을 확인해 주세요",
+      carry_over_requires_scheduled_days: "부족 이월은 총 근로시간 결정 방법이 \"소정일수 × 표준시간\"일 때만 선택할 수 있습니다",
       effective_from_in_past: "적용 시작일은 오늘 이후로만 지정할 수 있습니다(과거 집계 결과가 바뀌기 때문입니다)",
       version_already_exists: "해당 적용 시작일에는 이미 버전이 있습니다. 다른 날짜를 지정해 주세요",
       not_found: "대상 제도를 찾을 수 없습니다",
+      forbidden: "이 작업을 수행할 권한이 없습니다",
+      default: "처리에 실패했습니다. 다시 시도해 주세요",
+    },
+  },
+
+  /** 소정휴일 캘린더(/settings/attendance의 구역, 2026-10-05). */
+  settingsHolidayCalendar: {
+    sectionTitle: "소정휴일 캘린더",
+    sectionLead:
+      "회사의 휴일(소정휴일)을 정합니다. 플렉스의 총 근로시간을 \"소정일수 × 표준시간\"으로 정하는 제도에서 소정근로일을 세는 데 사용합니다. 법정 틀로 정하는 제도의 계산에는 영향을 주지 않습니다.",
+    legalHolidayNote: "법정휴일은 소정휴일의 일부입니다. 여기에 넣지 않아도 법정휴일(위의 근태 규칙)은 반드시 휴일로 셉니다.",
+    loadFailed: "소정휴일 캘린더를 불러오지 못했습니다. 다시 시도해 주세요",
+    defaultInUse: "아직 저장하지 않았습니다. 기본값(토요일·일요일과 국민의 축일)으로 세고 있습니다.",
+    weekdaysLabel: "소정휴일 요일",
+    weekdaysNone: "없음(요일에 따른 휴일 없음)",
+    nationalHolidaysLabel: "국민의 축일",
+    nationalHolidaysValue: { on: "소정휴일로 함", off: "소정휴일로 하지 않음" },
+    nationalHolidaysCheckbox: "일본의 국민의 축일(대체휴일·국민의 휴일 포함)을 소정휴일로 한다",
+    extraHolidaysLabel: "개별로 휴일로 하는 날",
+    extraHolidaysHint: "연말연시·여름휴가 등. YYYY-MM-DD를 쉼표나 줄바꿈으로 구분해 입력합니다.",
+    extraWorkdaysLabel: "휴일에서 빼고 출근일로 하는 날",
+    extraWorkdaysHint: "축일이지만 영업하는 날 등. 법정휴일은 뺄 수 없습니다. YYYY-MM-DD를 쉼표나 줄바꿈으로 구분해 입력합니다.",
+    datesPlaceholder: "예: 2026-12-29, 2026-12-30",
+    none: "없음",
+    previewTitle: "소정근로일수 기준",
+    previewDays: (days: number) => `${days}일`,
+    previewHint: "법정휴일은 오늘 시점의 근태 규칙으로 판정합니다.",
+    holidayDataRange: (first: number, last: number) => `국민의 축일 데이터: ${first}~${last}년(매년 갱신)`,
+    holidayDataUnavailable: "축일 데이터가 아직 없는 해입니다. 축일을 소정근로일로 세고 있습니다",
+    formTitle: "새 버전 추가",
+    submit: "이 내용으로 버전 추가",
+    submitting: "추가 중…",
+    submitSuccess: "새 버전을 추가했습니다.",
+    historyTitle: "버전 이력",
+    historyColumnEffectiveFrom: "적용 시작일",
+    historyColumnSummary: "내용",
+    errors: {
+      invalid_body: "입력 내용을 확인해 주세요",
+      invalid_effective_from: "적용 시작일을 확인해 주세요",
+      invalid_weekdays: "소정휴일 요일을 확인해 주세요(7개 요일 모두는 선택할 수 없습니다)",
+      invalid_national_holidays: "국민의 축일 설정을 확인해 주세요",
+      invalid_extra_holidays: "휴일로 하는 날을 YYYY-MM-DD로 입력해 주세요(366건까지)",
+      invalid_extra_workdays: "출근일로 하는 날을 YYYY-MM-DD로 입력해 주세요(366건까지)",
+      calendar_date_conflict: "같은 날을 \"휴일로 하는 날\"과 \"출근일로 하는 날\" 양쪽에 넣을 수 없습니다",
+      effective_from_in_past: "적용 시작일은 오늘 이후만 지정할 수 있습니다(과거 계산 결과가 바뀌기 때문입니다)",
+      version_already_exists: "그 적용 시작일에는 이미 버전이 있습니다. 다른 날짜를 지정해 주세요",
       forbidden: "이 작업을 수행할 권한이 없습니다",
       default: "처리에 실패했습니다. 다시 시도해 주세요",
     },

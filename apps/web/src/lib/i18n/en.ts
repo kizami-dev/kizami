@@ -655,6 +655,16 @@ export const en = {
     flexBalanceLabel: "Flex balance",
     flexBalanceUnit: "min",
     flexShortLabel: "short",
+    /** Flex contractual frame (2026-10-05). Shown only for policies whose total hours are "scheduled days × standard hours". */
+    flexContractBreakdownLabel: "Flex breakdown",
+    flexContractBasisNote: "The balance is measured against the contractual frame (scheduled workdays × standard daily hours).",
+    flexContractFrameLabel: "Contractual frame",
+    flexCarryInLabel: "Carried in from last month",
+    flexStatutoryFrameLabel: "Statutory frame",
+    flexWithinStatutoryExcessLabel: "Excess within statutory limits",
+    flexOvertimeLabel: "Statutory overtime",
+    flexCarryOutLabel: "Carried to next month",
+    flexConfirmedShortfallLabel: "Confirmed shortfall",
     /** Replaces the "flex balance bar" under the fixed working-hours system (added 2026-08-23). Position of overtime against the Article 36 agreement's 45-hour monthly cap. */
     overtimeBarLabel: "Overtime (against the Article 36 agreement's 45-hour monthly cap)",
     overtimeBarUnit: "min",
@@ -745,6 +755,12 @@ export const en = {
     core_time_late_arrival: "Late for core time — clocked in later than the core time start",
     core_time_early_leave: "Left before core time ended — clocked out earlier than the core time end",
     core_time_absence: "Absent during core time — no worked time on a day with core time",
+    flex_contract_frame_capped:
+      "Scheduled workdays × standard hours exceeded the statutory frame, so the statutory frame is used as the contractual frame. Review the standard hours or the company holiday calendar",
+    flex_carry_in_clipped: "The shortfall carried in from last month exceeded what this month can absorb (up to the statutory frame), so it was trimmed",
+    flex_carry_chain_truncated:
+      "Reached the limit of 3 unclosed months to look back on, so earlier carry-overs are treated as 0. Closing the earlier month resolves this",
+    national_holiday_data_unavailable: "National holiday data for this year is not available yet, so holidays are counted as scheduled workdays",
   } satisfies Record<
     | "missing_clock_out"
     | "duplicate_clock_in"
@@ -762,7 +778,11 @@ export const en = {
     | "shift_absence"
     | "core_time_late_arrival"
     | "core_time_early_leave"
-    | "core_time_absence",
+    | "core_time_absence"
+    | "flex_contract_frame_capped"
+    | "flex_carry_in_clipped"
+    | "flex_carry_chain_truncated"
+    | "national_holiday_data_unavailable",
     string
   >,
 
@@ -1677,6 +1697,21 @@ export const en = {
     standardDayValue: (hm: string, minutes: number) => `${hm} (${minutes} min)`,
     /** 変形労働時間制で基準所定が未設定(0)のとき。所定は日ごとのシフトで決まる。 */
     standardDayByShift: "Set by the shift plan",
+    totalHoursBasisLabel: "How total hours are set",
+    totalHoursBasisValue: {
+      statutory_frame: "Statutory frame (weekly statutory hours × calendar days ÷ 7)",
+      scheduled_days: "Scheduled days × standard hours",
+    } satisfies Record<"statutory_frame" | "scheduled_days", string>,
+    totalHoursBasisHint: {
+      statutory_frame: "The existing method. Both the balance and overtime are measured against the statutory frame.",
+      scheduled_days:
+        "Total hours are the scheduled workdays (counted with the company holiday calendar) times the standard daily hours — suited to short-hours work. Time above it is excess within statutory limits up to the statutory frame, and statutory overtime beyond that.",
+    } satisfies Record<"statutory_frame" | "scheduled_days", string>,
+    carryOverShortfallLabel: "Shortfall carry-over",
+    carryOverShortfallCheckbox: "Carry a shortfall over to the next month",
+    carryOverShortfallHint:
+      "Adds the shortfall to next month's total hours, but only up to next month's statutory frame; anything beyond that is confirmed as this month's shortfall. Excess hours are never carried over (wages must be paid in full). Available only with \"Scheduled days × standard hours\".",
+    carryOverShortfallValue: { on: "Carry over", off: "Do not carry over" },
     assigneeCountLabel: "Members assigned (as of today)",
     assigneeCountValue: (count: number) => (count === 1 ? "1 member" : `${count} members`),
     currentEffectiveFrom: "This version took effect on",
@@ -1721,10 +1756,59 @@ export const en = {
       invalid_standard_day_minutes: "Enter whole minutes per day: 1 to 480 for fixed working hours, 1 to 1440 otherwise",
       invalid_core_time: "Core time must end after it starts (it cannot span midnight)",
       invalid_core_time_weekdays: "Select at least one weekday for core time",
+      invalid_total_hours_basis: "Choose how total hours are set",
+      invalid_carry_over_shortfall: "Check the shortfall carry-over setting",
+      carry_over_requires_scheduled_days: "Shortfall carry-over is available only when total hours are \"Scheduled days × standard hours\"",
       effective_from_in_past: "The effective date must be today or later (otherwise past calculations would change)",
       version_already_exists: "A version already exists for that effective date. Please choose a different date",
       not_found: "The policy was not found",
       forbidden: "You don't have permission to perform this action",
+      default: "Something went wrong. Please try again",
+    },
+  },
+
+  /** Company holiday calendar (a block of /settings/attendance, 2026-10-05). */
+  settingsHolidayCalendar: {
+    sectionTitle: "Company holiday calendar",
+    sectionLead:
+      "Set the company's non-working days (prescribed holidays). Used to count scheduled workdays for flex policies whose total hours are \"scheduled days × standard hours\". It does not affect policies using the statutory frame.",
+    legalHolidayNote: "Statutory holidays are part of the prescribed holidays. Even if not listed here, the statutory holiday (in the attendance rules above) is always counted as a day off.",
+    loadFailed: "Failed to load the company holiday calendar. Please try again",
+    defaultInUse: "Not saved yet. Counting with the default (Saturdays, Sundays and national holidays).",
+    weekdaysLabel: "Weekly days off",
+    weekdaysNone: "None (no weekly days off)",
+    nationalHolidaysLabel: "National holidays",
+    nationalHolidaysValue: { on: "Days off", off: "Workdays" },
+    nationalHolidaysCheckbox: "Treat Japanese national holidays (including substitute holidays) as days off",
+    extraHolidaysLabel: "Additional days off",
+    extraHolidaysHint: "Year-end holidays, summer break, etc. Enter YYYY-MM-DD separated by commas or line breaks.",
+    extraWorkdaysLabel: "Days turned into workdays",
+    extraWorkdaysHint: "E.g. a national holiday you open on. The statutory holiday cannot be turned into a workday. Enter YYYY-MM-DD separated by commas or line breaks.",
+    datesPlaceholder: "e.g. 2026-12-29, 2026-12-30",
+    none: "None",
+    previewTitle: "Scheduled workdays (estimate)",
+    previewDays: (days: number) => `${days} days`,
+    previewHint: "Statutory holidays are judged by today's attendance rules.",
+    holidayDataRange: (first: number, last: number) => `National holiday data: ${first}–${last} (updated yearly)`,
+    holidayDataUnavailable: "No holiday data for this year yet; holidays are counted as workdays",
+    formTitle: "Add a new version",
+    submit: "Add this version",
+    submitting: "Adding…",
+    submitSuccess: "Added a new version.",
+    historyTitle: "Version history",
+    historyColumnEffectiveFrom: "Effective from",
+    historyColumnSummary: "Details",
+    errors: {
+      invalid_body: "Please check your input",
+      invalid_effective_from: "Check the effective date",
+      invalid_weekdays: "Check the weekly days off (you cannot select all 7 days)",
+      invalid_national_holidays: "Check the national holiday setting",
+      invalid_extra_holidays: "Enter additional days off as YYYY-MM-DD (up to 366)",
+      invalid_extra_workdays: "Enter workdays as YYYY-MM-DD (up to 366)",
+      calendar_date_conflict: "The same date cannot be both an additional day off and a workday",
+      effective_from_in_past: "The effective date must be today or later (past results would otherwise change)",
+      version_already_exists: "A version already exists for that date. Choose another date",
+      forbidden: "You do not have permission to do this",
       default: "Something went wrong. Please try again",
     },
   },

@@ -140,6 +140,35 @@
 }
 
 /*
+ * 説明つきの選択肢(2026-10-05、フレックスの総労働時間の決め方)。選択肢の名前の下に説明を
+ * 置くので、ラジオボタンは1行目に揃える(中央揃えだと説明の行数で位置がずれる)。
+ */
+.attendance-settings__radio--with-hint,
+.field > .attendance-settings__radio--with-hint {
+  align-items: flex-start;
+  padding-block: var(--space-1);
+}
+
+.attendance-settings__radio--with-hint input[type="radio"] {
+  margin-top: 0.2rem;
+  flex: none;
+}
+
+.attendance-settings__radio-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* 所定休日のカレンダーの所定労働日数の目安(2026-10-05)。区分別合計と同じチップを並べる */
+.holiday-calendar__preview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-block: var(--space-3);
+}
+
+/*
  * 休憩の自動控除ルール編集(2026-08-23 追加)。行: 「時刻入力 超えたら 分数入力 分を控除 削除」。
  * 390px 幅でも横スクロールさせないため flex-wrap で折り返す。
  */

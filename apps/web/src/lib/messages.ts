@@ -142,6 +142,8 @@ export const mapAttendanceSettingsErrorMessage = makeErrorMapper(() => messages.
  * エラーマッピング(2026-10-05、名前付きの制度)。
  */
 export const mapWorkPolicyErrorMessage = makeErrorMapper(() => messages.settingsWorkPolicies.errors);
+/** 所定休日のカレンダー(POST /settings/holiday-calendar)のエラーマッピング(2026-10-05)。 */
+export const mapHolidayCalendarErrorMessage = makeErrorMapper(() => messages.settingsHolidayCalendar.errors);
 /** 休憩自動控除の打ち消し申請(POST /auto-break-waivers・:id/approve・reject・withdraw)のエラーマッピング(2026-08-23 追加)。 */
 export const mapAutoBreakWaiverErrorMessage = makeErrorMapper(() => messages.autoBreakWaiver.errors);
 /** APIキー発行/失効(POST・DELETE /api-keys)のエラーマッピング(v0.4 追加)。 */

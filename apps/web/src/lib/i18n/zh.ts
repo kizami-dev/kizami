@@ -625,6 +625,16 @@ export const zh = {
     flexBalanceLabel: "弹性工作时间收支",
     flexBalanceUnit: "分钟",
     flexShortLabel: "不足",
+    /** 弹性工作时间的约定总额度(2026-10-05)。仅在总工作时间按"所定天数 × 标准时间"确定的制度中显示。 */
+    flexContractBreakdownLabel: "弹性工作时间明细",
+    flexContractBasisNote: "过与不足按约定总额度(所定工作日数 × 标准工作时间)比较。",
+    flexContractFrameLabel: "约定总额度",
+    flexCarryInLabel: "上月结转",
+    flexStatutoryFrameLabel: "法定总额度",
+    flexWithinStatutoryExcessLabel: "法定内超出",
+    flexOvertimeLabel: "法定外",
+    flexCarryOutLabel: "结转至下月",
+    flexConfirmedShortfallLabel: "确定的不足",
     /** 固定工作时间制下替代「弹性工作时间收支条」的展示。相对于36协议月度45小时上限的加班位置。 */
     overtimeBarLabel: "加班(相对于36协议月度45小时上限)",
     overtimeBarUnit: "分钟",
@@ -711,6 +721,10 @@ export const zh = {
     core_time_late_arrival: "核心时间迟到 — 晚于核心时间开始时刻上班",
     core_time_early_leave: "核心时间早退 — 早于核心时间结束时刻下班",
     core_time_absence: "核心时间缺勤 — 设有核心时间的日期没有实际工作",
+    flex_contract_frame_capped: "所定工作日数 × 标准工作时间超过了法定总额度,因此以法定总额度作为约定总额度。请检查标准工作时间或所定休息日日历",
+    flex_carry_in_clipped: "上月结转的不足超出了本月可追加的范围(至法定总额度为止),已被截断",
+    flex_carry_chain_truncated: "已达到可追溯未结账月份的上限(3个月),更早的结转视为0。结账之前的月份即可消除",
+    national_holiday_data_unavailable: "该年度的国民节日数据尚未收录,节日被计为所定工作日",
   } satisfies Record<
     | "missing_clock_out"
     | "duplicate_clock_in"
@@ -728,7 +742,11 @@ export const zh = {
     | "shift_absence"
     | "core_time_late_arrival"
     | "core_time_early_leave"
-    | "core_time_absence",
+    | "core_time_absence"
+    | "flex_contract_frame_capped"
+    | "flex_carry_in_clipped"
+    | "flex_carry_chain_truncated"
+    | "national_holiday_data_unavailable",
     string
   >,
 
@@ -1631,6 +1649,21 @@ export const zh = {
     standardDayValue: (hm: string, minutes: number) => `${hm}(${minutes}分钟)`,
     /** 変形労働時間制で基準所定が未設定(0)のとき。所定は日ごとのシフトで決まる。 */
     standardDayByShift: "所定时间由排班决定",
+    totalHoursBasisLabel: "总工作时间的确定方式",
+    totalHoursBasisValue: {
+      statutory_frame: "法定总额度(每周法定工作时间 × 历日数 ÷ 7)",
+      scheduled_days: "所定天数 × 标准时间",
+    } satisfies Record<"statutory_frame" | "scheduled_days", string>,
+    totalHoursBasisHint: {
+      statutory_frame: "沿用以往的方式。过与不足和加班都与法定总额度比较。",
+      scheduled_days:
+        "以按所定休息日日历计算的所定工作日数乘以标准工作时间作为总工作时间(适用于短时间工作)。超出部分在法定总额度以内为法定内超出,超过法定总额度为法定外。",
+    } satisfies Record<"statutory_frame" | "scheduled_days", string>,
+    carryOverShortfallLabel: "不足结转",
+    carryOverShortfallCheckbox: "将不足结转至下月",
+    carryOverShortfallHint:
+      "追加到下月的总工作时间。追加仅限不超过下月法定总额度的范围,超出部分确定为当月的不足。超出的工作时间不结转(工资须全额支付)。仅在\"所定天数 × 标准时间\"时可选。",
+    carryOverShortfallValue: { on: "结转", off: "不结转" },
     assigneeCountLabel: "已分配人数(截至今天)",
     assigneeCountValue: (count: number) => `${count}人`,
     currentEffectiveFrom: "此版本的生效日期",
@@ -1675,9 +1708,58 @@ export const zh = {
       invalid_standard_day_minutes: "每天的所定时间:固定工作时间制请输入1〜480分钟的整数,其他制度请输入1〜1440分钟的整数",
       invalid_core_time: "核心时间的结束时间须晚于开始时间(不能跨日设置)",
       invalid_core_time_weekdays: "请至少选择一个有核心时间的星期",
+      invalid_total_hours_basis: "请选择总工作时间的确定方式",
+      invalid_carry_over_shortfall: "请检查不足结转的设置",
+      carry_over_requires_scheduled_days: "仅当总工作时间的确定方式为\"所定天数 × 标准时间\"时,才能选择不足结转",
       effective_from_in_past: "生效日期只能指定为今天及以后(否则会改变过去的计算结果)",
       version_already_exists: "该生效日期已存在版本,请指定其他日期",
       not_found: "找不到该制度",
+      forbidden: "您没有执行此操作的权限",
+      default: "处理失败,请重试",
+    },
+  },
+
+  /** 所定休息日日历(/settings/attendance 的区块,2026-10-05)。 */
+  settingsHolidayCalendar: {
+    sectionTitle: "所定休息日日历",
+    sectionLead:
+      "设定公司的休息日(所定休息日)。用于在按\"所定天数 × 标准时间\"确定弹性工作总工作时间的制度中计算所定工作日。不影响按法定总额度确定的制度。",
+    legalHolidayNote: "法定休息日是所定休息日的一部分。即使不在此处填写,法定休息日(上方的考勤规则)也一定计为休息日。",
+    loadFailed: "获取所定休息日日历失败,请重试",
+    defaultInUse: "尚未保存。按默认值(周六、周日及国民节日)计算。",
+    weekdaysLabel: "所定休息日的星期",
+    weekdaysNone: "无(不按星期休息)",
+    nationalHolidaysLabel: "国民节日",
+    nationalHolidaysValue: { on: "设为所定休息日", off: "不设为所定休息日" },
+    nationalHolidaysCheckbox: "将日本的国民节日(含补休日、国民休息日)设为所定休息日",
+    extraHolidaysLabel: "单独设为休息日的日期",
+    extraHolidaysHint: "年末年初、夏季休假等。以逗号或换行分隔输入 YYYY-MM-DD。",
+    extraWorkdaysLabel: "从休息日中排除并设为出勤日的日期",
+    extraWorkdaysHint: "如节日照常营业的日子。法定休息日不可排除。以逗号或换行分隔输入 YYYY-MM-DD。",
+    datesPlaceholder: "例: 2026-12-29, 2026-12-30",
+    none: "无",
+    previewTitle: "所定工作日数参考",
+    previewDays: (days: number) => `${days}天`,
+    previewHint: "法定休息日按今天的考勤规则判定。",
+    holidayDataRange: (first: number, last: number) => `国民节日数据: ${first}–${last}年(每年更新)`,
+    holidayDataUnavailable: "该年度尚无节日数据,节日被计为所定工作日",
+    formTitle: "添加新版本",
+    submit: "以此内容添加版本",
+    submitting: "添加中…",
+    submitSuccess: "已添加新版本。",
+    historyTitle: "版本历史",
+    historyColumnEffectiveFrom: "生效日期",
+    historyColumnSummary: "内容",
+    errors: {
+      invalid_body: "请检查输入内容",
+      invalid_effective_from: "请检查生效日期",
+      invalid_weekdays: "请检查所定休息日的星期(不能选择全部7天)",
+      invalid_national_holidays: "请检查国民节日的设置",
+      invalid_extra_holidays: "请以 YYYY-MM-DD 输入单独设为休息日的日期(最多366个)",
+      invalid_extra_workdays: "请以 YYYY-MM-DD 输入设为出勤日的日期(最多366个)",
+      calendar_date_conflict: "同一天不能同时设为\"休息日\"和\"出勤日\"",
+      effective_from_in_past: "生效日期只能指定为今天及以后(否则过去的计算结果会改变)",
+      version_already_exists: "该生效日期已有版本,请指定其他日期",
       forbidden: "您没有执行此操作的权限",
       default: "处理失败,请重试",
     },

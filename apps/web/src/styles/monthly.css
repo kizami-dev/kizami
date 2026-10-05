@@ -132,6 +132,19 @@
   background: var(--k-magenta);
 }
 
+/*
+ * フレックスの内訳(2026-10-05、契約上の枠)。収支バーの下に罫線で区切って、3段の区分と繰越の
+ * チップを並べる。チップは区分別合計と同じ部品。
+ */
+.flex-balance__breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  border-top: var(--border-hair);
+  padding-top: var(--space-3);
+  margin-top: var(--space-1);
+}
+
 /* 区分別合計チップ */
 .totals-row {
   display: flex;
@@ -173,6 +186,15 @@
 
 .totals-chip--statutoryHoliday {
   --chip-color: var(--k-cyan-ink);
+}
+
+/*
+ * 確定した不足(2026-10-05)。不足は「墨色+文言」で示す(.flex-balance__diff--short と同じ考え方 —
+ * マゼンタは退勤と危険操作だけ)。色だけに頼らないよう枠を破線にする。
+ */
+.totals-chip--short {
+  --chip-color: var(--k-ink-soft);
+  border-style: dashed;
 }
 
 /* 制度の明示(2026-08-23 追加)。テーブル直前に静かに1行だけ出す。 */

@@ -246,10 +246,29 @@ export interface DailyBreakdown {
   allowances: Array<{ definitionId: string; minutes: number }>;
 }
 
+/**
+ * フレックスの収支(packages/engine の FlexBalance と同じ形)。
+ *
+ * 2026-10-05(契約上の枠): `frameMinutes` は「過不足を比べる枠」。総労働時間の決め方が法定の枠なら
+ * 法定の枠、契約上の枠(所定日数 × 標準時間)なら「契約上の枠 + 前月からの繰越」。
+ * `contractFrameMinutes` が null なら法定の枠の制度(繰越・法定内超過は常に0)。
+ */
 export interface FlexBalance {
   frameMinutes: number;
   actualMinutes: number;
   diffMinutes: number;
+  /** 法定の枠(週の法定労働時間 × 暦日数 ÷ 7)。これを超えた分が法定外 */
+  statutoryFrameMinutes: number;
+  /** 契約上の枠(所定労働日数 × 標準労働時間、法定の枠で頭打ち)。法定の枠の制度では null */
+  contractFrameMinutes: number | null;
+  /** 前月から繰り越されてきた不足のうち、この月の枠に上乗せした分 */
+  carryInMinutes: number;
+  /** 法定内超過(枠を超え法定の枠以内。割増なし) */
+  withinStatutoryExcessMinutes: number;
+  /** この月の不足のうち翌月へ繰り越す分 */
+  carryOutMinutes: number;
+  /** この月の不足として確定した分 */
+  confirmedShortfallMinutes: number;
 }
 
 /** 固定時間制の月合計内訳(所定内・法定内残業)。フレックスでは null。 */
@@ -1034,8 +1053,18 @@ export interface WorkPolicyVersionDto {
   /** コアタイム。null なら「コアタイムなし」(スーパーフレックス) */
   core: CoreTimeDto | null;
   standardDayMinutes: number;
+  /** フレックスの総労働時間の決め方(2026-10-05)。flex 以外では常に "statutory_frame" */
+  totalHoursBasis: FlexTotalHoursBasis;
+  /** フレックスで不足を翌月に繰り越すか(2026-10-05)。flex 以外では常に false */
+  carryOverShortfall: boolean;
   createdAt: number;
 }
+
+/**
+ * フレックスの総労働時間の決め方(2026-10-05)。"statutory_frame" = 法定の枠(既定)、
+ * "scheduled_days" = 所定労働日数 × 標準労働時間(契約上の枠)
+ */
+export type FlexTotalHoursBasis = "statutory_frame" | "scheduled_days";
 
 export interface WorkPolicySettingsDto {
   effective: WorkPolicyVersionDto | null;
@@ -1055,6 +1084,44 @@ export interface CreateWorkPolicyVersionInput {
    * monthly_variable は有給換算用の基準所定。
    */
   standardDayMinutes: number;
+  /** フレックスの総労働時間の決め方(flex のみ、省略時は法定の枠) */
+  totalHoursBasis?: FlexTotalHoursBasis;
+  /** フレックスで不足を翌月に繰り越すか(flex かつ "scheduled_days" のときだけ true にできる) */
+  carryOverShortfall?: boolean;
+}
+
+/** 所定休日のカレンダー(2026-10-05、packages/engine の ScheduledHolidayCalendar と同じ形) */
+export interface HolidayCalendarDto {
+  /** 所定休日の曜日(0=日曜) */
+  weekdays: number[];
+  /** 国民の祝日を所定休日にするか */
+  nationalHolidays: boolean;
+  /** 個別に所定休日にする日 */
+  extraHolidays: string[];
+  /** 曜日・祝日の規則から外して所定労働日にする日 */
+  extraWorkdays: string[];
+}
+
+export interface HolidayCalendarVersionDto extends HolidayCalendarDto {
+  effectiveFrom: string;
+  createdAt: number;
+}
+
+/** GET /settings/holiday-calendar のレスポンス */
+export interface HolidayCalendarSettingsDto {
+  /** 今日時点で有効な版。版が無ければ null(既定の defaults で数える) */
+  effective: HolidayCalendarVersionDto | null;
+  history: HolidayCalendarVersionDto[];
+  defaults: HolidayCalendarDto;
+  /** 同梱している国民の祝日のデータの範囲(年) */
+  nationalHolidayDataRange: { firstYear: number; lastYear: number };
+  /** 今月から3か月分の所定労働日数の目安(法定休日は今日時点のテナント設定で判定) */
+  preview: Array<{ month: string; scheduledWorkDays: number; nationalHolidayDataUnavailable: boolean }>;
+}
+
+/** POST /settings/holiday-calendar の入力 */
+export interface CreateHolidayCalendarVersionInput extends HolidayCalendarDto {
+  effectiveFrom: string;
 }
 
 /**
@@ -2218,6 +2285,20 @@ export const api = {
    */
   async createAttendanceSettingVersion(input: CreateAttendanceSettingVersionInput): Promise<{ version: AttendanceSettingVersionDto }> {
     return request("/settings/attendance", { method: "POST", body: JSON.stringify(input) });
+  },
+
+  /** GET /settings/holiday-calendar(tenant_settings.calendar.manage)。所定休日のカレンダーの版(2026-10-05)。 */
+  async getHolidayCalendar(): Promise<HolidayCalendarSettingsDto> {
+    return request("/settings/holiday-calendar");
+  },
+
+  /**
+   * POST /settings/holiday-calendar。新しい版を1件追加する(UPDATE ではない)。
+   * 過去日は 409 effective_from_in_past、同日の版は 409 version_already_exists、
+   * 同じ日を追加と除外の両方に入れると 400 calendar_date_conflict。
+   */
+  async createHolidayCalendarVersion(input: CreateHolidayCalendarVersionInput): Promise<{ version: HolidayCalendarVersionDto }> {
+    return request("/settings/holiday-calendar", { method: "POST", body: JSON.stringify(input) });
   },
 
   /** GET /settings/work-policy(tenant_settings.flex.manage)。現在有効な版+版の履歴。 */
