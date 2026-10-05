@@ -7,7 +7,7 @@ import { HelpTip } from "../HelpTip";
 
 const TOTAL_CATEGORIES: TimeCategory[] = ["statutory", "overtime", "overtime60h", "lateNight", "statutoryHoliday"];
 
-/** 当初値との差分テーブルの1行(区分別合計5種+flex収支3種)。 */
+/** 当初値との差分テーブルの1行(区分別合計5種+flex収支3種+契約上の枠の6種+固定内訳+手当)。 */
 interface DiffRow {
   key: string;
   label: string;
@@ -35,6 +35,23 @@ function buildDiffRows(data: MonthlyAttendance): DiffRow[] {
       { key: "flexActual", label: messages.closing.diffFlexActual, original: original.flexBalance.actualMinutes, current: data.figures.flexBalance.actualMinutes },
       { key: "flexDiff", label: messages.closing.diffFlexDiff, original: original.flexBalance.diffMinutes, current: data.figures.flexBalance.diffMinutes },
     );
+    // フレックスの契約上の枠(2026-10-05)の6項目。総労働時間の決め方が「所定日数 × 標準時間」の制度
+    // (現在・当初のどちらかで契約上の枠がある)だけ出す — 法定の枠の制度では値が常に0・null で、
+    // 行を足しても読む手間が増えるだけのため。月次の内訳のチップと同じ並び・同じ名前にする。
+    if (data.figures.flexBalance.contractFrameMinutes !== null || original.flexBalance.contractFrameMinutes !== null) {
+      const cur = data.figures.flexBalance;
+      const orig = original.flexBalance;
+      const m = messages.monthly;
+      rows.push(
+        { key: "flexContractFrame", label: m.flexContractFrameLabel, original: orig.contractFrameMinutes ?? 0, current: cur.contractFrameMinutes ?? 0 },
+        { key: "flexCarryIn", label: m.flexCarryInLabel, original: orig.carryInMinutes, current: cur.carryInMinutes },
+        { key: "flexExcess", label: m.flexWithinStatutoryExcessLabel, original: orig.withinStatutoryExcessMinutes, current: cur.withinStatutoryExcessMinutes },
+        // 法定外は区分別合計の「残業」と同じ値(3段の最後として並べ直したもの)
+        { key: "flexOvertime", label: m.flexOvertimeLabel, original: original.totals.overtime, current: data.figures.totals.overtime },
+        { key: "flexCarryOut", label: m.flexCarryOutLabel, original: orig.carryOutMinutes, current: cur.carryOutMinutes },
+        { key: "flexConfirmedShortfall", label: m.flexConfirmedShortfallLabel, original: orig.confirmedShortfallMinutes, current: cur.confirmedShortfallMinutes },
+      );
+    }
   }
   // 固定時間制の内訳(所定内・法定内残業)も同じ理由で差分に含める(2026-08-23、fixedBreakdown 追加に伴う対応)。
   if (data.figures.fixedBreakdown && original.fixedBreakdown) {
