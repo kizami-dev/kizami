@@ -6,6 +6,7 @@
 import type { SmtpSendFn } from "@kizami/notify";
 import type { Encryptor } from "../../lib/encryption.js";
 import type { OutboundChecker } from "../../lib/outbound-policy.js";
+import type { TenantQuotas } from "../../lib/tenant-quotas.js";
 
 export interface SettingsRoutesDeps {
   /** webhookChannel の fetch 差し替え(テスト用)。省略時はグローバル fetch */
@@ -22,6 +23,8 @@ export interface SettingsRoutesDeps {
    * 親切にすぎず、接続のたびの検査(tenantFetchImpl / smtpSendFn)が本体。lib/outbound-policy.ts 参照。
    */
   outbound?: OutboundChecker;
+  /** 外向きの通知の1日の送信数の上限(lib/tenant-quotas.ts)。省略 = 無制限 */
+  quotas?: TenantQuotas;
   /** smtp 送信関数。省略時 smtp チャネルは常に「未設定」扱いになる(テスト送信も 400) */
   smtpSendFn?: SmtpSendFn;
   /**

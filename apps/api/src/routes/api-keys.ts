@@ -27,6 +27,7 @@ import type { AppEnv } from "../auth/middleware.js";
 import { generateApiKey } from "../auth/api-key.js";
 import { API_KEY_SCOPES, isApiKeyScope, type ApiKeyScope } from "../auth/api-key-scopes.js";
 import { requirePermission } from "../authz.js";
+import type { TenantQuotas } from "../lib/tenant-quotas.js";
 import { nowMinutes } from "../lib/time.js";
 
 const MANAGE_PERMISSION = "api_key.manage";
@@ -46,7 +47,7 @@ function serialize(row: ApiKeySummary) {
   };
 }
 
-export function createApiKeysRoutes(db: Database) {
+export function createApiKeysRoutes(db: Database, deps: { quotas?: TenantQuotas } = {}) {
   const app = new Hono<AppEnv>();
 
   /** 自分のキー一覧(既定)。?userId=<他人> は api_key.manage(tenant)が要る。 */
@@ -114,6 +115,10 @@ export function createApiKeysRoutes(db: Database) {
       if (!target) return c.json({ error: "not_found" }, 404);
       targetUserId = userId;
     }
+
+    // 利用上限(lib/tenant-quotas.ts)。打刻は止めない方針なので、対象は発行だけ(既存のキーでの打刻は影響を受けない)
+    const capacity = await deps.quotas?.checkApiKeyCapacity(db, user.tenantId);
+    if (capacity && !capacity.ok) return c.json({ error: "api_key_limit_reached", limit: capacity.limit }, 409);
 
     const { token, hash } = await generateApiKey();
     const now = nowMinutes();

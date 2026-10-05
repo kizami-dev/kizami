@@ -66,6 +66,7 @@ describe("migrate", () => {
         "tenant_oidc_settings",
         "tenant_setting_versions",
         "tenant_slack_settings",
+        "tenant_usage_counters",
         "tenants",
         "user_notification_settings",
         "user_policy_assignments",

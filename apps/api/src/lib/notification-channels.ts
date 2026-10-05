@@ -47,6 +47,7 @@ import {
   type SmtpSendFn,
   type VapidKeys,
 } from "@kizami/notify";
+import { NotificationQuotaExceededError, type TenantQuotas } from "./tenant-quotas.js";
 import { decryptSecret, type Encryptor } from "./encryption.js";
 import { resolveEmailAddress, resolveNotificationCategory, resolveUserNotificationPrefs } from "./notification-preferences.js";
 
@@ -59,6 +60,12 @@ export interface BuildNotificationChannelsOptions {
    * `webhookUrlFallback`(運用者が設定する環境変数)は対象外で、`fetchImpl` を使う。
    */
   tenantFetchImpl?: typeof fetch;
+  /**
+   * 利用上限(外向きの通知の1日の送信数、lib/tenant-quotas.ts)。省略 = 無制限。指定すると、Webhook とメールの
+   * 送信のたびに数え、上限に達したら送らずに NotificationQuotaExceededError を投げる(dispatch では失敗として
+   * 返る)。ブラウザプッシュとアプリ内通知は数えない。
+   */
+  quotas?: TenantQuotas;
   /** smtp 送信関数(Node なら apps/api/src/lib/smtp.ts の nodemailerSendFn、テストなら偽実装)。省略時 smtp チャネルは作らない */
   smtpSendFn?: SmtpSendFn;
   /** テナントに tenant_notification_settings の行が1つも無い場合だけ使う webhook URL フォールバック(環境変数 WEBHOOK_URL)。buildTenantChannels のみで使う */
@@ -81,6 +88,23 @@ export type BuildPersonalChannelsOptions = Omit<BuildNotificationChannelsOptions
   /** 現在時刻(UTC エポック分)。push_subscriptions の last_used_at / failed_at に記録する。省略時は実時刻から求める */
   nowMinutes?: number;
 };
+
+/** チャネルの送信を利用上限(外向きの通知の1日の送信数)で包む。quotas が無ければそのまま返す。 */
+function withOutboundQuota(
+  channel: NotificationChannel,
+  db: Database,
+  tenantId: string,
+  quotas: TenantQuotas | undefined,
+): NotificationChannel {
+  if (!quotas) return channel;
+  return {
+    name: channel.name,
+    async send(msg) {
+      if (!(await quotas.consumeOutboundNotification(db, tenantId))) throw new NotificationQuotaExceededError();
+      await channel.send(msg);
+    },
+  };
+}
 
 function fetchOption(fetchImpl: typeof fetch | undefined): { fetchImpl?: typeof fetch } {
   return fetchImpl ? { fetchImpl } : {};
@@ -115,7 +139,9 @@ export async function buildTenantChannels(
     if (settings.webhookEnabled && settings.webhookUrl) {
       const url = await decryptSecret(options.encryptor, settings.webhookUrl);
       if (url) {
-        channels.push(webhookChannel(url, fetchOption(options.tenantFetchImpl ?? options.fetchImpl)));
+        channels.push(
+          withOutboundQuota(webhookChannel(url, fetchOption(options.tenantFetchImpl ?? options.fetchImpl)), db, tenantId, options.quotas),
+        );
       } else {
         console.warn(
           `[notification-channels] tenant ${tenantId}: webhookUrl could not be decrypted (missing/rotated key or corrupted value); disabling the webhook channel`,
@@ -141,15 +167,20 @@ export async function buildTenantChannels(
 
       if (!smtpPasswordUnavailable) {
         channels.push(
-          createSmtpChannel(
-            {
-              host: settings.smtpHost,
-              port: settings.smtpPort,
-              from: settings.smtpFrom,
-              ...(settings.smtpUser ? { user: settings.smtpUser } : {}),
-              ...(password ? { password } : {}),
-            },
-            options.smtpSendFn,
+          withOutboundQuota(
+            createSmtpChannel(
+              {
+                host: settings.smtpHost,
+                port: settings.smtpPort,
+                from: settings.smtpFrom,
+                ...(settings.smtpUser ? { user: settings.smtpUser } : {}),
+                ...(password ? { password } : {}),
+              },
+              options.smtpSendFn,
+            ),
+            db,
+            tenantId,
+            options.quotas,
           ),
         );
       }
@@ -235,9 +266,10 @@ export async function buildPersonalChannels(
         options.smtpSendFn,
       );
       // 宛先を個人の解決済みアドレスに固定する(呼び出し元が渡す msg.to.email は無視する)。
+      const quotaSmtp = withOutboundQuota(smtp, db, tenantId, options.quotas);
       channels.push({
         name: smtp.name,
-        send: (msg) => smtp.send({ ...msg, to: { email: emailAddress } }),
+        send: (msg) => quotaSmtp.send({ ...msg, to: { email: emailAddress } }),
       });
     }
   }
@@ -245,7 +277,9 @@ export async function buildPersonalChannels(
   if (categoryPrefs.webhook && prefsRow?.webhookUrl) {
     const url = await decryptSecret(options.encryptor, prefsRow.webhookUrl);
     if (url) {
-      channels.push(webhookChannel(url, fetchOption(options.tenantFetchImpl ?? options.fetchImpl)));
+      channels.push(
+        withOutboundQuota(webhookChannel(url, fetchOption(options.tenantFetchImpl ?? options.fetchImpl)), db, tenantId, options.quotas),
+      );
     } else {
       console.warn(
         `[notification-channels] user ${userId}: personal webhookUrl could not be decrypted (missing/rotated key or corrupted value); disabling the webhook channel`,

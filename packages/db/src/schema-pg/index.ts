@@ -57,6 +57,7 @@ export const {
   tenantOidcSettings,
   tenantSettingVersions,
   tenantSlackSettings,
+  tenantUsageCounters,
   tenants,
   userNotificationSettings,
   userPolicyAssignments,
