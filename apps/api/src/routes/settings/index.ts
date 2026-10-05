@@ -7,7 +7,8 @@
  * - shared.ts: ドメイン間の共有ヘルパー・型(isValidLocalDate・parseJsonRecord・SettingsRoutesDeps)
  * - permissions.ts: ドメイン間で使い回している権限定数
  * - notifications.ts / leave.ts / tenant-profile.ts / privacy.ts / attendance.ts /
- *   work-policy.ts / slack.ts / allowances.ts: ドメイン別のルート実装
+ *   work-policy.ts / work-policies.ts / slack.ts / allowances.ts: ドメイン別のルート実装
+ * - work-policy-version-input.ts: 労働時間制の版の入力検証(work-policy.ts と work-policies.ts で共有)
  *
  * ルート登録順は元の routes/settings.ts と同じ(notifications → leave → tenant-profile →
  * privacy(work-rules-url・privacy-templates・privacy-contact) → attendance → work-policy →
@@ -28,6 +29,7 @@ import { registerShiftPatternsRoutes } from "./shift-patterns.js";
 import { registerSlackRoutes } from "./slack.js";
 import { registerSsoRoutes } from "./sso.js";
 import { registerTenantProfileRoutes } from "./tenant-profile.js";
+import { registerWorkPoliciesRoutes } from "./work-policies.js";
 import { registerWorkPolicyRoutes } from "./work-policy.js";
 import type { SettingsRoutesDeps } from "./shared.js";
 
@@ -42,6 +44,9 @@ export function createSettingsRoutes(db: Database, deps: SettingsRoutesDeps = {}
   registerPrivacyRoutes(app, db, deps);
   registerAttendanceRoutes(app, db, deps);
   registerWorkPolicyRoutes(app, db, deps);
+  // 名前付きの労働時間制の制度(2026-10-05、時短勤務対応の第1段階)。パスは /work-policies で
+  // 既存の /work-policy と重ならない。
+  registerWorkPoliciesRoutes(app, db, deps);
   registerShiftPatternsRoutes(app, db, deps);
   registerSlackRoutes(app, db, deps);
   // SSO(OIDC)設定。2026-08-24 追加(Tier 2)。登録順は末尾でよい(パスの衝突が無いため)。

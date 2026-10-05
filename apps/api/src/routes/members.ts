@@ -50,6 +50,14 @@
  * 設計(所定労働時間が人ごとに違うケースは docs/design/shift-work.md のシフト制での対応まで
  * 将来課題として持ち越す)。詳細な設計判断は packages/db/src/queries/work-policies.ts の
  * `getOrCreateTenantWorkPolicyByKind` のコメント参照。
+ *
+ * 名前付きの制度(2026-10-05、時短勤務対応の第1段階): 上の「kind ごとに1本」をやめ、テナントは
+ * 制度を名前付きで複数持てるようにした(制度の管理は routes/settings/work-policies.ts)。
+ * POST /:id/work-policy は `workPolicyId`(制度の id)で割当先を指定するのが正規の入力になり、
+ * 従来の `kind` 入力は後方互換のために残す(その kind の既定の制度に割り当てる)。
+ * 招待(POST /)でも `workPolicyId` を任意で受け付ける — 指定が無ければ従来どおりテナントの
+ * 既定の制度を割り当てる。招待と同じ日から別の制度にしたいとき、後から割当を足すと
+ * 同日の重複(409 assignment_already_exists)になって直せないため、招待の時点で選べるようにした。
  */
 
 import { Hono } from "hono";
@@ -70,7 +78,7 @@ import {
   insertAuditLog,
   isUniqueConstraintError,
   listAssignedPresetGrants,
-  listCurrentWorkPolicyKindsForTenant,
+  listCurrentWorkPolicyAssignmentsForTenant,
   listInvitationsForTenant,
   listPasswordResetTokensForTenant,
   listTenantAssignedPresetNames,
@@ -99,6 +107,8 @@ import {
   type UserPolicyAssignmentHistoryRow,
   getOrCreateTenantWorkPolicy,
   getOrCreateTenantWorkPolicyByKind,
+  getWorkPolicyById,
+  listTenantWorkPolicies,
   assignUserWorkPolicy,
 } from "@kizami/db";
 import { isLeaveGrantClass, type LeaveGrantClass } from "@kizami/leave";
@@ -117,6 +127,12 @@ import { nowMinutes, todayLocalDate } from "../lib/time.js";
 import { TZ_OFFSET_MINUTES_JST } from "../lib/settings.js";
 import { ASSIGNMENT_MANAGE_PERMISSION, assignPresetsToMember, PRESET_MANAGE_PERMISSION } from "./presets.js";
 import { WORK_POLICY_PERMISSION } from "./settings/permissions.js";
+import {
+  FIXED_SETTLEMENT_PERIOD_PLACEHOLDER,
+  isValidStandardDayMinutes,
+  isWorkPolicyKind,
+  versionEffectiveOn,
+} from "./settings/work-policy-version-input.js";
 
 const VIEW_PERMISSION = "member.view";
 const EDIT_PERMISSION = "member.profile.edit";
@@ -215,6 +231,36 @@ function resolveEffectiveAssignment(
 }
 
 /**
+ * 制度の id で割り当てる前の検査(2026-10-05、名前付きの制度)。招待(POST /)と
+ * POST /:id/work-policy の両方で使う。
+ *
+ * - id が文字列でない・このテナントの制度でない → 400 invalid_work_policy_id
+ *   (他テナントの制度の存在は明かさない。部署の invalid_department_id と同じ扱い)
+ * - アーカイブ済み → 409 work_policy_archived(アーカイブは「新しい割当に出さない」こと)
+ * - 割当の適用開始日の時点で有効な版が無い(制度の初版がそれより後)→ 409
+ *   work_policy_not_effective_yet。素通しにすると、その間の月次・有給で buildSettingsTimeline が
+ *   版を解決できず 500 になるため、入口で止める
+ */
+async function checkAssignableWorkPolicy(
+  db: Database,
+  params: { tenantId: string; workPolicyId: unknown; effectiveFrom: string },
+): Promise<
+  | { ok: true; policy: { id: string; name: string }; version: { kind: string; standardDayMinutes: number } }
+  | { ok: false; status: 400 | 409; error: string }
+> {
+  if (typeof params.workPolicyId !== "string" || params.workPolicyId === "") {
+    return { ok: false, status: 400, error: "invalid_work_policy_id" };
+  }
+  const policy = await getWorkPolicyById(db, { tenantId: params.tenantId, id: params.workPolicyId });
+  if (!policy) return { ok: false, status: 400, error: "invalid_work_policy_id" };
+  if (policy.archivedAt !== null) return { ok: false, status: 409, error: "work_policy_archived" };
+  const versions = await listWorkPolicyVersions(db, { tenantId: params.tenantId, workPolicyId: policy.id });
+  const version = versionEffectiveOn(versions, params.effectiveFrom);
+  if (!version) return { ok: false, status: 409, error: "work_policy_not_effective_yet" };
+  return { ok: true, policy: { id: policy.id, name: policy.name }, version };
+}
+
+/**
  * メンバー1人分の保持期間の状態(2026-08-27、docs/design/data-retention.md)。
  *
  * `deactivated_at`(UTC エポック分)をローカル暦日に落としてから純関数
@@ -252,9 +298,10 @@ export function createMembersRoutes(db: Database) {
       invitationRows,
       credentialUserIds,
       passwordResetRows,
-      workPolicyKindByUser,
+      workPolicyByUser,
       totpEnabledUserIds,
       tenant,
+      workPolicies,
     ] =
       await Promise.all([
         listTenantUsers(db, user.tenantId),
@@ -264,9 +311,10 @@ export function createMembersRoutes(db: Database) {
         listTenantUserIdsWithCredentials(db, user.tenantId),
         listPasswordResetTokensForTenant(db, user.tenantId),
         // 現在の労働時間制(UI バッジ用、2026-08-23 追加)。テナント全体を2クエリで一括解決する
-        // (packages/db/src/queries/work-policies.ts の listCurrentWorkPolicyKindsForTenant 参照、
-        // ユーザーごとの個別クエリにはしない — N+1 回避)。
-        listCurrentWorkPolicyKindsForTenant(db, { tenantId: user.tenantId, asOfDate: today }),
+        // (packages/db/src/queries/work-policies.ts の listCurrentWorkPolicyAssignmentsForTenant 参照、
+        // ユーザーごとの個別クエリにはしない — N+1 回避)。2026-10-05 から制度の id も返す
+        // (同じ kind の制度が複数ありうるため、制度名を出すのに id が要る)。
+        listCurrentWorkPolicyAssignmentsForTenant(db, { tenantId: user.tenantId, asOfDate: today }),
         // 二要素認証の有効状態(UI バッジ + 「2FAをリセット」ボタンの出し分け、2026-08-27)。
         // テナント分を1クエリで取る(ユーザーごとの個別クエリにしない — N+1 回避)。
         listTenantTotpEnabledUserIds(db, user.tenantId),
@@ -274,7 +322,10 @@ export function createMembersRoutes(db: Database) {
         // 一覧に「消去可能になった退職者」を出すために必要(判定は暦日で行う純関数
         // evaluateRetention に委譲する)。
         getTenantById(db, user.tenantId),
+        // 制度名の解決用(2026-10-05、名前付きの制度)。テナントの制度は数本〜十数本なので全件で足りる。
+        listTenantWorkPolicies(db, user.tenantId),
       ]);
+    const workPolicyNameById = new Map(workPolicies.map((p) => [p.id, p.name]));
     const allUsers = accessibleUserIds === "all" ? tenantUsers : tenantUsers.filter((u) => accessibleUserIds.has(u.id));
 
     // membershipRows は createdAt 降順。1ユーザーに複数行あり得るため最初に出現した
@@ -348,7 +399,10 @@ export function createMembersRoutes(db: Database) {
         // 解決不能(通常起こり得ない不整合) — どちらも同じ null として表す
         // (listCurrentWorkPolicyKindsForTenant の規約、割当自体が無いユーザーは Map に
         // 含まれないため `.get(u.id) ?? null` で両ケースとも null に落ちる)。
-        workSystemKind: workPolicyKindByUser.get(u.id) ?? null,
+        workSystemKind: workPolicyByUser.get(u.id)?.kind ?? null,
+        // 現在割り当てられている制度(2026-10-05、名前付きの制度)。null = 割当が一度も無い。
+        workPolicyId: workPolicyByUser.get(u.id)?.workPolicyId ?? null,
+        workPolicyName: workPolicyNameById.get(workPolicyByUser.get(u.id)?.workPolicyId ?? "") ?? null,
         // 二要素認証(TOTP)を有効化済みか(2026-08-27)。UI バッジと、ロックアウト救済の
         // 「2FAをリセット」ボタンの出し分けに使う(docs/design/two-factor-auth.md)。
         twoFactorEnabled: totpEnabledUserIds.has(u.id),
@@ -368,12 +422,13 @@ export function createMembersRoutes(db: Database) {
     const body = await parseJsonBody(c);
     if (body === null) return c.json({ error: "invalid_body" }, 400);
 
-    const { email, name, departmentId, hireDate, presetIds } = body as {
+    const { email, name, departmentId, hireDate, presetIds, workPolicyId } = body as {
       email?: unknown;
       name?: unknown;
       departmentId?: unknown;
       hireDate?: unknown;
       presetIds?: unknown;
+      workPolicyId?: unknown;
     };
 
     if (typeof email !== "string" || email.length > MAX_EMAIL_LENGTH || !EMAIL_RE.test(email)) {
@@ -433,6 +488,23 @@ export function createMembersRoutes(db: Database) {
       presetIdList = presetIds;
     }
 
+    // 招待と同時の制度の割当(2026-10-05、名前付きの制度)。割当先の制度は所定労働時間を通じて
+    // 賃金に直結するため、presetIds と同じ考え方で、指定した場合だけ POST /:id/work-policy と同じ
+    // WORK_POLICY_PERMISSION も要求する(member.invite だけでは選べない)。適用開始日は既定の制度の
+    // 自動割当と同じ「入社日(未指定なら今日)」。
+    const assignmentEffectiveFrom = resolvedHireDate ?? todayLocalDate(TZ_OFFSET_MINUTES_JST);
+    let chosenWorkPolicyId: string | undefined;
+    if (workPolicyId !== undefined && workPolicyId !== null) {
+      requirePermission(c, WORK_POLICY_PERMISSION, "tenant");
+      const checked = await checkAssignableWorkPolicy(db, {
+        tenantId: actor.tenantId,
+        workPolicyId,
+        effectiveFrom: assignmentEffectiveFrom,
+      });
+      if (!checked.ok) return c.json({ error: checked.error }, checked.status);
+      chosenWorkPolicyId = checked.policy.id;
+    }
+
     const now = nowMinutes();
     // トークンの生成自体は DB を伴わない純粋な計算(crypto乱数 + ハッシュ化)のため、
     // トランザクションの外で先に済ませておく(トランザクションの保持時間を必要最小限にする)。
@@ -467,16 +539,21 @@ export function createMembersRoutes(db: Database) {
         // メンバーは制度未割当のまま(buildSettingsTimeline が解決できず有給・月次が 500)。
         // 適用開始日は入社日(未指定なら今日)— 入社日より前の期間は集計対象にならないため。
         // 別の制度にしたい場合は後から work policy の割当を追加すれば上書きされる(effective-dated)。
-        const defaultPolicy = await getOrCreateTenantWorkPolicy(tx, {
-          tenantId: actor.tenantId,
-          name: "標準",
-          createdAt: now,
-        });
+        // 2026-10-05: 招待で制度を選んだ場合(workPolicyId)はその制度を割り当てる(上の検証済み)。
+        const assignedPolicyId =
+          chosenWorkPolicyId ??
+          (
+            await getOrCreateTenantWorkPolicy(tx, {
+              tenantId: actor.tenantId,
+              name: "標準",
+              createdAt: now,
+            })
+          ).id;
         await assignUserWorkPolicy(tx, {
           tenantId: actor.tenantId,
           userId: createdUser.id,
-          workPolicyId: defaultPolicy.id,
-          effectiveFrom: resolvedHireDate ?? todayLocalDate(TZ_OFFSET_MINUTES_JST),
+          workPolicyId: assignedPolicyId,
+          effectiveFrom: assignmentEffectiveFrom,
           createdAt: now,
         });
 
@@ -495,7 +572,12 @@ export function createMembersRoutes(db: Database) {
           action: "member.invite",
           targetType: "user",
           targetId: createdUser.id,
-          detail: JSON.stringify({ email: createdUser.email, departmentId: resolvedDepartmentId ?? null }),
+          detail: JSON.stringify({
+            email: createdUser.email,
+            departmentId: resolvedDepartmentId ?? null,
+            // 招待で制度を選んだときだけ残す(既定の制度の自動割当は従来どおり記録しない)。
+            ...(chosenWorkPolicyId !== undefined ? { workPolicyId: chosenWorkPolicyId } : {}),
+          }),
           occurredAt: now,
         });
 
@@ -1129,25 +1211,27 @@ export function createMembersRoutes(db: Database) {
   });
 
   /**
-   * kind = "fixed" のとき、DB 列(work_policy_versions.settlement_period は NOT NULL)を埋める
-   * ためだけのプレースホルダ。この値自体に意味は無く、GET/POST /settings/work-policy と同じ
-   * 理由(settlementPeriod は flex 専用の列で fixed では無視される、packages/db/src/schema/
-   * settings.ts のコメント参照)でここでも決め打ちにする。文字列としてはあちらと同じ "monthly" に
-   * 揃えているが、意味的には無関係な値であり参照はしないこと。
-   */
-  const FIXED_SETTLEMENT_PERIOD_PLACEHOLDER = "monthly";
-
-  /**
    * kind ごとのポリシーを新規作成する際、standardDayMinutes の初期値がテナントの既定ポリシー
    * からも一切解決できない(既定ポリシーがまだ一度も版を持たない、シード未経由の稀なテスト DB
    * 等)場合の最終フォールバック。8時間(480分)。apps/api/src/seed.ts・
    * apps/web/src/components/SettingsAttendanceView.tsx の既定表示値と揃える。
+   *
+   * kind = "fixed" / "monthly_variable" のとき DB 列(work_policy_versions.settlement_period は
+   * NOT NULL)を埋めるプレースホルダは、2026-10-05 から routes/settings/work-policy-version-input.ts の
+   * FIXED_SETTLEMENT_PERIOD_PLACEHOLDER を共有している(同じ値を2箇所で決め打ちしない)。
    */
   const FALLBACK_STANDARD_DAY_MINUTES = 480;
 
   /** GET /members/:id/work-policy のレスポンス要素(1割当分)。 */
   function serializeAssignment(h: UserPolicyAssignmentHistoryRow) {
-    return { effectiveFrom: h.effectiveFrom, kind: h.kind, standardDayMinutes: h.standardDayMinutes, workPolicyName: h.workPolicyName };
+    return {
+      effectiveFrom: h.effectiveFrom,
+      // 2026-10-05(名前付きの制度): 同じ kind の制度が複数ありうるため、どの制度かを id で返す。
+      workPolicyId: h.workPolicyId,
+      workPolicyName: h.workPolicyName,
+      kind: h.kind,
+      standardDayMinutes: h.standardDayMinutes,
+    };
   }
 
   /** 現在(今日時点)実効の労働時間制と、割当履歴を返す。 */
@@ -1170,12 +1254,18 @@ export function createMembersRoutes(db: Database) {
   });
 
   /**
-   * メンバーへの労働時間制割当(kind の選択として表現、割当は追記専用)。
+   * メンバーへの労働時間制の割当(割当は追記専用)。
    *
-   * `{ kind: "flex" | "fixed", effectiveFrom }` を受け取り、kind に対応する共有ポリシーを
-   * get-or-create した上で `assignUserWorkPolicy` を追記する。バリデーション・エラー名は
-   * GET/POST /settings/work-policy(routes/settings/work-policy.ts)と揃える
-   * (effectiveFrom が過去日なら 409 effective_from_in_past、同日への重複割当は 409)。
+   * 入力は次のどちらか(2026-10-05、名前付きの制度):
+   * - `{ workPolicyId, effectiveFrom }`(正規): 指定した制度を割り当てる。制度の存在・アーカイブ・
+   *   適用開始日の時点で版があるかは `checkAssignableWorkPolicy` で検査する。所定労働時間は
+   *   制度の版が持つため、この形では `kind` / `standardDayMinutes` を受け付けない(400 invalid_body —
+   *   受け付けると、共有している制度の所定を1人の割当のついでに書き換えてしまう)
+   * - `{ kind, effectiveFrom, standardDayMinutes? }`(後方互換): その kind の既定の制度
+   *   (`getOrCreateTenantWorkPolicyByKind`)に割り当てる。従来の挙動のまま
+   *
+   * バリデーション・エラー名は GET/POST /settings/work-policy(routes/settings/work-policy.ts)と
+   * 揃える(effectiveFrom が過去日なら 409 effective_from_in_past、同日への重複割当は 409)。
    */
   app.post("/:id/work-policy", async (c) => {
     requirePermission(c, WORK_POLICY_PERMISSION, "tenant");
@@ -1188,12 +1278,16 @@ export function createMembersRoutes(db: Database) {
     const body = await parseJsonBody(c);
     if (body === null) return c.json({ error: "invalid_body" }, 400);
 
-    // 2026-08-23 shift-work.md 決定事項5: "monthly_variable"(1ヶ月単位の変形労働時間制)も
-    // 受け付ける。routes/settings/work-policy.ts の POST /work-policy と同じ3値。
-    if (body.kind !== "flex" && body.kind !== "fixed" && body.kind !== "monthly_variable") {
+    const byPolicyId = body.workPolicyId !== undefined;
+    if (byPolicyId) {
+      if (body.kind !== undefined || body.standardDayMinutes !== undefined) {
+        return c.json({ error: "invalid_body" }, 400);
+      }
+    } else if (!isWorkPolicyKind(body.kind)) {
+      // 2026-08-23 shift-work.md 決定事項5: "monthly_variable"(1ヶ月単位の変形労働時間制)も
+      // 受け付ける。routes/settings/work-policy.ts の POST /work-policy と同じ3値。
       return c.json({ error: "invalid_work_system_kind" }, 400);
     }
-    const kind = body.kind;
 
     if (typeof body.effectiveFrom !== "string" || !DATE_RE.test(body.effectiveFrom)) {
       return c.json({ error: "invalid_effective_from" }, 400);
@@ -1205,13 +1299,9 @@ export function createMembersRoutes(db: Database) {
     // 意味するようになった(シフトの無い日に有給を取ったとき1日分を何分に換算するか —
     // apps/api/src/lib/leave-minutes.ts 参照)。この制度を割り当てるときに管理者が明示できるよう
     // 任意項目として受け付ける(省略時は従来どおりテナント既定ポリシーの実効値を引き継ぐ)。
-    if (body.standardDayMinutes !== undefined) {
-      if (
-        typeof body.standardDayMinutes !== "number" ||
-        !Number.isInteger(body.standardDayMinutes) ||
-        body.standardDayMinutes <= 0 ||
-        body.standardDayMinutes > 1440
-      ) {
+    // kind 入力(後方互換)のときだけ。範囲は制度の版と同じ(固定時間制は 1〜480 分)。
+    if (!byPolicyId && body.standardDayMinutes !== undefined) {
+      if (!isWorkPolicyKind(body.kind) || !isValidStandardDayMinutes(body.kind, body.standardDayMinutes)) {
         return c.json({ error: "invalid_standard_day_minutes" }, 400);
       }
     }
@@ -1224,7 +1314,7 @@ export function createMembersRoutes(db: Database) {
 
     const history = await listUserPolicyAssignments(db, { tenantId: actor.tenantId, userId: id });
     // 同日への重複割当は禁止(work_policy_versions.version_already_exists と同じ「追記専用の
-    // 版管理では同じ日を2度上書きできない」という規約。kind が同じか違うかは問わない —
+    // 版管理では同じ日を2度上書きできない」という規約。制度が同じか違うかは問わない —
     // 「その日から何が有効か」は常に1つに定まるべきため)。
     if (history.some((h) => h.effectiveFrom === effectiveFrom)) {
       return c.json({ error: "assignment_already_exists" }, 409);
@@ -1233,17 +1323,82 @@ export function createMembersRoutes(db: Database) {
 
     const now = nowMinutes();
 
+    let policy: { id: string; name: string };
+    let assignedKind: string;
+    let assignedStandardDayMinutes: number;
+    if (byPolicyId) {
+      const checked = await checkAssignableWorkPolicy(db, { tenantId: actor.tenantId, workPolicyId: body.workPolicyId, effectiveFrom });
+      if (!checked.ok) return c.json({ error: checked.error }, checked.status);
+      policy = checked.policy;
+      assignedKind = checked.version.kind;
+      assignedStandardDayMinutes = checked.version.standardDayMinutes;
+    } else {
+      const kind = body.kind as "flex" | "fixed" | "monthly_variable";
+      const legacy = await resolveLegacyKindPolicy({ tenantId: actor.tenantId, kind, effectiveFrom, today, now, requestedStandardDayMinutes });
+      if (!legacy.ok) return c.json({ error: legacy.error }, legacy.status);
+      policy = legacy.policy;
+      assignedKind = kind;
+      assignedStandardDayMinutes = legacy.standardDayMinutes;
+    }
+
+    await assignUserWorkPolicy(db, { tenantId: actor.tenantId, userId: id, workPolicyId: policy.id, effectiveFrom, createdAt: now });
+
+    await insertAuditLog(db, {
+      tenantId: actor.tenantId,
+      actorId: actor.id,
+      action: "member.work_policy.assign",
+      targetType: "user",
+      targetId: id,
+      // before/after は従来どおり kind(既存の監査ログの読み手を壊さない)。2026-10-05 から、同じ kind の
+      // 制度を区別できるよう、制度の id と名前も残す。
+      detail: JSON.stringify({
+        before: before ? before.kind : null,
+        after: assignedKind,
+        effectiveFrom,
+        beforeWorkPolicyId: before ? before.workPolicyId : null,
+        beforeWorkPolicyName: before ? before.workPolicyName : null,
+        afterWorkPolicyId: policy.id,
+        afterWorkPolicyName: policy.name,
+      }),
+      occurredAt: now,
+    });
+
+    return c.json(
+      {
+        assignment: {
+          workPolicyId: policy.id,
+          workPolicyName: policy.name,
+          kind: assignedKind,
+          effectiveFrom,
+          standardDayMinutes: assignedStandardDayMinutes,
+        },
+      },
+      201,
+    );
+  });
+
+  /**
+   * kind 入力(後方互換)の割当先を解決する。中身は 2026-10-05 より前の POST /:id/work-policy の
+   * 処理そのまま(関数に括り出し、固定時間制の所定の上限〔480分〕を初版の引き継ぎにも効かせた)。
+   */
+  async function resolveLegacyKindPolicy(params: {
+    tenantId: string;
+    kind: "flex" | "fixed" | "monthly_variable";
+    effectiveFrom: string;
+    today: string;
+    now: number;
+    requestedStandardDayMinutes: number | undefined;
+  }): Promise<{ ok: true; policy: { id: string; name: string }; standardDayMinutes: number } | { ok: false; status: 409; error: string }> {
+    const { tenantId, kind, effectiveFrom, today, now, requestedStandardDayMinutes } = params;
+
     // standardDayMinutes の初期値: テナント既定ポリシー(GET/POST /settings/work-policy が
     // 管理する、名前ベースの "標準" ポリシー)の現在の実効値を流用する(依頼の判断点)。
-    // 理由: v0.1〜v0.2 はメンバー個別に所定労働時間を設定する手段を持たない(所定労働時間が
-    // 人ごとに違うケースは docs/design/shift-work.md のシフト制〔日単位の所定〕が入るまでの
-    // 将来課題)。根拠のない値を決め打ちするより、テナントが既に運用しているフレックスの
-    // 標準時間を初期値として引き継ぐ方が実態に近い。この値は「kind に対応するポリシーを
-    // 新規作成する場合の初版」にのみ使われ(既存ポリシーが見つかればこの値は無視される)、
-    // 以後は本エンドポイントを含む別の割当や GET/POST /settings/work-policy の版追加で
-    // 個別に上書きできる。
-    const defaultPolicy = await getOrCreateTenantWorkPolicy(db, { tenantId: actor.tenantId, name: "標準", createdAt: now });
-    const defaultPolicyVersions = await listWorkPolicyVersions(db, { tenantId: actor.tenantId, workPolicyId: defaultPolicy.id });
+    // 理由: v0.1〜v0.2 はメンバー個別に所定労働時間を設定する手段を持たなかった。根拠のない値を
+    // 決め打ちするより、テナントが既に運用しているフレックスの標準時間を初期値として引き継ぐ方が
+    // 実態に近い。この値は「kind に対応するポリシーを新規作成する場合の初版」にのみ使われ
+    // (既存ポリシーが見つかればこの値は無視される)、以後は制度の版の追加で上書きできる。
+    const defaultPolicy = await getOrCreateTenantWorkPolicy(db, { tenantId, name: "標準", createdAt: now });
+    const defaultPolicyVersions = await listWorkPolicyVersions(db, { tenantId, workPolicyId: defaultPolicy.id });
     // listWorkPolicyVersions は effectiveFrom 昇順(queries/work-policies.ts の規約)。
     // 昇順に辿って「today 以下」の版で毎回上書きすれば、ループ後に残るのは today 時点で
     // 実効の版(= today 以下で最大の effectiveFrom を持つ版)になる。
@@ -1253,10 +1408,16 @@ export function createMembersRoutes(db: Database) {
         defaultPolicyEffectiveMinutes = v.standardDayMinutes;
       }
     }
-    const standardDayMinutes = requestedStandardDayMinutes ?? defaultPolicyEffectiveMinutes ?? FALLBACK_STANDARD_DAY_MINUTES;
+    // 固定時間制の所定の上限(480分)を超える値を初版に持ち込まない(既定の制度がフレックスで
+    // 標準時間を8時間超にしている場合など)。
+    const inheritedMinutes =
+      defaultPolicyEffectiveMinutes !== null && isValidStandardDayMinutes(kind, defaultPolicyEffectiveMinutes)
+        ? defaultPolicyEffectiveMinutes
+        : null;
+    const standardDayMinutes = requestedStandardDayMinutes ?? inheritedMinutes ?? FALLBACK_STANDARD_DAY_MINUTES;
 
     const policy = await getOrCreateTenantWorkPolicyByKind(db, {
-      tenantId: actor.tenantId,
+      tenantId,
       kind,
       // 名前は表示専用(kind による検索には影響しない、getOrCreateTenantWorkPolicyByKind の
       // コメント参照)。flex は既存の GET/POST /settings/work-policy と同じ "標準" に揃える
@@ -1266,10 +1427,6 @@ export function createMembersRoutes(db: Database) {
       createdAt: now,
       defaultVersion: {
         settlementPeriod: kind === "flex" ? "monthly" : FIXED_SETTLEMENT_PERIOD_PLACEHOLDER,
-        // standardDayMinutes は monthly_variable では無意味(routes/settings/work-policy.ts の
-        // VARIABLE_STANDARD_DAY_MINUTES_PLACEHOLDER と同じ理由)。専用の定数を持つほどでもない
-        // ため、テナント既定ポリシーから引いた値をそのまま使い回す(未参照であることが重要で、
-        // 具体的な数値そのものに意味は無い)。
         standardDayMinutes,
       },
     });
@@ -1277,11 +1434,10 @@ export function createMembersRoutes(db: Database) {
     // 明示指定があり、既存ポリシーの実効値と食い違う場合は版を1つ追記して反映する
     // (getOrCreateTenantWorkPolicyByKind の defaultVersion は「ポリシーを新規作成した場合」に
     // しか使われないため、既にそのkindのポリシーがあるテナントでは指定が無視されてしまう)。
-    // kind ごとの共有ポリシーなので、この変更は同じ制度の他のメンバーにも及ぶ — 制度の
-    // 「基準所定」はテナント全体の運用ルールであり、人ごとに変えたい場合はシフトで表現する
-    // (docs/design/shift-work.md)、という現行モデルの帰結。
+    // この変更は同じ制度の他のメンバーにも及ぶ — 人ごとに所定を変えたい場合は、2026-10-05 以降は
+    // 名前付きの制度を作って workPolicyId で割り当てる(この kind 入力は後方互換のためだけに残す)。
     if (requestedStandardDayMinutes !== undefined) {
-      const policyVersions = await listWorkPolicyVersions(db, { tenantId: actor.tenantId, workPolicyId: policy.id });
+      const policyVersions = await listWorkPolicyVersions(db, { tenantId, workPolicyId: policy.id });
       let effectiveMinutes: number | null = null;
       // コアタイム(labor law §32-3)は「その日に有効な版」の値をそのまま引き継ぐ。ここで
       // 追記する版は standardDayMinutes を変えるためだけのものなので、テナントの
@@ -1297,10 +1453,10 @@ export function createMembersRoutes(db: Database) {
         if (policyVersions.some((v) => v.effectiveFrom === effectiveFrom)) {
           // 同じ日に別の値の版が既にある。追記専用の版管理では同じ日を2度上書きできない
           // (routes/settings/work-policy.ts の version_already_exists と同じ規約)。
-          return c.json({ error: "version_already_exists" }, 409);
+          return { ok: false, status: 409, error: "version_already_exists" };
         }
         await insertWorkPolicyVersion(db, {
-          tenantId: actor.tenantId,
+          tenantId,
           workPolicyId: policy.id,
           effectiveFrom,
           kind,
@@ -1312,20 +1468,9 @@ export function createMembersRoutes(db: Database) {
       }
     }
 
-    await assignUserWorkPolicy(db, { tenantId: actor.tenantId, userId: id, workPolicyId: policy.id, effectiveFrom, createdAt: now });
-
-    await insertAuditLog(db, {
-      tenantId: actor.tenantId,
-      actorId: actor.id,
-      action: "member.work_policy.assign",
-      targetType: "user",
-      targetId: id,
-      detail: JSON.stringify({ before: before ? before.kind : null, after: kind, effectiveFrom }),
-      occurredAt: now,
-    });
-
-    return c.json({ assignment: { kind, effectiveFrom, standardDayMinutes } }, 201);
-  });
+    // 応答の standardDayMinutes は従来どおり「初版に使った値(明示指定があればその値)」。
+    return { ok: true, policy: { id: policy.id, name: policy.name }, standardDayMinutes };
+  }
 
   app.put("/:id/presets", async (c) => {
     requirePermission(c, ASSIGNMENT_MANAGE_PERMISSION, "department");
