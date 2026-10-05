@@ -285,6 +285,12 @@ describe("closing amend (post-close corrections)", () => {
       "flex_diff_minutes",
       "fixed_within_scheduled_minutes",
       "fixed_extra_within_statutory_minutes",
+      "flex_statutory_frame_minutes",
+      "flex_contract_frame_minutes",
+      "flex_carry_in_minutes",
+      "flex_within_statutory_excess_minutes",
+      "flex_carry_out_minutes",
+      "flex_confirmed_shortfall_minutes",
       "closed",
       "original_statutory_minutes",
       "original_overtime_minutes",
@@ -296,6 +302,12 @@ describe("closing amend (post-close corrections)", () => {
       "original_flex_diff_minutes",
       "original_fixed_within_scheduled_minutes",
       "original_fixed_extra_within_statutory_minutes",
+      "original_flex_statutory_frame_minutes",
+      "original_flex_contract_frame_minutes",
+      "original_flex_carry_in_minutes",
+      "original_flex_within_statutory_excess_minutes",
+      "original_flex_carry_out_minutes",
+      "original_flex_confirmed_shortfall_minutes",
       "diff_statutory_minutes",
       "diff_overtime_minutes",
       "diff_overtime60h_minutes",
@@ -306,13 +318,21 @@ describe("closing amend (post-close corrections)", () => {
       "diff_flex_diff_minutes",
       "diff_fixed_within_scheduled_minutes",
       "diff_fixed_extra_within_statutory_minutes",
+      "diff_flex_statutory_frame_minutes",
+      "diff_flex_contract_frame_minutes",
+      "diff_flex_carry_in_minutes",
+      "diff_flex_within_statutory_excess_minutes",
+      "diff_flex_carry_out_minutes",
+      "diff_flex_confirmed_shortfall_minutes",
     ]);
     expect(rows).toHaveLength(1);
     const row = rows[0] as string[];
-    expect(Number(row[4])).toBe(after.totals.statutory); // statutory_minutes (現在値)
-    expect(Number(row[16])).toBe(before.totals.statutory); // original_statutory_minutes
-    expect(Number(row[26])).toBe(after.totals.statutory - before.totals.statutory); // diff_statutory_minutes
-    expect(Number(row[26])).toBe(60);
+    // 列は名前で引く(2026-10-05 にフレックスの契約上の枠の列が足され、位置がずれたため)
+    const col = (name: string) => Number(row[header.indexOf(name)]);
+    expect(col("statutory_minutes")).toBe(after.totals.statutory); // 現在値
+    expect(col("original_statutory_minutes")).toBe(before.totals.statutory);
+    expect(col("diff_statutory_minutes")).toBe(after.totals.statutory - before.totals.statutory);
+    expect(col("diff_statutory_minutes")).toBe(60);
   });
 
   it("without compare=original the CSV header/columns are unchanged (no original_*/diff_* columns)", async () => {
@@ -341,6 +361,12 @@ describe("closing amend (post-close corrections)", () => {
       "flex_diff_minutes",
       "fixed_within_scheduled_minutes",
       "fixed_extra_within_statutory_minutes",
+      "flex_statutory_frame_minutes",
+      "flex_contract_frame_minutes",
+      "flex_carry_in_minutes",
+      "flex_within_statutory_excess_minutes",
+      "flex_carry_out_minutes",
+      "flex_confirmed_shortfall_minutes",
       "closed",
     ]);
   });

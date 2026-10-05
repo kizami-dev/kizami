@@ -71,6 +71,47 @@ import { calculateMonthlyForUser } from "../reminders.js";
 const EXPORT_PERMISSION = "export.attendance.run";
 
 /**
+ * フレックスの契約上の枠と不足の繰越の列(2026-10-05、docs/design/work-systems.md)。
+ * `fixed_extra_within_statutory_minutes` の後・手当の列の前に置く(手当の列は元から本数が動くので、
+ * 列名で参照する取り込み側には影響しない。列の位置で取り込んでいる場合は、手当の列と `closed` が
+ * 6列後ろにずれる — CHANGELOG に記載)。
+ *
+ * - flex_statutory_frame_minutes: 法定の枠(週の法定労働時間 × 暦日数 ÷ 7)
+ * - flex_contract_frame_minutes: 契約上の枠(所定労働日数 × 標準労働時間、法定の枠で頭打ち)。
+ *   総労働時間の決め方が法定の枠の制度では空欄
+ * - flex_carry_in_minutes: 前月から繰り越されてきた不足のうち、この月の枠に上乗せした分
+ * - flex_within_statutory_excess_minutes: 法定内超過(枠を超え法定の枠以内。割増なし)
+ * - flex_carry_out_minutes: この月の不足のうち翌月へ繰り越した分
+ * - flex_confirmed_shortfall_minutes: この月の不足として確定した分(給与で控除の対象になりうる)
+ *
+ * 既存の `flex_frame_minutes` の意味: 「過不足を比べる枠」。法定の枠の制度では従来どおり法定の枠
+ * (値は1分も変わらない)。契約上の枠の制度では「契約上の枠 + 繰越の受け入れ」になる。
+ * `flex_diff_minutes = flex_actual_minutes − flex_frame_minutes` は常に成り立つ。
+ * フレックス以外の行では6列とも空欄(既存の flex 3列と同じ)。
+ */
+const FLEX_CONTRACT_COLUMNS = [
+  "flex_statutory_frame_minutes",
+  "flex_contract_frame_minutes",
+  "flex_carry_in_minutes",
+  "flex_within_statutory_excess_minutes",
+  "flex_carry_out_minutes",
+  "flex_confirmed_shortfall_minutes",
+];
+
+/** FLEX_CONTRACT_COLUMNS と同じ並びで値を取り出す(null は空欄) */
+function flexContractValues(balance: FlexBalance | null): Array<number | null> {
+  if (balance === null) return [null, null, null, null, null, null];
+  return [
+    balance.statutoryFrameMinutes,
+    balance.contractFrameMinutes,
+    balance.carryInMinutes,
+    balance.withinStatutoryExcessMinutes,
+    balance.carryOutMinutes,
+    balance.confirmedShortfallMinutes,
+  ];
+}
+
+/**
  * `closed` 列より前の固定列。手当の列(allowance_<name>、テナント・期間ごとに動的)は
  * この後・`closed` の前に挿入する(docs/design/allowances.md「CSVエクスポート」)。
  * 分割しているのは、動的な列を `closed` より前に差し込む必要があり、1本の定数配列のままでは
@@ -92,12 +133,14 @@ const BASE_CSV_HEADER_BEFORE_ALLOWANCES = [
   "flex_diff_minutes",
   "fixed_within_scheduled_minutes",
   "fixed_extra_within_statutory_minutes",
+  ...FLEX_CONTRACT_COLUMNS,
 ];
 const CLOSED_COLUMN = "closed";
 
 /**
- * ?compare=original のときだけ末尾に追加する列。区分別5種+flex3種+固定内訳2種それぞれに
- * original_ と diff_ の列を持つ(BASE_CSV_HEADER の値列と同じ並び・同じ10種で揃える)。
+ * ?compare=original のときだけ末尾に追加する列。区分別5種+flex3種+固定内訳2種+フレックスの
+ * 契約上の枠6種それぞれに original_ と diff_ の列を持つ(BASE_CSV_HEADER の値列と同じ並び・
+ * 同じ16種で揃える)。
  */
 const COMPARE_CSV_HEADER = [
   "original_statutory_minutes",
@@ -110,6 +153,7 @@ const COMPARE_CSV_HEADER = [
   "original_flex_diff_minutes",
   "original_fixed_within_scheduled_minutes",
   "original_fixed_extra_within_statutory_minutes",
+  ...FLEX_CONTRACT_COLUMNS.map((name) => `original_${name}`),
   "diff_statutory_minutes",
   "diff_overtime_minutes",
   "diff_overtime60h_minutes",
@@ -120,6 +164,7 @@ const COMPARE_CSV_HEADER = [
   "diff_flex_diff_minutes",
   "diff_fixed_within_scheduled_minutes",
   "diff_fixed_extra_within_statutory_minutes",
+  ...FLEX_CONTRACT_COLUMNS.map((name) => `diff_${name}`),
 ];
 
 /** RFC4180 準拠のフィールドエスケープ(カンマ・ダブルクォート・改行を含む場合のみ引用符で囲む)。 */
@@ -198,6 +243,7 @@ function buildRow({ user, period, current, closed, original, columns }: RowInput
     orEmpty(current.flexBalance?.diffMinutes ?? null),
     orEmpty(current.fixedWithinScheduledMinutes),
     orEmpty(current.fixedExtraWithinStatutoryMinutes),
+    ...flexContractValues(current.flexBalance).map(orEmpty),
     ...allowanceFieldsForColumns(current.allowanceTotals, columns),
     closed,
   ];
@@ -228,6 +274,7 @@ function buildRow({ user, period, current, closed, original, columns }: RowInput
       orEmpty(original.flexBalance?.diffMinutes ?? null),
       orEmpty(original.fixedWithinScheduledMinutes),
       orEmpty(original.fixedExtraWithinStatutoryMinutes),
+      ...flexContractValues(original.flexBalance).map(orEmpty),
       current.totals.statutory - original.totals.statutory,
       current.totals.overtime - original.totals.overtime,
       current.totals.overtime60h - original.totals.overtime60h,
@@ -238,6 +285,8 @@ function buildRow({ user, period, current, closed, original, columns }: RowInput
       diffFlex((f) => f.flexBalance?.diffMinutes),
       diffFixed((f) => f.fixedWithinScheduledMinutes),
       diffFixed((f) => f.fixedExtraWithinStatutoryMinutes),
+      // 契約上の枠の6種も、どちらかが空欄なら差分も空欄(fixed 系と同じ考え方)
+      ...FLEX_CONTRACT_COLUMNS.map((_, i) => diffFixed((f) => flexContractValues(f.flexBalance)[i] ?? null)),
     );
   }
 

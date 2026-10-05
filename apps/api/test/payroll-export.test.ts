@@ -7,7 +7,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import type { CategorizedMinutes } from "@kizami/engine";
+import type { CategorizedMinutes, FlexBalance } from "@kizami/engine";
 import {
   derivePayrollCategories,
   formatDecimalHours,
@@ -17,6 +17,22 @@ import {
   type PayrollFigures,
   type PayrollRowInput,
 } from "../src/lib/payroll-export.js";
+
+/** 法定の枠が基準(既定)のフレックスの収支。2026-10-05 に足した項目は中立の値で埋める */
+function statutoryFlexBalance(frameMinutes: number, actualMinutes: number, diffMinutes: number): FlexBalance {
+  return {
+    frameMinutes,
+    actualMinutes,
+    diffMinutes,
+    statutoryFrameMinutes: frameMinutes,
+    contractFrameMinutes: null,
+    carryInMinutes: 0,
+    withinStatutoryExcessMinutes: 0,
+    carryOutMinutes: 0,
+    confirmedShortfallMinutes: Math.max(0, -diffMinutes),
+  };
+}
+
 
 function totals(overrides: Partial<CategorizedMinutes> = {}): CategorizedMinutes {
   return { statutory: 0, overtime: 0, overtime60h: 0, lateNight: 0, statutoryHoliday: 0, ...overrides };
@@ -38,7 +54,7 @@ function fixedFigures(overrides: Partial<PayrollFigures> = {}): PayrollFigures {
 function flexFigures(overrides: Partial<PayrollFigures> = {}): PayrollFigures {
   return {
     totals: totals({ statutory: 9600, overtime: 1200, lateNight: 300, statutoryHoliday: 480 }),
-    flexBalance: { frameMinutes: 10286, actualMinutes: 9600, diffMinutes: -686 },
+    flexBalance: statutoryFlexBalance(10286, 9600, -686),
     workSystem: "flex",
     fixedWithinScheduledMinutes: null,
     fixedExtraWithinStatutoryMinutes: null,
@@ -211,7 +227,7 @@ describe("freee 形式", () => {
   it("フレックスの不足時間は正の数で出る。超過月は0", () => {
     // diffMinutes = -686(総枠に686分足りない)
     expect(spec.buildRow(rowInput(flexFigures()))[23]).toBe("686");
-    const surplus = flexFigures({ flexBalance: { frameMinutes: 10286, actualMinutes: 11000, diffMinutes: 714 } });
+    const surplus = flexFigures({ flexBalance: statutoryFlexBalance(10286, 11000, 714) });
     expect(spec.buildRow(rowInput(surplus))[23]).toBe("0");
   });
 });

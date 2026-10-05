@@ -115,6 +115,15 @@ export async function handleGetMonthlySummary(client: KizamiApiClient, args: Mon
     lines.push(`  実績: ${formatDuration(flexBalance.actualMinutes)}`);
     const diffSuffix = flexBalance.diffMinutes < 0 ? "(不足)" : flexBalance.diffMinutes > 0 ? "(超過)" : "";
     lines.push(`  過不足: ${formatDuration(flexBalance.diffMinutes)}${diffSuffix}`);
+    // 契約上の枠(所定労働日数 × 標準労働時間、2026-10-05)の制度だけ、3段の内訳と繰越を出す
+    if (flexBalance.contractFrameMinutes !== undefined && flexBalance.contractFrameMinutes !== null) {
+      lines.push(`  契約上の枠: ${formatDuration(flexBalance.contractFrameMinutes)}`);
+      if (flexBalance.statutoryFrameMinutes !== undefined) lines.push(`  法定の枠: ${formatDuration(flexBalance.statutoryFrameMinutes)}`);
+      if (flexBalance.carryInMinutes) lines.push(`  前月からの繰越: ${formatDuration(flexBalance.carryInMinutes)}`);
+      if (flexBalance.withinStatutoryExcessMinutes) lines.push(`  法定内超過: ${formatDuration(flexBalance.withinStatutoryExcessMinutes)}`);
+      if (flexBalance.carryOutMinutes) lines.push(`  翌月へ繰越: ${formatDuration(flexBalance.carryOutMinutes)}`);
+      if (flexBalance.confirmedShortfallMinutes) lines.push(`  確定した不足: ${formatDuration(flexBalance.confirmedShortfallMinutes)}`);
+    }
   }
 
   if (summary.warnings.length > 0) {

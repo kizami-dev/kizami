@@ -8,8 +8,24 @@
 
 import { describe, expect, it } from "vitest";
 import type { ClosingSnapshot } from "@kizami/db";
-import type { DailyBreakdown, EngineOutput } from "@kizami/engine";
+import type { DailyBreakdown, EngineOutput, FlexBalance } from "@kizami/engine";
 import { engineOutputFromSnapshots, snapshotInputsFromEngineOutput, sumFixedBreakdown } from "../src/lib/closing-snapshot.js";
+
+/** 法定の枠が基準(既定)のフレックスの収支。2026-10-05 に足した項目は中立の値で埋める */
+function statutoryFlexBalance(frameMinutes: number, actualMinutes: number, diffMinutes: number): FlexBalance {
+  return {
+    frameMinutes,
+    actualMinutes,
+    diffMinutes,
+    statutoryFrameMinutes: frameMinutes,
+    contractFrameMinutes: null,
+    carryInMinutes: 0,
+    withinStatutoryExcessMinutes: 0,
+    carryOutMinutes: 0,
+    confirmedShortfallMinutes: Math.max(0, -diffMinutes),
+  };
+}
+
 
 /** テストに必要な最小限のフィールドだけ埋めた DailyBreakdown を作る。 */
 function fakeDay(overrides: Partial<DailyBreakdown> & { date: string }): DailyBreakdown {
@@ -90,7 +106,7 @@ describe("snapshotInputsFromEngineOutput", () => {
     const output: EngineOutput = {
       days: [fakeDay({ date: "2026-04-01" })],
       totals,
-      flexBalance: { frameMinutes: 9600, actualMinutes: 9500, diffMinutes: -100 },
+      flexBalance: statutoryFlexBalance(9600, 9500, -100),
       workSystem: "flex",
       warnings: [],
       allowanceTotals: [],
@@ -116,7 +132,7 @@ describe("snapshotInputsFromEngineOutput", () => {
     const output: EngineOutput = {
       days: [fakeDay({ date: "2026-04-01" })],
       totals,
-      flexBalance: { frameMinutes: 9600, actualMinutes: 9500, diffMinutes: -100 },
+      flexBalance: statutoryFlexBalance(9600, 9500, -100),
       workSystem: "flex",
       warnings: [],
       allowanceTotals: [
@@ -161,7 +177,9 @@ describe("engineOutputFromSnapshots", () => {
     ];
 
     const result = engineOutputFromSnapshots(rows);
-    expect(result.flexBalance).toEqual({ frameMinutes: 9600, actualMinutes: 9500, diffMinutes: -100 });
+    // 契約上の枠の行が無い月(法定の枠、または2026-10-05より前に締めた月)は、新しい項目を
+    // frame/diff から導いた中立の値で返す
+    expect(result.flexBalance).toEqual(statutoryFlexBalance(9600, 9500, -100));
     expect(result.fixedBreakdown).toBeNull();
   });
 

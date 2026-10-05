@@ -77,6 +77,9 @@ export function serializeWorkPolicyVersion(v: WorkPolicyVersion) {
     settlementPeriod: v.settlementPeriod,
     core: parseCoreTime(v.core),
     standardDayMinutes: v.standardDayMinutes,
+    // フレックスの総労働時間の決め方・不足の繰越(2026-10-05)。flex 以外では常に既定値
+    totalHoursBasis: v.flexTotalHoursBasis,
+    carryOverShortfall: v.flexCarryOverShortfall,
     createdAt: v.createdAt,
   };
 }
@@ -121,6 +124,38 @@ export interface WorkPolicyVersionFields {
   settlementPeriod: string;
   core: string | null;
   standardDayMinutes: number;
+  flexTotalHoursBasis: FlexTotalHoursBasis;
+  flexCarryOverShortfall: boolean;
+}
+
+/**
+ * フレックスの総労働時間の決め方(2026-10-05、時短勤務の第2段階)。engine の `FlexTotalHoursBasis` と
+ * 同じ2値。既定は "statutory_frame"(法定の枠 — 従来の挙動)
+ */
+export type FlexTotalHoursBasis = "statutory_frame" | "scheduled_days";
+
+export function isFlexTotalHoursBasis(value: unknown): value is FlexTotalHoursBasis {
+  return value === "statutory_frame" || value === "scheduled_days";
+}
+
+/**
+ * リクエストの totalHoursBasis・carryOverShortfall(flex 専用)を検証する。
+ *
+ * - どちらも省略可。省略時は法定の枠・繰り越さない(既存のクライアントは何も送らないので、
+ *   これまでどおりの制度が作られる)
+ * - 繰越は契約上の枠("scheduled_days")のときだけ受け付ける(400 carry_over_requires_scheduled_days)。
+ *   法定の枠が基準なら上乗せの余地(法定の枠 − 総労働時間)が常に0で、繰り越しが起きえない —
+ *   「繰り越す」にしたのに何も起きない設定を保存させないため
+ */
+function parseFlexContractFields(
+  body: Record<string, unknown>,
+): { flexTotalHoursBasis: FlexTotalHoursBasis; flexCarryOverShortfall: boolean } | { error: string } {
+  const basis = body.totalHoursBasis ?? "statutory_frame";
+  if (!isFlexTotalHoursBasis(basis)) return { error: "invalid_total_hours_basis" };
+  const carry = body.carryOverShortfall ?? false;
+  if (typeof carry !== "boolean") return { error: "invalid_carry_over_shortfall" };
+  if (carry && basis !== "scheduled_days") return { error: "carry_over_requires_scheduled_days" };
+  return { flexTotalHoursBasis: basis, flexCarryOverShortfall: carry };
 }
 
 /**
@@ -130,6 +165,8 @@ export interface WorkPolicyVersionFields {
  * エラー名は切り出し前の POST /settings/work-policy と同じ:
  * invalid_work_system_kind / invalid_settlement_period / invalid_core_time /
  * invalid_core_time_weekdays / invalid_standard_day_minutes
+ * (2026-10-05 追加: invalid_total_hours_basis / invalid_carry_over_shortfall /
+ * carry_over_requires_scheduled_days)
  */
 export function parseWorkPolicyVersionFields(body: Record<string, unknown>): WorkPolicyVersionFields | { error: string } {
   // 2026-08-23 shift-work.md 決定事項5: WorkSystem の3値目 "monthly_variable"(1ヶ月単位の
@@ -176,7 +213,18 @@ export function parseWorkPolicyVersionFields(body: Record<string, unknown>): Wor
     standardDayMinutes = body.standardDayMinutes;
   }
 
-  return { kind, settlementPeriod, core, standardDayMinutes };
+  // 総労働時間の決め方・不足の繰越(2026-10-05)は flex 専用。他の kind ではリクエストの値を見ず
+  // 既定値で埋める(settlementPeriod・core と同じ扱い)。
+  let flexTotalHoursBasis: FlexTotalHoursBasis = "statutory_frame";
+  let flexCarryOverShortfall = false;
+  if (kind === "flex") {
+    const result = parseFlexContractFields(body);
+    if ("error" in result) return { error: result.error };
+    flexTotalHoursBasis = result.flexTotalHoursBasis;
+    flexCarryOverShortfall = result.flexCarryOverShortfall;
+  }
+
+  return { kind, settlementPeriod, core, standardDayMinutes, flexTotalHoursBasis, flexCarryOverShortfall };
 }
 
 /**

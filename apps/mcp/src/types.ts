@@ -33,9 +33,21 @@ export interface CategorizedMinutesDto {
 }
 
 export interface FlexBalanceDto {
+  /** 過不足を比べる枠(法定の枠、または契約上の枠 + 繰越の受け入れ) */
   frameMinutes: number;
   actualMinutes: number;
   diffMinutes: number;
+  /**
+   * 2026-10-05(フレックスの契約上の枠)で足した項目。API は常に返すが、古い API に繋いだときにも
+   * 壊れないよう省略可能にしておく
+   */
+  statutoryFrameMinutes?: number;
+  /** 契約上の枠(所定労働日数 × 標準労働時間)。総労働時間の決め方が法定の枠なら null */
+  contractFrameMinutes?: number | null;
+  carryInMinutes?: number;
+  withinStatutoryExcessMinutes?: number;
+  carryOutMinutes?: number;
+  confirmedShortfallMinutes?: number;
 }
 
 export interface CalcWarningDto {

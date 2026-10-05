@@ -233,7 +233,9 @@ async function monthlyFigures(
       overtimeMinutes: output.totals.overtime,
       holidayMinutes: output.totals.statutoryHoliday,
       actualMinutes: output.flexBalance.actualMinutes,
-      frameMinutes: output.flexBalance.frameMinutes,
+      // 時間外の見込みは法定の枠と比べる(2026-10-05: 契約上の枠を選んだ制度では frameMinutes が
+      // 契約上の枠〔+繰越〕になり、法定内超過まで時間外に数えてしまうため。既定の制度では同じ値)。
+      frameMinutes: output.flexBalance.statutoryFrameMinutes,
     };
   } catch {
     return null;

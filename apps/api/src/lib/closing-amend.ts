@@ -54,6 +54,7 @@ import {
 } from "@kizami/engine";
 import { resolveUsageMinutes, type LeaveUnit } from "@kizami/leave";
 import { buildAllowanceTimeline } from "./allowances.js";
+import { resolveFlexContractInput } from "./flex-contract.js";
 import { resolveMonthlyVariableExtras } from "./monthly-shifts.js";
 import { makeLeaveStandardMinutesResolver } from "./leave-minutes.js";
 import {
@@ -71,6 +72,12 @@ export interface ComputeMonthlyOutputParams {
   userId: string;
   year: number;
   month: number;
+  /**
+   * フレックスの不足の繰越(2026-10-05)で、締め前の前月をさらに遡ってよい残りの深さ
+   * (lib/flex-contract.ts の FLEX_CARRY_CHAIN_MAX_DEPTH)。外から呼ぶときは省略する。
+   * 前月をその場で計算するとき、flex-contract.ts がこの関数を1つ浅い値で呼び直す
+   */
+  carryChainDepth?: number;
 }
 
 /**
@@ -259,6 +266,14 @@ export async function computeMonthlyForUser(
     minutes: resolveUsageMinutes(r.unit as LeaveUnit, leaveMinutes.forDate(r.leaveDate), r.minutes ?? undefined),
   }));
 
+  // フレックスの契約上の枠と不足の繰越(2026-10-05)。契約上の枠の制度でなければ undefined で、
+  // 追加の問い合わせもしない。前月を締め前のまま計算する必要があれば、この関数を1つ浅い深さで呼び直す。
+  const flexContract = await resolveFlexContractInput(
+    db,
+    { tenantId, userId, year, month, settingsTimeline, ...(params.carryChainDepth !== undefined ? { carryChainDepth: params.carryChainDepth } : {}) },
+    (previous, carryChainDepth) => computeMonthlyOutputForUser(db, { tenantId, userId, ...previous, carryChainDepth }),
+  );
+
   const input: EngineInput = {
     punches,
     settingsTimeline: effectiveSettingsTimeline,
@@ -268,6 +283,7 @@ export async function computeMonthlyForUser(
     autoBreakWaivedDates,
     allowances,
     ...(variableExtras ? { shifts: variableExtras.shifts } : {}),
+    ...(flexContract ? { flexContract } : {}),
   };
 
   return { output: calculate(input), settingsTimeline };

@@ -66,7 +66,7 @@ export function registerWorkPolicyRoutes(app: Hono<AppEnv>, db: Database, _deps:
 
     const fields = parseWorkPolicyVersionFields(body);
     if ("error" in fields) return c.json({ error: fields.error }, 400);
-    const { kind, settlementPeriod, core, standardDayMinutes } = fields;
+    const { kind, settlementPeriod, core, standardDayMinutes, flexTotalHoursBasis, flexCarryOverShortfall } = fields;
 
     const today = todayLocalDate(TZ_OFFSET_MINUTES_JST);
     if (effectiveFrom < today) {
@@ -92,6 +92,8 @@ export function registerWorkPolicyRoutes(app: Hono<AppEnv>, db: Database, _deps:
       settlementPeriod,
       core,
       standardDayMinutes,
+      flexTotalHoursBasis,
+      flexCarryOverShortfall,
       createdAt: now,
     });
 
