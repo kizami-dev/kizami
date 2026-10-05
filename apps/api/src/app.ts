@@ -38,6 +38,7 @@ import { createMetricsRoutes } from "./routes/metrics.js";
 import { createRateLimiter, ipRateLimitMiddleware, RATE_LIMITS } from "./lib/rate-limit.js";
 import { noopErrorReporter, type ErrorReporter } from "./lib/error-report.js";
 import { createHttpMetrics } from "./lib/metrics.js";
+import { jsonPostGuard } from "./lib/json-post-guard.js";
 
 export interface CreateAppDeps {
   db: Database;
@@ -51,6 +52,13 @@ export interface CreateAppDeps {
    * 省略時は CORS ヘッダを付けない(本番は同一オリジン配信が前提)。
    */
   corsOrigin?: string;
+  /**
+   * セッション Cookie を発行する未認証の POST(ログイン・2FA 第2段階・招待受諾・パスワード再設定の使用・
+   * OIDC の開始)に Origin 検証と `Content-Type: application/json` の必須化を掛けるときの、許可するオリジン
+   * (`APP_BASE_URL` と `CORS_ORIGIN` のうち明示されたもの。lib/json-post-guard.ts の authPostAllowedOrigins)。
+   * **省略 / 空 = 掛けない**(開発・テスト・オリジンを宣言していない配備は従来どおり)。
+   */
+  authPostOrigins?: string[];
   /**
    * POST /settings/notifications/test が使う通知チャネルの依存差し替え
    * (実際の送信を行う Node 実装は node.ts が渡す。テストは偽実装を注入して実送信しない)。
@@ -138,6 +146,7 @@ export function createApp(deps: CreateAppDeps) {
     db,
     secureCookies = false,
     corsOrigin,
+    authPostOrigins = [],
     notify,
     encryptor,
     trustProxy = true,
@@ -223,6 +232,26 @@ export function createApp(deps: CreateAppDeps) {
   // (招待・パスワードリセットのトークン経路と同じ上限。RATE_LIMITS.oidcPerIp)。
   // Hono は登録順に評価するため、この use() は対応する route() より前に置く必要がある。
   app.use("/auth/oidc/*", ipRateLimitMiddleware(rateLimiters.oidcPerIp, { trustProxy }));
+
+  // ログイン CSRF 対策(2026-10-05): セッション Cookie を発行する未認証の POST に、signup / 本人用再設定と
+  // 同じ Origin 検証 + JSON 必須化を掛ける(lib/json-post-guard.ts、判断の背景は routes/signup.ts 冒頭)。
+  // 対象は下の5経路だけ。**掛けないもの**: Bearer(API キー)認証の経路(Origin を持たない非ブラウザの
+  // クライアント、打刻 API・MCP)、OIDC の callback(IdP からの GET リダイレクトで、Origin も JSON も付かない)、
+  // /slack/commands(Slack の署名検証が認証)、認証済みの POST。signup と本人用再設定は各ルータが自分で掛ける。
+  // 許可オリジンが無い配備(authPostOrigins が空)では何も掛けない。Hono は登録順に評価するので、
+  // 対応する route() より前に置く。
+  if (authPostOrigins.length > 0) {
+    const guard = jsonPostGuard(authPostOrigins);
+    for (const path of [
+      "/auth/login",
+      "/auth/login/totp",
+      "/auth/oidc/start",
+      "/invitations/:token/accept",
+      "/password-resets/:token/use",
+    ]) {
+      app.use(path, guard);
+    }
+  }
   app.route("/auth/oidc", createOidcRoutes(db, { ...(oidc ?? {}), secureCookies, encryptor: encryptor ?? null }));
 
   app.route(

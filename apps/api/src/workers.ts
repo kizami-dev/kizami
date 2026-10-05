@@ -27,6 +27,7 @@ import { createD1Database, type D1DatabaseBinding } from "@kizami/db";
 import { createApp } from "./app.js";
 import { buildEncryptorFromEnv } from "./lib/encryption.js";
 import { buildErrorReporterFromEnv } from "./lib/error-report.js";
+import { authPostAllowedOrigins } from "./lib/json-post-guard.js";
 import { buildVapidFromEnv } from "./lib/web-push.js";
 
 /**
@@ -91,6 +92,8 @@ export function createWorkerApp(env: WorkerEnv) {
     // Workers は常に HTTPS 終端の後ろなので Secure Cookie は既定 ON のままでよい
     secureCookies: env.COOKIE_SECURE !== "false",
     ...(env.CORS_ORIGIN !== undefined ? { corsOrigin: env.CORS_ORIGIN } : {}),
+    // ログイン等の未認証 POST の Origin 検証(Node 版と同じ。lib/json-post-guard.ts)
+    authPostOrigins: authPostAllowedOrigins([env.APP_BASE_URL, env.CORS_ORIGIN]),
     // `signup` も渡さない = **セルフサインアップは常に無効**(`GET /signup/config` は
     // `{ mode: "off" }`、他の /signup/* は 404)。システムメールの送信(nodemailer)が workerd で
     // 動かず、確認フローが依存する db.transaction() も D1 では使えないため

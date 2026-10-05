@@ -4,6 +4,7 @@ import { migrateDb } from "@kizami/db/node";
 import { createApp } from "./app.js";
 import { buildEncryptorFromEnv } from "./lib/encryption.js";
 import { buildErrorReporterFromEnv } from "./lib/error-report.js";
+import { authPostAllowedOrigins } from "./lib/json-post-guard.js";
 import { withStartupRetry } from "./lib/startup-retry.js";
 import { parseSignupEnv } from "./lib/signup-config.js";
 import { parseSystemMailEnv } from "./lib/system-mail-config.js";
@@ -88,6 +89,9 @@ const app = createApp({
   db,
   secureCookies,
   corsOrigin,
+  // ログイン等の未認証 POST の Origin 検証。許可するのは**明示された** APP_BASE_URL / CORS_ORIGIN だけ
+  // (corsOrigin の開発用既定値は含めない。lib/json-post-guard.ts)。どちらも未設定なら検証しない。
+  authPostOrigins: authPostAllowedOrigins([process.env.APP_BASE_URL, process.env.CORS_ORIGIN]),
   notify: { smtpSendFn: nodemailerSendFn },
   encryptor,
   trustProxy,
