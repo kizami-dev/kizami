@@ -28,7 +28,7 @@
 
 | 操作 | 数える先 |
 | --- | --- |
-| システムが送る業務通知(打刻忘れ・36協定・有給・シフトのスキャン、承認依頼・結果の Webhook/メール) | テナントの外向きの通知の枠 |
+| システムが送る業務通知(打刻忘れ・36協定・有給・シフトのスキャン、承認・却下の結果と2段目の承認依頼の Webhook/メール) | テナントの外向きの通知の枠 |
 | 管理者の通知設定のテスト送信(`POST /settings/notifications/test`) | テナントの外向きの通知の枠(通知設定の管理権限が要る) |
 | 一般メンバーの個人 Webhook のテスト送信(`POST /settings/notifications/me/test`) | **本人ごとの1日 5 回**(テナントの枠は使わない) |
 | 一般メンバーの申請(修正・休暇・自動休憩の打ち消し)が起こす承認依頼の Webhook/メール | **本人ごとの1日 100 件**を先に数え、通ったものだけテナントの外向きの通知の枠 |
@@ -189,6 +189,13 @@ export function createTenantQuotas(limits: TenantQuotaLimits, options: {
     return result.allowed;
   }
 
+  /** テナントの外向きの通知の枠を1件使う。断ったら管理者へ1日1回知らせる(consumeMemberTriggeredOutbound の②からも使う)。 */
+  async function consumeTenantOutbound(db: Database, tenantId: string): Promise<boolean> {
+    const allowed = await consumeDaily(db, tenantId, "outbound_notifications", limits.outboundNotificationsPerDay);
+    if (!allowed) await notifyAdminsOutboundLimit(db, tenantId);
+    return allowed;
+  }
+
   return {
     limits,
     async checkMemberCapacity(db, tenantId) {
@@ -203,11 +210,7 @@ export function createTenantQuotas(limits: TenantQuotaLimits, options: {
       await recordHit(db, tenantId, "api_keys");
       return { ok: false, limit: limits.apiKeys };
     },
-    async consumeOutboundNotification(db, tenantId) {
-      const allowed = await consumeDaily(db, tenantId, "outbound_notifications", limits.outboundNotificationsPerDay);
-      if (!allowed) await notifyAdminsOutboundLimit(db, tenantId);
-      return allowed;
-    },
+    consumeOutboundNotification: consumeTenantOutbound,
     async consumePersonalTestSend(db, tenantId, userId) {
       if (limits.outboundNotificationsPerDay === undefined) return true;
       return (
@@ -236,7 +239,7 @@ export function createTenantQuotas(limits: TenantQuotaLimits, options: {
         return false;
       }
       // ②テナントの枠(従来どおり。断ったら管理者へ1日1回知らせる)
-      return this.consumeOutboundNotification(db, tenantId);
+      return consumeTenantOutbound(db, tenantId);
     },
     consumeInviteResetMail(db, tenantId) {
       return consumeDaily(db, tenantId, "invite_reset_mails", limits.inviteResetMailsPerDay);
