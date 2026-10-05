@@ -1,0 +1,1 @@
+ALTER TABLE `work_policies` ADD `archived_at` integer;

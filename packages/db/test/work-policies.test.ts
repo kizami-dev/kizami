@@ -1,9 +1,17 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   assignUserWorkPolicy,
+  createWorkPolicy,
   getOrCreateTenantWorkPolicyByKind,
+  getTenantWorkPolicy,
+  getWorkPolicyById,
+  listCurrentWorkPolicyAssignmentsForTenant,
   listCurrentWorkPolicyKindsForTenant,
+  listTenantWorkPolicies,
   listUserPolicyAssignments,
+  listWorkPolicyVersionsForTenant,
+  renameWorkPolicy,
+  setWorkPolicyArchivedAt,
 } from "../src/queries/work-policies.js";
 import { migrateDb, type Database } from "./support/db.js";
 import { tenants, users, workPolicies, workPolicyVersions } from "../src/schema/index.js";
@@ -159,6 +167,71 @@ describe("work-policies queries (メンバー個別の労働時間制割当)", (
 
       const kindsFuture = await listCurrentWorkPolicyKindsForTenant(db, { tenantId, asOfDate: "2099-06-01" });
       expect(kindsFuture.get(userId)).toBe("fixed");
+    });
+  });
+  describe("名前付きの制度(2026-10-05)", () => {
+    const fixedVersion = (standardDayMinutes: number) => ({
+      effectiveFrom: "2000-01-01",
+      kind: "fixed",
+      settlementPeriod: "monthly",
+      core: null,
+      standardDayMinutes,
+    });
+
+    it("createWorkPolicy creates the policy with its initial version; listTenantWorkPolicies returns them in creation order", async () => {
+      const full = await createWorkPolicy(db, { tenantId, name: "固定(8時間)", createdAt: 10, initialVersion: fixedVersion(480) });
+      const short = await createWorkPolicy(db, { tenantId, name: "固定・時短(6時間)", createdAt: 20, initialVersion: fixedVersion(360) });
+
+      expect(short.version).toMatchObject({ workPolicyId: short.policy.id, kind: "fixed", standardDayMinutes: 360, createdAt: 20 });
+      expect((await listTenantWorkPolicies(db, tenantId)).map((p) => p.name)).toEqual(["固定(8時間)", "固定・時短(6時間)"]);
+      // 既定の制度 = 最も古い制度
+      expect((await getTenantWorkPolicy(db, tenantId))?.id).toBe(full.policy.id);
+      expect((await listWorkPolicyVersionsForTenant(db, tenantId)).map((v) => v.standardDayMinutes).sort()).toEqual([360, 480]);
+    });
+
+    it("renameWorkPolicy / setWorkPolicyArchivedAt update only the target tenant's row", async () => {
+      const { policy } = await createWorkPolicy(db, { tenantId, name: "旧名", createdAt: 0, initialVersion: fixedVersion(360) });
+      const otherTenantId = uuidv7();
+      await db.insert(tenants).values({ id: otherTenantId, name: "Tenant B", createdAt: 0 });
+
+      await renameWorkPolicy(db, { tenantId: otherTenantId, id: policy.id, name: "乗っ取り" });
+      await renameWorkPolicy(db, { tenantId, id: policy.id, name: "新名" });
+      await setWorkPolicyArchivedAt(db, { tenantId, id: policy.id, archivedAt: 123 });
+
+      expect(await getWorkPolicyById(db, { tenantId, id: policy.id })).toMatchObject({ name: "新名", archivedAt: 123 });
+      expect(await getWorkPolicyById(db, { tenantId: otherTenantId, id: policy.id })).toBeNull();
+    });
+
+    it("getOrCreateTenantWorkPolicyByKind picks the oldest non-archived policy of the kind, deterministically", async () => {
+      const full = await createWorkPolicy(db, { tenantId, name: "固定(8時間)", createdAt: 10, initialVersion: fixedVersion(480) });
+      // 版の日付が早い制度を後から作っても、選ばれるのは作成順で先の制度
+      const short = await createWorkPolicy(db, {
+        tenantId,
+        name: "固定・時短(6時間)",
+        createdAt: 20,
+        initialVersion: { ...fixedVersion(360), effectiveFrom: "1970-01-01" },
+      });
+      const params = { tenantId, kind: "fixed", name: "x", createdAt: 30, defaultVersion: { settlementPeriod: "monthly", standardDayMinutes: 480 } };
+
+      expect((await getOrCreateTenantWorkPolicyByKind(db, params)).id).toBe(full.policy.id);
+      await setWorkPolicyArchivedAt(db, { tenantId, id: full.policy.id, archivedAt: 1 });
+      expect((await getOrCreateTenantWorkPolicyByKind(db, params)).id).toBe(short.policy.id);
+    });
+
+    it("listCurrentWorkPolicyAssignmentsForTenant returns the policy id with the kind effective on asOfDate", async () => {
+      const full = await createWorkPolicy(db, { tenantId, name: "固定(8時間)", createdAt: 10, initialVersion: fixedVersion(480) });
+      const short = await createWorkPolicy(db, { tenantId, name: "固定・時短(6時間)", createdAt: 20, initialVersion: fixedVersion(360) });
+      await assignUserWorkPolicy(db, { tenantId, userId, workPolicyId: full.policy.id, effectiveFrom: "2000-01-01", createdAt: 0 });
+      await assignUserWorkPolicy(db, { tenantId, userId, workPolicyId: short.policy.id, effectiveFrom: "2026-05-01", createdAt: 0 });
+
+      expect((await listCurrentWorkPolicyAssignmentsForTenant(db, { tenantId, asOfDate: "2026-04-30" })).get(userId)).toEqual({
+        workPolicyId: full.policy.id,
+        kind: "fixed",
+      });
+      expect((await listCurrentWorkPolicyAssignmentsForTenant(db, { tenantId, asOfDate: "2026-05-01" })).get(userId)).toEqual({
+        workPolicyId: short.policy.id,
+        kind: "fixed",
+      });
     });
   });
 });
