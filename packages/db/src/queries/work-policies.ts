@@ -1,14 +1,25 @@
 /**
- * work_policies / work_policy_versions(労働時間制の設定。フレックスタイム制/固定時間制。
- * effective-dated, 追記専用)に対する最小限のクエリ層。
+ * work_policies / work_policy_versions(労働時間制の設定。フレックスタイム制/固定時間制/
+ * 1ヶ月単位の変形労働時間制。effective-dated, 追記専用)に対する最小限のクエリ層。
  *
- * v0.1〜v0.2 のアプリは「テナント1つにつき work_policy 1件」で運用する(seed.ts が常に1件だけ
- * 作成し、複数の制度を切り替えるUIは無い)。このファイルもその前提に立ち、
- * `getOrCreateTenantWorkPolicy` で「無ければ作る」形にして、seed を経由していないテナント
- * (テスト DB 等)でも GET/POST /settings/work-policy が動く形にしている(判断点)。
+ * v0.1〜v0.2 のアプリは「テナント1つにつき work_policy 1件」で運用していた(seed.ts が常に1件だけ
+ * 作成し、複数の制度を切り替えるUIは無い)。その名残として `getOrCreateTenantWorkPolicy` は
+ * 「無ければ作る」形で、seed を経由していないテナント(テスト DB 等)でも GET/POST
+ * /settings/work-policy が動くようにしている(判断点)。
+ *
+ * 2026-10-05(名前付きの制度、時短勤務対応の第1段階): テナントは制度を**名前付きで複数**持てる
+ * ようになった(例:「固定(8時間)」「固定・時短(6時間)」)。メンバーへの割当は制度の id を指す
+ * (`user_policy_assignments.work_policy_id`)。集計側(apps/api/src/lib/settings.ts の
+ * `buildSettingsTimeline`)はもともと「割当 → その制度の版」の順に解決しており、kind で制度を
+ * 探す箇所は無い — 制度が増えても所定労働時間は人ごとに正しく解決される。
+ *
+ * 「既定の制度」: テナントで最も古い制度(`getTenantWorkPolicy`、createdAt → id の昇順で先頭)。
+ * 招待で作られたメンバーへの自動割当と、GET/POST /settings/work-policy(従来の単一ポリシー用 API)
+ * の対象がこれになる。専用の列は持たない(判断点 — 既存のテナントで「どれが既定か」が
+ * マイグレーションなしで今までと同じに決まるため)。既定の制度はアーカイブできない。
  */
 
-import { and, asc, eq, lte } from "drizzle-orm";
+import { and, asc, eq, isNull, lte } from "drizzle-orm";
 import type { Database, Transaction } from "../types.js";
 import { userPolicyAssignments, workPolicies, workPolicyVersions } from "../schema/index.js";
 import { uuidv7 } from "../uuid.js";
@@ -16,10 +27,102 @@ import { uuidv7 } from "../uuid.js";
 export type WorkPolicy = typeof workPolicies.$inferSelect;
 export type WorkPolicyVersion = typeof workPolicyVersions.$inferSelect;
 
-/** テナントの work_policy を1件返す(複数ある場合は createdAt が最も古いもの)。無ければ null。 */
+/**
+ * テナントの**既定の制度**を返す(複数ある場合は createdAt が最も古いもの。同時刻なら id 昇順 —
+ * uuidv7 は時刻順に並ぶため、作成順で先のものになる)。無ければ null。
+ *
+ * 既定の制度は、招待で作られたメンバーへ自動で割り当てられる(apps/api/src/routes/members.ts
+ * POST /)。これが無いと有給・月次が 500 になる(buildSettingsTimeline が割当を解決できない)。
+ */
 export async function getTenantWorkPolicy(db: Database | Transaction, tenantId: string): Promise<WorkPolicy | null> {
-  const rows = await db.select().from(workPolicies).where(eq(workPolicies.tenantId, tenantId)).orderBy(asc(workPolicies.createdAt)).limit(1);
+  const rows = await db
+    .select()
+    .from(workPolicies)
+    .where(eq(workPolicies.tenantId, tenantId))
+    .orderBy(asc(workPolicies.createdAt), asc(workPolicies.id))
+    .limit(1);
   return rows[0] ?? null;
+}
+
+/**
+ * テナントの制度をすべて返す(アーカイブ済みも含む。createdAt → id の昇順 = 先頭が既定の制度)。
+ * 設定画面の「労働時間制の制度」の一覧と、メンバーの割当先の選択肢に使う。
+ */
+export async function listTenantWorkPolicies(db: Database | Transaction, tenantId: string): Promise<WorkPolicy[]> {
+  return db
+    .select()
+    .from(workPolicies)
+    .where(eq(workPolicies.tenantId, tenantId))
+    .orderBy(asc(workPolicies.createdAt), asc(workPolicies.id));
+}
+
+/** テナント内の制度を id で1件返す(他テナントの id なら null)。 */
+export async function getWorkPolicyById(db: Database | Transaction, params: { tenantId: string; id: string }): Promise<WorkPolicy | null> {
+  const rows = await db
+    .select()
+    .from(workPolicies)
+    .where(and(eq(workPolicies.tenantId, params.tenantId), eq(workPolicies.id, params.id)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export interface CreateWorkPolicyParams {
+  tenantId: string;
+  name: string;
+  /** UTC エポック分 */
+  createdAt: number;
+  /** 初版(work_policy_versions)。制度は必ず版を1つ以上持つ状態で作る */
+  initialVersion: Omit<InsertWorkPolicyVersionParams, "tenantId" | "workPolicyId" | "createdAt">;
+}
+
+/**
+ * 名前付きの制度を、初版と一緒に作る(2026-10-05)。
+ *
+ * 版の無い制度を作らない理由: 割当(user_policy_assignments)は「その日に有効な版」が無いと
+ * `buildSettingsTimeline` が解決できず例外になる。制度と初版を1回の呼び出しで作ることで、
+ * 「名前だけあって割り当てると壊れる制度」という中間状態を作らない。
+ * 名前の重複・値の検証は呼び出し側(apps/api)の責務。トランザクションは呼び出し側が張る。
+ */
+export async function createWorkPolicy(
+  db: Database | Transaction,
+  params: CreateWorkPolicyParams,
+): Promise<{ policy: WorkPolicy; version: WorkPolicyVersion }> {
+  const [policy] = await db
+    .insert(workPolicies)
+    .values({ id: uuidv7(), tenantId: params.tenantId, name: params.name, createdAt: params.createdAt })
+    .returning();
+  if (!policy) {
+    throw new Error("createWorkPolicy: insert returned no row");
+  }
+  const version = await insertWorkPolicyVersion(db, {
+    ...params.initialVersion,
+    tenantId: params.tenantId,
+    workPolicyId: policy.id,
+    createdAt: params.createdAt,
+  });
+  return { policy, version };
+}
+
+/** 制度の名前を変える(名前は表示専用 — 集計にも割当にも影響しない)。 */
+export async function renameWorkPolicy(db: Database | Transaction, params: { tenantId: string; id: string; name: string }): Promise<void> {
+  await db
+    .update(workPolicies)
+    .set({ name: params.name })
+    .where(and(eq(workPolicies.tenantId, params.tenantId), eq(workPolicies.id, params.id)));
+}
+
+/**
+ * 制度のアーカイブ状態を変える(`archivedAt` が null なら使用中に戻す)。
+ * 既定の制度をアーカイブしないことの検証は呼び出し側の責務。
+ */
+export async function setWorkPolicyArchivedAt(
+  db: Database | Transaction,
+  params: { tenantId: string; id: string; archivedAt: number | null },
+): Promise<void> {
+  await db
+    .update(workPolicies)
+    .set({ archivedAt: params.archivedAt })
+    .where(and(eq(workPolicies.tenantId, params.tenantId), eq(workPolicies.id, params.id)));
 }
 
 export interface GetOrCreateTenantWorkPolicyParams {
@@ -53,6 +156,19 @@ export async function listWorkPolicyVersions(
     .select()
     .from(workPolicyVersions)
     .where(and(eq(workPolicyVersions.tenantId, params.tenantId), eq(workPolicyVersions.workPolicyId, params.workPolicyId)))
+    .orderBy(asc(workPolicyVersions.effectiveFrom));
+}
+
+/**
+ * テナントの全制度の全版を effective_from 昇順で返す(2026-10-05、設定画面の制度一覧用)。
+ * 制度ごとに listWorkPolicyVersions を呼ぶと制度の数だけクエリが増えるため、1回で取って
+ * 呼び出し側で work_policy_id ごとに分ける。
+ */
+export async function listWorkPolicyVersionsForTenant(db: Database | Transaction, tenantId: string): Promise<WorkPolicyVersion[]> {
+  return db
+    .select()
+    .from(workPolicyVersions)
+    .where(eq(workPolicyVersions.tenantId, tenantId))
     .orderBy(asc(workPolicyVersions.effectiveFrom));
 }
 
@@ -145,13 +261,18 @@ export interface GetOrCreateTenantWorkPolicyByKindParams {
  * `insertWorkPolicyVersion` を呼ぶ前提の薄い get-or-create だが、本関数は「割当可能な状態」まで
  * 一括で保証する)。起点日を "1970-01-01" にするのは、既存のシード・テストが使う起点日と同じ
  * 規約に合わせるため(どんな過去日の照会が来ても必ず解決できる)。
+ *
+ * 2026-10-05(名前付きの制度)以降の位置づけ: 割当は制度の id で指定するのが正規の経路になり、
+ * 本関数は「kind を指定する従来の入力」(POST /members/:id/work-policy の `kind`)を後方互換で
+ * 受けるためだけに残す。返すのは**その kind の既定の制度** — アーカイブ済みを除いた制度を
+ * 作成順に見て、最新版の kind が一致した最初のもの(テナントの既定の制度が一致すればそれ)。
  */
 export async function getOrCreateTenantWorkPolicyByKind(
   db: Database | Transaction,
   params: GetOrCreateTenantWorkPolicyByKindParams,
 ): Promise<WorkPolicy> {
   // work_policy_versions を全件取得し、work_policy_id ごとの最新版(effectiveFrom 最大)の kind を
-  // 求める。テナントあたりのポリシー数は極小(v0.1〜v0.2 は kind ごとに高々1本の前提)なので、
+  // 求める。テナントあたりのポリシー数は極小(名前付きの制度を入れても数本〜十数本)なので、
   // ポリシーごとに個別クエリを投げるより1回の全件取得+アプリ側解決の方が単純かつ十分速い。
   const allVersions = await db
     .select({ workPolicyId: workPolicyVersions.workPolicyId, effectiveFrom: workPolicyVersions.effectiveFrom, kind: workPolicyVersions.kind })
@@ -165,20 +286,17 @@ export async function getOrCreateTenantWorkPolicyByKind(
     latestKindByPolicy.set(v.workPolicyId, v.kind);
   }
 
-  const matchedPolicyId = [...latestKindByPolicy.entries()].find(([, kind]) => kind === params.kind)?.[0];
-  if (matchedPolicyId !== undefined) {
-    const rows = await db
-      .select()
-      .from(workPolicies)
-      .where(and(eq(workPolicies.tenantId, params.tenantId), eq(workPolicies.id, matchedPolicyId)))
-      .limit(1);
-    const row = rows[0];
-    if (!row) {
-      // work_policy_versions にあるのに work_policies 行が無い状態は通常起こり得ない不整合。
-      throw new Error(`getOrCreateTenantWorkPolicyByKind: work_policy ${matchedPolicyId} not found`);
-    }
-    return row;
-  }
+  // 2026-10-05(名前付きの制度): 同じ kind の制度が複数ありうるようになったため、「どれを選ぶか」を
+  // 決定的にする — アーカイブ済みを除き、作成順(createdAt → id)で最初に kind が一致したもの
+  // (= 既定の制度が一致すればそれ、次に古い制度)。以前は版の effectiveFrom の並びに依存した
+  // Map の挿入順で選んでおり、制度が複数あると選ばれる制度が版の日付次第で変わりえた。
+  const candidates = await db
+    .select()
+    .from(workPolicies)
+    .where(and(eq(workPolicies.tenantId, params.tenantId), isNull(workPolicies.archivedAt)))
+    .orderBy(asc(workPolicies.createdAt), asc(workPolicies.id));
+  const matched = candidates.find((p) => latestKindByPolicy.get(p.id) === params.kind);
+  if (matched) return matched;
 
   const [policyRow] = await db
     .insert(workPolicies)
@@ -335,6 +453,36 @@ export async function listCurrentWorkPolicyKindsForTenant(
   db: Database | Transaction,
   params: { tenantId: string; asOfDate: string },
 ): Promise<Map<string, string | null>> {
+  // 2026-10-05: 解決の本体は listCurrentWorkPolicyAssignmentsForTenant(制度の id も返す版)へ
+  // 移した。こちらは kind だけを返す従来の形として残す(同じ規則を2箇所に書かない)。
+  const assignments = await listCurrentWorkPolicyAssignmentsForTenant(db, params);
+  const result = new Map<string, string | null>();
+  for (const [userId, a] of assignments) {
+    result.set(userId, a.kind);
+  }
+  return result;
+}
+
+/** `listCurrentWorkPolicyAssignmentsForTenant` の値(1ユーザー分)。 */
+export interface CurrentWorkPolicyAssignment {
+  workPolicyId: string;
+  /** asOfDate 時点で有効な版の kind。解決できない(通常起こり得ない不整合)なら null */
+  kind: string | null;
+}
+
+/**
+ * テナント内の全ユーザーについて、指定日時点で割り当てられている制度(id と、その日に有効な版の
+ * kind)を一括で返す(2026-10-05、名前付きの制度)。
+ *
+ * `listCurrentWorkPolicyKindsForTenant` と同じ解決規則・同じ2クエリで、kind に加えて制度の id を
+ * 返す。メンバー一覧の制度名の表示と、設定画面の「制度ごとの割当人数」の集計に使う
+ * (どちらも「どの制度か」が要り、kind だけでは同じ kind の制度を区別できないため)。
+ * 割当が無いユーザーは Map に含まれない。
+ */
+export async function listCurrentWorkPolicyAssignmentsForTenant(
+  db: Database | Transaction,
+  params: { tenantId: string; asOfDate: string },
+): Promise<Map<string, CurrentWorkPolicyAssignment>> {
   const assignments = await db
     .select({
       userId: userPolicyAssignments.userId,
@@ -345,11 +493,9 @@ export async function listCurrentWorkPolicyKindsForTenant(
     .where(and(eq(userPolicyAssignments.tenantId, params.tenantId), lte(userPolicyAssignments.effectiveFrom, params.asOfDate)))
     .orderBy(asc(userPolicyAssignments.effectiveFrom));
 
-  // asc 順で辿って毎回上書きするので、ループが終わった時点で残るのは各ユーザーの
-  // asOfDate 時点で最新の割当。
-  const latestAssignmentByUser = new Map<string, { workPolicyId: string }>();
+  const latestPolicyByUser = new Map<string, string>();
   for (const a of assignments) {
-    latestAssignmentByUser.set(a.userId, { workPolicyId: a.workPolicyId });
+    latestPolicyByUser.set(a.userId, a.workPolicyId);
   }
 
   const versions = await db
@@ -363,9 +509,9 @@ export async function listCurrentWorkPolicyKindsForTenant(
     latestVersionKindByPolicy.set(v.workPolicyId, v.kind);
   }
 
-  const result = new Map<string, string | null>();
-  for (const [userId, assignment] of latestAssignmentByUser) {
-    result.set(userId, latestVersionKindByPolicy.get(assignment.workPolicyId) ?? null);
+  const result = new Map<string, CurrentWorkPolicyAssignment>();
+  for (const [userId, workPolicyId] of latestPolicyByUser) {
+    result.set(userId, { workPolicyId, kind: latestVersionKindByPolicy.get(workPolicyId) ?? null });
   }
   return result;
 }

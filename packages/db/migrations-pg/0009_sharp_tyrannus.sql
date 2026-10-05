@@ -1,0 +1,1 @@
+ALTER TABLE "work_policies" ADD COLUMN "archived_at" integer;

@@ -64,7 +64,15 @@ export const tenantSettingVersions = sqliteTable(
   (table) => [index("tenant_setting_versions_tenant_effective_idx").on(table.tenantId, table.effectiveFrom)],
 );
 
-/** 労働時間制の定義(識別子側)。版は work_policy_versions が持つ */
+/**
+ * 労働時間制の定義(識別子側)。版は work_policy_versions が持つ。
+ *
+ * 2026-10-05(名前付きの制度、時短勤務対応の第1段階): テナントは制度を複数持てる
+ * (例:「固定(8時間)」「固定・時短(6時間)」)。メンバーには制度を割り当てる
+ * (user_policy_assignments.work_policy_id)。名前の重複禁止はアプリ層
+ * (apps/api/src/routes/settings/work-policies.ts)で検証する — 既存のテナントに同名の行が
+ * 残っていてもマイグレーションが失敗しないよう、DB の一意制約にはしない(判断点)。
+ */
 export const workPolicies = sqliteTable("work_policies", {
   id: text("id").primaryKey(),
   tenantId: text("tenant_id")
@@ -72,6 +80,14 @@ export const workPolicies = sqliteTable("work_policies", {
     .references(() => tenants.id),
   name: text("name").notNull(),
   createdAt: integer("created_at").notNull(),
+  /**
+   * アーカイブした時刻(UTC エポック分)。null = 使用中。
+   *
+   * 制度は削除しない(版と割当の履歴が参照しているため、消すと過去の月次が再計算できなくなる)。
+   * アーカイブは「新しい割当の選択肢に出さない」だけで、既に割り当てられているメンバーの
+   * 計算には一切影響しない。テナントの既定の制度(`getTenantWorkPolicy`)はアーカイブできない。
+   */
+  archivedAt: integer("archived_at"),
 });
 
 /**
