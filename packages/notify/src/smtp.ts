@@ -16,6 +16,11 @@ export interface SmtpChannelConfig {
   from: string;
   user?: string;
   password?: string;
+  /**
+   * TLS の SNI・証明書検証に使うホスト名。`host` に検査済みの IP を渡して接続するとき
+   * (SSRF ガード、apps/api/src/lib/outbound-guard.ts)に、元のホスト名をここへ入れる。通常は省略。
+   */
+  servername?: string;
 }
 
 /** 実際の送信処理。設定とメッセージを受け取り、送信の成否は成功時 resolve / 失敗時 reject で表す。 */

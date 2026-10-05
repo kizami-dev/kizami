@@ -30,11 +30,14 @@ import {
 import { base64UrlDecode, type VapidKeys } from "@kizami/notify";
 import type { AppEnv } from "../auth/middleware.js";
 import { isValidHttpUrl } from "../lib/field-validation.js";
+import type { OutboundChecker } from "../lib/outbound-policy.js";
 import { nowMinutes } from "../lib/time.js";
 
 export interface PushRoutesDeps {
   /** VAPID 鍵。null/未設定ならこのルータは購読を受け付けない(404 push_unavailable) */
   vapid?: VapidKeys | null;
+  /** 保存時の SSRF 検査(購読の endpoint はブラウザが渡す値だが、手で作った購読でプライベートな宛先を指せる)。省略 = 検査しない */
+  outbound?: OutboundChecker;
 }
 
 const P256DH_BYTES = 65;
@@ -108,6 +111,9 @@ export function createPushRoutes(db: Database, deps: PushRoutesDeps = {}) {
 
     const subscription = parseSubscription(body.subscription);
     if (!subscription) return c.json({ error: "invalid_subscription" }, 400);
+    if (deps.outbound && !(await deps.outbound.checkUrl(subscription.endpoint)).ok) {
+      return c.json({ error: "outbound_destination_blocked", field: "endpoint" }, 400);
+    }
 
     // 端末の見分け用。長い UA 文字列をそのまま保存しても意味が薄いので頭だけ切る。
     const userAgent = c.req.header("user-agent")?.slice(0, 255) ?? null;

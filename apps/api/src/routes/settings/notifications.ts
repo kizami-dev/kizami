@@ -135,6 +135,11 @@ export function registerNotificationsRoutes(app: Hono<AppEnv>, db: Database, dep
     const webhookUrlProvided = body.webhookUrl !== undefined;
     if (webhookUrl !== null && !isValidHttpUrl(webhookUrl)) return c.json({ error: "invalid_webhook_url" }, 400);
     if (body.webhookEnabled && webhookUrl === null) return c.json({ error: "invalid_webhook_url" }, 400);
+    // SSRF ガード有効時: プライベートな宛先は保存させない(送信のたびの検査が本体。lib/outbound-policy.ts)。
+    // 画面は PUT のたびに全項目を送るので、既存値のまま保存し直した場合もここで検査される。
+    if (webhookUrl !== null && webhookUrlProvided && deps.outbound && !(await deps.outbound.checkUrl(webhookUrl)).ok) {
+      return c.json({ error: "outbound_destination_blocked", field: "webhookUrl" }, 400);
+    }
 
     const smtpHostResult = resolveStringField(body.smtpHost, existing?.smtpHost ?? null);
     if (!smtpHostResult.ok) return c.json({ error: "invalid_smtp_host" }, 400);
@@ -165,6 +170,9 @@ export function registerNotificationsRoutes(app: Hono<AppEnv>, db: Database, dep
 
     const smtpHost = smtpHostResult.value;
     const smtpFrom = smtpFromResult.value;
+    if (smtpHost !== null && body.smtpHost !== undefined && deps.outbound && !(await deps.outbound.checkHost(smtpHost)).ok) {
+      return c.json({ error: "outbound_destination_blocked", field: "smtpHost" }, 400);
+    }
     if (body.smtpEnabled && (smtpHost === null || smtpPort === null || smtpFrom === null)) {
       return c.json({ error: "invalid_smtp_config" }, 400);
     }
@@ -235,6 +243,7 @@ export function registerNotificationsRoutes(app: Hono<AppEnv>, db: Database, dep
 
     const channels = await buildTenantChannels(db, user.tenantId, {
       ...(deps.fetchImpl ? { fetchImpl: deps.fetchImpl } : {}),
+      ...(deps.tenantFetchImpl ? { tenantFetchImpl: deps.tenantFetchImpl } : {}),
       ...(deps.smtpSendFn ? { smtpSendFn: deps.smtpSendFn } : {}),
       encryptor: deps.encryptor ?? null,
     });

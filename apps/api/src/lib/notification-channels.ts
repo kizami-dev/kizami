@@ -53,6 +53,12 @@ import { resolveEmailAddress, resolveNotificationCategory, resolveUserNotificati
 export interface BuildNotificationChannelsOptions {
   /** webhookChannel の fetch 差し替え(テスト用)。省略時はグローバル fetch */
   fetchImpl?: typeof fetch;
+  /**
+   * テナント・個人が設定した送り先(Webhook・ブラウザプッシュの endpoint)への送信に使う fetch。省略時は `fetchImpl`。
+   * SSRF ガード有効時に、検査済みの IP にだけ接続する fetch が渡される(lib/outbound-guard.ts)。
+   * `webhookUrlFallback`(運用者が設定する環境変数)は対象外で、`fetchImpl` を使う。
+   */
+  tenantFetchImpl?: typeof fetch;
   /** smtp 送信関数(Node なら apps/api/src/lib/smtp.ts の nodemailerSendFn、テストなら偽実装)。省略時 smtp チャネルは作らない */
   smtpSendFn?: SmtpSendFn;
   /** テナントに tenant_notification_settings の行が1つも無い場合だけ使う webhook URL フォールバック(環境変数 WEBHOOK_URL)。buildTenantChannels のみで使う */
@@ -75,6 +81,10 @@ export type BuildPersonalChannelsOptions = Omit<BuildNotificationChannelsOptions
   /** 現在時刻(UTC エポック分)。push_subscriptions の last_used_at / failed_at に記録する。省略時は実時刻から求める */
   nowMinutes?: number;
 };
+
+function fetchOption(fetchImpl: typeof fetch | undefined): { fetchImpl?: typeof fetch } {
+  return fetchImpl ? { fetchImpl } : {};
+}
 
 /** 「今の保存設定で少なくとも1チャネル送信できるか」を判定する(POST /settings/notifications/test の事前チェックに使う)。 */
 export function isNotificationConfigUsable(
@@ -105,7 +115,7 @@ export async function buildTenantChannels(
     if (settings.webhookEnabled && settings.webhookUrl) {
       const url = await decryptSecret(options.encryptor, settings.webhookUrl);
       if (url) {
-        channels.push(webhookChannel(url, options.fetchImpl ? { fetchImpl: options.fetchImpl } : {}));
+        channels.push(webhookChannel(url, fetchOption(options.tenantFetchImpl ?? options.fetchImpl)));
       } else {
         console.warn(
           `[notification-channels] tenant ${tenantId}: webhookUrl could not be decrypted (missing/rotated key or corrupted value); disabling the webhook channel`,
@@ -235,7 +245,7 @@ export async function buildPersonalChannels(
   if (categoryPrefs.webhook && prefsRow?.webhookUrl) {
     const url = await decryptSecret(options.encryptor, prefsRow.webhookUrl);
     if (url) {
-      channels.push(webhookChannel(url, options.fetchImpl ? { fetchImpl: options.fetchImpl } : {}));
+      channels.push(webhookChannel(url, fetchOption(options.tenantFetchImpl ?? options.fetchImpl)));
     } else {
       console.warn(
         `[notification-channels] user ${userId}: personal webhookUrl could not be decrypted (missing/rotated key or corrupted value); disabling the webhook channel`,
@@ -252,7 +262,7 @@ export async function buildPersonalChannels(
       const channel = webPushChannel(
         { endpoint: subscription.endpoint, p256dh: subscription.keysP256dh, auth: subscription.keysAuth },
         options.vapid,
-        options.fetchImpl ? { fetchImpl: options.fetchImpl } : {},
+        fetchOption(options.tenantFetchImpl ?? options.fetchImpl),
       );
       channels.push({
         name: channel.name,
