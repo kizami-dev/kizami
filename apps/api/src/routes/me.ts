@@ -41,9 +41,9 @@ export function createMeRoutes(db: Database) {
    * ユーザーで、userId を受け取らない — 他人の言語は変えられない)。許可リスト外・型違いは 400 `invalid_locale`。
    *
    * 判断点: 権限キーは要らない(セルフサービスの表示設定で、パスワード変更等と同じ「本人なら誰でも」)。
-   * 監査ログも残さない(queries/members.ts の updateUserLocale)。退会手続き中でも通る必要は無いが、
-   * 書き込みなので tenantWithdrawalGuardMiddleware が管理者以外を 409 で止める — 画面の言語を
-   * 切り替えただけで失敗を見せないよう、Web 側は結果を無視する(lib/i18n/sync.ts)。
+   * 監査ログも残さない(queries/members.ts の updateUserLocale)。退会手続き中も、ログインできる人
+   * (`tenant.withdraw` を持つ人)はこの書き込みを通す(auth/tenant-withdrawal-guard.ts の許可リスト。
+   * 削除の7日前・完了のメールの言語に効くため)。保存の失敗は画面に見せず、Web 側は結果を無視する(lib/i18n/sync.ts)。
    */
   app.put("/locale", async (c) => {
     let body: unknown;
