@@ -83,7 +83,8 @@ export interface AtomicStepRef<T> {
   readonly __result?: T;
 }
 
-type AtomicStep =
+/** 計画の1手順(文・ガード・直列化キー)。`runAtomic` が順に解釈する。 */
+export type AtomicStep =
   | { kind: "query"; factory: (q: AtomicExecutor) => unknown }
   | { kind: "guard"; label: string }
   | { kind: "serialize"; key: string };
