@@ -73,7 +73,7 @@ const DICTIONARIES: Record<Locale, Messages> = { ja, en, ko, zh, "zh-Hant": zhHa
 
 const VALID_LOCALES: readonly string[] = LOCALE_ORDER;
 
-function isLocale(value: string | null | undefined): value is Locale {
+export function isLocale(value: string | null | undefined): value is Locale {
   return value !== null && value !== undefined && VALID_LOCALES.includes(value);
 }
 

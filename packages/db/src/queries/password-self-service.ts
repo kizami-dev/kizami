@@ -89,6 +89,8 @@ export async function changeOwnPassword(db: Database, input: ChangeOwnPasswordIn
 export interface SelfServiceResetTarget {
   tenantId: string;
   userId: string;
+  /** 本人が選んだ表示言語(users.locale)。null = 未設定。リセットメールの言語の決定に使う */
+  locale: string | null;
 }
 
 /**
@@ -99,7 +101,7 @@ export interface SelfServiceResetTarget {
  */
 export async function findSelfServiceResetTargetsByEmail(db: Database, email: string): Promise<SelfServiceResetTarget[]> {
   return db
-    .select({ tenantId: users.tenantId, userId: users.id })
+    .select({ tenantId: users.tenantId, userId: users.id, locale: users.locale })
     .from(users)
     .innerJoin(authCredentials, and(eq(authCredentials.userId, users.id), eq(authCredentials.tenantId, users.tenantId)))
     .where(and(eq(users.email, email), eq(users.isActive, true)))

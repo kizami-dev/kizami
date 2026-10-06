@@ -12,7 +12,7 @@
  * | API キー(打刻クライアント・MCP) | 403 `tenant_withdrawing` |
  * | `tenant.withdraw` を持たない人のセッション | 401 `tenant_withdrawing`(Web はログイン画面へ戻して理由を出す) |
  * | `tenant.withdraw` を持つ人の閲覧(GET / HEAD) | 通す(全データのエクスポートも GET) |
- * | 同じ人の書き込みのうち、退会の取り消し | 通す |
+ * | 同じ人の書き込みのうち、退会の取り消しと自分の表示言語の保存 | 通す |
  * | 同じ人のそれ以外の書き込み | 409 `tenant_withdrawing` |
  *
  * セッション・API キーを消さずに断る理由は lib/tenant-withdrawal.ts の冒頭を参照。
@@ -26,6 +26,10 @@ import type { AppEnv } from "./middleware.js";
 /** 退会手続き中でも通す書き込み(メソッドとパスの完全一致)。 */
 const WRITES_ALLOWED_WHILE_WITHDRAWING: readonly { method: string; path: string }[] = [
   { method: "POST", path: "/tenant/withdrawal/cancel" },
+  // 自分の表示言語(PUT /me/locale、2026-10-07)。削除の7日前・完了のメールは、手続き中にこそ読まれる。
+  // 手続き中に画面の言語を切り替えた管理者の選択がメールに反映されないのを避ける。
+  // 勤怠・設定のデータには触れず、自分の行の表示設定1列だけを更新するので、手続き中でも害が無い。
+  { method: "PUT", path: "/me/locale" },
 ];
 
 /** node.ts が `/api` プレフィクス付きでも同じアプリを提供するため、比較の前に取り除く(api-key-scope-guard.ts と同じ)。 */

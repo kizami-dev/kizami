@@ -11,7 +11,8 @@
 | `packages/db/src/schema/tenant-purges.ts` | 削除の記録のシステム表 `tenant_purge_records` |
 | `apps/api/src/routes/tenant-withdrawal.ts` | `GET/POST /tenant/withdrawal`・`POST /tenant/withdrawal/cancel`・`GET /tenant/export` |
 | `apps/api/src/auth/tenant-withdrawal-guard.ts` | 退会手続き中のリクエストの制限 |
-| `apps/api/src/lib/tenant-withdrawal.ts` | 猶予期間などの定数・ログインの判定・メールの文面 |
+| `apps/api/src/lib/tenant-withdrawal.ts` | 猶予期間などの定数・ログインの判定・メールの宛先(と言語)の収集・メールの組み立て |
+| `apps/api/src/lib/system-mail-i18n.ts` | システムメール5通の文面(5言語) |
 | `apps/api/src/lib/tenant-export-archive.ts` | zip を流しながら作る・同時に走る本数の枠と期限 |
 | `apps/api/src/tenant-purge.ts` | 定期ジョブ(再通知・削除) |
 | `apps/web/src/components/TenantWithdrawalView.tsx` / `TenantWithdrawalBanner.tsx` | 設定画面・全画面のお知らせ |
@@ -218,6 +219,18 @@ JS のヒープの増分は規模によらず数十 MB で頭打ちになる。S
 
 文面に**ユーザー入力(テナント名など)を入れない**(signup・本人用のパスワード再設定と同じフィッシング対策)。
 リンクは固定のパスだけ。システムメールの無い配備(セルフホスト)では画面の表示(設定画面と全画面のお知らせ)だけ。
+
+### メールの言語(2026-10-07)
+
+メールは**宛先ごとに**、その人の `users.locale`(本人が設定画面で選んだ表示言語。未設定・不正値は `ja`)の言語で
+送る。申請した人の言語で全員に送らないのは、管理者の言語が違う会社で、取り消せる人のうち読めない人が出ると
+「取り消せる人全員に知らせる」目的が果たせないため。完了のメールの宛先と言語は**削除の前に**集める
+(`listWithdrawalNoticeRecipients`。削除の後は `users` 行が無い)。1人への送信の失敗は握って次の宛先へ進む(従来どおり)。
+文面は `lib/system-mail-i18n.ts` の5言語(ja / en / ko / zh / zh-Hant)。日時は日本時間のまま「(日本時間)」「(JST)」と明記し、
+書式だけ言語ごとに整える。労基法109条の案内(5年、令和2年改正の附則による経過措置で当分の間3年)は
+日本語版と同じ内容を訳し、法令名は日本の法律だと分かる形で残す。用語は Web の辞書に揃える
+(退会 = en "withdrawal" / ko 탈퇴 / zh 注销 / zh-Hant 終止服務)。`PUT /me/locale` は手続き中でも通す
+(削除の7日前・完了のメールは手続き中に読まれるため。auth/tenant-withdrawal-guard.ts)。
 
 ## 6. 法定保存の案内
 

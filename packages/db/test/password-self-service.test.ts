@@ -112,8 +112,8 @@ describe.skipIf(!supportsTransactions)("password self-service queries", () => {
 
       const targets = await findSelfServiceResetTargetsByEmail(db, "x@example.com");
       expect(targets).toEqual([
-        { tenantId: tenantA, userId: a },
-        { tenantId: tenantB, userId: b },
+        { tenantId: tenantA, userId: a, locale: null },
+        { tenantId: tenantB, userId: b, locale: null },
       ]);
       expect(await findSelfServiceResetTargetsByEmail(db, "gone@example.com")).toEqual([]);
       expect(await findSelfServiceResetTargetsByEmail(db, "sso@example.com")).toEqual([]);

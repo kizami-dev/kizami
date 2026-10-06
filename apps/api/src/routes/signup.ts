@@ -7,7 +7,7 @@
  *
  * ## フロー
  *
- * 1. `POST /signup`(組織名・氏名・メール・招待コード・Turnstile): 入力検証 → Turnstile →
+ * 1. `POST /signup`(組織名・氏名・メール・招待コード・Turnstile・任意の locale): 入力検証 → Turnstile →
  *    (invite モードなら)招待コードの**有効性チェックのみ** → `pending_signups` に保存 → 確認メール送信。
  *    **パスワードはここでは受け取らない**(下記「アカウント乗っ取り対策」)。
  * 2. `GET /signup/verify/:token`: 確認画面の表示用(組織名・氏名・メール)。
@@ -94,8 +94,10 @@ import { isAcceptablePassword, MIN_PASSWORD_LENGTH } from "../auth/password-poli
 import { createSession, setSessionCookie } from "../auth/session.js";
 import { getClientIp } from "../lib/client-ip.js";
 import { jsonPostGuard } from "../lib/json-post-guard.js";
+import { resolveLocale, type Locale } from "../lib/locale.js";
 import { hashSignupInviteCode } from "../lib/signup-invite-code.js";
 import type { SystemMailSendFn } from "../lib/system-mail.js";
+import { signupVerificationContent } from "../lib/system-mail-i18n.js";
 import { bootstrapTenant } from "../lib/tenant-bootstrap.js";
 import { nowMinutes } from "../lib/time.js";
 import { verifyTurnstile } from "../lib/turnstile.js";
@@ -147,24 +149,12 @@ async function resolvePending(db: Database, token: string) {
 }
 
 /**
- * 確認メールの本文(日本語の平文テキスト)。**ユーザー入力を一切含めない**(宛先 `to` は送信先で
- * あって本文ではない)。組織名・氏名は確認画面で見せる(このファイル冒頭「メール本文に…」)。
+ * 確認メールの本文(平文テキスト。言語は `locale`、文面は lib/system-mail-i18n.ts)。**ユーザー入力を
+ * 一切含めない**(宛先 `to` は送信先であって本文ではない)。組織名・氏名は確認画面で見せる
+ * (このファイル冒頭「メール本文に…」)。
  */
-export function buildSignupVerificationMail(params: { to: string; verifyUrl: string }) {
-  return {
-    to: params.to,
-    subject: "【KIZAMI】メールアドレスの確認",
-    text: [
-      "KIZAMI への新規登録を受け付けました。",
-      "",
-      "次のリンクを開いて、メールアドレスの確認と登録の完了をしてください(24時間有効)。",
-      "確認画面で登録内容を確認し、パスワードを設定すると、組織(テナント)が作成されます。",
-      "",
-      params.verifyUrl,
-      "",
-      "このメールに心当たりがない場合は、何もせずに破棄してください。リンクを開かない限り、何も作成されません。",
-    ].join("\n"),
-  };
+export function buildSignupVerificationMail(params: { to: string; verifyUrl: string; locale: Locale }) {
+  return { to: params.to, ...signupVerificationContent(params.locale, { verifyUrl: params.verifyUrl }) };
 }
 
 export function createSignupRoutes(db: Database, options: SignupRoutesOptions) {
@@ -196,7 +186,7 @@ export function createSignupRoutes(db: Database, options: SignupRoutesOptions) {
     if (typeof body !== "object" || body === null) {
       return c.json({ error: "invalid_body" }, 400);
     }
-    const { email, organizationName, adminName, inviteCode, turnstileToken } = body as Record<string, unknown>;
+    const { email, organizationName, adminName, inviteCode, turnstileToken, locale } = body as Record<string, unknown>;
 
     // ---- 入力検証(招待・メンバー追加と同じ検証の流儀)----
     if (typeof email !== "string" || email.trim().length > MAX_EMAIL_LENGTH || !EMAIL_RE.test(email.trim())) {
@@ -239,6 +229,11 @@ export function createSignupRoutes(db: Database, options: SignupRoutesOptions) {
     // ---- pending 作成 → 確認メール ----
     const now = nowMinutes();
     const normalizedEmail = email.trim();
+    // メールの言語(2026-10-07): リクエストの `locale`(Web の表示言語)→ 無効・省略なら ja。
+    // 判断点: ここは**メール本文の言語を選ぶだけ**で、入力検証・スロットル・pending の作成・応答には
+    // 一切関与させない(不正な locale で 400 にもしない — 応答が locale で変わらないことが列挙対策の前提。
+    // 値は許可リストで検証済みなので、任意の文字列が本文に入ることもない)。
+    const mailLocale = resolveLocale(locale);
 
     const { token, hash } = await generateInvitationToken();
     const created = await upsertPendingSignupUnlessRecent(
@@ -264,6 +259,7 @@ export function createSignupRoutes(db: Database, options: SignupRoutesOptions) {
       const mail = buildSignupVerificationMail({
         to: normalizedEmail,
         verifyUrl: `${signup.appBaseUrl}/signup/verify/${token}`,
+        locale: mailLocale,
       });
       void signup.sendMail(mail).catch((err: unknown) => {
         console.error("signup: failed to send verification mail:", err);

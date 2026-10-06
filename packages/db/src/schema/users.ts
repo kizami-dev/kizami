@@ -64,6 +64,16 @@ export const users = sqliteTable(
      * 既定は最も日数の多い "full"。
      */
     leaveGrantClass: text("leave_grant_class").notNull().default("full"),
+    /**
+     * 本人が選んだ表示言語(2026-10-07 追加、"ja" | "en" | "ko" | "zh" | "zh-Hant")。null = 未設定・不明。
+     *
+     * 判断点: システムメール(退会の通知など、運用者名義で本人の言語を知る手段が他に無いもの)を
+     * 本人の言語で出すために**サーバー側にも持つ**。Web の選択は localStorage にしか無く、メールを
+     * 出す API・worker からは見えないため。値の検証は API 層(apps/api/src/lib/locale.ts)で行い、
+     * DB には CHECK を置かない(対応言語を増やすたびにマイグレーションが要るようにしない)。
+     * 通常のユーザーデータなので、エクスポート・消去の扱いは他の列と同じ(特別扱いしない)。
+     */
+    locale: text("locale"),
     createdAt: integer("created_at").notNull(),
   },
   (table) => [uniqueIndex("users_tenant_email_idx").on(table.tenantId, table.email)],

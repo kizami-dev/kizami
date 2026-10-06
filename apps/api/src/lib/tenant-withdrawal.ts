@@ -3,7 +3,7 @@
  *
  * - 猶予期間・再通知の時期・権限キーの定数
  * - 「退会手続き中か」「この人は手続き中でも使えるか」の判定(認証の各経路・ミドルウェアが使う)
- * - システムメールの文面(申請・削除の7日前・削除の完了)
+ * - システムメールの組み立て(申請・削除の7日前・削除の完了。文面は lib/system-mail-i18n.ts で、宛先ごとの言語)
  *
  * ## 退会手続き中に誰が何をできるか(判断点)
  *
@@ -29,6 +29,8 @@ import { getTenantById, getUserById, type Database, type Tenant } from "@kizami/
 import { hasPermission as evaluatePermission, type PermissionKey, type Scope } from "@kizami/authz";
 import { loadEffectivePermissions } from "../authz.js";
 import { resolveTenantScopeApprovers } from "./approvers.js";
+import { resolveLocale, type Locale } from "./locale.js";
+import { withdrawalCompletedContent, withdrawalReminderContent, withdrawalRequestedContent, type SystemMailContent } from "./system-mail-i18n.js";
 import { TZ_OFFSET_MINUTES_JST } from "./settings.js";
 
 /** 退会の権限キー(packages/authz/src/catalog.ts)。全データのエクスポートも同じキー。 */
@@ -84,19 +86,34 @@ export async function isLoginBlockedByWithdrawal(db: Database, params: { tenantI
   return !canOperateWithdrawingTenant(permissions);
 }
 
+/** 退会のメールの宛先1人分(メールアドレスと、その人の言語。locale = users.locale、null = 未設定)。 */
+export interface WithdrawalNoticeRecipient {
+  email: string;
+  locale: Locale;
+}
+
 /**
  * 退会のメールの宛先: `tenant.withdraw` をテナント全体で持つ、有効な(退職処理も消去もされていない)
- * ユーザーのメールアドレス。申請した本人だけでなく**全員**に送る — 1人の管理者(や乗っ取られた
- * アカウント)が黙って会社のデータを消せないよう、取り消せる人全員に知らせるため。
+ * ユーザー。申請した本人だけでなく**全員**に送る — 1人の管理者(や乗っ取られたアカウント)が黙って会社の
+ * データを消せないよう、取り消せる人全員に知らせるため。
+ *
+ * 言語は**宛先ごと**に決める(2026-10-07): 各人の `users.locale`(本人が選んだ表示言語)、未設定なら ja。
+ * 申請者の言語で全員に送らないのは、管理者が複数いて言語が違う会社(外国人の管理者を含む等)で、
+ * 取り消せる人のうち読めない人が出ると「全員に知らせる」目的が果たせないため。
+ * 同じメールアドレスのユーザーが複数いるときは(従来どおり)1通にまとめ、
+ * 先に見つかった(resolveTenantScopeApprovers の順の)ユーザーの言語を使う。
+ * 宛先は削除の**前**に集めておく(削除の後は users 行が無く、言語も分からない)。
  */
-export async function listWithdrawalNoticeRecipients(db: Database, tenantId: string): Promise<string[]> {
+export async function listWithdrawalNoticeRecipients(db: Database, tenantId: string): Promise<WithdrawalNoticeRecipient[]> {
   const userIds = await resolveTenantScopeApprovers(db, { tenantId, permission: TENANT_WITHDRAW_PERMISSION });
-  const emails: string[] = [];
+  const byEmail = new Map<string, Locale>();
   for (const id of userIds) {
     const user = await getUserById(db, { tenantId, id });
-    if (user && user.isActive && user.erasedAt === null) emails.push(user.email);
+    if (user && user.isActive && user.erasedAt === null && !byEmail.has(user.email)) {
+      byEmail.set(user.email, resolveLocale(user.locale));
+    }
   }
-  return [...new Set(emails)].sort();
+  return [...byEmail.entries()].map(([email, locale]) => ({ email, locale })).sort((x, y) => (x.email < y.email ? -1 : x.email > y.email ? 1 : 0));
 }
 
 /** UTC エポック分 → 日本時間の "YYYY-MM-DD HH:mm"(メール・CLI の表示用)。 */
@@ -110,74 +127,26 @@ export function formatJstDateTime(minutes: number): string {
 // テナント名は申込者が自由に決められる文字列で、本文に入れると運用者名義のフィッシングの踏み台になる。
 // どのテナントの話かは、リンク先の画面(ログイン後)で確かめてもらう。リンクは固定のパスだけ。
 
-export interface SystemMailContent {
-  subject: string;
-  text: string;
-}
-
-/**
- * 労基法109条の保存義務の案内(全メール共通)。出所の示し方は docs/design/data-retention.md と同じ
- * (条文と、令和2年改正の附則による経過措置)。
- */
-const RETENTION_NOTICE_LINES = [
-  "■ 削除の前に、必ず全データをエクスポートして保存してください",
-  "労働基準法109条により、出勤簿などの労働関係に関する重要な書類は、事業主が5年間(令和2年改正法の附則による経過措置により、当分の間は3年間)保存しなければなりません。",
-  "この保存義務は事業主(貴社)の義務であり、KIZAMI からデータが削除されてもなくなりません。",
-];
+export type { SystemMailContent };
 
 function settingsUrl(appBaseUrl: string): string {
   return `${appBaseUrl}/settings/withdrawal`;
 }
 
+// 文面は lib/system-mail-i18n.ts(5言語)。労基法109条の保存義務の案内(令和2年改正の附則による経過措置)の
+// 出所の示し方は docs/design/data-retention.md と同じ。
+
 /** 申請を受け付けたときのメール。 */
-export function buildWithdrawalRequestedMail(params: { appBaseUrl: string; scheduledPurgeAt: number }): SystemMailContent {
-  return {
-    subject: "【KIZAMI】テナントの退会のお申し込みを受け付けました",
-    text: [
-      "KIZAMI をご利用いただいているテナント(会社)について、退会のお申し込みを受け付けました。",
-      "",
-      `削除予定日時: ${formatJstDateTime(params.scheduledPurgeAt)}(日本時間)以降`,
-      "この日時を過ぎると、テナントのすべてのデータ(勤怠記録・メンバー・設定・監査ログ)を物理削除します。削除したデータは元に戻せません。",
-      "それまでの間、管理者以外の方はログインできず、打刻と通知も止まります。",
-      "",
-      ...RETENTION_NOTICE_LINES,
-      "全データのエクスポートと退会の取り消しは、次の画面から行えます。",
-      settingsUrl(params.appBaseUrl),
-      "",
-      "このお申し込みに心当たりがない場合は、すぐに上の画面から退会を取り消してください。",
-      "このメールは、退会を申請・取り消しできる権限を持つ方全員にお送りしています。",
-    ].join("\n"),
-  };
+export function buildWithdrawalRequestedMail(params: { appBaseUrl: string; scheduledPurgeAt: number; locale: Locale }): SystemMailContent {
+  return withdrawalRequestedContent(params.locale, { settingsUrl: settingsUrl(params.appBaseUrl), scheduledPurgeAt: params.scheduledPurgeAt });
 }
 
 /** 削除の7日前の再通知。 */
-export function buildWithdrawalReminderMail(params: { appBaseUrl: string; scheduledPurgeAt: number }): SystemMailContent {
-  return {
-    subject: "【KIZAMI】テナントのデータの削除が近づいています",
-    text: [
-      "退会のお申し込みをいただいているテナント(会社)のデータの削除が近づいています。",
-      "",
-      `削除予定日時: ${formatJstDateTime(params.scheduledPurgeAt)}(日本時間)以降`,
-      "この日時を過ぎると、すべてのデータを物理削除します。削除したデータは元に戻せません。",
-      "",
-      ...RETENTION_NOTICE_LINES,
-      "全データのエクスポートと退会の取り消しは、次の画面から行えます。",
-      settingsUrl(params.appBaseUrl),
-    ].join("\n"),
-  };
+export function buildWithdrawalReminderMail(params: { appBaseUrl: string; scheduledPurgeAt: number; locale: Locale }): SystemMailContent {
+  return withdrawalReminderContent(params.locale, { settingsUrl: settingsUrl(params.appBaseUrl), scheduledPurgeAt: params.scheduledPurgeAt });
 }
 
-/** 削除が完了したときのメール。宛先は削除の前に集めておく(削除の後はもう分からない)。 */
-export function buildWithdrawalCompletedMail(): SystemMailContent {
-  return {
-    subject: "【KIZAMI】テナントのデータの削除が完了しました",
-    text: [
-      "退会のお申し込みをいただいていたテナント(会社)のデータの削除が完了しました。",
-      "勤怠記録・メンバー・設定・監査ログを含むすべてのデータを削除しました。",
-      "",
-      "なお、障害に備えたバックアップには、削除したデータが保存期間(最長で約13か月)の間残ります。バックアップは障害からの復旧にだけ使い、復旧したときは削除済みのテナントをあらためて削除します。",
-      "",
-      "これまで KIZAMI をご利用いただき、ありがとうございました。",
-    ].join("\n"),
-  };
+/** 削除が完了したときのメール。宛先(と言語)は削除の前に集めておく(削除の後はもう分からない)。 */
+export function buildWithdrawalCompletedMail(params: { locale: Locale }): SystemMailContent {
+  return withdrawalCompletedContent(params.locale);
 }

@@ -332,6 +332,41 @@ describe("セルフサインアップ", () => {
     });
   });
 
+  describe("確認メールの言語(locale)", () => {
+    it("リクエストの locale の言語で出る。省略・不正値・型違いは ja。応答はどれも同一の 202", async () => {
+      const cases: Array<[unknown, string]> = [
+        ["en", "[KIZAMI] Confirm your email address"],
+        ["ko", "[KIZAMI] 이메일 주소 확인"],
+        ["zh", "[KIZAMI] 邮箱地址确认"],
+        ["zh-Hant", "[KIZAMI] 電子郵件地址確認"],
+        ["ja", "【KIZAMI】メールアドレスの確認"],
+        [undefined, "【KIZAMI】メールアドレスの確認"],
+        ["fr", "【KIZAMI】メールアドレスの確認"],
+        ["en-US", "【KIZAMI】メールアドレスの確認"],
+        [123, "【KIZAMI】メールアドレスの確認"],
+        [{ x: 1 }, "【KIZAMI】メールアドレスの確認"],
+      ];
+      for (const [locale, subject] of cases) {
+        const h = await harness("open");
+        const res = await post(h.app, "/signup", signupBody(locale === undefined ? {} : { locale }));
+        expect(res.status, String(locale)).toBe(202);
+        expect(await res.json()).toEqual({ status: "verification_sent" });
+        expect(h.mails.map((m) => m.subject), String(locale)).toEqual([subject]);
+        expect(tokenFrom(h.mails[0])).toBeTruthy();
+      }
+    });
+
+    it("locale はスロットルに影響しない: 5分以内の再申請は言語が違ってもメールを出さず、応答も同じ", async () => {
+      const h = await harness("open");
+      const first = await post(h.app, "/signup", signupBody({ locale: "en" }));
+      const second = await post(h.app, "/signup", signupBody({ locale: "ko" }));
+      expect(first.status).toBe(202);
+      expect(second.status).toBe(202);
+      expect(await second.json()).toEqual(await first.json());
+      expect(h.mails).toHaveLength(1);
+    });
+  });
+
   describe("確認リンク(トークン経路)", () => {
     it("存在しないトークンは GET / POST とも 404", async () => {
       const h = await harness("open");

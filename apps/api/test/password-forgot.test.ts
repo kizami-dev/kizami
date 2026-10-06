@@ -266,6 +266,57 @@ describe("本人用の「パスワードを忘れた」再設定", () => {
     });
   });
 
+  describe("メールの言語(locale)", () => {
+    it("リクエストの locale が最優先 → なければアカウントの users.locale → なければ ja。不正値は無視して次の候補へ", async () => {
+      const cases: Array<{ name: string; stored: string | null; request: unknown; subject: string }> = [
+        { name: "リクエスト優先", stored: "ko", request: "en", subject: "[KIZAMI] Reset your password" },
+        { name: "保存値", stored: "zh-Hant", request: undefined, subject: "[KIZAMI] 密碼重設指引" },
+        { name: "不正なリクエスト値は保存値へ", stored: "ko", request: "fr", subject: "[KIZAMI] 비밀번호 재설정 안내" },
+        { name: "どちらも無ければ ja", stored: null, request: undefined, subject: "【KIZAMI】パスワード再設定のご案内" },
+        { name: "不正なリクエスト値 + 保存値なし", stored: null, request: 5, subject: "【KIZAMI】パスワード再設定のご案内" },
+        { name: "DB の不正値は無視して ja", stored: "xx", request: undefined, subject: "【KIZAMI】パスワード再設定のご案内" },
+      ];
+      for (const c of cases) {
+        const { db, userId, email } = await setupTestDb();
+        await db.update(users).set({ locale: c.stored }).where(eq(users.id, userId));
+        const h = await harness("enabled", { db });
+        const res = await requestReset(h, email, c.request === undefined ? {} : { locale: c.request });
+        expect(res.status, c.name).toBe(202);
+        await flush(h);
+        expect(h.mails.map((m) => m.subject), c.name).toEqual([c.subject]);
+      }
+    });
+
+    it("複数アカウント(複数テナント)では1通で、設定済みの最初のアカウントの言語", async () => {
+      const db = await createTestDatabase();
+      const a = await seedTenant(db);
+      const b = await seedTenant(db);
+      await db.update(users).set({ locale: "zh" }).where(eq(users.id, b.userId));
+      const h = await harness("enabled", { db });
+      expect((await requestReset(h, a.email)).status).toBe(202);
+      await flush(h);
+      expect(h.mails).toHaveLength(1);
+      expect(h.mails[0]?.subject).toBe("[KIZAMI] 密码重置指引");
+      expect(h.mails[0]?.text).toContain("账号1");
+    });
+
+    it("locale の有無・値は応答もスロットルも変えない(存在しないメールも同じ 202、5分以内は言語が違っても1通)", async () => {
+      const { db, email } = await setupTestDb();
+      const h = await harness("enabled", { db });
+      const known = await requestReset(h, email, { locale: "en" });
+      const unknown = await requestReset(h, "nobody@example.com", { locale: "ko" });
+      const throttled = await requestReset(h, email, { locale: "zh" });
+      expect(known.status).toBe(202);
+      expect(unknown.status).toBe(202);
+      expect(throttled.status).toBe(202);
+      const knownBody = await known.json();
+      expect(await unknown.json()).toEqual(knownBody);
+      expect(await throttled.json()).toEqual(knownBody);
+      await flush(h);
+      expect(h.mails.map((m) => m.subject)).toEqual(["[KIZAMI] Reset your password"]);
+    });
+  });
+
   describe("メール単位の 5 分スロットル", () => {
     it("5 分以内の再要求は 202 だがメールを出さない。5 分たてば出る", async () => {
       const { db, email } = await setupTestDb();

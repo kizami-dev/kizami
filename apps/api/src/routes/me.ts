@@ -1,10 +1,11 @@
 /**
- * GET /me, GET /me/effective-permissions
+ * GET /me, PUT /me/locale, GET /me/effective-permissions
  */
 
 import { Hono } from "hono";
-import { getTenantById, type Database } from "@kizami/db";
+import { getTenantById, getUserById, updateUserLocale, type Database } from "@kizami/db";
 import type { AppEnv } from "../auth/middleware.js";
+import { parseLocale } from "../lib/locale.js";
 import { withdrawalStateOf } from "../lib/tenant-withdrawal.js";
 
 export function createMeRoutes(db: Database) {
@@ -20,8 +21,11 @@ export function createMeRoutes(db: Database) {
     // 手続き中にここまで来られるのは tenant.withdraw を持つ人だけ(auth/tenant-withdrawal-guard.ts)
     // なので、削除予定の時刻を返してよい。通常の状態では null。
     const withdrawal = withdrawalStateOf(tenant);
+    // 表示言語(2026-10-07): 本人が選んだ言語をサーバーにも持つ(システムメールの言語のため。users.locale)。
+    // Web は端末をまたいで引き継ぐのにも使う(lib/i18n/sync.ts)。null = 未設定。
+    const row = await getUserById(db, { tenantId: user.tenantId, id: user.id });
     return c.json({
-      user: { id: user.id, email: user.email, displayName: user.displayName, tenantId: user.tenantId },
+      user: { id: user.id, email: user.email, displayName: user.displayName, tenantId: user.tenantId, locale: parseLocale(row?.locale) },
       tenant: {
         name: tenant?.name ?? null,
         withdrawal:
@@ -30,6 +34,29 @@ export function createMeRoutes(db: Database) {
             : null,
       },
     });
+  });
+
+  /**
+   * 自分の表示言語を保存する(body `{ locale }`)。**自分の行だけ**を更新する(対象は常にセッションの
+   * ユーザーで、userId を受け取らない — 他人の言語は変えられない)。許可リスト外・型違いは 400 `invalid_locale`。
+   *
+   * 判断点: 権限キーは要らない(セルフサービスの表示設定で、パスワード変更等と同じ「本人なら誰でも」)。
+   * 監査ログも残さない(queries/members.ts の updateUserLocale)。退会手続き中でも通る必要は無いが、
+   * 書き込みなので tenantWithdrawalGuardMiddleware が管理者以外を 409 で止める — 画面の言語を
+   * 切り替えただけで失敗を見せないよう、Web 側は結果を無視する(lib/i18n/sync.ts)。
+   */
+  app.put("/locale", async (c) => {
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "invalid_body" }, 400);
+    }
+    const locale = typeof body === "object" && body !== null ? parseLocale((body as Record<string, unknown>).locale) : null;
+    if (locale === null) return c.json({ error: "invalid_locale" }, 400);
+    const user = c.get("user");
+    await updateUserLocale(db, { tenantId: user.tenantId, userId: user.id, locale });
+    return c.json({ locale });
   });
 
   /**

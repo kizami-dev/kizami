@@ -1,6 +1,8 @@
+import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
+import { users } from "@kizami/db";
 import { createApp } from "../src/app.js";
-import { denyPermission, grantPermission, loginAndGetCookie, setupTestDb } from "./support/setup.js";
+import { denyPermission, grantPermission, loginAndGetCookie, setupSecondUser, setupTestDb } from "./support/setup.js";
 
 interface EffectivePermissionsResponse {
   permissions: Array<{ key: string; scope: string }>;
@@ -91,6 +93,72 @@ describe("GET /me/effective-permissions", () => {
     const app = createApp({ db });
 
     const res = await app.request("/me/effective-permissions");
+    expect(res.status).toBe(401);
+  });
+});
+
+describe("表示言語(users.locale)", () => {
+  function putLocale(app: ReturnType<typeof createApp>, cookie: string, body: unknown) {
+    return app.request("/me/locale", {
+      method: "PUT",
+      headers: { "content-type": "application/json", cookie },
+      body: typeof body === "string" ? body : JSON.stringify(body),
+    });
+  }
+
+  it("未設定は GET /me で null。PUT /me/locale で保存すると GET /me に出る(5言語すべて)", async () => {
+    const { db, email, password } = await setupTestDb();
+    const app = createApp({ db });
+    const cookie = await loginAndGetCookie(app, email, password);
+
+    const before = (await (await app.request("/me", { headers: { cookie } })).json()) as { user: { locale: string | null } };
+    expect(before.user.locale).toBeNull();
+
+    for (const locale of ["ja", "en", "ko", "zh", "zh-Hant"]) {
+      const res = await putLocale(app, cookie, { locale });
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ locale });
+      const me = (await (await app.request("/me", { headers: { cookie } })).json()) as { user: { locale: string | null } };
+      expect(me.user.locale).toBe(locale);
+    }
+  });
+
+  it("許可リスト外・型違い・body 不正は 400 で、保存済みの値は変わらない", async () => {
+    const { db, email, password } = await setupTestDb();
+    const app = createApp({ db });
+    const cookie = await loginAndGetCookie(app, email, password);
+    expect((await putLocale(app, cookie, { locale: "en" })).status).toBe(200);
+
+    for (const body of [{ locale: "fr" }, { locale: "en-US" }, { locale: "" }, { locale: null }, { locale: 1 }, {}, [], "not json"]) {
+      const res = await putLocale(app, cookie, body);
+      expect(res.status, JSON.stringify(body)).toBe(400);
+    }
+    const me = (await (await app.request("/me", { headers: { cookie } })).json()) as { user: { locale: string | null } };
+    expect(me.user.locale).toBe("en");
+  });
+
+  it("自分の行だけが変わる: 同じテナントの他のユーザーの locale は変わらない(対象を指定する手段が無い)", async () => {
+    const { db, tenantId, email, password } = await setupTestDb();
+    const other = await setupSecondUser(db, tenantId);
+    const app = createApp({ db });
+    const cookie = await loginAndGetCookie(app, email, password);
+
+    // userId を body に入れても無視される
+    const res = await putLocale(app, cookie, { locale: "ko", userId: other.userId });
+    expect(res.status).toBe(200);
+    const rows = await db.select({ id: users.id, locale: users.locale }).from(users).where(eq(users.tenantId, tenantId));
+    expect(rows.find((r) => r.id === other.userId)?.locale).toBeNull();
+    expect(rows.filter((r) => r.locale === "ko")).toHaveLength(1);
+  });
+
+  it("未認証は 401", async () => {
+    const { db } = await setupTestDb();
+    const app = createApp({ db });
+    const res = await app.request("/me/locale", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ locale: "en" }),
+    });
     expect(res.status).toBe(401);
   });
 });

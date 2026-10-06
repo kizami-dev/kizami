@@ -18,12 +18,14 @@
  */
 
 import { listTenantsDueForPurge, listTenantsDueForWithdrawalReminder, markWithdrawalReminderSent, purgeTenant, type Database, type PurgeTenantResult } from "@kizami/db";
+import type { Locale } from "./lib/locale.js";
 import type { SystemMailSendFn } from "./lib/system-mail.js";
 import {
   buildWithdrawalCompletedMail,
   buildWithdrawalReminderMail,
   listWithdrawalNoticeRecipients,
   WITHDRAWAL_REMINDER_LEAD_MINUTES,
+  type WithdrawalNoticeRecipient,
 } from "./lib/tenant-withdrawal.js";
 
 /** 退会のメールの送り先(無ければ null = メールを出さない)。 */
@@ -32,11 +34,20 @@ export interface TenantWithdrawalMailer {
   sendMail: SystemMailSendFn;
 }
 
-async function sendAll(mailer: TenantWithdrawalMailer, recipients: readonly string[], mail: { subject: string; text: string }, label: string): Promise<number> {
+/**
+ * 宛先ごとに、その人の言語で組み立てて1通ずつ送る(`build` が言語を受け取る)。1通の失敗は握って次へ進む
+ * (従来どおり。1人の SMTP エラーで他の管理者への通知を止めない)。
+ */
+async function sendAll(
+  mailer: TenantWithdrawalMailer,
+  recipients: readonly WithdrawalNoticeRecipient[],
+  build: (locale: Locale) => { subject: string; text: string },
+  label: string,
+): Promise<number> {
   let sent = 0;
-  for (const to of recipients) {
+  for (const recipient of recipients) {
     try {
-      await mailer.sendMail({ to, ...mail });
+      await mailer.sendMail({ to: recipient.email, ...build(recipient.locale) });
       sent += 1;
     } catch (err) {
       console.error(`[tenant-withdrawal] failed to send the ${label} mail:`, err);
@@ -71,7 +82,7 @@ export async function purgeWithdrawnTenant(
   });
   let mailsSent = 0;
   if (result.status === "purged" && params.mailer) {
-    mailsSent = await sendAll(params.mailer, recipients, buildWithdrawalCompletedMail(), "completion");
+    mailsSent = await sendAll(params.mailer, recipients, (locale) => buildWithdrawalCompletedMail({ locale }), "completion");
   }
   return { ...result, mailsSent };
 }
@@ -102,8 +113,9 @@ export async function runTenantWithdrawalScan(
       if (!(await markWithdrawalReminderSent(db, { tenantId: tenant.id, sentAt: params.nowMinutes }))) continue;
       if (params.mailer && tenant.withdrawalScheduledPurgeAt !== null) {
         const recipients = await listWithdrawalNoticeRecipients(db, tenant.id);
-        const mail = buildWithdrawalReminderMail({ appBaseUrl: params.mailer.appBaseUrl, scheduledPurgeAt: tenant.withdrawalScheduledPurgeAt });
-        await sendAll(params.mailer, recipients, mail, "reminder");
+        const { appBaseUrl } = params.mailer;
+        const scheduledPurgeAt = tenant.withdrawalScheduledPurgeAt;
+        await sendAll(params.mailer, recipients, (locale) => buildWithdrawalReminderMail({ appBaseUrl, scheduledPurgeAt, locale }), "reminder");
       }
       result.remindedTenantIds.push(tenant.id);
     } catch (error) {

@@ -72,7 +72,7 @@ describe("GET /me", () => {
     const res = await app.request("/me", { headers: { cookie } });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({
-      user: { id: userId, email, displayName, tenantId },
+      user: { id: userId, email, displayName, tenantId, locale: null },
       // テナント名(社名)はヘッダー表示用(2026-08-23 追加)。setupTestDb() のテナント名。
       // withdrawal は退会の状態(2026-10-05、通常の状態では null)
       tenant: { name: "Test Tenant", withdrawal: null },

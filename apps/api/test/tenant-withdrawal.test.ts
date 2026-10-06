@@ -218,6 +218,95 @@ describe("テナントの退会", () => {
     });
   });
 
+  describe("メールの言語(宛先ごとの users.locale)", () => {
+    /** 退会の権限を持つ管理者を1人足す(言語を指定できる)。 */
+    async function addAdmin(h: Harness, email: string, locale: string | null) {
+      const id = uuidv7();
+      await h.db.insert(users).values({ id, tenantId: h.tenantId, email, name: email, locale, createdAt: 0 });
+      await grantPermission(h.db, { tenantId: h.tenantId, userId: id, permission: "tenant.withdraw", scope: "tenant" });
+      return id;
+    }
+
+    it("申請のメール: 宛先ごとにその人の言語で届く(申請者の言語ではない)。未設定・不正値は ja", async () => {
+      const h = await harness();
+      await h.db.update(users).set({ locale: "en" }).where(eq(users.id, h.admin.userId));
+      await addAdmin(h, "ko-admin@example.com", "ko");
+      await addAdmin(h, "none-admin@example.com", null);
+      await addAdmin(h, "bad-admin@example.com", "xx");
+
+      await requestWithdrawal(h, await loginAndGetCookie(h.app, h.admin.email, h.admin.password));
+
+      const subjectOf = (to: string) => h.mails.find((m) => m.to === to)?.subject;
+      expect(subjectOf(h.admin.email)).toBe("[KIZAMI] We received your tenant withdrawal request");
+      expect(subjectOf("ko-admin@example.com")).toBe("[KIZAMI] 테넌트 탈퇴 신청을 접수했습니다");
+      expect(subjectOf("none-admin@example.com")).toBe("【KIZAMI】テナントの退会のお申し込みを受け付けました");
+      expect(subjectOf("bad-admin@example.com")).toBe("【KIZAMI】テナントの退会のお申し込みを受け付けました");
+      expect(h.mails).toHaveLength(4);
+      // 英語・韓国語版も日時(日本時間のまま)と画面の URL を持つ
+      expect(h.mails.find((m) => m.to === h.admin.email)?.text).toContain("Jul 15, 2026, 12:00 (JST)");
+      expect(h.mails.find((m) => m.to === "ko-admin@example.com")?.text).toContain("2026년 7월 15일 12:00(일본 시간)");
+    });
+
+    it("定期ジョブ: 7日前の再通知と、削除の完了のメールも宛先ごとの言語(完了の宛先と言語は削除の前に集める)", async () => {
+      const h = await harness();
+      await h.db.update(users).set({ locale: "zh-Hant" }).where(eq(users.id, h.admin.userId));
+      await addAdmin(h, "en-admin@example.com", "en");
+      const { withdrawal } = await requestWithdrawal(h, await loginAndGetCookie(h.app, h.admin.email, h.admin.password));
+      h.mails.length = 0;
+      const mailer = { appBaseUrl: APP_BASE_URL, sendMail: async (mail: SystemMail) => void h.mails.push(mail) };
+
+      await runTenantWithdrawalScan(h.db, { nowMinutes: withdrawal.scheduledPurgeAt - WITHDRAWAL_REMINDER_LEAD_MINUTES, mailer });
+      const reminders = Object.fromEntries(h.mails.map((m) => [m.to, m.subject]));
+      expect(reminders).toEqual({
+        [h.admin.email]: "[KIZAMI] 公司的資料即將被刪除",
+        "en-admin@example.com": "[KIZAMI] Your tenant's data is about to be deleted",
+      });
+
+      h.mails.length = 0;
+      const purged = await runTenantWithdrawalScan(h.db, { nowMinutes: withdrawal.scheduledPurgeAt, mailer });
+      expect(purged.purgedTenantIds).toEqual([h.tenantId]);
+      // 削除で users 行が消えた後でも、削除の前に集めた言語で届く
+      expect(await h.db.select().from(users).where(eq(users.tenantId, h.tenantId))).toEqual([]);
+      expect(Object.fromEntries(h.mails.map((m) => [m.to, m.subject]))).toEqual({
+        [h.admin.email]: "[KIZAMI] 公司的資料已刪除完成",
+        "en-admin@example.com": "[KIZAMI] Your tenant's data has been deleted",
+      });
+    });
+
+    it("退会手続き中でも、退会の権限を持つ人は自分の言語を保存できる(削除の7日前・完了のメールに反映される)", async () => {
+      const h = await harness();
+      const cookie = await loginAndGetCookie(h.app, h.admin.email, h.admin.password);
+      await requestWithdrawal(h, cookie);
+      const res = await h.app.request("/me/locale", {
+        method: "PUT",
+        headers: { "content-type": "application/json", cookie },
+        body: JSON.stringify({ locale: "ko" }),
+      });
+      expect(res.status).toBe(200);
+      const [row] = await h.db.select().from(users).where(eq(users.id, h.admin.userId));
+      expect(row?.locale).toBe("ko");
+    });
+
+    it("1通の送信が失敗しても、他の宛先へは送られる(従来の失敗の扱いのまま)", async () => {
+      const h = await harness();
+      await addAdmin(h, "en-admin@example.com", "en");
+      const { withdrawal } = await requestWithdrawal(h, await loginAndGetCookie(h.app, h.admin.email, h.admin.password));
+      h.mails.length = 0;
+      const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+      const mailer = {
+        appBaseUrl: APP_BASE_URL,
+        sendMail: async (mail: SystemMail) => {
+          if (mail.to === h.admin.email) throw new Error("smtp down");
+          h.mails.push(mail);
+        },
+      };
+      await runTenantWithdrawalScan(h.db, { nowMinutes: withdrawal.scheduledPurgeAt - WITHDRAWAL_REMINDER_LEAD_MINUTES, mailer });
+      expect(h.mails.map((m) => m.to)).toEqual(["en-admin@example.com"]);
+      expect(errors).toHaveBeenCalled();
+      errors.mockRestore();
+    });
+  });
+
   describe("猶予期間の制限", () => {
     it("管理者以外はログインできず(403)、既存のセッションは 401 tenant_withdrawing。管理者はログインでき、/me に削除予定が出る", async () => {
       const h = await harness();

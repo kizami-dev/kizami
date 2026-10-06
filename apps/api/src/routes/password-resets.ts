@@ -77,7 +77,9 @@ import {
 import { createSession, setSessionCookie } from "../auth/session.js";
 import { getClientIp } from "../lib/client-ip.js";
 import { jsonPostGuard } from "../lib/json-post-guard.js";
+import { parseLocale, resolveLocale, type Locale } from "../lib/locale.js";
 import type { SystemMailSendFn } from "../lib/system-mail.js";
+import { selfServiceResetContent } from "../lib/system-mail-i18n.js";
 import { isLoginBlockedByWithdrawal, TENANT_WITHDRAWING_ERROR } from "../lib/tenant-withdrawal.js";
 import { nowMinutes } from "../lib/time.js";
 import { verifyTurnstile } from "../lib/turnstile.js";
@@ -105,25 +107,11 @@ export interface SelfServiceResetDeps {
 }
 
 /**
- * 本人用再設定メールの本文(日本語の平文テキスト)。**ユーザー入力もテナント名も含めない**
- * (このファイル冒頭「メール本文に…」)。リンクが複数あるときは番号だけで区別する。
+ * 本人用再設定メールの本文(平文テキスト。言語は `locale`、文面は lib/system-mail-i18n.ts)。**ユーザー入力も
+ * テナント名も含めない**(このファイル冒頭「メール本文に…」)。リンクが複数あるときは番号だけで区別する。
  */
-export function buildSelfServiceResetMail(params: { to: string; resetUrls: string[] }) {
-  const lines = ["KIZAMI のパスワード再設定のご依頼を受け付けました。", ""];
-  if (params.resetUrls.length === 1) {
-    lines.push("次のリンクを開いて、新しいパスワードを設定してください(1時間有効)。", "", params.resetUrls[0]!);
-  } else {
-    lines.push(
-      "このメールアドレスで登録されているアカウントが複数あります。再設定したいアカウントのリンクを開いて、",
-      "新しいパスワードを設定してください(いずれも1時間有効)。どの組織のアカウントかはリンク先の画面に表示されます。",
-    );
-    params.resetUrls.forEach((url, i) => lines.push("", `アカウント${i + 1}`, url));
-  }
-  lines.push(
-    "",
-    "このメールに心当たりがない場合は、何もせずに破棄してください。リンクを開かない限り、パスワードは変わりません。",
-  );
-  return { to: params.to, subject: "【KIZAMI】パスワード再設定のご案内", text: lines.join("\n") };
+export function buildSelfServiceResetMail(params: { to: string; resetUrls: string[]; locale: Locale }) {
+  return { to: params.to, ...selfServiceResetContent(params.locale, { resetUrls: params.resetUrls }) };
 }
 
 /** トークンからリセットトークンを探し、有効性を判定する。無効の理由まで返すのはこのファイル内部の利用のみ。 */
@@ -154,7 +142,7 @@ function defaultRunInBackground(task: () => Promise<void>): void {
 async function processSelfServiceRequest(
   db: Database,
   deps: SelfServiceResetDeps,
-  params: { email: string; now: number },
+  params: { email: string; now: number; requestLocale: Locale | null },
 ): Promise<void> {
   try {
     const targets = await findSelfServiceResetTargetsByEmail(db, params.email);
@@ -175,7 +163,12 @@ async function processSelfServiceRequest(
       });
       resetUrls.push(`${deps.appBaseUrl}/reset/${token}`);
     }
-    await deps.sendMail(buildSelfServiceResetMail({ to: params.email, resetUrls }));
+    // 言語: リクエストの locale → 対象アカウントの users.locale(設定済みの最初のもの)→ ja。
+    // 複数アカウントでも1通なので言語は1つ。対象は作成順(リンクの番号と同じ並び)なので決定的。
+    // 判断点: アカウントの保存値を使うのは**メール本文の言語を選ぶだけ**で、応答には影響しない
+    // (応答は 202 を先に返し済み。locale の有無・アカウントの有無で応答もスロットルも変わらない)。
+    const locale = resolveLocale(params.requestLocale, ...targets.map((t) => t.locale));
+    await deps.sendMail(buildSelfServiceResetMail({ to: params.email, resetUrls, locale }));
   } catch (err) {
     console.error("password-reset: self-service request failed:", err);
   }
@@ -221,7 +214,7 @@ export function createPasswordResetsRoutes(db: Database, options: PasswordResets
     if (typeof body !== "object" || body === null) {
       return c.json({ error: "invalid_body" }, 400);
     }
-    const { email, turnstileToken } = body as Record<string, unknown>;
+    const { email, turnstileToken, locale } = body as Record<string, unknown>;
     if (typeof email !== "string" || email.trim().length > MAX_EMAIL_LENGTH || !EMAIL_RE.test(email.trim())) {
       return c.json({ error: "invalid_email" }, 400);
     }
@@ -262,7 +255,7 @@ export function createPasswordResetsRoutes(db: Database, options: PasswordResets
       console.error("password-reset: failed to acquire the request slot:", err);
     }
     if (acquired) {
-      (deps.runInBackground ?? defaultRunInBackground)(() => processSelfServiceRequest(db, deps, { email: normalizedEmail, now }));
+      (deps.runInBackground ?? defaultRunInBackground)(() => processSelfServiceRequest(db, deps, { email: normalizedEmail, now, requestLocale: parseLocale(locale) }));
     }
 
     return c.json({ status: "reset_requested" }, 202);
