@@ -27,8 +27,9 @@
  * 5. `MAIL FROM:<…>` → `RCPT TO:<…>`(250/251)→ `DATA`(354)→ 本文(dot-stuffing 済み)+ `.` → 250
  * 6. `QUIT`(応答は待つが失敗は無視)→ 切断
  *
- * どの段階でも、応答を待つのは `replyTimeoutMs`(既定 30 秒)まで、1通全体で `totalTimeoutMs`(既定 60 秒)まで。
- * 時間切れ・失敗のどちらでも接続は必ず閉じる。エラーのメッセージには段階とサーバーの応答(200 文字まで)を
+ * どの段階でも(接続・書き込み・応答・TLS への昇格)、待つのは段階の開始から `replyTimeoutMs`(既定 30 秒)の
+ * **絶対の締め切り**まで、1通全体で `totalTimeoutMs`(既定 60 秒)まで。応答の大きさ・行数にも上限がある
+ * (`SMTP_LIMITS`)。時間切れ・失敗のどちらでも接続は必ず閉じる。エラーのメッセージには段階とサーバーの応答(200 文字まで)を
  * 入れ、**パスワードは入れない**。
  */
 
@@ -80,18 +81,81 @@ interface SmtpReply {
   lines: string[];
 }
 
-/** 応答の1行の上限(これを超えて改行が来なければ壊れた相手として切る)。RFC 5321 は 512 オクテット。 */
-const MAX_REPLY_BUFFER = 64 * 1024;
+/**
+ * 相手(テナントが登録した任意のホスト)が壊れていても悪意があっても、こちらの資源を際限なく使わせないための上限
+ * (2026-10-07 セキュリティレビュー「resource-cap-defeat」)。
+ *
+ * - 応答の1行: RFC 5321 4.5.3.1.5 の 512 オクテットに余裕を持たせて 2,048 文字。改行が来ないまま超えても、
+ *   1つの塊の中で改行より前に超えても失敗
+ * - 1つの応答(複数行の `250-…` を含む)の合計: 16 KiB。EHLO の広告は普通 1 KiB に届かない
+ * - 1つの応答の行数: 64 行(`250-` を延々と送り続ける相手を止める)
+ * - 時間: 段階(接続・書き込み・応答の読み取り・TLS への昇格)ごとに**絶対の締め切り**を段階の開始時に決める
+ *   (届いたバイトで延長しない — 1バイトずつ垂らす相手でも締め切りで切れる)。各段階の締め切りは1通全体の
+ *   締め切り(既定 60 秒)を越えない
+ * - 切断: 失敗・時間切れ・成功のどの終わり方でも接続を閉じ、閉じる操作自体にも上限(2 秒)を掛ける。打ち切った後は
+ *   読み取りの続きを始めない(`SessionClock.aborted`)ので、閉じた接続の上で読み取りが回り続けることは無い。
+ *   締め切りの後に遅れて返ってきた接続・昇格した接続も、使わずに閉じる
+ *
+ * AUTH の 334 のチャレンジは復号しない(PLAIN / LOGIN は中身を使わない)ので、巨大なチャレンジも応答の上限で止まる。
+ */
+export const SMTP_LIMITS = {
+  maxLineChars: 2048,
+  maxReplyBytes: 16 * 1024,
+  maxReplyLines: 64,
+  closeTimeoutMs: 2_000,
+} as const;
 
 function summarize(reply: SmtpReply): string {
   return `${reply.code} ${reply.lines.join(" / ")}`.slice(0, 200);
 }
 
-/** 応答を1つずつ読む(複数行の `250-…` を最後の `250 …` までまとめる)。 */
+/** 1通ぶんの締め切りと中断の状態。 */
+class SessionClock {
+  aborted = false;
+  constructor(
+    private readonly overallDeadlineAt: number,
+    private readonly stepTimeoutMs: number,
+  ) {}
+
+  /**
+   * `promise` に段階の締め切りを掛ける。締め切りは**いま**から `stepTimeoutMs`(全体の締め切りを越えない)の
+   * 絶対時刻で、途中で何が届いても延びない。時間切れになったら `aborted` を立てる(以後の読み書きを始めない)。
+   */
+  step<T>(promise: Promise<T>, stage: string): Promise<T> {
+    if (this.aborted) {
+      promise.catch(() => undefined);
+      return Promise.reject(new SmtpError("timeout", `session aborted (${stage})`));
+    }
+    const remaining = this.overallDeadlineAt - Date.now();
+    const byOverall = remaining < this.stepTimeoutMs;
+    const ms = Math.max(0, byOverall ? remaining : this.stepTimeoutMs);
+    return new Promise<T>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.aborted = true;
+        reject(new SmtpError("timeout", byOverall ? `not finished within the overall deadline (${stage})` : `no reply within ${this.stepTimeoutMs}ms (${stage})`));
+      }, ms);
+      promise.then(
+        (value) => {
+          clearTimeout(timer);
+          resolve(value);
+        },
+        (err: unknown) => {
+          clearTimeout(timer);
+          reject(err);
+        },
+      );
+    });
+  }
+}
+
+/** 応答を1つずつ読む(複数行の `250-…` を最後の `250 …` までまとめる)。上限は SMTP_LIMITS。 */
 class ReplyReader {
   private buffer = "";
   private readonly decoder = new TextDecoder("utf-8");
-  constructor(private conn: SmtpConnection) {}
+  constructor(
+    private conn: SmtpConnection,
+    private readonly clock: SessionClock,
+  ) {}
 
   /** STARTTLS 後に接続を差し替える(昇格前に届いた残りがあれば、それは平文の注入なので捨てずに失敗させる)。 */
   replace(conn: SmtpConnection): void {
@@ -99,18 +163,25 @@ class ReplyReader {
     this.conn = conn;
   }
 
+  /** 応答を1つ読む。締め切りは呼び出し側が `clock.step()` で掛ける(1つの応答に1つの絶対の締め切り)。 */
   async next(): Promise<SmtpReply> {
     const lines: string[] = [];
     let code: number | undefined;
+    let replyBytes = 0;
     for (;;) {
       const newline = this.buffer.indexOf("\n");
       if (newline < 0) {
-        if (this.buffer.length > MAX_REPLY_BUFFER) throw new SmtpError("reply", "reply line is too long");
+        if (this.buffer.length > SMTP_LIMITS.maxLineChars) throw new SmtpError("reply", "reply line is too long");
+        // 打ち切られた後は読み取りを続けない(閉じた接続の上で回り続けない)
+        if (this.clock.aborted) throw new SmtpError("timeout", "session aborted");
         const chunk = await this.conn.read();
         if (chunk === null) throw new SmtpError("reply", "connection closed by the server");
+        replyBytes += chunk.byteLength;
+        if (replyBytes > SMTP_LIMITS.maxReplyBytes) throw new SmtpError("reply", "reply is too large");
         this.buffer += this.decoder.decode(chunk, { stream: true });
         continue;
       }
+      if (newline > SMTP_LIMITS.maxLineChars) throw new SmtpError("reply", "reply line is too long");
       const line = this.buffer.slice(0, newline).replace(/\r$/, "");
       this.buffer = this.buffer.slice(newline + 1);
       const match = /^(\d{3})([ -]?)(.*)$/.exec(line);
@@ -120,6 +191,7 @@ class ReplyReader {
       code = lineCode;
       lines.push(match[3] ?? "");
       if (match[2] !== "-") return { code, lines };
+      if (lines.length >= SMTP_LIMITS.maxReplyLines) throw new SmtpError("reply", "too many reply lines");
     }
   }
 }
@@ -146,51 +218,73 @@ function parseCapabilities(reply: SmtpReply): Capabilities {
 
 const encoder = new TextEncoder();
 
-/** 1通の送信(接続から切断まで)。 */
+/** 閉じる(失敗は無視。閉じる操作自体にも上限)。 */
+async function closeQuietly(conn: SmtpConnection): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      conn.close().catch(() => undefined),
+      new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, SMTP_LIMITS.closeTimeoutMs);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * 接続を返す操作(接続・TLS への昇格)に締め切りを掛ける。締め切りの後に遅れて返ってきた接続は使わずに閉じる。
+ */
+async function acquire(clock: SessionClock, pending: Promise<SmtpConnection>, stage: string): Promise<SmtpConnection> {
+  let abandoned = false;
+  const tracked = pending.then((c) => {
+    if (abandoned) void closeQuietly(c);
+    return c;
+  });
+  try {
+    return await clock.step(tracked, stage);
+  } catch (err) {
+    abandoned = true;
+    tracked.catch(() => undefined);
+    throw err;
+  }
+}
+
+/** 1通の送信(接続から切断まで)。すべての待ちに `clock.step()` の締め切りを掛ける。 */
 async function sendOnce(
   connector: SmtpConnector,
   config: SmtpChannelConfig,
   from: Mailbox,
   to: string,
   data: string,
-  options: Required<Pick<SmtpClientOptions, "replyTimeoutMs" | "heloName">>,
+  heloName: string,
+  clock: SessionClock,
   /** 今使っている接続を知らせる(STARTTLS で差し替わる。呼び出し側が最後に閉じる) */
   track: (conn: SmtpConnection) => void,
 ): Promise<void> {
   const security: SmtpSecurity = config.port === 465 ? "implicit-tls" : "starttls";
   let conn: SmtpConnection;
   try {
-    conn = await connector({ host: config.host, port: config.port, security });
+    conn = await acquire(clock, connector({ host: config.host, port: config.port, security }), "connect");
   } catch (err) {
+    if (err instanceof SmtpError) throw err;
     throw new SmtpError("connect", err instanceof Error ? err.message : String(err));
   }
   track(conn);
-  const reader = new ReplyReader(conn);
+  const reader = new ReplyReader(conn, clock);
   let tls = security === "implicit-tls";
 
-  const withReplyTimeout = <T>(promise: Promise<T>, stage: string): Promise<T> =>
-    new Promise<T>((resolve, reject) => {
-      const timer = setTimeout(() => reject(new SmtpError("timeout", `no reply within ${options.replyTimeoutMs}ms (${stage})`)), options.replyTimeoutMs);
-      promise.then(
-        (value) => {
-          clearTimeout(timer);
-          resolve(value);
-        },
-        (err: unknown) => {
-          clearTimeout(timer);
-          reject(err);
-        },
-      );
-    });
-
-  const send = (line: string) => conn.write(encoder.encode(`${line}\r\n`));
+  // 書き込みにも締め切り(読まない相手の背圧で止まらない)
+  const write = (text: string, stage: string) => clock.step(conn.write(encoder.encode(text)), stage);
+  const read = (stage: string) => clock.step(reader.next(), stage);
   const expect = async (stage: string, accept: (code: number) => boolean): Promise<SmtpReply> => {
-    const reply = await withReplyTimeout(reader.next(), stage);
+    const reply = await read(stage);
     if (!accept(reply.code)) throw new SmtpError(stage, summarize(reply), reply.code);
     return reply;
   };
   const command = async (line: string, stage: string, accept: (code: number) => boolean): Promise<SmtpReply> => {
-    await send(line);
+    await write(`${line}\r\n`, stage);
     return expect(stage, accept);
   };
   const is = (...codes: number[]) => (code: number) => codes.includes(code);
@@ -198,12 +292,12 @@ async function sendOnce(
   await expect("greeting", is(220));
 
   const hello = async (): Promise<Capabilities | null> => {
-    await send(`EHLO ${options.heloName}`);
-    const reply = await withReplyTimeout(reader.next(), "ehlo");
+    await write(`EHLO ${heloName}\r\n`, "ehlo");
+    const reply = await read("ehlo");
     if (reply.code === 250) return parseCapabilities(reply);
     // ESMTP を話さない古いサーバー(5xx)には HELO で名乗り直す。拡張(STARTTLS・AUTH)は使えない
     if (reply.code >= 500) {
-      await command(`HELO ${options.heloName}`, "helo", is(250));
+      await command(`HELO ${heloName}`, "helo", is(250));
       return null;
     }
     throw new SmtpError("ehlo", summarize(reply), reply.code);
@@ -215,7 +309,9 @@ async function sendOnce(
   if (!tls) {
     if (caps?.startTls) {
       await command("STARTTLS", "starttls", is(220));
-      conn = await conn.startTls();
+      // 昇格そのものにも締め切り。Workers はハンドシェイクを昇格後の最初の読み書きで行うので、そこで止まる相手は
+      // 直後の EHLO の締め切りで切れる
+      conn = await acquire(clock, conn.startTls(), "starttls");
       track(conn);
       reader.replace(conn);
       tls = true;
@@ -230,6 +326,7 @@ async function sendOnce(
       // authzid は空、authcid = user、passwd(RFC 4616)。UTF-8 のまま base64 にする
       await command(`AUTH PLAIN ${utf8ToBase64(`\u0000${credentials.user}\u0000${credentials.password}`)}`, "auth", is(235));
     } else if (caps?.auth.has("LOGIN")) {
+      // 334 のチャレンジ(Username: / Password:)は復号しない
       await command("AUTH LOGIN", "auth", is(334));
       await command(utf8ToBase64(credentials.user), "auth", is(334));
       await command(utf8ToBase64(credentials.password), "auth", is(235));
@@ -241,10 +338,10 @@ async function sendOnce(
   await command(`MAIL FROM:<${from.address}>`, "mail", is(250));
   await command(`RCPT TO:<${to}>`, "rcpt", is(250, 251));
   await command("DATA", "data", is(354));
-  await conn.write(encoder.encode(`${dotStuff(data)}.\r\n`));
+  await write(`${dotStuff(data)}.\r\n`, "data");
   await expect("data", is(250));
 
-  // QUIT の応答の失敗は送信の成否に関係しない(本文は 250 で受理済み)
+  // QUIT の応答の失敗は送信の成否に関係しない(本文は 250 で受理済み)。締め切りは他と同じ
   try {
     await command("QUIT", "quit", () => true);
   } catch {
@@ -272,22 +369,29 @@ export function createSmtpSendFn(connector: SmtpConnector, options: SmtpClientOp
     const data = buildPlainTextMessage({ from, to, subject: msg.title, text: msg.body, date: now() });
     const recipient = to.trim();
 
+    const clock = new SessionClock(Date.now() + totalTimeoutMs, replyTimeoutMs);
     let current: SmtpConnection | undefined;
+    // 各段階の締め切りが全体の締め切りを越えないので、全体の時間切れは段階の時間切れとして現れる。
+    // 外側にも同じ締め切りを置いて二重にする(段階の外で止まることは無いが、保険)
     let timer: ReturnType<typeof setTimeout> | undefined;
     const overall = new Promise<never>((_, reject) => {
-      timer = setTimeout(() => reject(new SmtpError("timeout", `not finished within ${totalTimeoutMs}ms`)), totalTimeoutMs);
+      timer = setTimeout(() => {
+        clock.aborted = true;
+        reject(new SmtpError("timeout", `not finished within ${totalTimeoutMs}ms`));
+      }, totalTimeoutMs);
     });
-    const attempt = sendOnce(connector, config, from, recipient, data, { replyTimeoutMs, heloName }, (c) => {
+    const attempt = sendOnce(connector, config, from, recipient, data, heloName, clock, (c) => {
       current = c;
     });
-    // 全体の時間切れで先に返したあと、閉じた接続の上で attempt が遅れて失敗しても未処理の reject にしない
+    // 時間切れで先に返したあと、閉じた接続の上で attempt が遅れて失敗しても未処理の reject にしない
     attempt.catch(() => undefined);
     try {
       await Promise.race([attempt, overall]);
     } finally {
       clearTimeout(timer);
-      // 成功でも失敗でも閉じる(STARTTLS の後は昇格した接続。閉じる失敗は無視)
-      await current?.close().catch(() => undefined);
+      clock.aborted = true;
+      // 成功でも失敗でも閉じる(STARTTLS の後は昇格した接続。閉じる失敗は無視、閉じる操作にも上限)
+      if (current !== undefined) await closeQuietly(current);
     }
   };
 }
