@@ -2760,6 +2760,7 @@ export const zh = {
     exportAction: "下载全部数据(zip)",
     exporting: "正在生成…",
     exportFailed: "下载失败,请稍后重试。",
+    exportBusy: "当前正在生成另一份全部数据的导出,请等待约30秒后重试。",
     requestTitle: "申请注销",
     requestDesc: (days: number) => `申请后,将在${days}天后永久删除本公司的全部数据。在此期间只能导出全部数据或撤销申请。`,
     impactTitle: "申请后将立即发生以下变化",

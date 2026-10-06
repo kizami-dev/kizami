@@ -2641,6 +2641,11 @@ export async function downloadAttendanceCsv(
 /**
  * GET /tenant/export(tenant.withdraw、2026-10-05)を blob として取得する。全データの zip。
  * JSON ではないので request<T> を使わない(downloadAttendanceCsv と同じ作法)。
+ *
+ * 2026-10-06 から API は zip を流しながら返す(Content-Length 無し)。`res.blob()` は最後まで読んでから
+ * 解決するので、受け取り方は変わらない。途中でサーバーが失敗すると接続が切れて `blob()` が reject
+ * する — その場合も ApiError(network_error)にそろえる。同時に作れるのは1本までで、混んでいれば
+ * 429 `export_busy`(ApiError の status 429。呼び出し側が案内を出し分ける)。
  */
 export async function downloadTenantExport(): Promise<AttendanceCsvDownload> {
   let res: Response;
@@ -2664,6 +2669,11 @@ export async function downloadTenantExport(): Promise<AttendanceCsvDownload> {
   const disposition = res.headers.get("content-disposition") ?? "";
   const match = /filename="?([^";]+)"?/i.exec(disposition);
   const filename = match?.[1] ?? "kizami-export.zip";
-  const blob = await res.blob();
+  let blob: Blob;
+  try {
+    blob = await res.blob();
+  } catch (cause) {
+    throw new ApiError(0, { error: "network_error", cause });
+  }
   return { blob, filename };
 }

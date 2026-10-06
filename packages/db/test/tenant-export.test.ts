@@ -13,8 +13,15 @@ import { getTableConfig } from "drizzle-orm/sqlite-core";
 import { beforeEach, describe, expect, it } from "vitest";
 import { migrateDb, type Database } from "./support/db.js";
 import { SECRET_MARKER, seedFullTenant, type FullTenant } from "./support/full-tenant.js";
-import { exportTenantData, tableNameOf, TENANT_EXPORT_POLICY, TENANT_PURGE_ORDER } from "../src/queries/index.js";
-import { tenants } from "../src/schema/index.js";
+import {
+  exportTenantData,
+  iterateTenantExportTable,
+  listTenantExportTables,
+  tableNameOf,
+  TENANT_EXPORT_POLICY,
+  TENANT_PURGE_ORDER,
+} from "../src/queries/index.js";
+import { helpOverrides, punchEvents, tenants } from "../src/schema/index.js";
 import { uuidv7 } from "../src/uuid.js";
 
 /** 列名がこれに当たる列は、出すか出さないかを必ず意識して決める(出してよい列はここに当たらない)。 */
@@ -88,5 +95,76 @@ describe("exportTenantData", () => {
 
   it("存在しないテナントは null", async () => {
     expect(await exportTenantData(db, uuidv7())).toBeNull();
+  });
+});
+
+describe("iterateTenantExportTable(ページングして読む)", () => {
+  let db: Database;
+  let target: FullTenant;
+
+  beforeEach(async () => {
+    const dbPath = join(tmpdir(), `kizami-db-test-${randomUUID()}.db`);
+    ({ db } = await migrateDb({ url: `file:${dbPath}` }));
+    target = await seedFullTenant(db, "target");
+    await seedFullTenant(db, "other");
+    // ページの境目をまたがせる: 単一の主キー(punch_events)と複合の主キー(help_overrides)の両方で、
+    // 1ページ(3行)より多い行を持たせる。打刻は id の順と時刻の順を逆にして、並びが主キーで決まることも見る
+    const ids = Array.from({ length: 8 }, () => uuidv7());
+    for (const [i, id] of ids.entries()) {
+      await db.insert(punchEvents).values({
+        id,
+        tenantId: target.tenantId,
+        userId: target.memberId,
+        kind: i % 2 === 0 ? "clock_in" : "clock_out",
+        occurredAt: 30_000_000 - i,
+        recordedAt: 30_000_000 - i,
+        source: "web",
+        actorId: target.memberId,
+      });
+    }
+    for (const key of ["a.one", "b.two", "c.three", "d.four", "e.five", "f.six"]) {
+      await db.insert(helpOverrides).values({ tenantId: target.tenantId, helpKey: key, bodyMd: key, updatedBy: target.adminId, updatedAt: 1 });
+    }
+  });
+
+  it("ページの大きさを行数より小さくしても、全テーブルで exportTenantData と同じ行が同じ順で出る", async () => {
+    const whole = (await exportTenantData(db, target.tenantId))!;
+    const { tables, excludedTables } = listTenantExportTables();
+    expect(tables.map((t) => t.name)).toEqual(whole.tables.map((t) => t.name));
+    expect(excludedTables).toEqual(whole.excludedTables);
+
+    const batchCounts = new Map<string, number>();
+    for (const { name } of tables) {
+      const rows: Record<string, unknown>[] = [];
+      let batches = 0;
+      for await (const batch of iterateTenantExportTable(db, target.tenantId, name, { batchSize: 3 })) {
+        expect(batch.length, name).toBeGreaterThan(0);
+        expect(batch.length, name).toBeLessThanOrEqual(3);
+        rows.push(...batch);
+        batches += 1;
+      }
+      batchCounts.set(name, batches);
+      expect(rows, name).toEqual(whole.tables.find((t) => t.name === name)!.rows);
+    }
+    // 実際に複数ページに分かれている(10行 → 4ページ、7行 → 3ページ)
+    expect(whole.tables.find((t) => t.name === "punch_events")!.rows).toHaveLength(10);
+    expect(batchCounts.get("punch_events")).toBe(4);
+    expect(whole.tables.find((t) => t.name === "help_overrides")!.rows).toHaveLength(7);
+    expect(batchCounts.get("help_overrides")).toBe(3);
+    // 主キーの昇順(時刻の順ではない)
+    const punchIds = whole.tables.find((t) => t.name === "punch_events")!.rows.map((r) => r.id as string);
+    expect(punchIds).toEqual([...punchIds].sort());
+  });
+
+  it("ページの大きさがちょうど行数で割り切れても、行を落とさず重複もしない", async () => {
+    const rows: Record<string, unknown>[] = [];
+    for await (const batch of iterateTenantExportTable(db, target.tenantId, "punch_events", { batchSize: 5 })) rows.push(...batch);
+    expect(rows).toHaveLength(10);
+    expect(new Set(rows.map((r) => r.id)).size).toBe(10);
+  });
+
+  it("出さないテーブル・知らないテーブルはエラー(秘密のテーブルを誤って流さない)", async () => {
+    await expect(iterateTenantExportTable(db, target.tenantId, "auth_credentials").next()).rejects.toThrow(/excluded/);
+    await expect(iterateTenantExportTable(db, target.tenantId, "no_such_table").next()).rejects.toThrow(/unknown table/);
   });
 });

@@ -13,6 +13,22 @@ API・DB スキーマの互換方針とアップグレード手順は
 
 ## [Unreleased]
 
+### Fixed
+
+- **全データのエクスポート(`GET /tenant/export`)が大きなテナントで API のメモリを使い切る問題**。
+  全行を読んで zip をメモリ上で作るのをやめ、zip を流しながら返すようにした(相手が読む速さに合わせて作る。
+  Content-Length は付かない)。50人 × 3年(約17万行)で RSS の増分が PostgreSQL で約 280 MB → 約 20 MB、
+  200人 × 3年で約 1.35 GB → 約 13 MB(SQLite は約 1.27 GB → 約 53 MB)。zip の中身(ファイル・JSON・CSV・README、形式の版 1)は変わらない
+  ([docs/design/tenant-withdrawal.md](docs/design/tenant-withdrawal.md) §4)
+  - エクスポートはテナントごとに1本・API のプロセス全体で2本まで。超えたら 429 `export_busy`(`Retry-After: 30`)で、
+    画面は「別のエクスポートを作成中」と案内する(5言語)。流し始めて10分、または60秒読まれない接続は打ち切る
+    (枠を握り続けて他のテナントのエクスポートを止められないように)
+  - エクスポートの間もイベントループへ定期的に戻り、SQLite の配備でほかのリクエストを止めない
+  - 監査ログ `tenant.export` は流し始める前に1件残す(途中で切れた回も残る)。行数などの数は監査ログに入れなくなった
+    (zip の `manifest.json` にある)。`manifest.json` は zip の末尾になった
+  - `@kizami/db` に `iterateTenantExportTable`(テーブルごとの keyset ページング)と `listTenantExportTables` を追加。
+    行の多い7テーブルに `(tenant_id, id)` の索引を追加(マイグレーション 0038 / pg 0013)
+
 ### Security
 
 - 一般メンバーの申請(修正・休暇・自動休憩の打ち消し)が起こす承認依頼の Webhook/メールを、申請者本人ごとの

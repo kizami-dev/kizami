@@ -119,7 +119,13 @@ export const closingEvents = sqliteTable(
     /** UTC エポック分 */
     occurredAt: integer("occurred_at").notNull(),
   },
-  (table) => [index("closing_events_tenant_period_occurred_idx").on(table.tenantId, table.period, table.occurredAt)],
+  (table) => [
+    index("closing_events_tenant_period_occurred_idx").on(table.tenantId, table.period, table.occurredAt),
+    // 全データのエクスポートの keyset ページング用(2026-10-06、queries/tenant-export.ts)。
+    // `WHERE tenant_id = ? AND id > ? ORDER BY id LIMIT n` をこの索引の範囲読みだけで処理する。
+    // 無いと各ページがテナントの全行を読んで並べ直し、全体で行数の2乗になる
+    index("closing_events_tenant_id_idx").on(table.tenantId, table.id),
+  ],
 );
 
 export const closingSnapshots = sqliteTable(
@@ -143,6 +149,10 @@ export const closingSnapshots = sqliteTable(
   },
   (table) => [
     index("closing_snapshots_tenant_event_idx").on(table.tenantId, table.closingEventId),
+    // 全データのエクスポートの keyset ページング用(2026-10-06、queries/tenant-export.ts)。
+    // `WHERE tenant_id = ? AND id > ? ORDER BY id LIMIT n` をこの索引の範囲読みだけで処理する。
+    // 無いと各ページがテナントの全行を読んで並べ直し、全体で行数の2乗になる
+    index("closing_snapshots_tenant_id_idx").on(table.tenantId, table.id),
     uniqueIndex("closing_snapshots_event_user_category_idx").on(table.closingEventId, table.userId, table.category),
   ],
 );

@@ -95,7 +95,11 @@ export function TenantWithdrawalView() {
         router.push("/login");
         return;
       }
-      setExportError(messages.settingsWithdrawal.exportFailed);
+      // 429 export_busy: サーバーは全データのエクスポートを同時に1本しか作らない(メモリを守るため、
+      // 別のテナントの分も含む)。時間をおけば通るので、失敗とは分けて案内する
+      setExportError(
+        err instanceof ApiError && err.status === 429 ? messages.settingsWithdrawal.exportBusy : messages.settingsWithdrawal.exportFailed,
+      );
     } finally {
       setExporting(false);
     }

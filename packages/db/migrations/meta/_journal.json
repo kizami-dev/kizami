@@ -267,6 +267,13 @@
       "when": 1791211564794,
       "tag": "0037_curious_living_lightning",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "6",
+      "when": 1791244899068,
+      "tag": "0038_ancient_cammi",
+      "breakpoints": true
     }
   ]
 }
