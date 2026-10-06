@@ -7,12 +7,12 @@
 | --- | --- |
 | `packages/db/src/queries/tenant-withdrawal.ts` | 申請・取り消し・「削除中」の印(条件付き UPDATE)・期限の判定 |
 | `packages/db/src/queries/tenant-purge.ts` | 物理削除(`purgeTenant`)と削除の順序 `TENANT_PURGE_ORDER` |
-| `packages/db/src/queries/tenant-export.ts` | 全データの読み出し(`exportTenantData`)と、テーブルごとの扱い `TENANT_EXPORT_POLICY` |
+| `packages/db/src/queries/tenant-export.ts` | 全データの読み出し(テーブルごとのページング `iterateTenantExportTable`・一括の `exportTenantData`)と、テーブルごとの扱い `TENANT_EXPORT_POLICY` |
 | `packages/db/src/schema/tenant-purges.ts` | 削除の記録のシステム表 `tenant_purge_records` |
 | `apps/api/src/routes/tenant-withdrawal.ts` | `GET/POST /tenant/withdrawal`・`POST /tenant/withdrawal/cancel`・`GET /tenant/export` |
 | `apps/api/src/auth/tenant-withdrawal-guard.ts` | 退会手続き中のリクエストの制限 |
 | `apps/api/src/lib/tenant-withdrawal.ts` | 猶予期間などの定数・ログインの判定・メールの文面 |
-| `apps/api/src/lib/tenant-export-archive.ts` | zip の組み立て |
+| `apps/api/src/lib/tenant-export-archive.ts` | zip を流しながら作る・同時に1本までの枠 |
 | `apps/api/src/tenant-purge.ts` | 定期ジョブ(再通知・削除) |
 | `apps/web/src/components/TenantWithdrawalView.tsx` / `TenantWithdrawalBanner.tsx` | 設定画面・全画面のお知らせ |
 
@@ -113,12 +113,12 @@ tenants への外部キーは張らない(参照先が消えた後に残るた�
 ## 4. 全データのエクスポート
 
 `GET /tenant/export`(`tenant.withdraw`)。**退会と関係なく通常の状態でも使える**(データのポータビリティ)。
-監査ログ `tenant.export`(数だけを残し、中身は残さない)。1つの zip:
+監査ログ `tenant.export` は**流し始める前に**1件残す(中身も数も残さない。下記「流しながら返す」)。1つの zip:
 
 | ファイル | 中身 |
 | --- | --- |
-| `README.txt` | 中身の説明と法定保存の案内(日本語・英語) |
-| `manifest.json` | 形式の版(`kizami-tenant-export` v1)・出力時刻・テーブルごとの行数・除いた列とテーブル |
+| `README.txt` | 中身の説明と法定保存の案内(日本語・英語)。zip の先頭 |
+| `manifest.json` | 形式の版(`kizami-tenant-export` v1)・出力時刻・テーブルごとの行数・除いた列とテーブル。行数を数え終えてから書くので zip の末尾 |
 | `data/<テーブル名>.json` | tenants と全テーブルの行(DB の列名のまま、時刻は UTC エポック分) |
 | `attendance/monthly/<YYYY-MM>.csv` | 月ごとの集計。既存の汎用CSV(`GET /exports/attendance.csv`)と同じ列・同じ値 |
 | `attendance/daily/<YYYY-MM>/<氏名>_<id>.csv` | 月ごと・メンバーごとの出勤簿相当(日ごとの始業・終業〔日本時間〕・労働・休憩・深夜・法定休日・有給) |
@@ -133,8 +133,56 @@ CSV は数式インジェクション対策(`lib/csv.ts`、先頭の `= + - @` �
 通す。既存の勤怠の CSV も同じ関数を通る。
 
 出勤簿相当の CSV は、メンバーの打刻・休暇がある最初の月から最後の月まで(今月まで)を途切れなく出す。
-全部をメモリ上で組み立てて1回の応答で返すので、数百人 × 数年のテナントでは時間がかかりうる
-(規模が大きくなったら非同期のジョブにする)。zip は fflate(MIT・依存なし・純粋な JS、Node と Workers の両方で動く)。
+zip は fflate(MIT・依存なし・純粋な JS、Node と Workers の両方で動く)。
+
+### 流しながら返す(2026-10-06)
+
+当初は全テーブルの全行を読み、全ファイルを作ってから `zipSync` で1回の応答にしていた。50人 × 3年
+(約17万行)で RSS が数百 MB、200人 × 3年で 1.3〜1.8 GB 増え、ホスト版の API コンテナ(上限 512Mi)が
+最大規模のテナントの1回のエクスポートで OOM になり、全テナントが巻き込まれる。時間は問題ではなかった。
+そこで zip を**引っぱり型のストリーム**で返すようにした(`apps/api/src/lib/tenant-export-archive.ts`):
+
+- zip の中身は async generator で1ファイルずつ・1断片ずつ作り、fflate の `Zip`(同期の Deflate。
+  Worker スレッドに頼る非同期版は Node と Workers で同じに動かないので使わない)に流す。`ReadableStream` の
+  `pull()` ごとに1つ進めるので、相手が読む速さ以上には作らない(背圧)。Content-Length は付けない
+- `data/<テーブル>.json` は `@kizami/db` の `iterateTenantExportTable` が主キーの keyset ページング
+  (既定 1,000 行)で読み、ページごとに書き出す。書式は従来の `JSON.stringify(rows, null, 2)` と1バイトも
+  違わない。ページングが各ページで索引の範囲読みになるよう、行の多いテーブル(`punch_events`・
+  `closing_snapshots`・`closing_events`・`correction_requests`・`leave_requests`・`notifications`・
+  `shift_days`)に `(tenant_id, id)` の索引を足した
+- 出勤簿相当は1か月・1人ずつ計算してすぐに流す。月ごとの文脈(法令・手当・設定のタイムラインと制度の版)は
+  テナント単位の小さなもので、打刻の量には比例しない。「記録がある月」の範囲は打刻を全件読まずに
+  `GROUP BY user_id` の MIN/MAX で求める
+- 中身は従来と同じ(同じファイル・同じ JSON・同じ CSV の列と値・同じ除外・同じ README。形式の版は 1 のまま)。
+  50人 × 3年の SQLite・PostgreSQL の両方で、従来の実装と全ファイルの中身が一致することを確かめた
+
+**同時に1本まで**: エクスポートはプロセス全体で同時に1本まで。2本目は 429 `export_busy`(`Retry-After: 30`)で、
+画面は「別のエクスポートを作成中」と案内する。枠はストリームが最後まで流れた・途中で失敗した・相手が切った
+(`cancel`)のいずれでも返す。接続を開いたまま読まない相手に枠を握られないよう、5分間1バイトも読まれなければ
+打ち切る。エクスポートはまれにしか使わないので、待たせても実害が小さい。
+
+**途中で失敗したとき**: ヘッダー(200)は送った後なので、ストリームをエラーにして接続を切り(ダウンロードの失敗に
+見える。末尾の中央ディレクトリが無いので、壊れた zip を正しいものと取り違えることもない)、サーバーのログに残す。
+
+**監査ログは流し始める前に残す**: zip はファイルごとにローカルヘッダーを持つので、途中で切れた zip からも、
+切れる前に届いたファイルは取り出せる。完了時に記録する形だと、最後の手前で自分から切れば「ほぼ全員分を
+持ち出したのに記録が無い」ことになるため、試みを記録する(失敗・中断した回も1件残り、429 の回は残らない)。
+行数などの数は流し終えるまで分からないので監査ログには入れない(zip の `manifest.json` と、完了時の
+サーバーのログに出る)。
+
+計測(Apple M4・Node 26。最大 RSS から、エクスポートしない同じスクリプトの値を引いた増分):
+
+| 規模 | 従来(zipSync) | ストリーミング |
+| --- | --- | --- |
+| PostgreSQL 50人 × 3年(約17万行・1,878 ファイル) | +270〜285 MB・6 秒 | +10〜20 MB・6 秒 |
+| PostgreSQL 200人 × 3年(約67万行・7,278 ファイル) | +1.35 GB・18 秒 | +13 MB・23 秒 |
+| SQLite 50人 × 3年 | +380〜420 MB・4.5 秒 | +90〜120 MB・4 秒 |
+| SQLite 200人 × 3年 | +1.27 GB・18 秒 | +285 MB・17 秒 |
+
+JS のヒープの増分は規模によらず数十 MB で頭打ちになる。SQLite で規模とともに増えるのは @libsql/client の
+ネイティブ側の文のメモリで、V8 の大きな GC が走るまで解放が遅れるもの(明示的に GC すると戻る)。
+ホスト版は PostgreSQL なので影響しない。Cloudflare の 100 秒の制限は最初の1バイトまでの時間なので、
+流し始めれば規模による時間の上限も実質なくなる。
 
 ## 5. 通知(システムメールがある配備だけ)
 

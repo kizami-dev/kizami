@@ -145,6 +145,10 @@ export const leaveRequests = sqliteTable(
     // 締め処理・打刻忘れリマインド・36協定アラートすべてがユーザーごとに呼ぶ高頻度パスのため
     // 複合 index を別途持つ。
     index("leave_requests_tenant_user_status_date_idx").on(table.tenantId, table.userId, table.status, table.leaveDate),
+    // 全データのエクスポートの keyset ページング用(2026-10-06、queries/tenant-export.ts)。
+    // `WHERE tenant_id = ? AND id > ? ORDER BY id LIMIT n` をこの索引の範囲読みだけで処理する。
+    // 無いと各ページがテナントの全行を読んで並べ直し、全体で行数の2乗になる
+    index("leave_requests_tenant_id_idx").on(table.tenantId, table.id),
   ],
 );
 

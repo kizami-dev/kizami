@@ -2760,6 +2760,7 @@ export const zhHant = {
     exportAction: "下載全部資料(zip)",
     exporting: "正在產生…",
     exportFailed: "下載失敗,請稍後重試。",
+    exportBusy: "目前正在產生另一份全部資料的匯出,請等候約30秒後重試。",
     requestTitle: "申請終止服務",
     requestDesc: (days: number) => `申請終止服務後,將在${days}天後永久刪除本公司的全部資料。在此期間只能匯出全部資料或撤銷申請。`,
     impactTitle: "申請後將立即發生以下變化",

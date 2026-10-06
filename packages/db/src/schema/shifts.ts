@@ -108,6 +108,10 @@ export const shiftDays = sqliteTable(
   (table) => [
     index("shift_days_tenant_user_date_idx").on(table.tenantId, table.userId, table.date),
     index("shift_days_plan_idx").on(table.planId),
+    // 全データのエクスポートの keyset ページング用(2026-10-06、queries/tenant-export.ts)。
+    // `WHERE tenant_id = ? AND id > ? ORDER BY id LIMIT n` をこの索引の範囲読みだけで処理する。
+    // 無いと各ページがテナントの全行を読んで並べ直し、全体で行数の2乗になる
+    index("shift_days_tenant_id_idx").on(table.tenantId, table.id),
     uniqueIndex("shift_days_supersedes_idx").on(table.supersedesId),
   ],
 );

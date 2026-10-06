@@ -2822,6 +2822,7 @@ export const en = {
     exportAction: "Download all data (zip)",
     exporting: "Preparing…",
     exportFailed: "Could not download. Please try again later.",
+    exportBusy: "Another full data export is being prepared right now. Please wait about 30 seconds and try again.",
     requestTitle: "Request withdrawal",
     requestDesc: (days: number) => `If you request withdrawal, all data of this company will be permanently deleted after ${days} days. Until then, you can only export all data or cancel the request.`,
     impactTitle: "As soon as you request it:",

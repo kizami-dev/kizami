@@ -2865,6 +2865,7 @@ export const ja = {
     exportAction: "全データをダウンロード(zip)",
     exporting: "作成しています…",
     exportFailed: "ダウンロードできませんでした。時間をおいて再度お試しください。",
+    exportBusy: "いま別の全データのエクスポートを作成しています。30秒ほど待ってから、もう一度お試しください。",
     requestTitle: "退会の申請",
     requestDesc: (days: number) => `申請すると、${days}日後にこの会社のすべてのデータを物理削除します。それまでの間にできるのは、全データのエクスポートと申請の取り消しだけです。`,
     impactTitle: "申請すると、すぐに次のようになります",

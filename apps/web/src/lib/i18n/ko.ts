@@ -2781,6 +2781,7 @@ export const ko = {
     exportAction: "전체 데이터 다운로드(zip)",
     exporting: "작성 중…",
     exportFailed: "다운로드하지 못했습니다. 잠시 후 다시 시도해 주세요.",
+    exportBusy: "지금 다른 전체 데이터 내보내기를 작성하고 있습니다. 30초 정도 기다린 후 다시 시도해 주세요.",
     requestTitle: "탈퇴 신청",
     requestDesc: (days: number) => `신청하면 ${days}일 후에 이 회사의 모든 데이터를 영구 삭제합니다. 그때까지 할 수 있는 것은 전체 데이터 내보내기와 신청 취소뿐입니다.`,
     impactTitle: "신청하면 즉시 다음과 같이 됩니다",

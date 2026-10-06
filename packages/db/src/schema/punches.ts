@@ -64,5 +64,9 @@ export const punchEvents = sqliteTable(
     // なので、テナントを跨ぐ occurred_at だけの範囲検索には効かない。
     // 書き込み側のコストは小さい: occurred_at はほぼ単調増加なので B-tree の右端に追記され続ける。
     index("punch_events_occurred_idx").on(table.occurredAt),
+    // 全データのエクスポートの keyset ページング用(2026-10-06、queries/tenant-export.ts)。
+    // `WHERE tenant_id = ? AND id > ? ORDER BY id LIMIT n` をこの索引の範囲読みだけで処理する。
+    // 無いと各ページがテナントの全行を読んで並べ直し、全体で行数の2乗になる
+    index("punch_events_tenant_id_idx").on(table.tenantId, table.id),
   ],
 );
