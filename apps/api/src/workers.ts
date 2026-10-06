@@ -12,7 +12,7 @@
  * | DB | `migrateDb({ url: DATABASE_URL })`(起動時にマイグレーション適用) | `createD1Database(env.DB)`(マイグレーションはデプロイ時に wrangler が適用) |
  * | 設定の入手元 | `process.env` | `env`(wrangler の vars / secrets) |
  * | SMTP 送信 | nodemailer(`notify.smtpSendFn`) | **無し**(nodemailer は node:net 依存)。テスト送信は 503 になる |
- * | 定期スキャン | src/worker.ts(BullMQ + Valkey) | **無し**(Cron Triggers + Queues は今後の課題) |
+ * | 定期スキャン | src/worker.ts(BullMQ + Valkey) | **Cron Triggers**(下の `scheduled()` → src/workers-cron.ts。スキャン本体は共通) |
  * | レート制限 | プロセス内メモリ(replicas=1 前提) | **アイソレート内メモリ**(= 実質もっと緩い。lib/rate-limit.ts の判断点参照) |
  *
  * ## リクエストごとに `createApp()` しない理由
@@ -30,6 +30,7 @@ import { buildErrorReporterFromEnv } from "./lib/error-report.js";
 import { authPostAllowedOrigins } from "./lib/json-post-guard.js";
 import { createTenantQuotas, parseQuotaEnv } from "./lib/tenant-quotas.js";
 import { buildVapidFromEnv } from "./lib/web-push.js";
+import { runWorkersCron, WORKERS_CRON_LOG_PREFIX, type WorkersCronResult } from "./workers-cron.js";
 
 /**
  * wrangler.jsonc の bindings / vars / secrets。
@@ -137,7 +138,81 @@ export function createWorkerApp(env: WorkerEnv) {
   return root;
 }
 
+/**
+ * `scheduled()` の第1引数(`ScheduledController`)の、使う面だけの構造的な宣言。
+ * `@cloudflare/workers-types` を型解決に持ち込むと @types/node のグローバルと衝突するため
+ * (packages/db/src/d1.ts の D1DatabaseBinding と同じ判断)。
+ */
+export interface ScheduledControllerLike {
+  /** 起動した cron 式(wrangler.jsonc の `triggers.crons` の文字列そのもの) */
+  readonly cron: string;
+  /** 予定時刻(ミリ秒)。スキャンの「今」に使う(src/workers-cron.ts「冪等と再試行」) */
+  readonly scheduledTime: number;
+  /** この起動を失敗にしても再試行させない */
+  noRetry?(): void;
+}
+
+/** `ExecutionContext` の使う面だけ。 */
+export interface ExecutionContextLike {
+  waitUntil(promise: Promise<unknown>): void;
+}
+
+/**
+ * Cron Triggers の1回の起動(src/workers-cron.ts)。テストからも呼べるよう export する。
+ *
+ * - 依存は Node のワーカー(src/worker.ts)と同じ環境変数名から組み立てる: 暗号化鍵・VAPID・利用上限・エラー報告。
+ *   SMTP の送信関数は無い(nodemailer は node:net 依存。メールのチャネルは組み立てられない = アプリ内・Webhook・
+ *   プッシュだけ)。退会のメールも無い(システムメールの送信手段が無い)。SSRF ガード(OUTBOUND_*)も渡さない
+ *   (Workers はプライベートアドレスに届かない — lib/outbound-policy.ts 末尾)
+ * - エラー報告の送信は撃ちっ放しなので、`ctx.waitUntil()` に登録して起動の終わりで打ち切られないようにする
+ * - 1本でも失敗したら `noRetry()` してから投げる(Cron Events に失敗を残す。即時の再試行はさせない)。
+ *   対応表に無い cron 式も同じ(何も走らせずに投げる)
+ */
+export async function handleScheduled(controller: ScheduledControllerLike, env: WorkerEnv, ctx: ExecutionContextLike): Promise<WorkersCronResult> {
+  const { db } = createD1Database(env.DB);
+  const flatEnv = env as unknown as Record<string, string | undefined>;
+  const release = env.KIZAMI_RELEASE ?? "unknown";
+  const trackedFetch: typeof fetch = (input, init) => {
+    const pending = fetch(input, init);
+    ctx.waitUntil(pending.then(
+      () => undefined,
+      () => undefined,
+    ));
+    return pending;
+  };
+  const encryptor = buildEncryptorFromEnv(flatEnv);
+  const quotas = createTenantQuotas(parseWorkerQuotaEnv(flatEnv));
+
+  const result = await runWorkersCron({
+    cron: controller.cron,
+    scheduledTime: controller.scheduledTime,
+    deps: {
+      db,
+      personalChannelOptions: { quotas, encryptor, vapid: buildVapidFromEnv(flatEnv) },
+      notifyDeps: { quotas, encryptor },
+      withdrawalMailer: null,
+      errorReporter: buildErrorReporterFromEnv(flatEnv, { release, runtime: "workerd", fetchFn: trackedFetch }),
+    },
+  });
+
+  if (result.unknownCron) {
+    // 設定の食い違い(wrangler.jsonc と対応表)。再試行しても直らないので noRetry して、失敗として残す
+    controller.noRetry?.();
+    throw new Error(`${WORKERS_CRON_LOG_PREFIX} no scan is mapped to cron "${controller.cron}"`);
+  }
+  const failed = result.outcomes.filter((outcome) => !outcome.ok).map((outcome) => outcome.job);
+  if (failed.length > 0) {
+    controller.noRetry?.();
+    throw new Error(`${WORKERS_CRON_LOG_PREFIX} ${failed.length} scan(s) failed for cron "${controller.cron}": ${failed.join(", ")}`);
+  }
+  return result;
+}
+
 export default {
+  async scheduled(controller: ScheduledControllerLike, env: WorkerEnv, ctx: ExecutionContextLike): Promise<void> {
+    await handleScheduled(controller, env, ctx);
+  },
+
   fetch(request: Request, env: WorkerEnv, ctx: unknown): Response | Promise<Response> {
     // バインディングが差し替わった(= 別の環境で起動し直した)ときだけ組み立て直す
     if (cached === undefined || cached.binding !== env.DB) {

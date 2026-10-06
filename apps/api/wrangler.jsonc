@@ -2,7 +2,7 @@
 //
 // **このリポジトリからは自動デプロイしない。** CI で検証するのはビルドが通ることだけ:
 //   pnpm --filter @kizami/api build:workers   (= wrangler deploy --dry-run --outdir dist-workers)
-// 実配備の手順・制約(D1 に明示トランザクションが無い、定期スキャンが動かない等)は
+// 実配備の手順・制約(D1 に明示トランザクションが無い、Cron の CPU 時間・D1 のクエリ数の上限等)は
 // docs/design/workers-d1.md にまとめてある。読まずに配備しないこと。
 //
 // マイグレーション: D1 は起動時ではなく **デプロイ時** に適用する。
@@ -18,6 +18,24 @@
   // アプリ経路そのものは node:* を import していない(src/workers.ts の説明を参照)。
   "compatibility_flags": ["nodejs_compat"],
   "observability": { "enabled": true },
+  // 定期スキャン(Node の src/worker.ts に相当。docs/design/workers-d1.md「定期スキャン」)。
+  // **src/workers-cron.ts の WORKERS_CRON_SCHEDULE と一字一句揃えること**(controller.cron は
+  // この文字列のまま届く。食い違いは apps/api/test/scheduled-jobs.test.ts が落とす)。
+  // UTC で評価されるが、どれも「15 分ごと」なので時差の換算は要らない。スキャン1本に1本ずつ、
+  // 開始の分を1分ずつずらす(CPU 時間・D1 のクエリ数の上限が起動ごとに掛かるため)。
+  // 7本あるので Workers Free(Cron はアカウントあたり5本・CPU 10ms)では配備できない — Paid が前提。
+  // ローカルで試す: `wrangler dev` → curl "http://localhost:8787/cdn-cgi/local/scheduled?cron=0,15,30,45+*+*+*+*"
+  "triggers": {
+    "crons": [
+      "0,15,30,45 * * * *", // 打刻忘れリマインド(reminder)
+      "1,16,31,46 * * * *", // 36協定アラート(overtime-alert)
+      "2,17,32,47 * * * *", // 有給の失効間近・年5日義務(leave-alert)
+      "3,18,33,48 * * * *", // シフト予実乖離(shift-variance-alert)
+      "4,19,34,49 * * * *", // 有給付与の予告(leave-grant-proposal)
+      "5,20,35,50 * * * *", // 未確認サインアップ・再設定スロットルの掃除(signup-cleanup)
+      "6,21,36,51 * * * *" // 退会テナントの再通知・物理削除(tenant-withdrawal)
+    ]
+  },
   "d1_databases": [
     {
       "binding": "DB",

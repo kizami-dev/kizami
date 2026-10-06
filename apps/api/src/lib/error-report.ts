@@ -383,7 +383,15 @@ function buildTransaction(context: ErrorReportContext | undefined): string | und
  */
 export function buildErrorReporterFromEnv(
   env: Record<string, string | undefined> = process.env,
-  options: { release?: string; runtime?: string } = {},
+  options: {
+    release?: string;
+    runtime?: string;
+    /**
+     * 送信関数(既定 `globalThis.fetch`)。Workers の Cron(workers.ts の `scheduled()`)は、撃ちっ放しの送信が
+     * 起動の終わりで打ち切られないよう `ctx.waitUntil()` に登録する fetch を渡す
+     */
+    fetchFn?: typeof fetch;
+  } = {},
 ): ErrorReporter {
   const serverName = env.SENTRY_SERVER_NAME ?? env.HOSTNAME;
   const environment = env.SENTRY_ENVIRONMENT ?? env.NODE_ENV;
@@ -391,6 +399,7 @@ export function buildErrorReporterFromEnv(
     dsn: env.SENTRY_DSN,
     ...(options.release !== undefined ? { release: options.release } : {}),
     ...(options.runtime !== undefined ? { runtime: options.runtime } : {}),
+    ...(options.fetchFn !== undefined ? { fetchFn: options.fetchFn } : {}),
     ...(serverName !== undefined ? { serverName } : {}),
     ...(environment !== undefined ? { environment } : {}),
   });

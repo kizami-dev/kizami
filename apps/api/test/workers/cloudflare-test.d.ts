@@ -24,4 +24,17 @@ declare module "cloudflare:test" {
 
   /** D1 にマイグレーションを適用する(本番では wrangler がデプロイ時に行う工程)。 */
   export function applyD1Migrations(db: D1DatabaseBinding, migrations: unknown): Promise<void>;
+
+  /** `scheduled()` の第1引数を作る(Cron の起動を再現する。scheduled.test.ts)。 */
+  export function createScheduledController(options?: { scheduledTime?: number | Date; cron?: string }): {
+    readonly cron: string;
+    readonly scheduledTime: number;
+    noRetry(): void;
+  };
+
+  /** `scheduled()` / `fetch()` の第3引数(ExecutionContext)を作る。 */
+  export function createExecutionContext(): { waitUntil(promise: Promise<unknown>): void };
+
+  /** `createExecutionContext()` で作った文脈の `waitUntil()` がすべて落ち着くまで待つ。 */
+  export function waitOnExecutionContext(ctx: { waitUntil(promise: Promise<unknown>): void }): Promise<void>;
 }
