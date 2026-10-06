@@ -75,6 +75,7 @@ import {
   SELF_SERVICE_PASSWORD_RESET_TTL_MINUTES,
 } from "../auth/password-reset-token.js";
 import { createSession, setSessionCookie } from "../auth/session.js";
+import { runAfterResponse } from "../lib/after-response.js";
 import { getClientIp } from "../lib/client-ip.js";
 import { jsonPostGuard } from "../lib/json-post-guard.js";
 import { parseLocale, resolveLocale, type Locale } from "../lib/locale.js";
@@ -100,8 +101,9 @@ export interface SelfServiceResetDeps {
   /**
    * 応答の後に走らせる処理(対象の探索・トークン発行・メール送信)の実行方法。**応答を返してから**
    * 呼ぶこと(thunk を受け取り、始めるのは実行側)。既定は次のマクロタスクで投げっぱなし。テストは
-   * thunk を集めて、応答の直後の状態を確認してから実行・完了待ちする。Workers では本人用再設定自体が
-   * 無効なので waitUntil は考えない。
+   * thunk を集めて、応答の直後の状態を確認してから実行・完了待ちする。Workers では `c.executionCtx.waitUntil()` に
+   * 載せる(lib/after-response.ts。登録しないと応答の後に打ち切られうる)。Workers で本人用再設定が有効になるのは
+   * D1 のトランザクション対応の後(workers.ts の D1_TRANSACTIONS_SUPPORTED)。
    */
   runInBackground?: (task: () => Promise<void>) => void;
 }
@@ -129,10 +131,6 @@ async function resolvePasswordReset(db: Database, token: string) {
   return { status: "valid" as const, hash, now, resetToken };
 }
 
-/** 既定のバックグラウンド実行: 応答を返した後(次のマクロタスク)に始め、投げっぱなしにする。 */
-function defaultRunInBackground(task: () => Promise<void>): void {
-  setTimeout(() => void task(), 0);
-}
 
 /**
  * 応答の後に走る本体: 対象の探索 → 本人発行トークンの発行(各ユーザー)→ メール送信。
@@ -255,7 +253,9 @@ export function createPasswordResetsRoutes(db: Database, options: PasswordResets
       console.error("password-reset: failed to acquire the request slot:", err);
     }
     if (acquired) {
-      (deps.runInBackground ?? defaultRunInBackground)(() => processSelfServiceRequest(db, deps, { email: normalizedEmail, now, requestLocale: parseLocale(locale) }));
+      // 既定: 応答を返した後(次のマクロタスク)に始め、投げっぱなし(Workers は waitUntil に載せる — lib/after-response.ts)
+      const runInBackground = deps.runInBackground ?? ((task: () => Promise<void>) => runAfterResponse(c, task));
+      runInBackground(() => processSelfServiceRequest(db, deps, { email: normalizedEmail, now, requestLocale: parseLocale(locale) }));
     }
 
     return c.json({ status: "reset_requested" }, 202);

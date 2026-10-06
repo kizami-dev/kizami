@@ -11,7 +11,7 @@
  * - 送信関数(`SystemMailSendFn`)は注入可能。routes/signup.ts は型だけに依存し、実装
  *   (`createSystemMailSender`)は node.ts が渡す。テストは偽の送信関数を差し込んで実送信しない
  * - nodemailer は node:net 依存で workerd では動かない。このファイルを routes/ から**値として
- *   import しない**こと(型のみ)。Workers エントリは signup を常に無効にしている(workers.ts)
+ *   import しない**こと(型のみ)。Workers のシステムメールは Email Service のバインディング(lib/email-service-mail.ts)
  */
 
 import nodemailer from "nodemailer";

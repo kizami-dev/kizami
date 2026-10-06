@@ -17,13 +17,17 @@ KIZAMI の HTTP API は **Node(既定)と Cloudflare Workers(workerd)の両方�
 | 秘密情報の暗号化(`@kizami/crypto`, AES-256-GCM) | ✅ | ✅ |
 | 通知の組み立て(`@kizami/notify`) | ✅ | ✅ |
 | **トランザクションを使う書き込み**(招待・パスワード再設定・本人によるパスワード変更・修正申請の承認・締め・休暇申請・Slack 連携) | ✅ | ❌ **未対応**(下記) |
-| メール送信(SMTP) | ✅ nodemailer | ❌(node:net 依存) |
+| テナントの SMTP(通知のメール・管理者のテスト送信) | ✅ nodemailer | ✅ `cloudflare:sockets` の自前の SMTP クライアント(465 / STARTTLS、**ポート 25 は不可**。下記「メール」) |
+| システムメール(運用者名義) | ✅ `SYSTEM_SMTP_URL`(nodemailer) | ✅ Cloudflare Email Service の `send_email` バインディング(下記「メール」) |
+| システムメールを使う画面の流れ(本人用のパスワード再設定・退会の申請のメール) | ✅ | ❌ トランザクションに依存(送信手段は組み立て済みで、D1 の対応が入れば `D1_TRANSACTIONS_SUPPORTED` 1行で点く) |
+| セルフサインアップ | ✅(KIZAMI Cloud) | ❌ 常に無効(トランザクションに依存 + Workers で公開登録を受ける想定が無い) |
 | Webhook / Slack 通知(fetch ベース) | ✅ | ✅ |
 | Web Push | ✅ | ✅(WebCrypto のみ) |
 | 定期スキャン(打刻忘れ・36協定・有給の失効間近/年5日・シフト乖離・有給付与の予告・サインアップの掃除・退会テナントの再通知/物理削除) | ✅ BullMQ + Valkey | ✅ Cron Triggers(**Workers Paid が前提**。下記「定期スキャン」) |
-| 定期スキャンが送る通知 | アプリ内・メール・Webhook・プッシュ | アプリ内・Webhook・プッシュ(メールは上の SMTP と同じく無し) |
+| 定期スキャンが送る通知 | アプリ内・メール・Webhook・プッシュ | アプリ内・メール(テナントの SMTP)・Webhook・プッシュ。退会の再通知・削除の完了のメール(システムメール)も出る |
+| SSRF ガード(`OUTBOUND_*`) | ✅ 名前を解決して検査した IP に接続 | △ 名前と IP リテラルだけの検査(プライベートアドレスには元々届かない。下記「メール」) |
 
-つまり **Workers 配備は「読み取りと打刻が中心の API」+「定期スキャンによる通知」までが動作保証範囲**で、
+つまり **Workers 配備は「読み取りと打刻が中心の API」+「定期スキャンによる通知(メールを含む)」までが動作保証範囲**で、
 承認ワークフローを含むフル機能の配備は Node(Docker Compose / Helm)を使う。
 
 ## D1 で動かないもの: 明示トランザクション
@@ -90,7 +94,7 @@ BullMQ の周期は `every`(ミリ秒)で、cron 式でも JST でもない。Cr
 | シフト予実乖離(`shift-variance-alert`) | 〃 | `3,18,33,48 * * * *` | |
 | 有給付与の予告(`leave-grant-proposal`) | 〃 | `4,19,34,49 * * * *` | |
 | サインアップ・再設定スロットルの掃除(`signup-cleanup`) | 〃 | `5,20,35,50 * * * *` | 本人用の再設定は Workers では無効なので表は空 |
-| 退会テナントの再通知・物理削除(`tenant-withdrawal`) | 〃 | `6,21,36,51 * * * *` | 削除は `transactional: false`。メールは出さない(システムメールが無い) |
+| 退会テナントの再通知・物理削除(`tenant-withdrawal`) | 〃 | `6,21,36,51 * * * *` | 削除は `transactional: false`。再通知・完了のメールはシステムメール(Email Service)があるときだけ(下記「メール」) |
 
 判断点: **スキャン1本に cron 式1本**、開始の分を1分ずつずらす。
 
@@ -147,6 +151,74 @@ curl "http://localhost:8787/cdn-cgi/local/scheduled?cron=6,21,36,51+*+*+*+*&time
 `/cdn-cgi/local/scheduled` が既定で生える)。テストは `apps/api/test/workers/scheduled.test.ts` が
 `createScheduledController()` で cron 式ごとに `scheduled()` を叩き、心拍・通知の行・D1 での物理削除を確かめる。
 
+## メール(2026-10-07)
+
+Workers のメールは2系統で、どちらも Node と同じ型の送信関数を差し込むだけ(呼び出し側・`@kizami/notify` は変更なし)。
+
+| | Node | Workers | 実装 |
+| --- | --- | --- | --- |
+| テナントの SMTP(テナントの管理者が通知設定に登録した自社の SMTP) | nodemailer(`lib/smtp.ts`) | `cloudflare:sockets` の上の SMTP クライアント | `lib/smtp-client.ts`(ランタイム非依存の状態機械)+ `lib/mail-message.ts`(MIME)+ `lib/workers-smtp-socket.ts`(`connect()`。workers.ts だけが import) |
+| システムメール(サインアップの確認・本人用の再設定・退会のメール) | `SYSTEM_SMTP_URL` の SMTP(nodemailer、`lib/system-mail.ts`) | Email Service の `send_email` バインディング `EMAIL` の構造化の `send()` | `lib/email-service-mail.ts` |
+
+### テナントの SMTP
+
+- **465 は最初から TLS、それ以外は STARTTLS**(nodemailer の `secure: port === 465` と同じ判定)。証明書は接続先の
+  ホスト名で検証される(Workers の既定)。AUTH は PLAIN を優先し、無ければ LOGIN(user と password の両方が
+  あるときだけ)
+- 判断点: **STARTTLS が広告されないのに認証情報があれば送らない**(パスワードを平文で流さない)。nodemailer の既定は
+  平文のまま AUTH するので、ここだけ Node より厳しい。認証情報が無ければ平文のまま送る(Node と同じ)
+- 本文は平文テキストを UTF-8 の **base64**、件名・表示名は RFC 2047 の encoded-word(B、1語 75 文字以内・
+  UTF-8 の文字の境目で分割・折り返し)、改行はすべて CRLF、DATA は dot-stuffing。アドレス・件名・表示名に
+  改行があれば組み立てを断る(ヘッダの注入)。アドレスは ASCII のみ(SMTPUTF8 は扱わない)
+- 時間切れは応答ごとに 30 秒・1通全体で 60 秒。失敗は段階(connect / greeting / ehlo / starttls / auth / mail /
+  rcpt / data / timeout)とサーバーの応答(200 文字まで)をエラーに入れ、パスワードは入れない
+- **送信ポート 25 は Workers が塞いでいる**。接続の前に「587 か 465 を使う」エラーで断る(テスト送信の結果に出る)
+- 管理者のテスト送信(`POST /settings/notifications/test`)も、定期スキャンの本人宛メール・管理者向けの集約も、
+  同じ送信関数を通る(`createApp` の `notify.smtpSendFn` と Cron の依存)
+
+判断点: ライブラリ `worker-mailer`(MIT、1.2.1、2025-11 が最終版、依存なし・約 14 KB)を読んだうえで**採らなかった**。
+応答の読み取りが切断で空回りする・STARTTLS を要求しても相手が広告しなければ平文のまま AUTH する・件名を1つの
+encoded-word にして 75 文字を超える・`EHLO 127.0.0.1`(角括弧なし)で名乗る・応答の待ち時間に接続の待ち時間の値を
+使う、の5点。KIZAMI が要るのは「平文1通を1人に送る」だけなので、状態機械を書いてテストで縛る方が小さい
+(Workers のバンドルの増分は、テナントの SMTP・システムメール・SSRF の検査を合わせて約 28 KiB / gzip 約 9 KiB)。
+
+### システムメール(Email Service)
+
+- 設定: `wrangler.jsonc` の `"send_email": [{ "name": "EMAIL" }]` + vars の `SYSTEM_MAIL_FROM`(`noreply@example.com` か
+  `KIZAMI <noreply@example.com>`)/ `APP_BASE_URL`。**3つ揃ったときだけ**有効(Node の `SYSTEM_SMTP_URL` が
+  バインディングに置き換わった形)。差出人のドメインは Email Sending に登録しておく
+  (`npx wrangler email sending enable example.com`)。未登録なら `E_SENDER_NOT_VERIFIED` などで失敗し、
+  失敗は呼び出し側が握る(従来どおり)
+- 送るのは平文だけ(`text`)。表示名は `{ email, name }` で渡し、ヘッダの組み立ては Email Service に任せる
+- `wrangler dev` / テストの miniflare は送らずにローカルでシミュレートする(本物を送るならバインディングに `"remote": true`)
+- **いま Workers で出るのは Cron の退会の再通知・削除の完了のメールだけ**(トランザクションを使わない)。
+  本人用のパスワード再設定と退会の申請のメールは、画面の流れそのものが `db.transaction()` を使うので
+  `D1_TRANSACTIONS_SUPPORTED`(`apps/api/src/workers.ts`)が false の間は `createApp` に渡さない — 渡すと
+  「パスワードを忘れた」が出るのに誰も再設定できない。D1 の対応が入ったらこのフラグを true にするだけで、
+  組み立て済みの送信関数がそのまま点く。応答の後に走るメール送信は `lib/after-response.ts` が
+  `c.executionCtx.waitUntil()` に載せる(Workers は登録の無い処理を応答の後に打ち切りうる。Node は従来どおり)
+- **セルフサインアップは Workers では常に無効**のまま: 確認フロー(テナントの作成)がトランザクションに依存するうえ、
+  セルフサインアップは KIZAMI Cloud(Node で運用)の機能で、Workers 配備で公開登録を受ける想定が無い
+
+### SSRF(`OUTBOUND_*`)
+
+Node(`lib/outbound-guard.ts`)は名前を1回だけ解決し、検査したその IP に接続する(DNS rebinding まで防ぐ)。
+Workers では `fetch()` も `connect()` も名前の解決を Cloudflare の網の中で行い、解決した IP を差し込めない。
+DNS-over-HTTPS で先に引いて検査しても接続のときに引き直されるので、**検査した気になるだけなのでやらない**(判断点)。
+代わりに、**Workers の外向きの接続はプライベートアドレス(RFC 1918・ループバック・リンクローカル・メタデータ)へ
+そもそも届かない**。そのうえで `OUTBOUND_*` を設定した配備では、名前と IP リテラルで決まる検査だけを行う
+(`lib/outbound-hostname-guard.ts`。検査する場所は Node と同じ: Webhook・プッシュ・OIDC の fetch、テナントの SMTP、保存時の検査):
+
+| 設定 | Workers で効くもの | 効かないもの |
+| --- | --- | --- |
+| `OUTBOUND_BLOCK_PRIVATE=true` | `localhost`・`*.internal` などの名前、プライベートの IP リテラルを拒否 | 名前がプライベートの IP に解決されるもの(どのみち届かない) |
+| `OUTBOUND_DENY_CIDRS` | 該当する **IP リテラル**を拒否 | 名前がその範囲に解決されるもの(**検査できない**) |
+| `OUTBOUND_ALLOW_HOSTS` | 上の名前の拒否の例外(Node と同じ) | — |
+
+fetch は Node と同じくリダイレクトを追わない(`redirect: "manual"`)。値が不正なら Workers では要求ごとに投げる
+(Node は起動時に終了する。「設定したつもりで素通し」を避けるため)。**`OUTBOUND_DENY_CIDRS` で公開の IP 範囲を
+名前ごと塞ぎたい用途(KIZAMI Cloud のノードのグローバル IP など)は Workers では満たせない**。
+
 ## パッケージの分割: `@kizami/db` と `@kizami/db/node`
 
 `@libsql/client` と `pg` は `node:net` / `node:fs` に依存しており、workerd ではバンドルすら
@@ -197,7 +269,7 @@ CI の `test-workerd` ジョブが毎 PR で走る。Docker もクラウド接�
 | --- | --- | --- |
 | `@kizami/engine` / `crypto` / `notify` / `law` / `leave` / `authz` | **Node レグと同一スイート丸ごと** | 「ランタイム非依存」を謳っているパッケージ。ここが赤くなったら看板が嘘になる |
 | `@kizami/db` | **Node レグと同一スイート**を D1 で(`vitest.d1.config.ts`) | トランザクション依存の 34 件は skip。ドライバを直接読む3ファイルは除外 |
-| `apps/api` | 起動スモーク(`test/workers/smoke.test.ts`)・Cron の `scheduled()`(`test/workers/scheduled.test.ts`) | 本体スイート 700 件超は移植しない(下記) |
+| `apps/api` | 起動スモーク(`test/workers/smoke.test.ts`)・Cron の `scheduled()`(`test/workers/scheduled.test.ts`)・メール(`test/workers/mail.test.ts` — `cloudflare:sockets` で Node 側の偽の SMTP サーバーへ本物の TCP、Email Service のローカルのシミュレーション) | 本体スイート 700 件超は移植しない(下記) |
 | Workers バンドル | `wrangler deploy --dry-run` | `node:*` がアプリ経路に紛れ込むとここで落ちる |
 
 ### なぜ apps/api の本体スイートを workerd へ持ち込まないか
@@ -251,7 +323,9 @@ pnpm --filter @kizami/api build:workers
    npx wrangler secret put VAPID_PRIVATE_KEY       # Web Push を使うなら
    ```
    `wrangler.jsonc` の `vars` に置くもの: `COOKIE_SECURE` / `TRUST_PROXY` /
-   `CORS_ORIGIN` / `APP_BASE_URL` / `OIDC_REDIRECT_URI` / `VAPID_PUBLIC_KEY` / `VAPID_SUBJECT`。
+   `CORS_ORIGIN` / `APP_BASE_URL` / `OIDC_REDIRECT_URI` / `VAPID_PUBLIC_KEY` / `VAPID_SUBJECT` /
+   `SYSTEM_MAIL_FROM`(システムメールを使うなら。差出人のドメインを `npx wrangler email sending enable` で登録しておく)/
+   `OUTBOUND_*`(任意)。
    名前と意味は `apps/api/src/node.ts` が読む環境変数と一対一に揃えてある。
 4. **デプロイ**
    ```sh
@@ -268,9 +342,9 @@ pnpm --filter @kizami/api build:workers
 - **定期スキャンの同時の二重起動**: 有給付与の予告の行と心拍の累計は「読んでから書く」ので、同じスキャンが
   同時に2本走るとずれうる(上の「冪等と再試行」)。厳密にするなら予告の表に部分 UNIQUE を足すか、
   (job, 予定時刻)を主キーにした起動の記録の表で1本に絞る
-- **メール送信**: `@kizami/notify` の `createSmtpChannel(config, sendFn)` は送信関数を注入する
-  形なので、fetch ベースのメール API(Cloudflare Email Service / Resend 等)の `SmtpSendFn` を
-  1本書けば Workers でも送れる。`packages/notify` 側の変更は不要。
+- **メールの残り**(2026-10-07 にテナントの SMTP と Email Service のシステムメールを入れた — 上の「メール」):
+  本人用のパスワード再設定と退会の申請のメールは D1 のトランザクション対応を待つ(`D1_TRANSACTIONS_SUPPORTED`)。
+  テナントの SMTP は SMTPUTF8(ASCII 以外のアドレス)と、名前の解決を伴う `OUTBOUND_DENY_CIDRS` を扱わない
 - **レート制限**: `apps/api/src/lib/rate-limit.ts` のカウンタはプロセス内メモリで、
   Workers ではアイソレートごとに分かれるため実効的な制限が Node よりずっと緩い。
   厳密にやるなら Durable Object か KV に載せ替える(差し替え点はファイル冒頭に明記してある)。

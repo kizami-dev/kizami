@@ -6,9 +6,9 @@
  * sendFn を nodemailer で実装し、Node ランタイム(src/worker.ts のリマインドスキャン、
  * src/routes/settings.ts のテスト送信)から注入して使う。
  *
- * Cloudflare Workers 版エントリを追加する際は、nodemailer(node:net 依存)は動かないため
- * fetch ベースのメール送信 API(Resend 等)を使う別の SmtpSendFn 実装に差し替える想定
- * (packages/notify 側は変更不要)。
+ * Cloudflare Workers では nodemailer(node:net 依存)が動かないので、`cloudflare:sockets` の上の自前の
+ * SMTP クライアント(lib/smtp-client.ts + lib/workers-smtp-socket.ts)を workers.ts が注入する
+ * (2026-10-07。packages/notify 側は変更なし)。
  */
 
 import nodemailer from "nodemailer";

@@ -16,12 +16,16 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { cloudflareTest, readD1Migrations } from "@cloudflare/vitest-pool-workers";
 import { defineConfig } from "vitest/config";
+import { startFakeSmtpServer } from "./test/workers/support/fake-smtp-server.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
 // D1 のマイグレーションは SQLite レグと同じ .sql をそのまま使う(packages/db/migrations)。
 // 本番では wrangler がデプロイ時に流すもので、ここではテスト用に applyD1Migrations() へ渡す
 const migrations = await readD1Migrations(path.join(here, "..", "..", "packages", "db", "migrations"));
+
+// テナントの SMTP を本物の TCP(cloudflare:sockets)で通すための偽のサーバー(Node 側。test/workers/mail.test.ts)
+const fakeSmtp = await startFakeSmtpServer();
 
 export default defineConfig({
   plugins: [
@@ -33,7 +37,14 @@ export default defineConfig({
         compatibilityDate: "2026-08-01",
         compatibilityFlags: ["nodejs_compat"],
         d1Databases: ["DB"],
-        bindings: { TEST_MIGRATIONS: migrations, COOKIE_SECURE: "false" },
+        bindings: {
+          TEST_MIGRATIONS: migrations,
+          COOKIE_SECURE: "false",
+          TEST_SMTP_PORT: fakeSmtp.smtpPort,
+          TEST_SMTP_INBOX_URL: fakeSmtp.inboxUrl,
+        },
+        // システムメール(Email Service)のバインディング。miniflare は送らずにローカルでシミュレートする
+        email: { send_email: [{ name: "EMAIL" }] },
       },
     }),
   ],
