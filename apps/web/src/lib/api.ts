@@ -6,6 +6,8 @@
  * - 401 は `UnauthorizedError` として投げる。呼び出し側(useAuthGuard 等)が /login への誘導に使う
  */
 
+import type { Locale } from "./i18n";
+
 const BASE_URL: string = import.meta.env.WAKU_PUBLIC_API_URL ?? "http://localhost:3001";
 
 /**
@@ -96,6 +98,11 @@ export interface AuthUser {
   email: string;
   displayName: string;
   tenantId?: string;
+  /**
+   * 本人がサーバーに保存した表示言語(2026-10-07、users.locale)。null = 未設定。古い API では undefined。
+   * 端末をまたぐ引き継ぎに使う(lib/i18n/sync.ts)。値の検証は呼び出し側(isLocale)。
+   */
+  locale?: string | null;
 }
 
 /** GET /me が併せて返すテナント情報(2026-08-23 追加)。表示専用の最小限(社名と退会の状態)。 */
@@ -821,6 +828,8 @@ export interface SignupInput {
   adminName: string;
   inviteCode?: string;
   turnstileToken: string;
+  /** 確認メールの言語(UI の表示言語、2026-10-07)。省略・不正値はサーバーが ja にする */
+  locale?: Locale;
 }
 
 /** GET /signup/verify/:token(公開)のレスポンス。確認画面の表示用(パスワードは含まない)。 */
@@ -2058,8 +2067,16 @@ export const api = {
    * POST /password-resets(公開)。本人用の「パスワードを忘れた」。該当アカウントの有無に関係なく
    * 202 で同じボディが返る(ユーザー列挙対策、routes/password-resets.ts 冒頭)。
    */
-  async requestPasswordReset(input: { email: string; turnstileToken?: string }): Promise<{ status: "reset_requested" }> {
+  async requestPasswordReset(input: { email: string; turnstileToken?: string; locale?: Locale }): Promise<{ status: "reset_requested" }> {
     return request("/password-resets", { method: "POST", body: JSON.stringify(input) });
+  },
+
+  /**
+   * PUT /me/locale(認証済み本人)。表示言語をサーバーにも保存する(システムメールの言語・端末をまたぐ
+   * 引き継ぎのため、2026-10-07)。呼び出し側は失敗を握ってよい(画面の言語はもう切り替わっている)。
+   */
+  async saveLocale(locale: Locale): Promise<{ locale: Locale }> {
+    return request("/me/locale", { method: "PUT", body: JSON.stringify({ locale }) });
   },
 
   /**

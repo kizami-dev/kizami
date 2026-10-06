@@ -111,6 +111,26 @@ export async function updateUserLeaveGrantClass(
   return row;
 }
 
+/**
+ * 表示言語(locale)を更新する(本人が自分の分だけ。null で未設定に戻せる)。値の妥当性は呼び出し側
+ * (apps/api/src/lib/locale.ts の parseLocale)で検証する。監査ログは残さない — 表示の好みであって
+ * 権限・勤怠・個人情報の変更ではなく、画面を切り替えるたびに行が増えるだけになるため。
+ */
+export async function updateUserLocale(
+  db: Database,
+  params: { tenantId: string; userId: string; locale: string | null },
+): Promise<MemberUser> {
+  const [row] = await db
+    .update(users)
+    .set({ locale: params.locale })
+    .where(and(eq(users.tenantId, params.tenantId), eq(users.id, params.userId)))
+    .returning();
+  if (!row) {
+    throw new Error(`updateUserLocale: user not found: ${params.userId}`);
+  }
+  return row;
+}
+
 export interface MembershipDepartmentRow {
   userId: string;
   departmentId: string;

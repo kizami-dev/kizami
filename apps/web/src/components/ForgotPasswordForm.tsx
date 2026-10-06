@@ -3,6 +3,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useRouter } from "waku";
 import { api, ApiError, type PasswordResetConfigDto } from "../lib/api";
+import { getLocale } from "../lib/i18n";
 import { mapForgotPasswordErrorMessage, messages } from "../lib/messages";
 import { KizamiMark } from "./KizamiMark";
 import { TurnstileWidget } from "./TurnstileWidget";
@@ -61,7 +62,7 @@ export function ForgotPasswordForm() {
 
     setSubmitting(true);
     try {
-      await api.requestPasswordReset({ email: email.trim(), ...(siteKey && turnstileToken ? { turnstileToken } : {}) });
+      await api.requestPasswordReset({ email: email.trim(), locale: getLocale(), ...(siteKey && turnstileToken ? { turnstileToken } : {}) });
       setState({ kind: "sent" });
     } catch (err) {
       setError(err instanceof ApiError ? mapForgotPasswordErrorMessage(err.body) : messages.forgotPassword.errors.default);

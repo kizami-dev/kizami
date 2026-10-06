@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "waku";
 import { api, UnauthorizedError, type AuthTenant, type AuthUser } from "./api";
+import { syncLocaleWithServer } from "./i18n/sync";
 import { isTenantWithdrawingError, setTenantWithdrawalNoticeFromTenant } from "./tenantWithdrawal";
 
 export type AuthGuardStatus = "loading" | "authed" | "error";
@@ -35,6 +36,8 @@ export function useAuthGuard(): AuthGuardResult {
       .then(({ user, tenant }) => {
         if (cancelled) return;
         setTenantWithdrawalNoticeFromTenant(tenant);
+        // 表示言語をサーバーと揃える(ページの読み込みごとに1回。lib/i18n/sync.ts)
+        syncLocaleWithServer(user.locale);
         setState({ status: "authed", user, tenant, error: null });
       })
       .catch((err: unknown) => {

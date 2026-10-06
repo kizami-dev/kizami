@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { LOCALE_NATIVE_NAMES, LOCALE_ORDER, getLocale, setLocale, type Locale } from "../lib/i18n";
+import { saveLocaleToServer } from "../lib/i18n/sync";
 import { messages } from "../lib/messages";
 
 /**
@@ -27,6 +28,8 @@ export function LanguageToggle() {
   function handleSelect(next: Locale) {
     setLocaleState(next);
     setLocale(next);
+    // サーバーにも保存(システムメールの言語・端末間の引き継ぎ。失敗しても画面は切り替わっている)
+    saveLocaleToServer(next);
   }
 
   return (

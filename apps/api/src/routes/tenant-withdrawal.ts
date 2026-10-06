@@ -113,9 +113,10 @@ export function createTenantWithdrawalRoutes(db: Database, deps: { mail: TenantW
     if (!updated) return c.json({ error: "already_withdrawing", withdrawal: withdrawalStateOf(tenant) }, 409);
 
     if (deps.mail) {
-      const mail = buildWithdrawalRequestedMail({ appBaseUrl: deps.mail.appBaseUrl, scheduledPurgeAt });
       const recipients = await listWithdrawalNoticeRecipients(db, user.tenantId);
-      for (const to of recipients) {
+      for (const { email: to, locale } of recipients) {
+        // 宛先ごとにその人の言語で組み立てる(lib/tenant-withdrawal.ts の listWithdrawalNoticeRecipients)
+        const mail = buildWithdrawalRequestedMail({ appBaseUrl: deps.mail.appBaseUrl, scheduledPurgeAt, locale });
         void deps.mail.sendMail({ to, ...mail }).catch((err: unknown) => {
           console.error("tenant withdrawal: failed to send the request notice:", err);
         });

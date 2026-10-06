@@ -3,6 +3,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useRouter } from "waku";
 import { api, ApiError, type SignupConfigDto } from "../lib/api";
+import { getLocale } from "../lib/i18n";
 import { mapSignupErrorMessage, messages } from "../lib/messages";
 import { KizamiMark } from "./KizamiMark";
 import { TurnstileWidget } from "./TurnstileWidget";
@@ -76,6 +77,7 @@ export function SignupForm() {
         organizationName: organizationName.trim(),
         adminName: adminName.trim(),
         turnstileToken,
+        locale: getLocale(),
         ...(state.config.mode === "invite" ? { inviteCode: inviteCode.trim() } : {}),
       });
       setState({ kind: "sent", email: email.trim() });
