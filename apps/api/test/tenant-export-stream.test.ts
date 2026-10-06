@@ -6,8 +6,9 @@
  *    `JSON.stringify(exportTenantData の行, null, 2)` と1バイトも違わず、manifest の行数が実際の行数と
  *    一致し、月ごとの集計が汎用CSVと同じ。README が先頭、manifest が末尾
  * 2. ページの大きさを行数より小さくしても(batchSize 3)、同じバイト列になる
- * 3. 同時に1本まで: 読み終えていない1本目がある間は 429 `export_busy`(Retry-After: 30)。
- *    読み終える・相手が切る・読まれないまま時間切れ・途中で失敗する、のいずれでも枠が返る
+ * 3. 同時に走る本数: 同じテナントは1本、プロセス全体で2本まで(超えたら 429 `export_busy`、Retry-After: 30)。
+ *    読み終える・相手が切る・読まれないまま時間切れ・全体の期限・途中で失敗する・ストリームを作る前の
+ *    失敗、のいずれでも枠が返る
  */
 
 import { strFromU8, unzipSync } from "fflate";
@@ -28,6 +29,7 @@ import {
 } from "@kizami/db";
 import { createApp } from "../src/app.js";
 import { createTenantExportStream, tryAcquireTenantExportSlot } from "../src/lib/tenant-export-archive.js";
+import { bootstrapTenant } from "../src/lib/tenant-bootstrap.js";
 import { buildGenericAttendanceCsv } from "../src/routes/exports.js";
 import { grantPermission, jstMinutes, loginAndGetCookie, setupSecondUser, setupTestDb } from "./support/setup.js";
 
@@ -74,6 +76,15 @@ async function harness(): Promise<Harness> {
   const app = createApp({ db });
   const cookie = await loginAndGetCookie(app, seeded.email, seeded.password);
   return { db, app, tenantId, cookie };
+}
+
+/** 同じ DB に別のテナント(tenant.withdraw を持つ管理者)を作ってログインする。 */
+async function otherTenant(h: Harness, label: string): Promise<{ tenantId: string; cookie: string }> {
+  const email = `${label}-admin@example.com`;
+  const password = `${label} horse battery staple`;
+  const created = await bootstrapTenant(h.db, { tenantName: `${label} 株式会社`, adminEmail: email, adminPassword: password, now: 0 });
+  await grantPermission(h.db, { tenantId: created.tenantId, userId: created.userId, permission: "tenant.withdraw", scope: "tenant" });
+  return { tenantId: created.tenantId, cookie: await loginAndGetCookie(h.app, email, password) };
 }
 
 async function readAll(stream: ReadableStream<Uint8Array>): Promise<Uint8Array> {
@@ -151,21 +162,35 @@ describe("全データのエクスポート(ストリーミング)", () => {
     expect(releases).toEqual({ small: 1, normal: 1 });
   });
 
-  it("読み終えていない1本目がある間、2本目は 429 export_busy(Retry-After: 30)。読み終えれば次が通る", async () => {
+  it("同じテナントの2本目は 429 export_busy(Retry-After: 30)。別のテナントは同時に1本使え、3本目(プロセスの上限)は 429。読み終えれば次が通る", async () => {
     const h = await harness();
+    const other = await otherTenant(h, "other");
+    const third = await otherTenant(h, "third");
     const first = await h.app.request("/tenant/export", { headers: { cookie: h.cookie } });
     expect(first.status).toBe(200);
 
-    const second = await h.app.request("/tenant/export", { headers: { cookie: h.cookie } });
-    expect(second.status).toBe(429);
-    expect(second.headers.get("retry-after")).toBe("30");
-    expect(await second.json()).toEqual({ error: "export_busy" });
+    const sameTenant = await h.app.request("/tenant/export", { headers: { cookie: h.cookie } });
+    expect(sameTenant.status).toBe(429);
+    expect(sameTenant.headers.get("retry-after")).toBe("30");
+    expect(await sameTenant.json()).toEqual({ error: "export_busy" });
 
-    // 1本目を読み終えると枠が返る
+    // 別のテナントは、1本目が枠を握っていても使える(プロセス全体で2本まで)
+    const otherRes = await h.app.request("/tenant/export", { headers: { cookie: other.cookie } });
+    expect(otherRes.status).toBe(200);
+    // 3つ目のテナントは、プロセス全体の上限(2本)で断られる
+    const thirdRes = await h.app.request("/tenant/export", { headers: { cookie: third.cookie } });
+    expect(thirdRes.status).toBe(429);
+    expect(await thirdRes.json()).toEqual({ error: "export_busy" });
+
+    // 読み終えると枠が返る
     unzipSync(new Uint8Array(await first.arrayBuffer()));
-    const third = await h.app.request("/tenant/export", { headers: { cookie: h.cookie } });
-    expect(third.status).toBe(200);
-    unzipSync(new Uint8Array(await third.arrayBuffer()));
+    unzipSync(new Uint8Array(await otherRes.arrayBuffer()));
+    const again = await h.app.request("/tenant/export", { headers: { cookie: h.cookie } });
+    expect(again.status).toBe(200);
+    unzipSync(new Uint8Array(await again.arrayBuffer()));
+    const thirdAgain = await h.app.request("/tenant/export", { headers: { cookie: third.cookie } });
+    expect(thirdAgain.status).toBe(200);
+    await thirdAgain.arrayBuffer();
 
     // 429 の回は監査ログを残さない(何も出していない)
     const logs = await h.db.select().from(auditLogs).where(and(eq(auditLogs.tenantId, h.tenantId), eq(auditLogs.action, "tenant.export")));
@@ -196,26 +221,93 @@ describe("全データのエクスポート(ストリーミング)", () => {
     await again.arrayBuffer();
   });
 
-  it("読まれないまま時間が過ぎるとストリームを打ち切って枠を返す", async () => {
+  it("ストリームを作る前の失敗(監査ログの書き込みの例外)では 500 になり、枠を漏らさない", async () => {
     const h = await harness();
-    const release = tryAcquireTenantExportSlot();
-    expect(release).not.toBeNull();
-    let released = 0;
+    // audit_logs への INSERT だけを失敗させる(ログインのセッションの確認などは通す)
+    const failingDb = new Proxy(h.db, {
+      get(target, prop, receiver) {
+        const value = Reflect.get(target, prop, receiver) as unknown;
+        if (prop === "insert") {
+          return (table: unknown) => {
+            if (table === auditLogs) throw new Error("audit write failed");
+            return (value as (t: unknown) => unknown).call(target, table);
+          };
+        }
+        return typeof value === "function" ? (value as (...a: unknown[]) => unknown).bind(target) : value;
+      },
+    });
+    const failingApp = createApp({ db: failingDb });
     const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    for (let i = 0; i < 3; i++) {
+      // 枠を漏らしていれば2回目からは 429 になる
+      expect((await failingApp.request("/tenant/export", { headers: { cookie: h.cookie } })).status).toBe(500);
+    }
+    // 500 の原因は監査ログの書き込み(枠を取った後の失敗)であること
+    expect(errors).toHaveBeenCalledWith(expect.objectContaining({ message: "audit write failed" }));
+    errors.mockRestore();
+    const ok = await h.app.request("/tenant/export", { headers: { cookie: h.cookie } });
+    expect(ok.status).toBe(200);
+    await ok.arrayBuffer();
+  });
+
+  it("次を読みに来ないまま時間が過ぎると打ち切り(console.warn)、枠を返す。別のテナントがその後に使える", async () => {
+    const h = await harness();
+    const slot = tryAcquireTenantExportSlot(h.tenantId);
+    if (!slot.ok) throw new Error("slot should be free");
+    let released = 0;
+    const warns = vi.spyOn(console, "warn").mockImplementation(() => {});
     const { stream } = createTenantExportStream(h.db, {
       tenantId: h.tenantId,
       now: NOW_MINUTES,
       idleTimeoutMs: 50,
       release: () => {
         released += 1;
-        release!();
+        slot.release();
       },
     });
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    // 1つだけ読んで、あとは読まない
+    const reader = stream.getReader();
+    expect((await reader.read()).done).toBe(false);
+    expect(tryAcquireTenantExportSlot(h.tenantId)).toEqual({ ok: false, reason: "tenant_busy" });
+    await new Promise((resolve) => setTimeout(resolve, 300));
     expect(released).toBe(1);
-    expect(tryAcquireTenantExportSlot()).not.toBeNull();
-    await expect(readAll(stream)).rejects.toThrow(/idle timeout/);
-    errors.mockRestore();
+    expect(warns).toHaveBeenCalledWith(expect.stringContaining(`idle timeout`));
+    expect(warns).toHaveBeenCalledWith(expect.stringContaining(h.tenantId));
+    await expect(reader.read()).rejects.toThrow(/idle timeout/);
+    warns.mockRestore();
+
+    const other = await otherTenant(h, "other");
+    const res = await h.app.request("/tenant/export", { headers: { cookie: other.cookie } });
+    expect(res.status).toBe(200);
+    await res.arrayBuffer();
+  });
+
+  it("ゆっくりでも読み続ける相手は、全体の期限で打ち切って枠を返す", async () => {
+    const h = await harness();
+    let released = 0;
+    const warns = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { stream } = createTenantExportStream(h.db, {
+      tenantId: h.tenantId,
+      now: NOW_MINUTES,
+      idleTimeoutMs: 1_000, // 読まれない時間の上限には掛からない
+      deadlineMs: 150,
+      release: () => (released += 1),
+    });
+    const reader = stream.getReader();
+    let chunks = 0;
+    const read = (async () => {
+      for (;;) {
+        const { done } = await reader.read();
+        if (done) return "completed";
+        chunks += 1;
+        await new Promise((resolve) => setTimeout(resolve, 20)); // 20 ミリ秒に1回だけ読む
+      }
+    })();
+    await expect(read).rejects.toThrow(/deadline exceeded/);
+    expect(chunks).toBeGreaterThan(1);
+    expect(released).toBe(1);
+    expect(warns).toHaveBeenCalledWith(expect.stringContaining("deadline exceeded"));
+    warns.mockRestore();
   });
 
   it("途中で失敗するとストリームをエラーにし(壊れたダウンロード)、枠を返す", async () => {

@@ -70,28 +70,52 @@
  * | --- | --- | --- |
  * | PostgreSQL 50人 × 3年 | +270〜285 MB・6 秒 | +10〜20 MB・6 秒 |
  * | PostgreSQL 200人 × 3年 | +1.35 GB・18 秒 | +13 MB・23 秒 |
- * | SQLite 50人 × 3年 | +380〜420 MB・4.5 秒 | +90〜120 MB・4 秒 |
- * | SQLite 200人 × 3年 | +1.27 GB・18 秒 | +285 MB・17 秒 |
+ * | SQLite 50人 × 3年 | +380〜420 MB・4.5 秒 | +16〜42 MB・4 秒(2本同時で +44〜60 MB・7.5 秒) |
+ * | SQLite 200人 × 3年 | +1.27 GB・18 秒 | +53 MB・17 秒(2本同時で +51 MB・30 秒) |
  *
- * JS のヒープの使用量は規模によらず約 40〜70 MB の増分で頭打ちになる。SQLite で RSS が規模とともに
- * 増えるのは @libsql/client のネイティブ側の文(statement)のメモリで、JS の側のオブジェクトが
- * 小さいので V8 が大きな GC をなかなか走らせず、解放が遅れるもの(gc() を明示的に呼ぶと戻る
- * ことを確かめた。エクスポートに限らず、問い合わせを大量に続けると同じように見える)。
- * ホスト版は PostgreSQL(pg は純粋な JS)なのでこの影響を受けない。
+ * JS のヒープの使用量は規模によらず数十 MB の増分で頭打ちになる。SQLite は、イベントループへ戻るように
+ * する前(下記「イベントループを止めない」)は 200人 × 3年で +285 MB まで増えていた。@libsql/client の
+ * ネイティブ側の文(statement)のメモリが、V8 の GC が走るまで解放されないためで、イベントループへ
+ * 戻らないと GC の機会も無かった(gc() を明示的に呼ぶと戻ることを確かめた)。
+ * ホスト版は PostgreSQL(pg は純粋な JS)。
  * Cloudflare の 100 秒の制限は最初の1バイトまでの時間なので、流し始めてしまえば規模による
  * 時間の上限も実質なくなる。
  *
- * ## 同時に1本まで(判断点)
+ * ## 同時に走る本数と、枠を握られない仕組み(判断点)
  *
- * エクスポートは**プロセス全体で同時に1本**まで(`tryAcquireTenantExportSlot`)。2本目は
- * 429 `export_busy` + `Retry-After: 30`。1本あたりのメモリは上のとおり小さくなったが、同時に何本も
- * 走ると重い計算(月次の再計算)と DB の読み出しが重なり、上限 512Mi のコンテナを圧迫する。
- * エクスポートは退会の前などにまれに使うもので、待たせても実害が小さい。テナントごとではなく
- * プロセス全体にするのは、守りたいのがプロセスのメモリだから。Workers では isolate ごとの枠になる。
+ * - **テナントごとに1本、プロセス全体で `TENANT_EXPORT_MAX_CONCURRENT`(2)本まで**
+ *   (`tryAcquireTenantExportSlot`)。超えたら 429 `export_busy` + `Retry-After: 30`。
+ *   プロセス全体の上限は API のメモリを守るため(月次の再計算と DB の読み出しが重なる)。2本にしたのは、
+ *   1本あたりの増分が PostgreSQL(ホスト版)で規模によらず +10〜20 MB に収まったので 2本でも 512Mi に
+ *   十分な余裕があり、かつ1つのテナントが枠を握っても**別のテナントは必ず1本使える**ようにするため。
+ *   テナントごとの1本は、同じテナントが何本も並べて枠を埋めるのを防ぐ。SQLite でも 2本同時で +60 MB
+ *   以下だった(上の計測)。SQLite の配備はほぼ単一テナントのセルフホストで、テナントごとの1本により
+ *   実質1本しか走らない。Workers では isolate ごとの枠
+ * - **流し始めてから `TENANT_EXPORT_DEADLINE_MS`(10分)で打ち切る**。背圧があるので、ゆっくり読み続ける
+ *   相手(数分に1回だけ読む等)は読まれない時間の上限だけでは止められず、枠を握り続けられる。
+ *   200人 × 3年が PostgreSQL で約 23 秒・zip 約 25 MB なので、1 Mbps の回線でも 10 分に収まる
+ * - **次を読みに来ない時間が `TENANT_EXPORT_IDLE_TIMEOUT_MS`(60秒)を超えたら打ち切る**。接続を開いたまま
+ *   読まない相手や、切れたのに cancel が届かない場合(アダプタの都合)もこれで枠が返る
+ * - 打ち切りでは generator を閉じ、ストリームをエラーにし、console.warn にテナント id を残して、枠は
+ *   **すぐに**返す(DB の問い合わせの途中でも、その1歩の終わりを待たない)
+ * - 枠は、最後まで流れた・途中で失敗した・相手が切った(`cancel()`)ときにも返す。ストリームを作る前の
+ *   失敗(テナントの読み出し・監査ログの例外、404)は routes 側の finally で返す
  *
- * 枠は、ストリームが最後まで流れた・途中で失敗した・相手が切った(`cancel()`)のいずれでも返す。
- * 相手が接続を開いたまま読まない場合に枠を握り続けないよう、`TENANT_EXPORT_IDLE_TIMEOUT_MS` の間
- * 1バイトも読まれなければストリームを打ち切る(他のテナントのエクスポートを止められないように)。
+ * 知っておくべき割り切り: プロセス全体の枠は全テナントで共有なので、悪意のあるテナントは期限いっぱい
+ * (10分)まで枠を1つ握れる。それでも別のテナントには常にもう1本が残る。
+ *
+ * ## イベントループを止めない
+ *
+ * 1回の pull で進めるのは「zip のバイト列が出てくるまで」で、多くは1ファイル(1人の1か月)・1ページ
+ * (1,000 行)分。@libsql/client のファイルの SQLite は問い合わせの Promise がマイクロタスクのうちに
+ * 解決するので、そのままだとエクスポートの間ほかのリクエストが止まる。pull ごとと、20 ミリ秒動き続けた
+ * ところで、イベントループへ一度戻る(10ms ごとのタイマーの最大の遅れは、50人 × 3年の SQLite で 40ms、
+ * 200人 × 3年で 220ms。戻る前は、エクスポートの全体 — 数秒 — の間タイマーが1度も動かなかった)。未締めの月の月ごとの集計(buildGenericAttendanceCsv、全員分の
+ * 再計算)は1歩の中で割れないが、未締めの月は通常は今月と先月くらいなので、従来の CSV の
+ * エクスポートと同じ長さで済む。
+ *
+ * zip の断片はファイルごとに取り出してすぐに渡し、ファイルをまたいで溜めない。fflate の Zip が末尾の
+ * 中央ディレクトリのために持つのはファイルごとの名前・大きさ・CRC だけ(7,278 ファイルで 2 MB 弱)。
  *
  * ## 途中で失敗したとき
  *
@@ -122,8 +146,14 @@ import { buildGenericAttendanceCsv } from "../routes/exports.js";
 export const TENANT_EXPORT_FORMAT = "kizami-tenant-export";
 export const TENANT_EXPORT_FORMAT_VERSION = 1;
 
-/** この間、相手が1バイトも読まなければストリームを打ち切って枠を返す(ミリ秒)。 */
-export const TENANT_EXPORT_IDLE_TIMEOUT_MS = 5 * 60_000;
+/** この間、相手が次を読みに来なければストリームを打ち切って枠を返す(ミリ秒。ファイル冒頭の判断点)。 */
+export const TENANT_EXPORT_IDLE_TIMEOUT_MS = 60_000;
+
+/** 流し始めてからこの時間で、読み終わっていなくても打ち切って枠を返す(ミリ秒。ファイル冒頭の判断点)。 */
+export const TENANT_EXPORT_DEADLINE_MS = 10 * 60_000;
+
+/** プロセス全体で同時に走らせるエクスポートの本数(テナントごとには1本。ファイル冒頭の判断点)。 */
+export const TENANT_EXPORT_MAX_CONCURRENT = 2;
 
 /** 2本目のエクスポートに返す Retry-After(秒)。 */
 export const TENANT_EXPORT_RETRY_AFTER_SECONDS = 30;
@@ -470,71 +500,121 @@ function concat(chunks: readonly Uint8Array[]): Uint8Array {
   return out;
 }
 
-// ---- 同時に1本まで(ファイル冒頭の判断点) ----
+// ---- 同時に走る本数の枠(ファイル冒頭の判断点) ----
 
-let exportInFlight = false;
+const activeExportTenants = new Set<string>();
+
+/** 枠が取れなかった理由。どちらも 429 `export_busy` で返す(画面の案内は同じでよい)。 */
+export type TenantExportSlotBusy = "tenant_busy" | "process_busy";
 
 /**
- * エクスポートの枠を取る。空いていなければ null。取れたら、返した関数で返す(何度呼んでもよい)。
- * ストリームを作った後は、ストリームが終わる・失敗する・切られるときに返すので、呼び出し側が
- * 返すのはストリームを作る前に失敗したときだけ。
+ * エクスポートの枠を取る。同じテナントのエクスポートが走っていれば `tenant_busy`、プロセス全体で
+ * `TENANT_EXPORT_MAX_CONCURRENT` 本が走っていれば `process_busy`。取れたら、返した `release` で返す
+ * (何度呼んでもよい)。ストリームを作った後は、ストリームが終わる・失敗する・切られる・時間切れの
+ * ときに返すので、呼び出し側が返すのはストリームを作る前に失敗したときだけ(routes の finally)。
  */
-export function tryAcquireTenantExportSlot(): (() => void) | null {
-  if (exportInFlight) return null;
-  exportInFlight = true;
+export function tryAcquireTenantExportSlot(
+  tenantId: string,
+): { ok: true; release: () => void } | { ok: false; reason: TenantExportSlotBusy } {
+  if (activeExportTenants.has(tenantId)) return { ok: false, reason: "tenant_busy" };
+  if (activeExportTenants.size >= TENANT_EXPORT_MAX_CONCURRENT) return { ok: false, reason: "process_busy" };
+  activeExportTenants.add(tenantId);
   let released = false;
-  return () => {
-    if (released) return;
-    released = true;
-    exportInFlight = false;
+  return {
+    ok: true,
+    release: () => {
+      if (released) return;
+      released = true;
+      activeExportTenants.delete(tenantId);
+    },
   };
 }
 
 /**
- * async generator を、pull ごとに1つ進める ReadableStream にする。終わり・失敗・cancel・読まれないまま
- * の打ち切りのいずれでも `release` を1回呼ぶ。
+ * イベントループへ一度戻る(Node は setImmediate、Workers は setTimeout(0))。@libsql/client の
+ * ファイルの SQLite は問い合わせの Promise がマイクロタスクのうちに解決するので、戻らないと
+ * エクスポートの間ほかのリクエストのタイマー・I/O が止まる(計測で 6 秒止まっていた)。
+ */
+function yieldToEventLoop(): Promise<void> {
+  return new Promise((resolve) => {
+    if (typeof setImmediate === "function") setImmediate(resolve);
+    else setTimeout(resolve, 0);
+  });
+}
+
+/** これだけ続けて動いたらイベントループへ戻る(ミリ秒)。 */
+const MAX_BUSY_SLICE_MS = 20;
+
+/**
+ * async generator を、pull ごとに1つ進める ReadableStream にする。終わり・失敗・cancel・時間切れ
+ * (読まれない・全体の期限)のいずれでも `release` を1回呼ぶ。
  */
 function toReadableStream(
   source: AsyncGenerator<Uint8Array>,
-  options: { release: () => void; idleTimeoutMs: number; tenantId: string },
+  options: { release: () => void; idleTimeoutMs: number; deadlineMs: number; tenantId: string },
 ): ReadableStream<Uint8Array> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  let finished = false;
-  let cancelled = false;
-  const finish = () => {
-    finished = true;
-    if (timer !== undefined) clearTimeout(timer);
-    timer = undefined;
+  let idleTimer: ReturnType<typeof setTimeout> | undefined;
+  let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
+  let controllerRef: ReadableStreamDefaultController<Uint8Array> | undefined;
+  /** もう何も enqueue しない(終わった・失敗した・切られた・打ち切った) */
+  let settled = false;
+
+  const clearTimers = () => {
+    if (idleTimer !== undefined) clearTimeout(idleTimer);
+    if (deadlineTimer !== undefined) clearTimeout(deadlineTimer);
+    idleTimer = deadlineTimer = undefined;
+  };
+  const settle = () => {
+    settled = true;
+    clearTimers();
     options.release();
   };
-  const armIdleTimer = (controller: ReadableStreamDefaultController<Uint8Array>) => {
-    if (timer !== undefined) clearTimeout(timer);
-    timer = setTimeout(() => {
-      if (finished) return;
-      console.error(`tenant export: aborted after ${options.idleTimeoutMs} ms without reads (tenant ${options.tenantId})`);
-      finish();
-      controller.error(new Error("tenant export: idle timeout"));
-      // generator は yield で止まっている(pull の最中ではない)ので、return で finally まで閉じる
-      source.return(undefined).catch(() => {});
-    }, options.idleTimeoutMs);
+  /**
+   * 時間切れで打ち切る。枠は**すぐに**返す — pull の途中(DB の問い合わせを待っている等)でも、
+   * generator の return はその1歩が終わってから効くので、それを待つと遅い DB に枠を握られる。
+   * 残りの1歩は裏で終わって捨てられる(高々1ページ・1か月分)。
+   */
+  const abort = (why: string) => {
+    if (settled) return;
+    console.warn(`tenant export: aborted (${why}) for tenant ${options.tenantId}`);
+    settle();
+    controllerRef?.error(new Error(`tenant export: ${why}`));
+    source.return(undefined).catch(() => {});
+  };
+  const unref = (timer: ReturnType<typeof setTimeout>) => {
     // Node でこのタイマーだけのためにプロセスを生かしておかない(Workers には unref が無い)
     (timer as { unref?: () => void }).unref?.();
+  };
+  const armIdleTimer = () => {
+    if (idleTimer !== undefined) clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => abort(`idle timeout: no read for ${options.idleTimeoutMs} ms`), options.idleTimeoutMs);
+    unref(idleTimer);
   };
 
   return new ReadableStream<Uint8Array>(
     {
       start(controller) {
-        armIdleTimer(controller);
+        controllerRef = controller;
+        deadlineTimer = setTimeout(() => abort(`deadline exceeded: ${options.deadlineMs} ms`), options.deadlineMs);
+        unref(deadlineTimer);
+        armIdleTimer();
       },
       async pull(controller) {
-        if (timer !== undefined) clearTimeout(timer);
-        timer = undefined;
+        // 相手が読みに来た。次に読みに来るまでの間だけ「読まれない」時間を数える
+        if (idleTimer !== undefined) clearTimeout(idleTimer);
+        idleTimer = undefined;
         try {
+          let sliceStart = Date.now();
           for (;;) {
+            if (Date.now() - sliceStart > MAX_BUSY_SLICE_MS) {
+              await yieldToEventLoop();
+              sliceStart = Date.now();
+            }
+            if (settled) return;
             const next = await source.next();
-            if (finished || cancelled) return; // 待っている間に cancel された・打ち切った
+            if (settled) return; // 待っている間に cancel された・打ち切った
             if (next.done) {
-              finish();
+              settle();
               controller.close();
               return;
             }
@@ -543,27 +623,29 @@ function toReadableStream(
               break;
             }
           }
-          armIdleTimer(controller);
+          armIdleTimer();
+          // 次の pull の前に一度イベントループへ戻る(Node の書き込みが同期的に次の pull を呼ぶ場合でも、
+          // ほかのリクエストを止めない)
+          await yieldToEventLoop();
         } catch (err) {
-          if (cancelled) return;
+          if (settled) return;
           // ヘッダーは送った後なので、接続を切って伝える(ファイル冒頭「途中で失敗したとき」)
           console.error(`tenant export: failed while streaming (tenant ${options.tenantId}):`, err);
-          if (!finished) {
-            finish();
-            controller.error(err);
-          }
+          settle();
+          controller.error(err);
         }
       },
       async cancel() {
-        // 相手が切った。generator を閉じてから枠を返す(閉じ終わる前に次のエクスポートを始めない)
-        cancelled = true;
-        if (timer !== undefined) clearTimeout(timer);
+        // 相手が切った。generator を閉じてから枠を返す(閉じ終わる前に次のエクスポートを始めない)。
+        // 閉じるのが遅くても、全体の期限のタイマーは残しておき、期限が来たら枠を返す
+        if (idleTimer !== undefined) clearTimeout(idleTimer);
+        if (settled) return;
         try {
           await source.return(undefined);
         } catch {
           // 閉じる途中の失敗は、もう伝える相手がいない
         } finally {
-          finish();
+          if (!settled) settle();
         }
       },
     },
@@ -586,6 +668,8 @@ export function createTenantExportStream(
     batchSize?: number;
     /** テスト用: 読まれないまま打ち切るまでの時間 */
     idleTimeoutMs?: number;
+    /** テスト用: 流し始めてから打ち切るまでの全体の期限 */
+    deadlineMs?: number;
     /** 最後まで出し終えたときに呼ぶ(既定はログに数を出す) */
     onComplete?: (summary: TenantExportSummary) => void;
   },
@@ -605,6 +689,7 @@ export function createTenantExportStream(
   const stream = toReadableStream(zipChunks(entries), {
     release: params.release,
     idleTimeoutMs: params.idleTimeoutMs ?? TENANT_EXPORT_IDLE_TIMEOUT_MS,
+    deadlineMs: params.deadlineMs ?? TENANT_EXPORT_DEADLINE_MS,
     tenantId: params.tenantId,
   });
   return { stream, filename: `kizami-export-${exportedAt.slice(0, 10).replaceAll("-", "")}.zip` };

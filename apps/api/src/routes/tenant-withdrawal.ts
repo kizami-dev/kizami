@@ -5,7 +5,7 @@
  * - POST /tenant/withdrawal         … 退会を申請する(body `{ confirmTenantName }`。テナント名の再入力)
  * - POST /tenant/withdrawal/cancel  … 申請を取り消す
  * - GET  /tenant/export             … 全データの zip(退会と関係なく、通常の状態でも使える)。流しながら返し、
- *                                      プロセス全体で同時に1本まで(2本目は 429 `export_busy`)
+ *                                      テナントごとに1本・プロセス全体で2本まで(超えたら 429 `export_busy`)
  *
  * 権限はすべて `tenant.withdraw`(テナント全体)。退会手続き中に許される書き込みは取り消しだけで、
  * それ以外は auth/tenant-withdrawal-guard.ts が 409 にする(ここに来る前に止まる)。
@@ -162,13 +162,14 @@ export function createTenantWithdrawalRoutes(db: Database, deps: { mail: TenantW
     requirePermission(c, TENANT_WITHDRAW_PERMISSION, "tenant");
     const user = c.get("user");
 
-    // プロセス全体で同時に1本まで(lib/tenant-export-archive.ts「同時に1本まで」)。
-    // 枠が取れなければ何も読まず、監査ログも残さない(何も出していないので)
-    const release = tryAcquireTenantExportSlot();
-    if (!release) {
+    // テナントごとに1本・プロセス全体で TENANT_EXPORT_MAX_CONCURRENT 本まで(lib/tenant-export-archive.ts
+    // 「同時に走る本数」)。権限の確認の後に取り、取れなければ何も読まず、監査ログも残さない(何も出していない)
+    const slot = tryAcquireTenantExportSlot(user.tenantId);
+    if (!slot.ok) {
       c.header("Retry-After", String(TENANT_EXPORT_RETRY_AFTER_SECONDS));
       return c.json({ error: "export_busy" }, 429);
     }
+    const { release } = slot;
     let handedOver = false;
     try {
       const tenant = await getTenantById(db, user.tenantId);
@@ -200,7 +201,8 @@ export function createTenantWithdrawalRoutes(db: Database, deps: { mail: TenantW
       c.header("Cache-Control", "no-store");
       return c.body(stream);
     } finally {
-      // ストリームを作る前に終わった(404・監査ログの失敗)ときだけ、ここで枠を返す
+      // ストリームを作る前に終わった(404・テナントの読み出しや監査ログの書き込みの例外)ときは、ここで枠を返す。
+      // 例外はそのまま投げ直され、アプリのエラーハンドラが 500 にする
       if (!handedOver) release();
     }
   });
