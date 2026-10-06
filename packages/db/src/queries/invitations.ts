@@ -2,7 +2,7 @@
  * invitations に対するクエリ層(メンバー招待式登録、docs/requirements.md §認証)。
  *
  * - createInvitation: 発行。既存の「未決着」招待(未受諾・未失効。期限切れでも決着していなければ
- *   含む)を revoke してから新規作成する(1トランザクション)。「有効(期限内)なものだけ」を
+ *   含む)を revoke してから新規作成する(1単位 — src/atomic.ts の atomic plan。D1 でも動く)。「有効(期限内)なものだけ」を
  *   都度計算するより「未決着は必ずテナント内ユーザーごとに高々1本」という不変条件のほうが
  *   単純で見通しがよいと判断した(schema/invitations.ts の部分UNIQUEを使わない判断点と対）
  * - findInvitationByTokenHash: 受諾用。行を返すだけで有効性(期限・失効・受諾済み)判定は
@@ -12,19 +12,21 @@
  * - listInvitationsForTenant: テナント全招待を作成日時降順で返す。呼び出し側
  *   (routes/members.ts)は listTenantMembershipsWithDepartment と同じ規約で、
  *   同一 userId が複数出現した場合は先頭(最新)のみを採用すること
- * - acceptInvitation: 受諾。accepted_at 設定 + auth_credentials 作成を1トランザクションで行う。
- *   UPDATE の WHERE 句に isNull(acceptedAt)/isNull(revokedAt) を含めることで、有効性の再検証と
- *   更新の間に別リクエストが割り込む TOCTOU を防ぐ(同時受諾は後勝ちが0件更新でnullになる)
+ * - acceptInvitation: 受諾。accepted_at 設定 + auth_credentials 作成 + 監査ログを1単位で行う
+ *   (src/atomic.ts の atomic plan。D1 でも動く)。UPDATE の WHERE 句に isNull(acceptedAt)/
+ *   isNull(revokedAt) を含めることで、有効性の再検証と更新の間に別リクエストが割り込む TOCTOU を
+ *   防ぐ(同時受諾は後勝ちが0件更新 → ガードで計画ごと失敗 → null。資格情報も監査ログも残らない)
  * - revokeInvitation: 取り消し。受諾済み・失効済みは対象外(0件更新でnull)
  * - userHasCredential / listTenantUserIdsWithCredentials: 「受諾済み(active)」の判定
  *   (auth_credentials の有無そのものが受諾済みの定義、docs/requirements.md §認証)
  */
 
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, gt, isNull } from "drizzle-orm";
+import { AtomicPlan, runAtomic, type AtomicExecutor } from "../atomic.js";
 import type { Database, Transaction } from "../types.js";
 import { authCredentials, invitations } from "../schema/index.js";
 import { uuidv7 } from "../uuid.js";
-import { insertAuditLog } from "./audit.js";
+import { auditLogInsertQuery } from "./audit.js";
 
 export type Invitation = typeof invitations.$inferSelect;
 
@@ -39,13 +41,9 @@ export interface NewInvitationInput {
   createdAt: number;
 }
 
-/**
- * 既存の未決着招待を revoke してから新規発行する本体。呼び出し元がアトミック性の単位
- * (単独の内部トランザクションか、外側の既存トランザクションか)を選べるよう、
- * `Database | Transaction` をそのまま素通しする(自分ではトランザクションを開始しない)。
- */
-async function revokeAndCreateInvitation(db: Database | Transaction, input: NewInvitationInput): Promise<Invitation> {
-  await db
+/** 既存の未決着招待を revoke する update ビルダ(実行しない)。 */
+function revokePendingInvitationsQuery(q: AtomicExecutor, input: NewInvitationInput) {
+  return q
     .update(invitations)
     .set({ revokedAt: input.createdAt })
     .where(
@@ -56,8 +54,11 @@ async function revokeAndCreateInvitation(db: Database | Transaction, input: NewI
         isNull(invitations.revokedAt),
       ),
     );
+}
 
-  const [row] = await db
+/** 新しい招待を1件作る insert ビルダ(実行しない)。 */
+function insertInvitationQuery(q: AtomicExecutor, input: NewInvitationInput) {
+  return q
     .insert(invitations)
     .values({
       id: uuidv7(),
@@ -71,20 +72,27 @@ async function revokeAndCreateInvitation(db: Database | Transaction, input: NewI
       createdAt: input.createdAt,
     })
     .returning();
+}
+
+/**
+ * invitations へ1件発行する(既存の未決着招待を revoke してから作成、1単位)。
+ * 単独呼び出し用。既に外側のトランザクション内にいる場合(メンバー作成を1トランザクションに
+ * まとめる apps/api/src/routes/members.ts の POST /)は、代わりに createInvitationInTx を使うこと。
+ *
+ * 判断点(2026-10-07、D1 対応): revoke と insert はどちらも無条件の書き込みで、途中の結果で
+ * 分岐しない。そのため atomic plan(src/atomic.ts)へそのまま積める(ガード不要)。
+ */
+export async function createInvitation(db: Database, input: NewInvitationInput): Promise<Invitation> {
+  const plan = new AtomicPlan();
+  plan.add((q) => revokePendingInvitationsQuery(q, input));
+  const inserted = plan.add((q) => insertInvitationQuery(q, input));
+  const result = await runAtomic(db, plan);
+  // ガードを積んでいないので ok: false にはならない
+  const row = result.ok ? result.get(inserted)[0] : undefined;
   if (!row) {
     throw new Error("createInvitation: insert returned no row");
   }
   return row;
-}
-
-/**
- * invitations へ1件発行する(既存の未決着招待を revoke してから作成、1トランザクション)。
- * 単独呼び出し用(自前でトランザクションを開始する)。既に外側のトランザクション内にいる
- * 場合(メンバー作成を1トランザクションにまとめる apps/api/src/routes/members.ts の POST /)は
- * ネストしたトランザクション(SAVEPOINT)を避けるため、代わりに createInvitationInTx を使うこと。
- */
-export async function createInvitation(db: Database, input: NewInvitationInput): Promise<Invitation> {
-  return db.transaction((tx) => revokeAndCreateInvitation(tx, input));
 }
 
 /**
@@ -93,7 +101,12 @@ export async function createInvitation(db: Database, input: NewInvitationInput):
  * (createUser・upsertMembership・招待発行・監査ログ追記を1トランザクションにまとめる)専用。
  */
 export async function createInvitationInTx(tx: Transaction, input: NewInvitationInput): Promise<Invitation> {
-  return revokeAndCreateInvitation(tx, input);
+  await revokePendingInvitationsQuery(tx, input);
+  const [row] = await insertInvitationQuery(tx, input);
+  if (!row) {
+    throw new Error("createInvitation: insert returned no row");
+  }
+  return row;
 }
 
 /** トークンのハッシュから1件探す(受諾用)。有効性の判定は呼び出し側が行う。 */
@@ -145,51 +158,60 @@ export interface AcceptedInvitation {
 
 /**
  * 招待を受諾する: 有効性の再検証・accepted_at 設定・auth_credentials 作成・監査ログ追記を
- * 1トランザクションで行う(監査ログの同居は2026-08-23 追加 — 以前は呼び出し側が受諾成功の
+ * 1単位で行う(監査ログの同居は2026-08-23 追加 — 以前は呼び出し側が受諾成功の
  * 判定後に別トランザクションで書いており、auth_credentials は作られたのに監査ログだけ
  * 書き漏れる余地があった)。失敗(存在しない・失効済み・受諾済み・期限切れ)は null を返す —
  * 理由の切り分け(404 vs 410)は呼び出し側(apps/api/src/routes/invitations.ts)が
  * トークン探索時に別途行う。
  *
+ * 判断点(2026-10-07、D1 対応。docs/design/d1-atomic-writes.md): 書き込みは atomic plan
+ * (src/atomic.ts)で「claim(条件付き UPDATE)→ ガード → 資格情報 → 監査ログ」の順に積む。
+ * claim が 0 行(先に別リクエストが受諾・失効させた TOCTOU)ならガードが計画ごと失敗させ、
+ * 資格情報も監査ログも書かれない。読み取り(トークン探索と有効性の事前判定)は計画の外。
+ *
  * セッション発行(createSession)はこの関数の外側・別トランザクションのまま(呼び出し側の
- * apps/api/src/routes/invitations.ts が行う)。アカウントの有効化(このトランザクション)と
+ * apps/api/src/routes/invitations.ts が行う)。アカウントの有効化(この計画)と
  * ログイン状態にすることは別の関心事であり、後者が失敗してもアカウント自体は有効化済みで
  * あるべきなので、あえて分離を保っている。
  */
 export async function acceptInvitation(db: Database, input: AcceptInvitationInput): Promise<AcceptedInvitation | null> {
-  return db.transaction(async (tx) => {
-    const rows = await tx.select().from(invitations).where(eq(invitations.tokenHash, input.tokenHash)).limit(1);
-    const invitation = rows[0];
-    if (!invitation) return null;
-    if (invitation.revokedAt !== null || invitation.acceptedAt !== null || invitation.expiresAt <= input.nowMinutes) {
-      return null;
-    }
+  const rows = await db.select().from(invitations).where(eq(invitations.tokenHash, input.tokenHash)).limit(1);
+  const invitation = rows[0];
+  if (!invitation) return null;
+  if (invitation.revokedAt !== null || invitation.acceptedAt !== null || invitation.expiresAt <= input.nowMinutes) {
+    return null;
+  }
 
-    // WHERE に isNull(acceptedAt)/isNull(revokedAt) を再度含めることで、直前の SELECT から
-    // ここまでの間に別リクエストが先に受諾・失効させていた場合(TOCTOU)を検出する。
-    const [updated] = await tx
+  const plan = new AtomicPlan();
+  // WHERE に isNull(acceptedAt)/isNull(revokedAt)/期限を再度含めることで、直前の SELECT から
+  // ここまでの間に別リクエストが先に受諾・失効させていた場合(TOCTOU)を検出する。
+  const claim = plan.add((q) =>
+    q
       .update(invitations)
       .set({ acceptedAt: input.nowMinutes })
-      .where(and(eq(invitations.id, invitation.id), isNull(invitations.acceptedAt), isNull(invitations.revokedAt)))
-      .returning();
-    if (!updated) return null;
-
-    const [cred] = await tx
-      .insert(authCredentials)
-      .values({
-        id: uuidv7(),
-        tenantId: invitation.tenantId,
-        userId: invitation.userId,
-        passwordHash: input.passwordHash,
-        createdAt: input.nowMinutes,
-        updatedAt: input.nowMinutes,
-      })
-      .returning();
-    if (!cred) {
-      throw new Error("acceptInvitation: auth_credentials insert returned no row");
-    }
-
-    await insertAuditLog(tx, {
+      .where(
+        and(
+          eq(invitations.id, invitation.id),
+          isNull(invitations.acceptedAt),
+          isNull(invitations.revokedAt),
+          gt(invitations.expiresAt, input.nowMinutes),
+        ),
+      )
+      .returning(),
+  );
+  plan.guard("invitation.claim");
+  plan.add((q) =>
+    q.insert(authCredentials).values({
+      id: uuidv7(),
+      tenantId: invitation.tenantId,
+      userId: invitation.userId,
+      passwordHash: input.passwordHash,
+      createdAt: input.nowMinutes,
+      updatedAt: input.nowMinutes,
+    }),
+  );
+  plan.add((q) =>
+    auditLogInsertQuery(q, {
       tenantId: invitation.tenantId,
       actorId: invitation.userId,
       action: "invitation.accept",
@@ -197,10 +219,17 @@ export async function acceptInvitation(db: Database, input: AcceptInvitationInpu
       targetId: invitation.userId,
       detail: JSON.stringify({}),
       occurredAt: input.nowMinutes,
-    });
+    }),
+  );
 
-    return { invitation: updated, tenantId: invitation.tenantId, userId: invitation.userId };
-  });
+  const result = await runAtomic(db, plan);
+  if (!result.ok) return null;
+  const [updated] = result.get(claim);
+  if (!updated) {
+    // ガードを通った以上 claim は1行返している(ここに来たら atomic plan の不具合)
+    throw new Error("acceptInvitation: claim returned no row after the guard passed");
+  }
+  return { invitation: updated, tenantId: invitation.tenantId, userId: invitation.userId };
 }
 
 export interface RevokeInvitationParams {

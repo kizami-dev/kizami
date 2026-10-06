@@ -201,6 +201,7 @@ export default defineConfig({
           { text: "ブラウザプッシュ通知(Web Push)", link: "/design/web-push" },
           { text: "DBダイアレクト(SQLite/PostgreSQL)", link: "/design/db-dialects" },
           { text: "Cloudflare Workers + D1 対応", link: "/design/workers-d1" },
+          { text: "D1 での原子的な書き込み(atomic plan)", link: "/design/d1-atomic-writes" },
           { text: "可観測性(メトリクスとエラー報告)", link: "/design/observability" },
           { text: "リリース手順とバージョン方針", link: "/design/release-process" },
           { text: "KIZAMI Cloud(hosted mode)", link: "/design/saas" },

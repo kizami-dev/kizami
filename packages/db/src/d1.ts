@@ -22,7 +22,8 @@
  * - **明示トランザクションが使えない**(`BEGIN` が拒否される)。drizzle の `db.transaction()` は
  *   D1 上では失敗する。KIZAMI で transaction を使っているのは招待・権限・Slack 連携・締め・
  *   休暇申請などの複数行更新で、D1 配備ではこれらが未対応(docs/design/workers-d1.md の
- *   「Node 専用」表を参照)。
+ *   「Node 専用」表を参照)。複数文を原子的に書く経路は src/atomic.ts の atomic plan
+ *   (D1 では `batch()`)へ順に移している(2026-10-07〜、docs/design/d1-atomic-writes.md)。
  * - 1クエリあたり・1リクエストあたりのサイズ/時間制限は Workers 側の制約に従う。
  */
 

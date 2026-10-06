@@ -19,15 +19,15 @@ import {
   upsertMembership,
   userHasCredential,
 } from "../src/queries/index.js";
-import { auditLogs, departments, tenants, users } from "../src/schema/index.js";
+import { auditLogs, authCredentials, departments, tenants, users } from "../src/schema/index.js";
 import { uuidv7 } from "../src/uuid.js";
 
 const DAY_MINUTES = 24 * 60;
 
-// D1 は明示トランザクション(BEGIN/COMMIT)を拒否するため、db.transaction() を通る
-// テストは D1 レグでは skip する(support/db.ts の supportsTransactions と
-// docs/design/workers-d1.md「D1 で動かないもの」を参照)
-describe.skipIf(!supportsTransactions)("invitations", () => {
+// createInvitation / acceptInvitation は atomic plan(src/atomic.ts)で書くので D1 レグでも走る
+// (2026-10-07、docs/design/d1-atomic-writes.md)。db.transaction() を直接使うテスト
+// (createInvitationInTx を外側のトランザクションに乗せるもの)だけを D1 レグから外す。
+describe("invitations", () => {
   let db: Database;
   const tenantId = uuidv7();
   const adminId = uuidv7();
@@ -266,11 +266,104 @@ describe.skipIf(!supportsTransactions)("invitations", () => {
     expect(logs.filter((l) => l.action === "invitation.accept")).toHaveLength(1);
   });
 
+  // atomic plan への移行(2026-10-07)で固定する性質: 同時の二重受諾でも資格情報・監査ログは
+  // ちょうど1件ずつ。負けた側は claim が 0 行 → ガードで計画ごと失敗し、何も書かない。
+  it("concurrent double-accept: exactly one succeeds, and exactly one credential and one audit log are written", async () => {
+    const target = await createUser(db, { tenantId, email: "race@example.com", name: "Race", createdAt: 0 });
+    await createInvitation(db, {
+      tenantId,
+      userId: target.id,
+      tokenHash: "hash-race",
+      expiresAt: 7 * DAY_MINUTES,
+      createdBy: adminId,
+      createdAt: 0,
+    });
+
+    const results = await Promise.all([
+      acceptInvitation(db, { tokenHash: "hash-race", passwordHash: "hashed-a", nowMinutes: 10 }),
+      acceptInvitation(db, { tokenHash: "hash-race", passwordHash: "hashed-b", nowMinutes: 10 }),
+    ]);
+    expect(results.filter((r) => r !== null)).toHaveLength(1);
+
+    const creds = await db.select().from(authCredentials).where(eq(authCredentials.userId, target.id));
+    expect(creds).toHaveLength(1);
+    const logs = await db.select().from(auditLogs).where(eq(auditLogs.tenantId, tenantId));
+    expect(logs.filter((l) => l.action === "invitation.accept")).toHaveLength(1);
+  });
+
+  it("accept racing a revoke: whichever lands first, a revoked invitation never gets a credential or an audit log", async () => {
+    const target = await createUser(db, { tenantId, email: "race-revoke@example.com", name: "Race", createdAt: 0 });
+    const inv = await createInvitation(db, {
+      tenantId,
+      userId: target.id,
+      tokenHash: "hash-race-revoke",
+      expiresAt: 7 * DAY_MINUTES,
+      createdBy: adminId,
+      createdAt: 0,
+    });
+
+    // acceptInvitation は最初に招待を読む(この時点では有効)→ その間に revoke が走る → claim が 0 行。
+    // SQLite / D1 では呼び出し順どおりに文が流れるので、必ずこの TOCTOU の経路を通る
+    const [accepted, revoked] = await Promise.all([
+      acceptInvitation(db, { tokenHash: "hash-race-revoke", passwordHash: "hashed", nowMinutes: 10 }),
+      revokeInvitation(db, { tenantId, id: inv.id, revokedAt: 10 }),
+    ]);
+    // どちらか一方だけが勝つ
+    expect([accepted !== null, revoked !== null].filter(Boolean)).toHaveLength(1);
+
+    const creds = await db.select().from(authCredentials).where(eq(authCredentials.userId, target.id));
+    const logs = (await db.select().from(auditLogs).where(eq(auditLogs.tenantId, tenantId))).filter((l) => l.action === "invitation.accept");
+    if (revoked !== null) {
+      expect(creds).toHaveLength(0);
+      expect(logs).toHaveLength(0);
+      expect((await findInvitationByTokenHash(db, "hash-race-revoke"))?.acceptedAt).toBeNull();
+    } else {
+      expect(creds).toHaveLength(1);
+      expect(logs).toHaveLength(1);
+    }
+  });
+
+  it("acceptInvitation on a revoked or already-used token writes nothing (no credential, no audit log, accepted_at untouched)", async () => {
+    const revokedUser = await createUser(db, { tenantId, email: "revoked@example.com", name: "Revoked", createdAt: 0 });
+    const revokedInv = await createInvitation(db, {
+      tenantId,
+      userId: revokedUser.id,
+      tokenHash: "hash-revoked-nothing",
+      expiresAt: 7 * DAY_MINUTES,
+      createdBy: adminId,
+      createdAt: 0,
+    });
+    await revokeInvitation(db, { tenantId, id: revokedInv.id, revokedAt: 5 });
+    expect(await acceptInvitation(db, { tokenHash: "hash-revoked-nothing", passwordHash: "hashed", nowMinutes: 10 })).toBeNull();
+    expect(await userHasCredential(db, { tenantId, userId: revokedUser.id })).toBe(false);
+    expect((await findInvitationByTokenHash(db, "hash-revoked-nothing"))?.acceptedAt).toBeNull();
+
+    const usedUser = await createUser(db, { tenantId, email: "used@example.com", name: "Used", createdAt: 0 });
+    await createInvitation(db, {
+      tenantId,
+      userId: usedUser.id,
+      tokenHash: "hash-used-nothing",
+      expiresAt: 7 * DAY_MINUTES,
+      createdBy: adminId,
+      createdAt: 0,
+    });
+    await acceptInvitation(db, { tokenHash: "hash-used-nothing", passwordHash: "first", nowMinutes: 10 });
+    expect(await acceptInvitation(db, { tokenHash: "hash-used-nothing", passwordHash: "second", nowMinutes: 20 })).toBeNull();
+    const creds = await db.select().from(authCredentials).where(eq(authCredentials.userId, usedUser.id));
+    expect(creds.map((c) => c.passwordHash)).toEqual(["first"]);
+    expect((await findInvitationByTokenHash(db, "hash-used-nothing"))?.acceptedAt).toBe(10);
+
+    const logs = await db.select().from(auditLogs).where(eq(auditLogs.tenantId, tenantId));
+    expect(logs.filter((l) => l.action === "invitation.accept").map((l) => l.target)).toEqual([`user:${usedUser.id}`]);
+  });
+
   // レビュー指摘2: createUser・upsertMembership・招待発行・監査ログを1トランザクションに
   // まとめられること(apps/api/src/routes/members.ts の POST / と同じ形)を db 層単体で確認する。
   // createInvitationInTx はネストしたトランザクション(SAVEPOINT)を発生させずに、呼び出し側の
   // 外側のトランザクションへそのまま乗る。
-  it("createUser + upsertMembership + createInvitationInTx + insertAuditLog compose atomically in one db.transaction", async () => {
+  // D1 は明示トランザクション(BEGIN/COMMIT)を拒否するため、db.transaction() を直接使う
+  // このテストは D1 レグでは skip する(support/db.ts の supportsTransactions を参照)
+  it.skipIf(!supportsTransactions)("createUser + upsertMembership + createInvitationInTx + insertAuditLog compose atomically in one db.transaction", async () => {
     const { insertAuditLog } = await import("../src/queries/audit.js");
     const deptId = uuidv7();
     await db.insert(departments).values({ id: deptId, tenantId, name: "Dept A", createdAt: 0 });
@@ -306,7 +399,7 @@ describe.skipIf(!supportsTransactions)("invitations", () => {
   });
 });
 
-describe.skipIf(!supportsTransactions)("同一分内の再発行(createdAt が同値)の最新解決(2026-08-23 バグ修正)", () => {
+describe("同一分内の再発行(createdAt が同値)の最新解決(2026-08-23 バグ修正)", () => {
   it("同じ nowMinutes で作成→再発行しても、最新として新しい招待が返る", async () => {
     const dbPath = join(tmpdir(), `kizami-db-test-${randomUUID()}.db`);
     const { db } = await migrateDb({ url: `file:${dbPath}` });

@@ -22,12 +22,11 @@
 
 import { Hono } from "hono";
 import {
-  appendClosingEvent,
+  closePeriod,
   getClosingState,
-  insertAuditLog,
   listClosingStates,
   listTenantUsers,
-  saveClosingSnapshots,
+  reopenPeriod,
   type ClosingEvent,
   type ClosingState,
   type Database,
@@ -45,10 +44,6 @@ const EXECUTE_PERMISSION = "closing.execute";
 const UNLOCK_PERMISSION = "closing.unlock";
 
 const MAX_NOTE_LENGTH = 500;
-
-/** already_closed(close時)・not_closed(reopen時)を、行の有無と区別するための内部シグナル。 */
-class AlreadyClosedConflictError extends Error {}
-class NotClosedConflictError extends Error {}
 
 function isValidPeriod(value: string | undefined): value is string {
   return value !== undefined && parseMonthParam(value) !== null;
@@ -196,51 +191,35 @@ export function createClosingsRoutes(db: Database) {
     }
 
     const now = nowMinutes();
-    try {
-      await db.transaction(async (tx) => {
-        // トランザクション開始直前の再確認との間にも競合しうるため、書き込み直前にもう一度
-        // 確認する(TOCTOU を完全には防げないが、同一テナント・同一月の締めが同時に競合する
-        // ケースは実運用上稀という前提を置く。apps/api/src/routes/corrections.ts の
-        // NotPendingConflictError と同じ考え方)。
-        const raceState = await getClosingState(tx, { tenantId: user.tenantId, period });
-        if (raceState.status === "closed") {
-          throw new AlreadyClosedConflictError();
-        }
-
-        const event = await appendClosingEvent(tx, {
-          tenantId: user.tenantId,
-          period,
-          event: "close",
-          actorId: user.id,
-          note: noteResult.note,
-          occurredAt: now,
-        });
-
-        const snapshotInputs = perUserOutputs.flatMap(({ userId, output }) =>
+    // 書き込み(close イベント・スナップショット・監査ログ)は closePeriod が1単位で行う。
+    // 判断点(2026-10-07、docs/design/d1-atomic-writes.md): 以前はトランザクション内で状態を
+    // 読み直して「閉じていなければ追記」していたが、一意制約が無いため PostgreSQL では同時の
+    // 2件が両方とも締められた(TOCTOU)。いまは close イベントの insert 自体が「最新が close で
+    // なければ」の条件付きで、負けた側は何も書かずに already_closed になる。D1 でも動く。
+    const closed = await closePeriod(db, {
+      tenantId: user.tenantId,
+      period,
+      actorId: user.id,
+      note: noteResult.note,
+      occurredAt: now,
+      buildSnapshots: (closingEventId) =>
+        perUserOutputs.flatMap(({ userId, output }) =>
           snapshotInputsFromEngineOutput({
             tenantId: user.tenantId,
-            closingEventId: event.id,
+            closingEventId,
             userId,
             output,
           }),
-        );
-        await saveClosingSnapshots(tx, snapshotInputs);
-
-        await insertAuditLog(tx, {
-          tenantId: user.tenantId,
-          actorId: user.id,
-          action: "closing.close",
-          targetType: "closing",
-          targetId: period,
-          detail: JSON.stringify({ period, note: noteResult.note, userCount: perUserOutputs.length, skippedUserIds }),
-          occurredAt: now,
-        });
-      });
-    } catch (err) {
-      if (err instanceof AlreadyClosedConflictError) {
-        return c.json({ error: "already_closed" }, 409);
-      }
-      throw err;
+        ),
+      audit: {
+        action: "closing.close",
+        targetType: "closing",
+        targetId: period,
+        detail: JSON.stringify({ period, note: noteResult.note, userCount: perUserOutputs.length, skippedUserIds }),
+      },
+    });
+    if (!closed.ok) {
+      return c.json({ error: "already_closed" }, 409);
     }
 
     const state = await getClosingState(db, { tenantId: user.tenantId, period });
@@ -267,37 +246,22 @@ export function createClosingsRoutes(db: Database) {
     }
 
     const now = nowMinutes();
-    try {
-      await db.transaction(async (tx) => {
-        const raceState = await getClosingState(tx, { tenantId: user.tenantId, period });
-        if (raceState.status !== "closed") {
-          throw new NotClosedConflictError();
-        }
-
-        await appendClosingEvent(tx, {
-          tenantId: user.tenantId,
-          period,
-          event: "reopen",
-          actorId: user.id,
-          note: noteResult.note,
-          occurredAt: now,
-        });
-
-        await insertAuditLog(tx, {
-          tenantId: user.tenantId,
-          actorId: user.id,
-          action: "closing.reopen",
-          targetType: "closing",
-          targetId: period,
-          detail: JSON.stringify({ period, note: noteResult.note }),
-          occurredAt: now,
-        });
-      });
-    } catch (err) {
-      if (err instanceof NotClosedConflictError) {
-        return c.json({ error: "not_closed" }, 409);
-      }
-      throw err;
+    // reopen イベントと監査ログを1単位で書く(条件付き insert。closePeriod と同じ考え方)
+    const reopened = await reopenPeriod(db, {
+      tenantId: user.tenantId,
+      period,
+      actorId: user.id,
+      note: noteResult.note,
+      occurredAt: now,
+      audit: {
+        action: "closing.reopen",
+        targetType: "closing",
+        targetId: period,
+        detail: JSON.stringify({ period, note: noteResult.note }),
+      },
+    });
+    if (!reopened.ok) {
+      return c.json({ error: "not_closed" }, 409);
     }
 
     const state = await getClosingState(db, { tenantId: user.tenantId, period });

@@ -62,6 +62,8 @@ D1 レグから除外している(`describe.skipIf(!supportsTransactions)`)。�
 トランザクションを持つか、クエリ層を `batch()` ベースへ寄せたときに、このフラグを true に
 するだけで 34 件のテストが D1 でも走る。
 
+> 2026-10-07: `batch()` で原子的に書く仕組み(atomic plan)を入れ、招待の発行・受諾と月次締め・解除は D1 でも動くようになった。設計と残りの経路の移行手順は [D1 での原子的な書き込み](./d1-atomic-writes.md)。
+
 ## パッケージの分割: `@kizami/db` と `@kizami/db/node`
 
 `@libsql/client` と `pg` は `node:net` / `node:fs` に依存しており、workerd ではバンドルすら

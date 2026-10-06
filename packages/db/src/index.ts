@@ -13,6 +13,7 @@
  */
 
 export * from "./alias.js";
+export * from "./atomic.js";
 export * from "./d1.js";
 export * from "./dialect.js";
 export * from "./errors.js";
