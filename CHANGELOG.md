@@ -28,9 +28,16 @@ API・DB スキーマの互換方針とアップグレード手順は
     応答・スロットル・列挙対策には影響しない
   - 退会のメールは宛先ごとにその人の言語で送る(完了のメールの言語も削除の前に集める)
   - 件名の接頭辞は日本語が「【KIZAMI】」、他は「[KIZAMI] 」。日時は日本時間のまま「(JST)」などと明記する
+- **Cloudflare D1 でも招待の発行・受諾と月次締め・締め解除が動く**。`@kizami/db` に、複数文を1単位で書く
+  `AtomicPlan` / `runAtomic` を追加(SQLite と D1 は `batch()`、PostgreSQL は従来どおりトランザクション)。
+  楽観ロックが取れなかったときは何も書かずに失敗する(ガード)。残りの経路の移行手順と 27 か所の監査表は
+  [docs/design/d1-atomic-writes.md](docs/design/d1-atomic-writes.md)
 
 ### Fixed
 
+- **同じ月の締めを同時に2回送ると、PostgreSQL では両方とも締まることがあった**。close/reopen イベントの追記を
+  「最新の状態が締めでなければ」の条件付きにし、PostgreSQL では同じ月の締め操作を直列化した。負けた側は
+  何も書かずに 409 `already_closed`(解除は `not_closed`)
 - **全データのエクスポート(`GET /tenant/export`)が大きなテナントで API のメモリを使い切る問題**。
   全行を読んで zip をメモリ上で作るのをやめ、zip を流しながら返すようにした(相手が読む速さに合わせて作る。
   Content-Length は付かない)。50人 × 3年(約17万行)で RSS の増分が PostgreSQL で約 280 MB → 約 20 MB、

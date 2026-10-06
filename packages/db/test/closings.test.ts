@@ -8,10 +8,15 @@ import {
   getClosingState,
   getOriginalClosingSnapshots,
   getOriginalClosingSnapshotsForUsers,
+  closePeriod,
   listClosingStates,
+  reopenPeriod,
   saveClosingSnapshots,
+  type NewClosingSnapshotInput,
 } from "../src/queries/closings.js";
-import { correctionRequests, tenants, users } from "../src/schema/index.js";
+import { auditLogs, closingEvents, closingSnapshots, correctionRequests, tenants, users } from "../src/schema/index.js";
+import { eq } from "drizzle-orm";
+import { chunkRowsForInsert } from "../src/atomic.js";
 import { uuidv7 } from "../src/uuid.js";
 
 describe("closing_events / closing_snapshots", () => {
@@ -388,6 +393,148 @@ describe("closing_events / closing_snapshots", () => {
       expect(map.size).toBe(1);
       expect(map.get(userId)?.[0]?.minutes).toBe(100); // amend 前(当初)の値
       expect(map.get(otherUserId)).toBeUndefined();
+    });
+  });
+
+  // 締め/解除の書き込み(atomic plan、2026-10-07)。3レグ(D1 含む)で走る。
+  // 以前の route 内トランザクションは「読み直してから追記」で、PostgreSQL では同時の2件が
+  // 両方とも締められた(TOCTOU)。ここでは条件付き insert + ガードで「勝つのは1件だけ・
+  // 負けた側は何も書かない」ことを固定する。
+  describe("closePeriod / reopenPeriod", () => {
+    const period = "2026-05";
+    const snapshotsFor = (closingEventId: string): NewClosingSnapshotInput[] => [
+      { tenantId, closingEventId, userId, category: "statutory", minutes: 100 },
+      { tenantId, closingEventId, userId: otherUserId, category: "statutory", minutes: 200 },
+    ];
+    const close = (occurredAt: number, note: string | null = null) =>
+      closePeriod(db, {
+        tenantId,
+        period,
+        actorId: userId,
+        note,
+        occurredAt,
+        buildSnapshots: snapshotsFor,
+        audit: { action: "closing.close", targetType: "closing", targetId: period, detail: JSON.stringify({ note }) },
+      });
+    const reopen = (occurredAt: number) =>
+      reopenPeriod(db, {
+        tenantId,
+        period,
+        actorId: userId,
+        note: null,
+        occurredAt,
+        audit: { action: "closing.reopen", targetType: "closing", targetId: period, detail: "{}" },
+      });
+    const auditActions = async () =>
+      (await db.select().from(auditLogs).where(eq(auditLogs.tenantId, tenantId))).map((l) => l.action).sort();
+
+    it("closes an open period: close event + snapshots tied to it + audit log, all at once", async () => {
+      const result = await close(1000, "月末締め");
+      if (!result.ok) throw new Error("expected close to succeed");
+      expect(result.event).toMatchObject({ event: "close", period, note: "月末締め", occurredAt: 1000, correctionRequestId: null });
+
+      const state = await getClosingState(db, { tenantId, period });
+      expect(state.status).toBe("closed");
+      const snapshots = await getClosingSnapshots(db, { tenantId, period });
+      expect(snapshots.map((s) => [s.closingEventId, s.userId, s.minutes]).sort()).toEqual(
+        [
+          [result.event.id, userId, 100],
+          [result.event.id, otherUserId, 200],
+        ].sort(),
+      );
+      expect(await auditActions()).toEqual(["closing.close"]);
+    });
+
+    it("closing an already-closed period fails with already_closed and writes nothing", async () => {
+      expect((await close(1000)).ok).toBe(true);
+      expect(await close(1100)).toEqual({ ok: false, reason: "already_closed" });
+
+      expect(await db.select().from(closingEvents).where(eq(closingEvents.tenantId, tenantId))).toHaveLength(1);
+      expect(await db.select().from(closingSnapshots).where(eq(closingSnapshots.tenantId, tenantId))).toHaveLength(2);
+      expect(await auditActions()).toEqual(["closing.close"]);
+    });
+
+    it("an amend after close does not reopen the period (close -> amend -> close is still already_closed)", async () => {
+      const closed = await close(1000);
+      if (!closed.ok) throw new Error("expected close to succeed");
+      await appendClosingEvent(db, {
+        tenantId,
+        period,
+        event: "amend",
+        actorId: userId,
+        correctionRequestId: await insertDummyCorrectionRequest(),
+        occurredAt: 1500,
+      });
+      expect(await close(2000)).toEqual({ ok: false, reason: "already_closed" });
+    });
+
+    it("reopen requires a closed period (not_closed writes nothing); close -> reopen -> close works", async () => {
+      expect(await reopen(500)).toEqual({ ok: false, reason: "not_closed" });
+      expect(await auditActions()).toEqual([]);
+
+      expect((await close(1000)).ok).toBe(true);
+      const reopened = await reopen(1100);
+      expect(reopened.ok && reopened.event.event).toBe("reopen");
+      expect((await getClosingState(db, { tenantId, period })).status).toBe("open");
+      expect(await reopen(1150)).toEqual({ ok: false, reason: "not_closed" });
+
+      const reclosed = await close(1200);
+      expect(reclosed.ok).toBe(true);
+      const state = await getClosingState(db, { tenantId, period });
+      expect(state.history.map((e) => e.event)).toEqual(["close", "reopen", "close"]);
+      expect(await auditActions()).toEqual(["closing.close", "closing.close", "closing.reopen"]);
+    });
+
+    it("concurrent closes of the same period: exactly one wins; the loser writes no event, snapshot or audit log", async () => {
+      const results = await Promise.all([close(1000, "a"), close(1000, "b"), close(1000, "c")]);
+      expect(results.filter((r) => r.ok)).toHaveLength(1);
+      expect(results.filter((r) => !r.ok)).toEqual([
+        { ok: false, reason: "already_closed" },
+        { ok: false, reason: "already_closed" },
+      ]);
+
+      const events = await db.select().from(closingEvents).where(eq(closingEvents.tenantId, tenantId));
+      expect(events).toHaveLength(1);
+      const snapshots = await db.select().from(closingSnapshots).where(eq(closingSnapshots.tenantId, tenantId));
+      expect(snapshots).toHaveLength(2);
+      expect(new Set(snapshots.map((s) => s.closingEventId))).toEqual(new Set([events[0]?.id]));
+      expect(await auditActions()).toEqual(["closing.close"]);
+    });
+
+    it("concurrent reopens: exactly one wins", async () => {
+      expect((await close(1000)).ok).toBe(true);
+      const results = await Promise.all([reopen(1100), reopen(1100)]);
+      expect(results.filter((r) => r.ok)).toHaveLength(1);
+      const events = await db.select().from(closingEvents).where(eq(closingEvents.tenantId, tenantId));
+      expect(events.map((e) => e.event).sort()).toEqual(["close", "reopen"]);
+      expect(await auditActions()).toEqual(["closing.close", "closing.reopen"]);
+    });
+
+    it("saves many snapshots in one close (split under D1's 100 bound parameters per statement)", async () => {
+      const manyUsers = Array.from({ length: 30 }, (_, i) => ({
+        id: uuidv7(),
+        tenantId,
+        email: `bulk-${i}@example.com`,
+        name: `Bulk ${i}`,
+        createdAt: 0,
+      }));
+      // 下ごしらえも D1 の上限に引っかかる(users は 11 列)ので同じ割り方で入れる
+      for (const chunk of chunkRowsForInsert(users, manyUsers)) await db.insert(users).values(chunk);
+      const categories = ["statutory", "overtime", "overtime60h", "lateNight", "statutoryHoliday", "flexFrame", "flexActual", "flexDiff"] as const;
+
+      const result = await closePeriod(db, {
+        tenantId,
+        period,
+        actorId: userId,
+        note: null,
+        occurredAt: 1000,
+        buildSnapshots: (closingEventId) =>
+          manyUsers.flatMap((u, i) => categories.map((category) => ({ tenantId, closingEventId, userId: u.id, category, minutes: i }))),
+        audit: { action: "closing.close", targetType: "closing", targetId: period, detail: "{}" },
+      });
+      expect(result.ok).toBe(true);
+      // 30 人 × 8 区分 = 240 行(1文に入れると 1440 個のバインド変数)
+      expect(await getClosingSnapshots(db, { tenantId, period })).toHaveLength(240);
     });
   });
 });

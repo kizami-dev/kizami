@@ -6,7 +6,8 @@
  * (docs/design/v01-data-model.md §closings(締め)と closing_snapshots)。
  */
 
-import { and, asc, eq, gte, inArray, lte } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, lte, sql, type SQL } from "drizzle-orm";
+import { AtomicPlan, chunkRowsForInsert, insertSelectWhere, runAtomic, type AtomicExecutor } from "../atomic.js";
 import type { Database, Transaction } from "../types.js";
 import {
   ALLOWANCE_CLOSING_SNAPSHOT_CATEGORY_PREFIX,
@@ -15,6 +16,7 @@ import {
   type ClosingSnapshotCategory,
 } from "../schema/index.js";
 import { uuidv7 } from "../uuid.js";
+import { auditLogInsertQuery, type NewAuditLogInput } from "./audit.js";
 
 export type ClosingEvent = typeof closingEvents.$inferSelect;
 /** close(締め) / reopen(解除) / amend(締め後修正の反映。締め状態は closed のまま) */
@@ -179,11 +181,19 @@ export interface NewClosingSnapshotInput {
   minutes: number;
 }
 
-/** closing_snapshots へまとめて追記する(締め確定時に1テナント分をまとめて渡す想定)。 */
-export async function saveClosingSnapshots(db: Database | Transaction, snapshots: NewClosingSnapshotInput[]): Promise<void> {
-  if (snapshots.length === 0) return;
-  await db.insert(closingSnapshots).values(
-    snapshots.map((s) => ({
+/**
+ * closing_snapshots への insert ビルダを、D1 のバインド変数上限(1文 100 個)に収まる塊ごとに
+ * 返す(実行しない)。1テナント全員分を1文で入れると、数人を超えた時点で D1 が拒否する
+ * (1行 6 列 → 1文あたり 16 行まで)。
+ */
+export function closingSnapshotInsertQueries(q: AtomicExecutor, snapshots: NewClosingSnapshotInput[]) {
+  return chunkRowsForInsert(closingSnapshots, snapshots).map((chunk) => closingSnapshotInsertQuery(q, chunk));
+}
+
+/** closing_snapshots への insert ビルダ1文(塊への分割は呼び出し側 — closingSnapshotInsertQueries)。 */
+function closingSnapshotInsertQuery(q: AtomicExecutor, chunk: NewClosingSnapshotInput[]) {
+  return q.insert(closingSnapshots).values(
+    chunk.map((s) => ({
       id: uuidv7(),
       tenantId: s.tenantId,
       closingEventId: s.closingEventId,
@@ -192,6 +202,152 @@ export async function saveClosingSnapshots(db: Database | Transaction, snapshots
       minutes: s.minutes,
     })),
   );
+}
+
+/** closing_snapshots へまとめて追記する(締め確定時に1テナント分をまとめて渡す想定)。 */
+export async function saveClosingSnapshots(db: Database | Transaction, snapshots: NewClosingSnapshotInput[]): Promise<void> {
+  for (const query of closingSnapshotInsertQueries(db, snapshots)) {
+    await query;
+  }
+}
+
+/**
+ * (tenantId, period) の締め状態を決めるイベント(close/reopen の最新1件)の種別を返す SQL 式。
+ * 1件も無ければ 'reopen'(= open)。stateFromHistory と同じ並び(occurred_at, id の降順の先頭)。
+ */
+function latestStateEventSql(q: AtomicExecutor, params: { tenantId: string; period: string }): SQL {
+  const latest = q
+    .select({ event: closingEvents.event })
+    .from(closingEvents)
+    .where(
+      and(
+        eq(closingEvents.tenantId, params.tenantId),
+        eq(closingEvents.period, params.period),
+        inArray(closingEvents.event, ["close", "reopen"]),
+      ),
+    )
+    .orderBy(desc(closingEvents.occurredAt), desc(closingEvents.id))
+    .limit(1);
+  return sql`coalesce((${latest}), 'reopen')`;
+}
+
+/** close/reopen の監査ログ(tenantId・actorId・occurredAt は締め操作と同じ値を使う)。 */
+export type ClosingAuditInput = Omit<NewAuditLogInput, "tenantId" | "actorId" | "occurredAt">;
+
+export interface ClosePeriodInput {
+  tenantId: string;
+  /** "YYYY-MM" */
+  period: string;
+  actorId: string;
+  note: string | null;
+  /** UTC エポック分 */
+  occurredAt: number;
+  /** 新しい close イベントの id を受け取り、保存するスナップショット行を返す */
+  buildSnapshots: (closingEventId: string) => NewClosingSnapshotInput[];
+  audit: ClosingAuditInput;
+}
+
+export type ClosePeriodResult = { ok: true; event: ClosingEvent } | { ok: false; reason: "already_closed" };
+
+/**
+ * 締める: close イベントの追記・スナップショット保存・監査ログを1単位で行う
+ * (apps/api/src/routes/closings.ts の POST /closings/:period/close)。
+ *
+ * 判断点(2026-10-07、D1 対応と TOCTOU の解消。docs/design/d1-atomic-writes.md):
+ * 以前はトランザクション内で getClosingState を読み直して「閉じていなければ追記」していたが、
+ * closing_events に一意制約は無く、PostgreSQL(READ COMMITTED)では同時の2件が互いの
+ * 未コミット行を見ずに両方とも締められた。ここでは **close イベントの insert 自体を
+ * 「最新の close/reopen が close でなければ」の条件付き(INSERT ... SELECT ... WHERE)** にし、
+ * 0 行ならガードで計画ごと失敗させる(スナップショットも監査ログも書かない)。
+ * PostgreSQL では同じ (tenant, period) の計画を advisory lock で直列化し、後続の計画が
+ * 先行のコミット済み close を見てから判定するようにしている(src/atomic.ts「直列化キー」)。
+ */
+export async function closePeriod(db: Database, input: ClosePeriodInput): Promise<ClosePeriodResult> {
+  const eventId = uuidv7();
+  const snapshots = input.buildSnapshots(eventId);
+  const plan = new AtomicPlan();
+  plan.serialize(`closing:${input.tenantId}:${input.period}`);
+  const inserted = plan.add((q) =>
+    insertSelectWhere(
+      q,
+      closingEvents,
+      {
+        id: eventId,
+        tenantId: input.tenantId,
+        period: input.period,
+        event: "close",
+        actorId: input.actorId,
+        note: input.note,
+        correctionRequestId: null,
+        leaveRequestId: null,
+        occurredAt: input.occurredAt,
+      },
+      sql`${latestStateEventSql(q, input)} <> 'close'`,
+    ).returning(),
+  );
+  plan.guard("closing.already_closed");
+  for (const chunk of chunkRowsForInsert(closingSnapshots, snapshots)) {
+    plan.add((q) => closingSnapshotInsertQuery(q, chunk));
+  }
+  plan.add((q) =>
+    auditLogInsertQuery(q, { ...input.audit, tenantId: input.tenantId, actorId: input.actorId, occurredAt: input.occurredAt }),
+  );
+
+  const result = await runAtomic(db, plan);
+  if (!result.ok) return { ok: false, reason: "already_closed" };
+  const [event] = result.get(inserted);
+  if (!event) throw new Error("closePeriod: close event insert returned no row after the guard passed");
+  return { ok: true, event };
+}
+
+export interface ReopenPeriodInput {
+  tenantId: string;
+  /** "YYYY-MM" */
+  period: string;
+  actorId: string;
+  note: string | null;
+  /** UTC エポック分 */
+  occurredAt: number;
+  audit: ClosingAuditInput;
+}
+
+export type ReopenPeriodResult = { ok: true; event: ClosingEvent } | { ok: false; reason: "not_closed" };
+
+/**
+ * 締めを解除する: reopen イベントの追記・監査ログを1単位で行う(POST /closings/:period/reopen)。
+ * 条件付き insert とガード・直列化の考え方は closePeriod と同じ(条件が「最新が close」に変わるだけ)。
+ */
+export async function reopenPeriod(db: Database, input: ReopenPeriodInput): Promise<ReopenPeriodResult> {
+  const plan = new AtomicPlan();
+  plan.serialize(`closing:${input.tenantId}:${input.period}`);
+  const inserted = plan.add((q) =>
+    insertSelectWhere(
+      q,
+      closingEvents,
+      {
+        id: uuidv7(),
+        tenantId: input.tenantId,
+        period: input.period,
+        event: "reopen",
+        actorId: input.actorId,
+        note: input.note,
+        correctionRequestId: null,
+        leaveRequestId: null,
+        occurredAt: input.occurredAt,
+      },
+      sql`${latestStateEventSql(q, input)} = 'close'`,
+    ).returning(),
+  );
+  plan.guard("closing.not_closed");
+  plan.add((q) =>
+    auditLogInsertQuery(q, { ...input.audit, tenantId: input.tenantId, actorId: input.actorId, occurredAt: input.occurredAt }),
+  );
+
+  const result = await runAtomic(db, plan);
+  if (!result.ok) return { ok: false, reason: "not_closed" };
+  const [event] = result.get(inserted);
+  if (!event) throw new Error("reopenPeriod: reopen event insert returned no row after the guard passed");
+  return { ok: true, event };
 }
 
 /**

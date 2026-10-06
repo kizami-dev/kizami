@@ -38,7 +38,19 @@ export interface NewAuditLogInput {
  * `Database | Transaction` を受け取る。
  */
 export async function insertAuditLog(db: Database | Transaction, input: NewAuditLogInput): Promise<AuditLog> {
-  const [row] = await db
+  const [row] = await auditLogInsertQuery(db, input);
+  if (!row) {
+    throw new Error("insertAuditLog: insert returned no row");
+  }
+  return row;
+}
+
+/**
+ * insertAuditLog と同じ行を作る insert ビルダを返す(実行しない)。アトミックな書き込み計画
+ * (src/atomic.ts の `AtomicPlan.add`)へ監査ログを積むためのもの。
+ */
+export function auditLogInsertQuery(db: Database | Transaction, input: NewAuditLogInput) {
+  return db
     .insert(auditLogs)
     .values({
       id: uuidv7(),
@@ -50,10 +62,6 @@ export async function insertAuditLog(db: Database | Transaction, input: NewAudit
       occurredAt: input.occurredAt,
     })
     .returning();
-  if (!row) {
-    throw new Error("insertAuditLog: insert returned no row");
-  }
-  return row;
 }
 
 /**
