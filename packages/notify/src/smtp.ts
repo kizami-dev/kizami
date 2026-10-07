@@ -4,8 +4,8 @@
  * ランタイム非依存の制約(要件 §7/§8: node:* を直接 import しない)を満たすため、
  * 実際の送信処理は呼び出し側が注入する `sendFn` に委譲する形にしている。
  * Node 実装(nodemailer)は apps/api 側に置く(apps/api/src/lib/smtp.ts)。
- * Cloudflare Workers 版エントリを追加する際は、fetch ベースのメール送信 API(Resend 等)を
- * 使う別の sendFn を注入すればよく、このファイル自体の変更は不要になる想定。
+ * Cloudflare Workers では apps/api の `cloudflare:sockets` の上の SMTP クライアント(apps/api/src/lib/smtp-client.ts)
+ * を注入する(2026-10-07。このファイルは変更不要だった)。
  */
 
 import type { NotificationChannel, NotificationMessage } from "./types.js";

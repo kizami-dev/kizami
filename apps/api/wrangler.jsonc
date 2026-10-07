@@ -45,8 +45,22 @@
       "migrations_dir": "../../packages/db/migrations"
     }
   ],
+  // システムメール(運用者名義のメール。Node の SYSTEM_SMTP_URL に相当 — docs/design/workers-d1.md「メール」)。
+  // Cloudflare Email Service の Workers バインディング。使うときは差出人のドメインを Email Sending に登録し
+  // (`npx wrangler email sending enable example.com`)、下の vars に SYSTEM_MAIL_FROM と APP_BASE_URL を足す。
+  // 3つ(このバインディング・SYSTEM_MAIL_FROM・APP_BASE_URL)が揃わなければシステムメールは無効のまま。
+  // 送り先を限りたいときは allowed_destination_addresses / allowed_sender_addresses を足せる。
+  // `wrangler dev` では送らずにコンソールへ出す(本物を送るなら "remote": true)。
+  "send_email": [{ "name": "EMAIL" }],
   // 秘密でない設定。秘密(KIZAMI_ENCRYPTION_KEY・VAPID_PRIVATE_KEY・METRICS_TOKEN・
   // SENTRY_DSN)は `wrangler secret put <NAME>` で入れること(ここに書かない)。
+  //
+  // システムメールを使うなら(上の send_email):
+  //   "SYSTEM_MAIL_FROM": "KIZAMI <noreply@example.com>",
+  //   "APP_BASE_URL": "https://kizami.example.com",
+  // テナントの SMTP(通知のメール)は cloudflare:sockets で送る。ポート 25 は Workers から使えない(587 / 465)。
+  // SSRF ガード(Node と同じ名前。Workers で効くのは名前と IP リテラルの検査だけ):
+  //   "OUTBOUND_BLOCK_PRIVATE": "true", "OUTBOUND_DENY_CIDRS": "...", "OUTBOUND_ALLOW_HOSTS": "...
   //
   // 可観測性(../../docs/design/observability.md、任意):
   //   wrangler secret put METRICS_TOKEN   # 未設定なら GET /metrics は 404

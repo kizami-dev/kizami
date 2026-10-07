@@ -11,7 +11,9 @@
  * | --- | --- | --- |
  * | DB | `migrateDb({ url: DATABASE_URL })`(起動時にマイグレーション適用) | `createD1Database(env.DB)`(マイグレーションはデプロイ時に wrangler が適用) |
  * | 設定の入手元 | `process.env` | `env`(wrangler の vars / secrets) |
- * | SMTP 送信 | nodemailer(`notify.smtpSendFn`) | **無し**(nodemailer は node:net 依存)。テスト送信は 503 になる |
+ * | テナントの SMTP | nodemailer(`notify.smtpSendFn`) | `cloudflare:sockets` の自前の SMTP クライアント(lib/smtp-client.ts + lib/workers-smtp-socket.ts。465 / STARTTLS、ポート 25 は不可) |
+ * | システムメール | `SYSTEM_SMTP_URL`(nodemailer) | Email Service の `send_email` バインディング `EMAIL`(lib/email-service-mail.ts) |
+ * | SSRF ガード(OUTBOUND_*) | 名前を解決して検査した IP に接続 | 名前と IP リテラルだけの検査(lib/outbound-hostname-guard.ts。プライベートアドレスには元々届かない) |
  * | 定期スキャン | src/worker.ts(BullMQ + Valkey) | **Cron Triggers**(下の `scheduled()` → src/workers-cron.ts。スキャン本体は共通) |
  * | レート制限 | プロセス内メモリ(replicas=1 前提) | **アイソレート内メモリ**(= 実質もっと緩い。lib/rate-limit.ts の判断点参照) |
  *
@@ -24,12 +26,20 @@
 
 import { Hono } from "hono";
 import { createD1Database, type D1DatabaseBinding } from "@kizami/db";
+import type { SmtpSendFn } from "@kizami/notify";
 import { createApp } from "./app.js";
 import { buildEncryptorFromEnv } from "./lib/encryption.js";
 import { buildErrorReporterFromEnv } from "./lib/error-report.js";
 import { authPostAllowedOrigins } from "./lib/json-post-guard.js";
 import { createTenantQuotas, parseQuotaEnv } from "./lib/tenant-quotas.js";
 import { buildVapidFromEnv } from "./lib/web-push.js";
+import { parseEmailServiceMailEnv, type EmailServiceMailConfig } from "./lib/email-service-mail.js";
+import { createHostnameOutboundGuard } from "./lib/outbound-hostname-guard.js";
+import { parseOutboundEnv, type OutboundChecker } from "./lib/outbound-policy.js";
+import { createSmtpSendFn, SmtpError } from "./lib/smtp-client.js";
+import { parseTurnstileEnv } from "./lib/turnstile.js";
+import { WORKERS_SMTP_BLOCKED_PORTS, workersSmtpConnector } from "./lib/workers-smtp-socket.js";
+import type { TenantWithdrawalMailer } from "./tenant-purge.js";
 import { runWorkersCron, WORKERS_CRON_LOG_PREFIX, type WorkersCronResult } from "./workers-cron.js";
 
 /**
@@ -70,6 +80,72 @@ export interface WorkerEnv {
    * Workers ではファイルを読めないので vars で渡す。未設定なら "unknown"。
    */
   KIZAMI_RELEASE?: string;
+  /**
+   * Cloudflare Email Service の `send_email` バインディング(wrangler.jsonc の `send_email[].name`)。
+   * システムメール(運用者名義)の送信に使う。`SYSTEM_MAIL_FROM` / `APP_BASE_URL` と3つ揃ったときだけ有効
+   * (lib/email-service-mail.ts)。Node の `SYSTEM_SMTP_URL` に相当する。
+   */
+  EMAIL?: unknown;
+  /** システムメールの差出人(`noreply@example.com` か `KIZAMI <noreply@example.com>`)。Email Sending に登録したドメイン */
+  SYSTEM_MAIL_FROM?: string;
+  /** SSRF ガード(Node と同じ名前。Workers で効くのは名前と IP リテラルの検査だけ — lib/outbound-hostname-guard.ts) */
+  OUTBOUND_BLOCK_PRIVATE?: string;
+  OUTBOUND_DENY_CIDRS?: string;
+  OUTBOUND_ALLOW_HOSTS?: string;
+  /** 本人用のパスワード再設定の Turnstile(Node と同じ。両方あるときだけ必須) */
+  TURNSTILE_SECRET_KEY?: string;
+  TURNSTILE_SITE_KEY?: string;
+}
+
+/**
+ * D1 で `db.transaction()` が使えるか(docs/design/workers-d1.md「D1 で動かないもの」)。
+ *
+ * **false の間は、システムメールがあっても本人用のパスワード再設定と退会の申請のメールを createApp に渡さない**。
+ * どちらの経路もトランザクションを使うので D1 では失敗し、渡すと画面に「パスワードを忘れた」が出るのに
+ * 誰も再設定できない(応答の後の処理がログに失敗を残すだけ)状態になる。D1 のトランザクション対応が入ったら
+ * **ここを true にするだけで**、組み立て済みのシステムメール(Email Service)がそのまま点く
+ * (応答の後のメールは lib/after-response.ts が waitUntil に載せる)。
+ *
+ * セルフサインアップはこのフラグと関係なく Workers では常に無効(下の createWorkerApp のコメント)。
+ * Cron の退会の再通知・削除の完了のメールはトランザクションを使わないので、このフラグを待たずに出る。
+ */
+export const D1_TRANSACTIONS_SUPPORTED = false;
+
+/** 外向きの通知の依存(createApp の `notify` と Cron に渡す)。 */
+interface WorkerOutboundDeps {
+  smtpSendFn: SmtpSendFn;
+  tenantFetchImpl?: typeof fetch;
+  outbound?: OutboundChecker;
+}
+
+/**
+ * テナントの SMTP の送信関数と、SSRF ガード(OUTBOUND_* が設定されているときだけ)を組み立てる。
+ *
+ * - 送信関数は lib/smtp-client.ts + `cloudflare:sockets`。ポート 25 は Workers が塞いでいるので、接続の前に
+ *   分かりやすいエラーで断る
+ * - OUTBOUND_* の値が不正なら**投げる**(Node は起動時に終了する。「設定したつもりで素通し」を避けるため、
+ *   Workers では要求ごとに 500 になる — 設定を直すまで直らないことがログで分かる)
+ */
+function buildWorkerOutbound(env: WorkerEnv): WorkerOutboundDeps {
+  const { policy, errors } = parseOutboundEnv(env as unknown as Record<string, string | undefined>);
+  if (errors.length > 0) throw new Error(`[kizami] invalid outbound configuration: ${errors.join("; ")}`);
+  const smtpSendFn = createSmtpSendFn(workersSmtpConnector, {
+    checkTarget: ({ port }) => {
+      if (WORKERS_SMTP_BLOCKED_PORTS.has(port)) {
+        throw new SmtpError("prepare", `outbound port ${port} is blocked on Cloudflare Workers; use 587 (STARTTLS) or 465 (TLS)`);
+      }
+    },
+  });
+  if (policy === null) return { smtpSendFn };
+  const guard = createHostnameOutboundGuard(policy);
+  return { smtpSendFn: guard.wrapSmtpSend(smtpSendFn), tenantFetchImpl: guard.fetch, outbound: guard };
+}
+
+/** システムメール(Email Service)。揃っていなければ null。値が不正なら警告だけ出す(Node と同じ)。 */
+function buildWorkerSystemMail(env: WorkerEnv): EmailServiceMailConfig | null {
+  const { config, errors } = parseEmailServiceMailEnv(env);
+  for (const message of errors) console.warn(`[kizami] system mail disabled: ${message}`);
+  return config;
 }
 
 /** アイソレート内キャッシュ(上のコメント「リクエストごとに createApp() しない理由」)。 */
@@ -87,8 +163,12 @@ function parseWorkerQuotaEnv(env: Record<string, string | undefined>) {
   return limits;
 }
 
-export function createWorkerApp(env: WorkerEnv) {
+export function createWorkerApp(env: WorkerEnv, options: { d1TransactionsSupported?: boolean } = {}) {
   const { db } = createD1Database(env.DB);
+  const outbound = buildWorkerOutbound(env);
+  const systemMail = buildWorkerSystemMail(env);
+  const transactionalMailFlows = (options.d1TransactionsSupported ?? D1_TRANSACTIONS_SUPPORTED) && systemMail !== null;
+  const turnstile = parseTurnstileEnv(env as unknown as Record<string, string | undefined>);
 
   // 可観測性(docs/design/observability.md)。Node 版(src/node.ts)と同じ環境変数名を使う。
   // Node と違い package.json を読めないので、版は vars の KIZAMI_RELEASE から取る。
@@ -104,15 +184,26 @@ export function createWorkerApp(env: WorkerEnv) {
     authPostOrigins: authPostAllowedOrigins([env.APP_BASE_URL, env.CORS_ORIGIN]),
     // テナントごとの利用上限(QUOTA_* の vars。不正な値は警告して無制限のまま)
     quotas: createTenantQuotas(parseWorkerQuotaEnv(flatEnv)),
-    // `signup` も渡さない = **セルフサインアップは常に無効**(`GET /signup/config` は
-    // `{ mode: "off" }`、他の /signup/* は 404)。システムメールの送信(nodemailer)が workerd で
-    // 動かず、確認フローが依存する db.transaction() も D1 では使えないため
-    // (docs/design/saas.md の実行基盤の節、docs/design/workers-d1.md)。
+    // `signup` は渡さない = **セルフサインアップは常に無効**(`GET /signup/config` は
+    // `{ mode: "off" }`、他の /signup/* は 404)。システムメールは Email Service で送れるようになったが、
+    // 確認フロー(テナントの作成)が db.transaction() に依存し D1 では使えない。加えてセルフサインアップは
+    // KIZAMI Cloud(Node で運用)のための機能で、Workers 配備で公開登録を受ける想定が無い
+    // (docs/design/saas.md の実行基盤の節、docs/design/workers-d1.md「メール」)。
     //
-    // `notify` は渡さない: Workers には nodemailer が無い(node:net 依存)ため
-    // POST /settings/notifications/test の SMTP テスト送信は 503 になる。fetch ベースの
-    // メール API を使う SmtpSendFn を1本書けば差し込めるが v1.0 時点では未実装
-    // (@kizami/notify 側の変更は不要 — docs/design/workers-d1.md「今後の課題」)。
+    // テナントの SMTP(通知チャネルのメール、POST /settings/notifications/test のテスト送信)は
+    // `cloudflare:sockets` の SMTP クライアントで送る(buildWorkerOutbound)。SSRF ガードの検査も同じ依存に載る。
+    notify: outbound,
+    // 本人用のパスワード再設定・退会の申請のメールは D1 のトランザクション対応まで渡さない(D1_TRANSACTIONS_SUPPORTED)
+    ...(transactionalMailFlows && systemMail !== null
+      ? {
+          selfServiceReset: {
+            appBaseUrl: systemMail.appBaseUrl,
+            sendMail: systemMail.sendMail,
+            ...(turnstile !== null ? { turnstile } : {}),
+          },
+          tenantWithdrawalMail: { appBaseUrl: systemMail.appBaseUrl, sendMail: systemMail.sendMail },
+        }
+      : {}),
     //
     // buildEncryptorFromEnv / buildVapidFromEnv は Node 版では process.env を読む。
     // Workers では vars/secrets が env に平坦に入るので、そのまま渡せる
@@ -129,6 +220,8 @@ export function createWorkerApp(env: WorkerEnv) {
     oidc: {
       ...(env.APP_BASE_URL !== undefined ? { appBaseUrl: env.APP_BASE_URL } : {}),
       ...(env.OIDC_REDIRECT_URI !== undefined ? { redirectUri: env.OIDC_REDIRECT_URI } : {}),
+      // OIDC の discovery・トークン・JWKS の取得も、SSRF ガード有効時は同じ検査を通す(Node と同じ場所)
+      ...(outbound.tenantFetchImpl !== undefined ? { network: { fetchImpl: outbound.tenantFetchImpl } } : {}),
     },
   });
 
@@ -160,10 +253,9 @@ export interface ExecutionContextLike {
 /**
  * Cron Triggers の1回の起動(src/workers-cron.ts)。テストからも呼べるよう export する。
  *
- * - 依存は Node のワーカー(src/worker.ts)と同じ環境変数名から組み立てる: 暗号化鍵・VAPID・利用上限・エラー報告。
- *   SMTP の送信関数は無い(nodemailer は node:net 依存。メールのチャネルは組み立てられない = アプリ内・Webhook・
- *   プッシュだけ)。退会のメールも無い(システムメールの送信手段が無い)。SSRF ガード(OUTBOUND_*)も渡さない
- *   (Workers はプライベートアドレスに届かない — lib/outbound-policy.ts 末尾)
+ * - 依存は Node のワーカー(src/worker.ts)と同じ環境変数名から組み立てる: 暗号化鍵・VAPID・利用上限・エラー報告・
+ *   テナントの SMTP と SSRF ガード(buildWorkerOutbound — HTTP と同じ)・退会のメール(システムメール =
+ *   Email Service があるときだけ。再通知・完了のメールはトランザクションを使わないので D1 でも出せる)
  * - エラー報告の送信は撃ちっ放しなので、`ctx.waitUntil()` に登録して起動の終わりで打ち切られないようにする
  * - 1本でも失敗したら `noRetry()` してから投げる(Cron Events に失敗を残す。即時の再試行はさせない)。
  *   対応表に無い cron 式も同じ(何も走らせずに投げる)
@@ -182,15 +274,24 @@ export async function handleScheduled(controller: ScheduledControllerLike, env: 
   };
   const encryptor = buildEncryptorFromEnv(flatEnv);
   const quotas = createTenantQuotas(parseWorkerQuotaEnv(flatEnv));
+  const outbound = buildWorkerOutbound(env);
+  const systemMail = buildWorkerSystemMail(env);
+  const withdrawalMailer: TenantWithdrawalMailer | null =
+    systemMail !== null ? { appBaseUrl: systemMail.appBaseUrl, sendMail: systemMail.sendMail } : null;
+  // テナントの送り先への送信の依存(Node の worker.ts の notifyOutboundDeps と同じ形。保存時のチェッカーは要らない)
+  const sendDeps = {
+    smtpSendFn: outbound.smtpSendFn,
+    ...(outbound.tenantFetchImpl !== undefined ? { tenantFetchImpl: outbound.tenantFetchImpl } : {}),
+  };
 
   const result = await runWorkersCron({
     cron: controller.cron,
     scheduledTime: controller.scheduledTime,
     deps: {
       db,
-      personalChannelOptions: { quotas, encryptor, vapid: buildVapidFromEnv(flatEnv) },
-      notifyDeps: { quotas, encryptor },
-      withdrawalMailer: null,
+      personalChannelOptions: { ...sendDeps, quotas, encryptor, vapid: buildVapidFromEnv(flatEnv) },
+      notifyDeps: { ...sendDeps, quotas, encryptor },
+      withdrawalMailer,
       errorReporter: buildErrorReporterFromEnv(flatEnv, { release, runtime: "workerd", fetchFn: trackedFetch }),
     },
   });

@@ -15,6 +15,11 @@ declare module "cloudflare:test" {
     DB: D1DatabaseBinding;
     /** readD1Migrations() が読んだ packages/db/migrations/*.sql。 */
     TEST_MIGRATIONS: unknown;
+    /** Node 側の偽の SMTP サーバーのポートと、受けたメールを読む URL(test/workers/support/fake-smtp-server.ts) */
+    TEST_SMTP_PORT: number;
+    TEST_SMTP_INBOX_URL: string;
+    /** Email Service の send_email バインディング(miniflare のローカルのシミュレーション) */
+    EMAIL: unknown;
   };
 
   /** `main` に指定した Worker(src/workers.ts)を実際の fetch パイプライン経由で叩く。 */

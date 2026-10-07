@@ -15,6 +15,20 @@ API・DB スキーマの互換方針とアップグレード手順は
 
 ### Added
 
+- **Cloudflare Workers の配備でメールを送れる**(テナントの SMTP とシステムメールの両方)
+  ([docs/design/workers-d1.md](docs/design/workers-d1.md)「メール」)
+  - テナントの SMTP(通知のメール・管理者のテスト送信・定期スキャンの本人宛メール)を `cloudflare:sockets` の上の
+    自前の SMTP クライアントで送る。465 は最初から TLS、それ以外は STARTTLS、AUTH PLAIN / LOGIN。件名は RFC 2047、
+    本文は UTF-8 の base64、CRLF・dot-stuffing。STARTTLS の無いサーバーへ認証情報は送らない(Node より厳しい)。
+    **ポート 25 は Workers から使えない**(587 か 465)
+  - システムメール(運用者名義)を Cloudflare Email Service の `send_email` バインディングで送る
+    (`EMAIL` + `SYSTEM_MAIL_FROM` + `APP_BASE_URL`)。いま Workers で出るのは退会の再通知・削除の完了のメール。
+    本人用のパスワード再設定と退会の申請のメールは D1 のトランザクション対応を待つ(組み立て済みで、
+    `D1_TRANSACTIONS_SUPPORTED` を true にすれば点く)。セルフサインアップは Workers では無効のまま
+  - `OUTBOUND_*`(SSRF ガード)は Workers では名前と IP リテラルの検査だけ(Workers はプライベートアドレスへ届かない。
+    `OUTBOUND_DENY_CIDRS` は名前の解決先には効かない)
+  - 応答の後に走るメール送信(本人用の再設定・退会の申請)は、Workers では `waitUntil()` に載せる(Node は変わらない)
+
 - **Cloudflare Workers + D1 の配備で定期スキャンが動く**(Cron Triggers)。これまで Node のワーカー(BullMQ + Valkey)
   でしか走らなかった7本 — 打刻忘れ・36協定・有給の失効間近/年5日義務・シフト予実乖離・有給付与の予告・
   サインアップの掃除・退会テナントの再通知/物理削除 — を、Workers の `scheduled()` が同じ 15 分周期で走らせる
@@ -24,7 +38,7 @@ API・DB スキーマの互換方針とアップグレード手順は
     Node のワーカーの挙動・ログの文言は変わらない
   - スキャンの「今」は Cron の予定時刻(再試行・二重起動でも通知は1件)。退会テナントの物理削除は D1 では
     1文ずつの冪等なモード。失敗した回は Cron Events に失敗として残し、即時の再試行はさせない
-  - 通知はアプリ内・Webhook・プッシュ(Workers にはまだメールの送信手段が無い)。Cron を7本使うので
+  - 通知はアプリ内・メール(下の項目)・Webhook・プッシュ。Cron を7本使うので
     **Workers Paid が前提**。1 起動あたりの D1 のクエリ数(1000)が利用者数の実質の上限になる(数百人規模まで)
 
 - **システムメール(運用者名義のメール)を利用者の言語で送る**。これまで日本語のみだった5通 —

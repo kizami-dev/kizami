@@ -34,6 +34,7 @@ import {
 } from "@kizami/db";
 import type { AppEnv } from "../auth/middleware.js";
 import { requirePermission } from "../authz.js";
+import { waitUntilOf } from "../lib/after-response.js";
 import type { SystemMailSendFn } from "../lib/system-mail.js";
 import {
   createTenantExportStream,
@@ -117,9 +118,11 @@ export function createTenantWithdrawalRoutes(db: Database, deps: { mail: TenantW
       for (const { email: to, locale } of recipients) {
         // 宛先ごとにその人の言語で組み立てる(lib/tenant-withdrawal.ts の listWithdrawalNoticeRecipients)
         const mail = buildWithdrawalRequestedMail({ appBaseUrl: deps.mail.appBaseUrl, scheduledPurgeAt, locale });
-        void deps.mail.sendMail({ to, ...mail }).catch((err: unknown) => {
+        const sending = deps.mail.sendMail({ to, ...mail }).catch((err: unknown) => {
           console.error("tenant withdrawal: failed to send the request notice:", err);
         });
+        // Workers では応答の後に打ち切られないよう waitUntil に載せる(Node は null = 従来どおり投げっぱなし)
+        waitUntilOf(c)?.(sending);
       }
     }
 

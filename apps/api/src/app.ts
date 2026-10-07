@@ -129,7 +129,8 @@ export interface CreateAppDeps {
    * セルフサインアップ(KIZAMI Cloud、docs/design/saas.md)の設定。**省略 = 無効**(既定)で、
    * その場合 `GET /signup/config`(`{ mode: "off" }`)以外の /signup/* は 404 を返す。
    * node.ts が環境変数 SIGNUP_MODE ほかから lib/signup-config.ts の parseSignupEnv で組み立てて渡す。
-   * Workers エントリ(workers.ts)は常に渡さない(= 常に無効。nodemailer が動かないため)。
+   * Workers エントリ(workers.ts)は常に渡さない(= 常に無効。確認フローが D1 で使えない db.transaction() に依存し、
+   * KIZAMI Cloud は Node で運用するため — workers.ts のコメント)。
    */
   signup?: SignupDeps;
   /**
@@ -138,13 +139,14 @@ export interface CreateAppDeps {
    * `POST /password-resets` は 404 — セルフホストの体験を変えない。SIGNUP_MODE とは独立で、
    * node.ts がシステムメール(SYSTEM_SMTP_URL / SYSTEM_MAIL_FROM / APP_BASE_URL)が揃っているときだけ
    * lib/system-mail-config.ts の parseSystemMailEnv から組み立てて渡す。Workers エントリ(workers.ts)は
-   * 常に渡さない(= 常に無効。nodemailer が動かないため)。
+   * Email Service のシステムメールがあっても、D1 のトランザクション対応(D1_TRANSACTIONS_SUPPORTED)まで渡さない。
    */
   selfServiceReset?: SelfServiceResetDeps;
   /**
    * テナントの退会の申請を受け付けたときのメール(docs/design/tenant-withdrawal.md、2026-10-05)。
    * **省略 = メールを出さない**(画面の表示だけ)。node.ts がシステムメール(SYSTEM_SMTP_URL /
-   * SYSTEM_MAIL_FROM / APP_BASE_URL)が揃っているときだけ渡す。Workers エントリは渡さない。
+   * SYSTEM_MAIL_FROM / APP_BASE_URL)が揃っているときだけ渡す。Workers エントリは D1 のトランザクション対応まで渡さない
+   * (申請そのものが db.transaction() を使うため。workers.ts の D1_TRANSACTIONS_SUPPORTED)。
    */
   tenantWithdrawalMail?: TenantWithdrawalMailDeps;
 }
