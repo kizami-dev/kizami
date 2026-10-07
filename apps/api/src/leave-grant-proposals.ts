@@ -277,7 +277,9 @@ export async function runLeaveGrantProposalScan(
   options: RunLeaveGrantProposalScanOptions,
 ): Promise<RunLeaveGrantProposalScanResult> {
   const { nowMinutes, notifyDeps } = options;
-  const today = todayLocalDate(TZ_OFFSET_MINUTES_JST);
+  // 「今日」は壁時計ではなく渡された nowMinutes から求める(Node のワーカーでは同じ値。Workers の Cron は
+  // 予定時刻 scheduledTime を nowMinutes に渡すので、再試行でも同じ「今日」になる — workers-cron.ts)
+  const today = todayLocalDate(TZ_OFFSET_MINUTES_JST, nowMinutes);
   const horizon = addDays(today, PROPOSAL_LEAD_TIME_DAYS);
 
   const activeUsers = (await listActiveUsersWithHireDate(db)).filter(

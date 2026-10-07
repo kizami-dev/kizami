@@ -68,8 +68,8 @@ export function parseMonthParam(value: string | undefined): ParsedMonth | null {
   return { year, month };
 }
 
-/** 現在時刻をローカル日付 "YYYY-MM-DD" として返す(§5 有給休暇: asOf の既定値に使う)。 */
-export function todayLocalDate(tzOffsetMinutes: number): string {
-  const localMinutes = nowMinutes() + tzOffsetMinutes;
+/** 現在時刻(`atMinutes`、既定は壁時計)をローカル日付 "YYYY-MM-DD" として返す(§5 有給休暇: asOf の既定値に使う)。 */
+export function todayLocalDate(tzOffsetMinutes: number, atMinutes: number = nowMinutes()): string {
+  const localMinutes = atMinutes + tzOffsetMinutes;
   return dateFromEpochDay(Math.floor(localMinutes / MINUTES_PER_DAY));
 }

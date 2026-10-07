@@ -5,7 +5,7 @@
  * - 削除予定の時刻を過ぎたテナントを物理削除し(@kizami/db の purgeTenant)、完了のメールを送る
  *
  * 他のスキャン(reminders.ts 等)と同じ作法で、BullMQ にも Valkey にも依存しない関数として切り出し、
- * worker.ts の定期ジョブから呼ぶ。運用者 CLI の「今すぐ削除」(operator.ts の `tenant purge`)も
+ * worker.ts の定期ジョブ(Node)と workers-cron.ts の Cron Triggers(Workers + D1。`transactional: false`)から呼ぶ。運用者 CLI の「今すぐ削除」(operator.ts の `tenant purge`)も
  * 同じ `purgeWithdrawnTenant` を通る(メールの扱いも同じ)。
  *
  * ## メール(システムメールがある配備だけ)
@@ -102,7 +102,15 @@ export interface TenantWithdrawalScanResult {
  */
 export async function runTenantWithdrawalScan(
   db: Database,
-  params: { nowMinutes: number; mailer: TenantWithdrawalMailer | null },
+  params: {
+    nowMinutes: number;
+    mailer: TenantWithdrawalMailer | null;
+    /**
+     * 物理削除を1トランザクションで行うか(省略 = 既定の true。Node のワーカー)。Workers の Cron(D1)は false を渡す
+     * — D1 は `BEGIN` を拒否するため、テーブルごとに1文ずつ冪等に消す(@kizami/db の purgeTenant、src/workers-cron.ts)
+     */
+    transactional?: boolean;
+  },
 ): Promise<TenantWithdrawalScanResult> {
   const result: TenantWithdrawalScanResult = { remindedTenantIds: [], purgedTenantIds: [], failures: [] };
 
@@ -125,7 +133,12 @@ export async function runTenantWithdrawalScan(
 
   for (const tenant of await listTenantsDueForPurge(db, { now: params.nowMinutes })) {
     try {
-      const purged = await purgeWithdrawnTenant(db, { tenantId: tenant.id, nowMinutes: params.nowMinutes, mailer: params.mailer });
+      const purged = await purgeWithdrawnTenant(db, {
+        tenantId: tenant.id,
+        nowMinutes: params.nowMinutes,
+        mailer: params.mailer,
+        ...(params.transactional !== undefined ? { transactional: params.transactional } : {}),
+      });
       if (purged.status === "purged") result.purgedTenantIds.push(tenant.id);
     } catch (error) {
       result.failures.push({ tenantId: tenant.id, error });

@@ -26,65 +26,49 @@
  *
  * このファイルの責務は「BullMQ の repeatable job を定期実行し、スキャン本体(打刻忘れ
  * リマインド・36協定アラート・有給の失効間近/年5日義務アラート・シフト予実乖離・
- * 有給付与の予告)を呼ぶ」ことだけに限定する。
+ * 有給付与の予告・サインアップの掃除・退会テナントの処理)を呼ぶ」ことだけに限定する。
  * スキャン本体のロジック(検知条件・重複防止・通知作成)は runReminderScan /
  * runOvertimeAlertScan / runLeaveAlertScan 側にあり、BullMQ/Valkey に一切依存しない
- * (要件 §8: キュー層は差し替え可能な抽象。将来 Cloudflare Cron から直接呼ぶ Workers 版
- * エントリを追加する際、reminders.ts / overtime-alerts.ts / leave-alerts.ts は変更不要になる想定)。
+ * (要件 §8: キュー層は差し替え可能な抽象)。1本ずつの実行(個別の try/catch・ログ・心拍・エラー報告)は
+ * scheduled-jobs.ts の runScanJob にあり、Cloudflare Workers の Cron Triggers(workers-cron.ts)も
+ * 同じものを呼ぶ(2026-10-07。docs/design/workers-d1.md「定期スキャン」)。
  *
- * 3種類のスキャンは同じ repeatable job の中で順に呼ぶ(周期は共通でよい、要件上いずれも
+ * 7種類のスキャンは同じ repeatable job の中で順に呼ぶ(周期は共通でよい、要件上いずれも
  * 「定期スキャンで自己修復する」設計であり別ジョブに分ける必要はない)。ただし
- * どれか1つが例外を投げても他のスキャンを止めないよう、それぞれ個別に try/catch する。
+ * どれか1つが例外を投げても他のスキャンを止めない(runScanJob が投げない)。
  *
  * 通知チャネルは本人(user_notification_settings)ごとに組み立てる
  * (apps/api/src/lib/notification-channels.ts の buildPersonalChannels)。1回のジョブ実行内で
- * 同じユーザーが複数回(打刻忘れ・36協定の複数種別・有給の複数種別)対象になっても DB を
- * 都度読まないよう、`${tenantId}:${userId}:${category}` をキーにメモ化する(カテゴリの定義は
- * apps/api/src/lib/notification-preferences.ts に一元化。テナントの SMTP 接続情報自体は
- * buildPersonalChannels が呼ぶたびに tenant_notification_settings を読むため、テナント単位の
- * メモ化はしていない — 個人設定側と違って必須ではなく、実装の単純さを優先した判断点)。
+ * 同じユーザーが複数回対象になっても DB を都度読まないよう、scheduled-jobs.ts の
+ * createPersonalChannelResolver がメモ化する。
  */
 
 import { Queue, Worker } from "bullmq";
 import IORedis from "ioredis";
-import { recordWorkerHeartbeat } from "@kizami/db";
 import { migrateDb } from "@kizami/db/node";
-import type { NotificationChannel } from "@kizami/notify";
 import { buildEncryptorFromEnv } from "./lib/encryption.js";
 import { buildErrorReporterFromEnv } from "./lib/error-report.js";
 import { withStartupRetry } from "./lib/startup-retry.js";
 import { resolveRelease } from "./lib/version.js";
-import { buildPersonalChannels } from "./lib/notification-channels.js";
-import { resolveNotificationCategory } from "./lib/notification-preferences.js";
-import { runLeaveAlertScan } from "./leave-alerts.js";
-import { runLeaveGrantProposalScan } from "./leave-grant-proposals.js";
-import { runOvertimeAlertScan } from "./overtime-alerts.js";
 import { createTenantQuotas, parseQuotaEnv } from "./lib/tenant-quotas.js";
 import { buildNotifyOutboundDeps, buildOutboundGuardFromEnv } from "./lib/outbound-guard.js";
 import { nodemailerSendFn } from "./lib/smtp.js";
-import { runReminderScan } from "./reminders.js";
-import { runShiftVarianceAlertScan } from "./shift-variance-alerts.js";
-import { runPasswordResetRequestCleanup, runPendingSignupCleanup } from "./signup-cleanup.js";
 import { parseSystemMailEnv } from "./lib/system-mail-config.js";
 import { createSystemMailSender } from "./lib/system-mail.js";
-import { runTenantWithdrawalScan, type TenantWithdrawalMailer } from "./tenant-purge.js";
+import {
+  createPersonalChannelResolver,
+  runScanJob,
+  SCAN_JOB_ORDER,
+  SCAN_JOBS,
+  type ScanJobContext,
+  type ScanJobCounts,
+  type ScanJobName,
+} from "./scheduled-jobs.js";
+import type { TenantWithdrawalMailer } from "./tenant-purge.js";
 import { buildVapidFromEnv } from "./lib/web-push.js";
 
 const QUEUE_NAME = "kizami-reminders";
-
-/**
- * worker_heartbeats.job_name に使う識別子(= `/metrics` の `job` ラベル)。
- * 増減させたらここと docs/design/observability.md の一覧を揃えること。
- */
-const SCAN_JOBS = {
-  reminder: "reminder",
-  overtimeAlert: "overtime-alert",
-  leaveAlert: "leave-alert",
-  shiftVarianceAlert: "shift-variance-alert",
-  leaveGrantProposal: "leave-grant-proposal",
-  signupCleanup: "signup-cleanup",
-  tenantWithdrawal: "tenant-withdrawal",
-} as const;
+const LOG_PREFIX = "[kizami-reminders]";
 // このジョブは打刻忘れリマインドと36協定アラートの両方のスキャンを担う(周期は共通)。
 const SCHEDULER_ID = "kizami-notification-scan";
 const JOB_NAME = "kizami-notification-scan";
@@ -150,188 +134,39 @@ async function main(): Promise<void> {
     async () => {
       const nowMinutes = Math.floor(Date.now() / 60_000);
 
-      // 本人の個人チャネルを1回のジョブ実行内で使い回す(同一ユーザーが同じカテゴリの
-      // 通知で複数回対象になっても DB を何度も読まないためのメモ化)。3スキャンすべてが
-      // 同じキャッシュを共有する。キーは `${tenantId}:${userId}:${category}`
-      // (カテゴリの定義は lib/notification-preferences.ts に一元化 — 個人設定は
-      // カテゴリ単位で ON/OFF するため、同カテゴリ内の複数 type は同じ結果になる)。
-      const channelCache = new Map<string, Promise<NotificationChannel[]>>();
-      const resolveChannels = (tenantId: string, userId: string, notificationType: string): Promise<NotificationChannel[]> => {
-        const category = resolveNotificationCategory(notificationType);
-        const key = `${tenantId}:${userId}:${category}`;
-        let cached = channelCache.get(key);
-        if (!cached) {
-          cached = buildPersonalChannels(
-            db,
-            { tenantId, userId, notificationType },
-            { ...notifyOutboundDeps, encryptor, vapid, nowMinutes },
-          );
-          channelCache.set(key, cached);
-        }
-        return cached;
+      // 7本のスキャンを従来の順に1本ずつ走らせる。1本の失敗で他を止めない・心拍とエラー報告を残す・
+      // ログの文言は、すべて scheduled-jobs.ts の runScanJob が担う(Workers の Cron と共通。2026-10-07 に
+      // このファイルから挙動を変えずに移した)。本人の個人チャネルは1回のジョブ実行内で使い回す
+      // (createPersonalChannelResolver のメモ化。全スキャンが同じキャッシュを共有する)。
+      const ctx: ScanJobContext = {
+        db,
+        nowMinutes,
+        resolveChannels: createPersonalChannelResolver(db, { ...notifyOutboundDeps, encryptor, vapid, nowMinutes }),
+        notifyDeps: { ...notifyOutboundDeps, encryptor },
+        withdrawalMailer,
+        errorReporter,
+        logPrefix: LOG_PREFIX,
       };
-
-      /**
-       * スキャン1本の後始末(可観測性、docs/design/observability.md)。
-       *
-       * - 心拍を worker_heartbeats に書く(成功/失敗の累計は単調増加)。api の GET /metrics が読む
-       * - 失敗していればエラー報告(SENTRY_DSN 未設定なら no-op)。文脈はスキャン名だけを渡す
-       *   — 対象ユーザーやテナントは載せない(プライバシー: lib/error-report.ts 冒頭)
-       *
-       * 心拍の書き込み自体が失敗してもスキャンの成否には影響させない(観測のための書き込みで
-       * 業務処理を落とさない)。
-       */
-      const finishScan = async (jobName: string, err?: unknown): Promise<void> => {
-        if (err !== undefined) errorReporter.capture(err, { job: jobName });
-        try {
-          await recordWorkerHeartbeat(db, { jobName, nowMinutes, ok: err === undefined });
-        } catch (heartbeatErr) {
-          console.error(`[kizami-reminders] ${jobName} の心拍を記録できませんでした:`, heartbeatErr);
-        }
-      };
-
-      // 打刻忘れリマインドと36協定アラートは独立したスキャンとして順に走らせる。
-      // 片方が例外を投げても他方の実行を妨げないよう、それぞれ個別に try/catch する
-      // (要件: 「片方の失敗が他方を止めない」)。
-      let reminderScanned = 0;
-      let reminderCreated = 0;
-      try {
-        const result = await runReminderScan(db, { nowMinutes, resolveChannels });
-        reminderScanned = result.scannedUserCount;
-        reminderCreated = result.created.length;
-        console.log(
-          `[kizami-reminders] scanned ${result.scannedUserCount} active users, created ${result.created.length} notification(s)`,
-        );
-        await finishScan(SCAN_JOBS.reminder);
-      } catch (err) {
-        console.error("[kizami-reminders] missing-clock-out scan failed:", err);
-        await finishScan(SCAN_JOBS.reminder, err);
+      const counts = new Map<ScanJobName, ScanJobCounts>();
+      for (const job of SCAN_JOB_ORDER) {
+        counts.set(job, (await runScanJob(job, ctx)).counts);
       }
-
-      let overtimeScanned = 0;
-      let overtimeCreated = 0;
-      try {
-        const result = await runOvertimeAlertScan(db, { nowMinutes, resolveChannels });
-        overtimeScanned = result.scannedUserCount;
-        overtimeCreated = result.created.length;
-        console.log(
-          `[kizami-reminders] overtime-alert scan: scanned ${result.scannedUserCount} active users, created ${result.created.length} notification(s)`,
-        );
-        await finishScan(SCAN_JOBS.overtimeAlert);
-      } catch (err) {
-        console.error("[kizami-reminders] overtime-alert scan failed:", err);
-        await finishScan(SCAN_JOBS.overtimeAlert, err);
-      }
-
-      let leaveAlertScanned = 0;
-      let leaveAlertCreated = 0;
-      try {
-        const result = await runLeaveAlertScan(db, { nowMinutes, resolveChannels });
-        leaveAlertScanned = result.scannedUserCount;
-        leaveAlertCreated = result.created.length;
-        console.log(
-          `[kizami-reminders] leave-alert scan: scanned ${result.scannedUserCount} active users, created ${result.created.length} notification(s)`,
-        );
-        await finishScan(SCAN_JOBS.leaveAlert);
-      } catch (err) {
-        console.error("[kizami-reminders] leave-alert scan failed:", err);
-        await finishScan(SCAN_JOBS.leaveAlert, err);
-      }
-
-      // シフト予実乖離の日次通知(docs/design/shift-work.md 決定事項4)。このスキャンだけは
-      // 宛先が2系統あるため両方の依存を渡す: 管理者向け日次ダイジェストはテナント共有チャネル
-      // (notifyDeps)、本人向け通知(2026-08-24 追加)は他の3スキャンと同じ個人チャネル
-      // (resolveChannels = buildPersonalChannels)。
-      let shiftVarianceScanned = 0;
-      let shiftVarianceCreated = 0;
-      let shiftVarianceSelfCreated = 0;
-      try {
-        const result = await runShiftVarianceAlertScan(db, {
-          nowMinutes,
-          notifyDeps: { ...notifyOutboundDeps, encryptor },
-          resolveChannels,
-        });
-        shiftVarianceScanned = result.scannedUserCount;
-        shiftVarianceCreated = result.created.length;
-        shiftVarianceSelfCreated = result.createdSelf.length;
-        console.log(
-          `[kizami-reminders] shift-variance-alert scan: scanned ${result.scannedUserCount} active users, created ${result.created.length} manager notification(s) and ${result.createdSelf.length} personal notification(s)`,
-        );
-        await finishScan(SCAN_JOBS.shiftVarianceAlert);
-      } catch (err) {
-        console.error("[kizami-reminders] shift-variance-alert scan failed:", err);
-        await finishScan(SCAN_JOBS.shiftVarianceAlert, err);
-      }
-
-      // 有給付与の予告(docs/requirements.md §11、v0.7 フェーズ4)。宛先は「本人ではなく管理者
-      // (leave.grant.manage 保持者)+テナント共有 Webhook」だけなので(シフト予実乖離と違い
-      // 本人宛の系統を持たない)、resolveChannels ではなく notifyDeps のみを渡す。
-      let grantProposalScanned = 0;
-      let grantProposalCreated = 0;
-      try {
-        const result = await runLeaveGrantProposalScan(db, { nowMinutes, notifyDeps: { ...notifyOutboundDeps, encryptor } });
-        grantProposalScanned = result.scannedUserCount;
-        grantProposalCreated = result.created.length;
-        console.log(
-          `[kizami-reminders] leave-grant-proposal scan: scanned ${result.scannedUserCount} user(s) with hire date, created ${result.created.length} proposal(s)`,
-        );
-        await finishScan(SCAN_JOBS.leaveGrantProposal);
-      } catch (err) {
-        console.error("[kizami-reminders] leave-grant-proposal scan failed:", err);
-        await finishScan(SCAN_JOBS.leaveGrantProposal, err);
-      }
-
-      // 期限切れから7日以上経った未確認サインアップの掃除(セルフサインアップ、
-      // docs/design/saas.md)。パスワードハッシュを持つ行を長く残さないための削除で、通知は出さない。
-      // SIGNUP_MODE が off の配備でも pending_signups は空なので何も消えず、そのまま走らせてよい。
-      let signupCleanupDeleted = 0;
-      try {
-        const result = await runPendingSignupCleanup(db, { nowMinutes });
-        signupCleanupDeleted = result.deletedCount;
-        console.log(`[kizami-reminders] signup-cleanup: deleted ${result.deletedCount} stale pending signup(s)`);
-        // 本人用パスワード再設定の再送スロットル行(password_reset_requests)も同じ定期ジョブで掃除する。
-        const requests = await runPasswordResetRequestCleanup(db, { nowMinutes });
-        console.log(`[kizami-reminders] signup-cleanup: deleted ${requests.deletedCount} stale password reset request row(s)`);
-        await finishScan(SCAN_JOBS.signupCleanup);
-      } catch (err) {
-        console.error("[kizami-reminders] signup-cleanup failed:", err);
-        await finishScan(SCAN_JOBS.signupCleanup, err);
-      }
-
-      // 退会手続き中のテナントの再通知と、削除予定を過ぎたテナントの物理削除(docs/design/tenant-withdrawal.md)。
-      // 1テナントの失敗で他のテナントを止めない(runTenantWithdrawalScan が受け止める)が、1件でも失敗が
-      // あればジョブとしては失敗を記録する(次の回にもう一度試みる。削除は冪等)。
-      let withdrawalPurged = 0;
-      try {
-        const result = await runTenantWithdrawalScan(db, { nowMinutes, mailer: withdrawalMailer });
-        withdrawalPurged = result.purgedTenantIds.length;
-        // 出すのはテナント id だけ(名前は出さない)
-        console.log(
-          `[kizami-reminders] tenant-withdrawal: reminded ${result.remindedTenantIds.length} tenant(s), purged ${result.purgedTenantIds.length} tenant(s)${result.purgedTenantIds.length > 0 ? ` (${result.purgedTenantIds.join(", ")})` : ""}`,
-        );
-        for (const failure of result.failures) {
-          console.error(`[kizami-reminders] tenant-withdrawal failed for tenant ${failure.tenantId}:`, failure.error);
-        }
-        await finishScan(SCAN_JOBS.tenantWithdrawal, result.failures[0]?.error);
-      } catch (err) {
-        console.error("[kizami-reminders] tenant-withdrawal scan failed:", err);
-        await finishScan(SCAN_JOBS.tenantWithdrawal, err);
-      }
+      const of = (job: ScanJobName): ScanJobCounts => counts.get(job) ?? {};
 
       return {
-        scannedUserCount: reminderScanned,
-        createdCount: reminderCreated,
-        overtimeScannedUserCount: overtimeScanned,
-        overtimeCreatedCount: overtimeCreated,
-        leaveAlertScannedUserCount: leaveAlertScanned,
-        leaveAlertCreatedCount: leaveAlertCreated,
-        shiftVarianceScannedUserCount: shiftVarianceScanned,
-        shiftVarianceCreatedCount: shiftVarianceCreated,
-        shiftVarianceSelfCreatedCount: shiftVarianceSelfCreated,
-        leaveGrantProposalScannedUserCount: grantProposalScanned,
-        leaveGrantProposalCreatedCount: grantProposalCreated,
-        signupCleanupDeletedCount: signupCleanupDeleted,
-        tenantWithdrawalPurgedCount: withdrawalPurged,
+        scannedUserCount: of(SCAN_JOBS.reminder).scanned ?? 0,
+        createdCount: of(SCAN_JOBS.reminder).created ?? 0,
+        overtimeScannedUserCount: of(SCAN_JOBS.overtimeAlert).scanned ?? 0,
+        overtimeCreatedCount: of(SCAN_JOBS.overtimeAlert).created ?? 0,
+        leaveAlertScannedUserCount: of(SCAN_JOBS.leaveAlert).scanned ?? 0,
+        leaveAlertCreatedCount: of(SCAN_JOBS.leaveAlert).created ?? 0,
+        shiftVarianceScannedUserCount: of(SCAN_JOBS.shiftVarianceAlert).scanned ?? 0,
+        shiftVarianceCreatedCount: of(SCAN_JOBS.shiftVarianceAlert).created ?? 0,
+        shiftVarianceSelfCreatedCount: of(SCAN_JOBS.shiftVarianceAlert).createdSelf ?? 0,
+        leaveGrantProposalScannedUserCount: of(SCAN_JOBS.leaveGrantProposal).scanned ?? 0,
+        leaveGrantProposalCreatedCount: of(SCAN_JOBS.leaveGrantProposal).created ?? 0,
+        signupCleanupDeletedCount: of(SCAN_JOBS.signupCleanup).deleted ?? 0,
+        tenantWithdrawalPurgedCount: of(SCAN_JOBS.tenantWithdrawal).purged ?? 0,
       };
     },
     { connection },

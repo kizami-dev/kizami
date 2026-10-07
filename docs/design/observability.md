@@ -60,7 +60,7 @@ KIZAMI は「1社1インスタンスのセルフホスト」を前提にした�
 
 `job` ラベルの値は `reminder` / `overtime-alert` / `leave-alert` / `shift-variance-alert` /
 `leave-grant-proposal` / `signup-cleanup`(期限切れの未確認サインアップの掃除)/ `tenant-withdrawal`
-(退会したテナントの再通知と物理削除、[tenant-withdrawal.md](./tenant-withdrawal.md))の7つ(`apps/api/src/worker.ts` の `SCAN_JOBS`)。
+(退会したテナントの再通知と物理削除、[tenant-withdrawal.md](./tenant-withdrawal.md))の7つ(`apps/api/src/scheduled-jobs.ts` の `SCAN_JOBS`。Node のワーカーと Workers の Cron Triggers が共通に使う)。
 
 ### 1.4 カーディナリティの方針(重要)
 
@@ -263,7 +263,7 @@ DSN はサブパス配下の受け口(`https://key@relay.example.com/sentry/inge
 | --- | --- | --- |
 | `/metrics` | 出る | 出る(`METRICS_TOKEN` を `wrangler secret put`) |
 | プロセスメトリクス | RSS / uptime あり | **無し**(2行が消えるだけ) |
-| ワーカーの心拍 | `worker.ts` が書く | 定期スキャン自体が未実装([workers-d1.md](./workers-d1.md)) |
+| ワーカーの心拍 | `worker.ts` が書く | Cron Triggers の `scheduled()` が同じ表に書く(`job` ラベルも同じ。[workers-d1.md](./workers-d1.md)「定期スキャン」) |
 | エラー報告 | あり(タグ `runtime=node`) | あり(タグ `runtime=workerd`) |
 | リリース版 | ルートの `package.json` から読む | `KIZAMI_RELEASE`(vars)。未設定なら `unknown` |
 

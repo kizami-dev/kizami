@@ -41,7 +41,8 @@
  * なので何度流しても同じ結果になる(冪等)。tenants の行は最後に消すので、途中で止まったテナントは
  * 「退会手続き中」のまま残り、再実行(定期ジョブの次の回、または運用者 CLI)で続きから完了する。
  * D1 の `batch()`(暗黙のトランザクション)にまとめる案は採らない: node-postgres に batch が無く
- * 実装が2系統になるうえ、削除は Workers のエントリからは走らない(定期ジョブも運用者 CLI も Node)。
+ * 実装が2系統になるため。Workers + D1 の配備では Cron Triggers の定期ジョブ(apps/api/src/workers-cron.ts)が
+ * このモードで消す(2026-10-07)。
  *
  * テーブル内の自己参照(punch_events.supersedes_id・departments.parent_id・shift_days.supersedes_id)は、
  * 同じテナントの行を1文で全部消すので問題にならない(SQLite も PostgreSQL も、NO ACTION の外部キーは
