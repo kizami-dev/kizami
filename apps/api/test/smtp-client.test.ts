@@ -1,7 +1,9 @@
 /**
  * Workers のテナント SMTP の状態機械(src/lib/smtp-client.ts)を、偽の接続(台本どおりに答える SMTP サーバー)で検査する。
  *
- * 実際の TCP(`cloudflare:sockets`)を通す確認は workerd レグ(test/workers/mail.test.ts)。ここでは手順の分岐
+ * 実際の TCP(`cloudflare:sockets`)を通す確認は workerd レグ(test/workers/mail.test.ts)だが、そこで通るのは
+ * **平文・AUTH なしの経路だけ**。465 の暗黙 TLS と STARTTLS(`startTls()` への昇格・昇格後の読み書き・閉じ方)を
+ * 実際のソケットで通すテストは無く、手で確かめる(docs/design/workers-d1.md「テナントの SMTP」)。ここでは手順の分岐
  * — 465 の暗黙 TLS / STARTTLS / AUTH PLAIN・LOGIN / 平文の拒否 / HELO への後退 / 応答の分割・複数行 /
  * 失敗の段階 / 時間切れ / 切断 — を見る。
  */

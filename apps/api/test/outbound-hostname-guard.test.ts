@@ -69,4 +69,23 @@ describe("createHostnameOutboundGuard", () => {
     await send({ host: "smtp.example.com", port: 587, from: "a@example.com" }, msg);
     expect(sent.map((c) => c.host)).toEqual(["smtp.example.com"]);
   });
+
+  it("SMTP: 点区切りの十進数以外の IPv4 の書き方も正規化してから検査し、正規化した値で接続する(2026-10-08 のレビュー)", async () => {
+    // 203.0.113.10 = 3405803786 = 0xcb.0x0.0x71.0xa、127.0.0.1 = 2130706433 = 127.1 = 0x7f.0.0.1
+    const { guard } = guardFrom({ OUTBOUND_BLOCK_PRIVATE: "true", OUTBOUND_DENY_CIDRS: "203.0.113.10/32" });
+    const sent: SmtpChannelConfig[] = [];
+    const send = guard.wrapSmtpSend(async (config) => {
+      sent.push(config);
+    });
+    const msg: NotificationMessage = { to: { email: "a@example.org" }, title: "t", body: "b" };
+    for (const host of ["2130706433", "127.1", "0x7f.0.0.1", "0x7F000001", "3405803786", "0xcb.0x0.0x71.0xa", "203.0.113.10."]) {
+      await expect(send({ host, port: 587, from: "a@example.com" }, msg), host).rejects.toBeInstanceOf(OutboundHostBlockedError);
+      expect((await guard.checkHost(host)).ok, host).toBe(false);
+    }
+    expect(sent).toHaveLength(0);
+    // 先頭が 0 の各部は 8 進(010.0.0.1 = 8.0.0.1)— 拒否の対象外なので通るが、接続するのは正規化した値
+    await send({ host: "010.0.0.1", port: 587, from: "a@example.com" }, msg);
+    await send({ host: "SMTP.Example.COM.", port: 587, from: "a@example.com" }, msg);
+    expect(sent.map((c) => c.host)).toEqual(["8.0.0.1", "smtp.example.com"]);
+  });
 });

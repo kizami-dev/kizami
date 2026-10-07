@@ -46,10 +46,29 @@ export interface HostnameOutboundGuard extends OutboundChecker {
   wrapSmtpSend(inner: SmtpSendFn): SmtpSendFn;
 }
 
-/** 名前・IP リテラルだけで決まる検査。 */
-function checkHostOnly(policy: OutboundPolicy, host: string): OutboundCheckResult {
+/**
+ * ホスト名を、接続の側が解釈するのと同じ形にそろえる(null = 不正)。
+ *
+ * 判断点(2026-10-08 のレビュー): `2130706433`・`127.1`・`0x7f.0.0.1`・`010.0.0.1` のような点区切りの十進数以外の
+ * IPv4 の書き方は、`parseIp` には IP に見えず名前として素通りするが、接続の側(workerd の名前の解釈)は IP として
+ * 扱いうる。fetch の経路は `new URL()` がこれらを正規の形に直してから検査しているので、SMTP の経路も同じく
+ * WHATWG URL のホストの解釈に通してそろえ、**検査した形と同じ値で接続する**(`wrapSmtpSend` が差し替える)。
+ */
+export function canonicalHost(host: string): string | null {
   const h = normalizeHost(host);
-  if (h === "") return { ok: false, reason: "invalid" };
+  if (h === "") return null;
+  if (parseIp(h) !== null) return h;
+  try {
+    return normalizeHost(new URL(`http://${h.includes(":") ? `[${h}]` : h}/`).hostname);
+  } catch {
+    return null;
+  }
+}
+
+/** 名前・IP リテラルだけで決まる検査(正規化したホストで判定する)。 */
+function checkHostOnly(policy: OutboundPolicy, host: string): OutboundCheckResult {
+  const h = canonicalHost(host);
+  if (h === null) return { ok: false, reason: "invalid" };
   if (parseIp(h) !== null) return policy.checkAddress(h, h);
   return policy.checkHostname(h);
 }
@@ -85,7 +104,8 @@ export function createHostnameOutboundGuard(policy: OutboundPolicy, options: { f
       return async (config, msg) => {
         const verdict = checkHostOnly(policy, config.host);
         if (!verdict.ok) throw new OutboundHostBlockedError(normalizeHost(config.host), verdict.reason);
-        return inner(config, msg);
+        // 検査したのと同じ正規化済みの値で接続する(checkHostOnly が ok なら null にはならない)
+        return inner({ ...config, host: canonicalHost(config.host) ?? config.host }, msg);
       };
     },
   };
