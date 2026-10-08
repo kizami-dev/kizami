@@ -98,18 +98,18 @@ export interface WorkerEnv {
 }
 
 /**
- * D1 で `db.transaction()` が使えるか(docs/design/workers-d1.md「D1 で動かないもの」)。
+ * 本人用のパスワード再設定と退会の申請の書き込みが D1 で動くか(docs/design/workers-d1.md「D1 での複数文の書き込み」)。
  *
- * **false の間は、システムメールがあっても本人用のパスワード再設定と退会の申請のメールを createApp に渡さない**。
- * どちらの経路もトランザクションを使うので D1 では失敗し、渡すと画面に「パスワードを忘れた」が出るのに
- * 誰も再設定できない(応答の後の処理がログに失敗を残すだけ)状態になる。D1 のトランザクション対応が入ったら
- * **ここを true にするだけで**、組み立て済みのシステムメール(Email Service)がそのまま点く
- * (応答の後のメールは lib/after-response.ts が waitUntil に載せる)。
+ * false の間は、システムメールがあってもこの2つのメールを createApp に渡さない(書き込みが D1 で失敗するのに
+ * 画面に「パスワードを忘れた」が出る状態を避けるため)。2026-10-08 に両方の書き込みが `db.transaction()` から
+ * atomic plan(`batch()`。docs/design/d1-atomic-writes.md)へ移ったので **true**。名前は当時のまま
+ * (テストの差し替え口 `d1TransactionsSupported` と対で残す)。組み立て済みのシステムメール(Email Service)が点き、
+ * 応答の後のメールは lib/after-response.ts が waitUntil に載せる。
  *
  * セルフサインアップはこのフラグと関係なく Workers では常に無効(下の createWorkerApp のコメント)。
- * Cron の退会の再通知・削除の完了のメールはトランザクションを使わないので、このフラグを待たずに出る。
+ * Cron の退会の再通知・削除の完了のメールは、このフラグと関係なく出る。
  */
-export const D1_TRANSACTIONS_SUPPORTED = false;
+export const D1_TRANSACTIONS_SUPPORTED = true;
 
 /** 外向きの通知の依存(createApp の `notify` と Cron に渡す)。 */
 interface WorkerOutboundDeps {
@@ -185,15 +185,15 @@ export function createWorkerApp(env: WorkerEnv, options: { d1TransactionsSupport
     // テナントごとの利用上限(QUOTA_* の vars。不正な値は警告して無制限のまま)
     quotas: createTenantQuotas(parseWorkerQuotaEnv(flatEnv)),
     // `signup` は渡さない = **セルフサインアップは常に無効**(`GET /signup/config` は
-    // `{ mode: "off" }`、他の /signup/* は 404)。システムメールは Email Service で送れるようになったが、
-    // 確認フロー(テナントの作成)が db.transaction() に依存し D1 では使えない。加えてセルフサインアップは
-    // KIZAMI Cloud(Node で運用)のための機能で、Workers 配備で公開登録を受ける想定が無い
+    // `{ mode: "off" }`、他の /signup/* は 404)。確認フロー(テナントの作成)の書き込みは 2026-10-08 に
+    // atomic plan へ移って D1 でも動くが、セルフサインアップは KIZAMI Cloud(Node で運用)のための機能で、
+    // Workers 配備で公開登録を受ける想定が無いので点けない
     // (docs/design/saas.md の実行基盤の節、docs/design/workers-d1.md「メール」)。
     //
     // テナントの SMTP(通知チャネルのメール、POST /settings/notifications/test のテスト送信)は
     // `cloudflare:sockets` の SMTP クライアントで送る(buildWorkerOutbound)。SSRF ガードの検査も同じ依存に載る。
     notify: outbound,
-    // 本人用のパスワード再設定・退会の申請のメールは D1 のトランザクション対応まで渡さない(D1_TRANSACTIONS_SUPPORTED)
+    // 本人用のパスワード再設定・退会の申請のメール(D1_TRANSACTIONS_SUPPORTED が true で、システムメールがあるとき)
     ...(transactionalMailFlows && systemMail !== null
       ? {
           selfServiceReset: {

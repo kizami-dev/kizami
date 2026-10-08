@@ -14,6 +14,7 @@ API・DB スキーマの互換方針とアップグレード手順は
 ## [Unreleased]
 
 ### Added
+- **Workers + D1 の配備で、締め済みの月に影響する承認とセルフサインアップを除く書き込みがすべて動く**ようになった(atomic plan への移行の完了)。本人用のパスワード再設定と退会の申請のメール(Cloudflare Email Service)も有効になる。締め済みの月に影響する承認は D1 では 409 `amend_unsupported_on_d1`(docs/design/workers-d1.md)
 
 - **Cloudflare Workers の配備でメールを送れる**(テナントの SMTP とシステムメールの両方)
   ([docs/design/workers-d1.md](docs/design/workers-d1.md)「メール」)

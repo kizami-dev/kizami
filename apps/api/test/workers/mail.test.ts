@@ -7,8 +7,8 @@
  * - ポート 25 は Workers が塞いでいるので、接続の前に分かりやすいエラーで断る
  * - システムメール: miniflare がローカルでシミュレートする Email Service の `send_email` バインディング
  *   (`EMAIL`)で、Cron の退会の再通知を送る。バインディングの呼び出しは包んで記録する
- * - 本人用のパスワード再設定は D1 のトランザクション対応まで無効(D1_TRANSACTIONS_SUPPORTED)。
- *   フラグを立てれば同じ組み立てで有効になる
+ * - 本人用のパスワード再設定は、システムメールがあり D1_TRANSACTIONS_SUPPORTED(2026-10-08 から既定 true —
+ *   書き込みが atomic plan で D1 でも動く)のときに有効。フラグを下ろせば無効
  *
  * TLS(465 / STARTTLS)と AUTH の分岐は Node の test/smtp-client.test.ts が偽の接続で見る(ここで TLS の
  * 証明書を用意しないため)。
@@ -229,13 +229,13 @@ describe("system mail over the Email Service binding", () => {
     ]);
   });
 
-  it("本人用のパスワード再設定は D1 のトランザクション対応まで無効、フラグを立てれば同じ組み立てで有効", async () => {
+  it("本人用のパスワード再設定は既定で有効(システムメールがあるとき)、フラグを下ろせば無効", async () => {
     const { mailEnv } = recordingEnv();
     const config = async (app: ReturnType<typeof createWorkerApp>) =>
       (await app.fetch(new Request(`${ORIGIN}/password-resets/config`), mailEnv as never, createExecutionContext() as never)).json();
-    expect(await config(createWorkerApp(mailEnv))).toEqual({ selfService: false });
-    expect(await config(createWorkerApp(mailEnv, { d1TransactionsSupported: true }))).toEqual({ selfService: true });
-    // システムメールが無ければフラグを立てても無効
-    expect(await config(createWorkerApp(testEnv, { d1TransactionsSupported: true }))).toEqual({ selfService: false });
+    expect(await config(createWorkerApp(mailEnv))).toEqual({ selfService: true });
+    expect(await config(createWorkerApp(mailEnv, { d1TransactionsSupported: false }))).toEqual({ selfService: false });
+    // システムメールが無ければ無効
+    expect(await config(createWorkerApp(testEnv))).toEqual({ selfService: false });
   });
 });

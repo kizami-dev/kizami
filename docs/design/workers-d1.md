@@ -16,58 +16,37 @@ KIZAMI の HTTP API は **Node(既定)と Cloudflare Workers(workerd)の両方�
 | 集計エンジン(`@kizami/engine`、Temporal 経由) | ✅ | ✅(polyfill) |
 | 秘密情報の暗号化(`@kizami/crypto`, AES-256-GCM) | ✅ | ✅ |
 | 通知の組み立て(`@kizami/notify`) | ✅ | ✅ |
-| **トランザクションを使う書き込み**(招待・パスワード再設定・本人によるパスワード変更・修正申請の承認・締め・休暇申請・Slack 連携) | ✅ | ❌ **未対応**(下記) |
+| 複数文をまとめて書く操作(招待・パスワード再設定と変更・2FA・メンバー管理・修正/休暇/免除の承認と却下・有給付与・締め・退会・Slack 連携) | ✅ | ✅ atomic plan(`batch()`)。**締め済みの月に影響する承認だけは 409 `amend_unsupported_on_d1`**(下記) |
 | テナントの SMTP(通知のメール・管理者のテスト送信) | ✅ nodemailer | ✅ `cloudflare:sockets` の自前の SMTP クライアント(465 / STARTTLS、**ポート 25 は不可**。下記「メール」) |
 | システムメール(運用者名義) | ✅ `SYSTEM_SMTP_URL`(nodemailer) | ✅ Cloudflare Email Service の `send_email` バインディング(下記「メール」) |
-| システムメールを使う画面の流れ(本人用のパスワード再設定・退会の申請のメール) | ✅ | ❌ トランザクションに依存(送信手段は組み立て済みで、D1 の対応が入れば `D1_TRANSACTIONS_SUPPORTED` 1行で点く) |
-| セルフサインアップ | ✅(KIZAMI Cloud) | ❌ 常に無効(トランザクションに依存 + Workers で公開登録を受ける想定が無い) |
+| システムメールを使う画面の流れ(本人用のパスワード再設定・退会の申請のメール) | ✅ | ✅(`D1_TRANSACTIONS_SUPPORTED`、2026-10-08 から有効) |
+| セルフサインアップ | ✅(KIZAMI Cloud) | ❌ 常に無効(書き込みは D1 でも動くが、Workers で公開登録を受ける想定が無い) |
 | Webhook / Slack 通知(fetch ベース) | ✅ | ✅ |
 | Web Push | ✅ | ✅(WebCrypto のみ) |
 | 定期スキャン(打刻忘れ・36協定・有給の失効間近/年5日・シフト乖離・有給付与の予告・サインアップの掃除・退会テナントの再通知/物理削除) | ✅ BullMQ + Valkey | ✅ Cron Triggers(**Workers Paid が前提**。下記「定期スキャン」) |
 | 定期スキャンが送る通知 | アプリ内・メール・Webhook・プッシュ | アプリ内・メール(テナントの SMTP)・Webhook・プッシュ。退会の再通知・削除の完了のメール(システムメール)も出る |
 | SSRF ガード(`OUTBOUND_*`) | ✅ 名前を解決して検査した IP に接続 | △ 名前と IP リテラルだけの検査(プライベートアドレスには元々届かない。下記「メール」) |
 
-つまり **Workers 配備は「読み取りと打刻が中心の API」+「定期スキャンによる通知(メールを含む)」までが動作保証範囲**で、
-承認ワークフローを含むフル機能の配備は Node(Docker Compose / Helm)を使う。
+つまり **Workers 配備は、締め済みの月に影響する承認とセルフサインアップを除き、Node と同じ機能が動く**(2026-10-08 時点)。
+締め済みの月に影響する承認(amend)が要る運用は、第2段(atomic plan で月次を再計算する重ね合わせ)が入るまで Node を使う。
 
-## D1 で動かないもの: 明示トランザクション
+## D1 での複数文の書き込み
 
-D1 は `BEGIN TRANSACTION` / `SAVEPOINT` を拒否する。実際に返るエラーはこれ:
+D1 は `BEGIN TRANSACTION` / `SAVEPOINT` を拒否するので、drizzle の `db.transaction(async (tx) => …)` は D1 では必ず失敗する。
+2026-10-07〜08 に、複数文をまとめて書く経路を **atomic plan**(D1・SQLite は `batch()`、PostgreSQL は本物のトランザクション。
+条件は SQL のガードで表す)へ移した。設計・ガードの作り・上限・経路ごとの表は [D1 での原子的な書き込み](./d1-atomic-writes.md)。
 
-```
-To execute a transaction, please use the state.storage.transaction() or
-state.storage.transactionSync() APIs instead of the SQL BEGIN TRANSACTION or
-SAVEPOINT statements.
-```
+`db.transaction()` が残っているのは次だけ:
 
-drizzle の `db.transaction(async (tx) => …)` は内部で `begin` を発行するため、D1 では必ず
-失敗する。KIZAMI で `db.transaction()` を使っているのは次の経路:
-
-| 場所 | 用途 |
+| 場所 | D1 での扱い |
 | --- | --- |
-| `packages/db/src/queries/invitations.ts` | 招待の発行・受諾(ユーザー作成 + 権限付与 + 監査ログ) |
-| `packages/db/src/queries/password-resets.ts` | パスワード再設定トークンの発行・使用 |
-| `packages/db/src/queries/permissions.ts` | 権限プリセットの割当 |
-| `packages/db/src/queries/slack.ts` | Slack ユーザー連携 |
-| `apps/api/src/routes/corrections.ts` | 修正申請の承認(打刻の supersede + 状態更新 + 監査ログ) |
-| `apps/api/src/routes/closings.ts` | 月次締め・締め解除 |
-| `apps/api/src/routes/leave.ts` | 休暇申請の承認・取消 |
-| `apps/api/src/routes/members.ts` | メンバーの停止・再開 |
-| `apps/api/src/routes/auto-break-waivers.ts` | 自動休憩控除の免除申請 |
-| `apps/api/src/routes/tenant-withdrawal.ts` | テナントの退会の申請・取り消し(全データのエクスポートは動く) |
-| `packages/db/src/queries/tenant-purge.ts` | テナントの物理削除(既定。`transactional: false` なら D1 でも1文ずつ冪等に動く — [tenant-withdrawal.md](./tenant-withdrawal.md)。Workers の Cron はこのモードで呼ぶ) |
+| `apps/api/src/routes/{corrections,leave,auto-break-waivers}.ts` の締め済み月の承認(amend) | 承認した内容を書いた直後の行から月次を再計算するので atomic plan にできない。D1 では**何も書かずに 409 `amend_unsupported_on_d1`**(`supportsInteractiveTransactions(db)` で判定)。第2段で、承認の内容をメモリ上で重ねて再計算する形にする |
+| `packages/db/src/atomic.ts` の PostgreSQL の実行 | D1 は通らない(`batch()` で実行する) |
+| `packages/db/src/queries/tenant-purge.ts` の既定 | D1(Workers の Cron)は `transactional: false`(1文ずつ冪等)で呼ぶ |
+| `packages/db/src/migrate-data.ts` | Node 専用の移行ツール |
 
-D1 が原子的な複数文実行に用意しているのは `batch()` だけで、drizzle の `db.transaction()` の
-ような命令的なコールバック API には自動変換できない。`batch()` へ書き換えると今度は
-node-postgres が `.batch()` を持たないため PostgreSQL レグが壊れる。したがって
-**v1.0 では「D1 配備ではこれらの経路が使えない」と明記する方針を採った**(2026-08-27 の判断)。
-
-テストでは `packages/db/test/support/db.ts` の `supportsTransactions` フラグで
-D1 レグから除外している(`describe.skipIf(!supportsTransactions)`)。将来 D1 が
-トランザクションを持つか、クエリ層を `batch()` ベースへ寄せたときに、このフラグを true に
-するだけで 34 件のテストが D1 でも走る。
-
-> 2026-10-07: `batch()` で原子的に書く仕組み(atomic plan)を入れ、招待の発行・受諾と月次締め・解除は D1 でも動くようになった。設計と残りの経路の移行手順は [D1 での原子的な書き込み](./d1-atomic-writes.md)。
+テストの `supportsTransactions`(`packages/db/test/support/db.ts`)で D1 から外しているのは、`createInvitationInTx` を
+`db.transaction()` の中で呼ぶ1件だけ。
 
 ## 定期スキャン(Cron Triggers、2026-10-07)
 
