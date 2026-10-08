@@ -14,9 +14,11 @@
  */
 
 import { and, asc, desc, eq, gt, isNull, lt, or, sql } from "drizzle-orm";
+import { AtomicPlan, runAtomic, type AtomicExecutor } from "../atomic.js";
 import type { Database, Transaction } from "../types.js";
 import { pendingSignups, signupInviteCodes, tenants, users } from "../schema/index.js";
 import { uuidv7 } from "../uuid.js";
+import { auditLogInsertQuery, type NewAuditLogInput } from "./audit.js";
 
 export type SignupInviteCode = typeof signupInviteCodes.$inferSelect;
 export type PendingSignup = typeof pendingSignups.$inferSelect;
@@ -95,7 +97,13 @@ export async function consumeSignupInviteCode(
   db: Database | Transaction,
   params: { id: string; nowMinutes: number },
 ): Promise<boolean> {
-  const rows = await db
+  const rows = await consumeSignupInviteCodeQuery(db, params);
+  return rows.length > 0;
+}
+
+/** consumeSignupInviteCode と同じ条件付き update ビルダを返す(実行しない。atomic plan 用)。 */
+function consumeSignupInviteCodeQuery(q: AtomicExecutor, params: { id: string; nowMinutes: number }) {
+  return q
     .update(signupInviteCodes)
     .set({ usedCount: sql`${signupInviteCodes.usedCount} + 1` })
     .where(
@@ -107,7 +115,6 @@ export async function consumeSignupInviteCode(
       ),
     )
     .returning({ id: signupInviteCodes.id });
-  return rows.length > 0;
 }
 
 // ---- pending_signups -------------------------------------------------------
@@ -186,17 +193,83 @@ export async function consumePendingSignup(
   db: Database | Transaction,
   params: { id: string; nowMinutes: number },
 ): Promise<PendingSignup | null> {
-  const [row] = await db
+  const [row] = await consumePendingSignupQuery(db, params);
+  return row ?? null;
+}
+
+/** consumePendingSignup と同じ条件付き update ビルダを返す(実行しない。atomic plan 用)。 */
+function consumePendingSignupQuery(q: AtomicExecutor, params: { id: string; nowMinutes: number }) {
+  return q
     .update(pendingSignups)
     .set({ consumedAt: params.nowMinutes })
     .where(and(eq(pendingSignups.id, params.id), isNull(pendingSignups.consumedAt), gt(pendingSignups.expiresAt, params.nowMinutes)))
     .returning();
-  return row ?? null;
 }
 
 /** 確認完了で作られたテナントを記録する。 */
 export async function setPendingSignupTenant(db: Database | Transaction, params: { id: string; tenantId: string }): Promise<void> {
   await db.update(pendingSignups).set({ tenantId: params.tenantId }).where(eq(pendingSignups.id, params.id));
+}
+
+export interface ConfirmPendingSignupInput {
+  /** 消費する pending_signups の id(呼び出し側がトークンから引いて期限を確認済み) */
+  pendingId: string;
+  /** pending に紐づく招待コード(open モードの申請なら null — 消費しない) */
+  inviteCodeId: string | null;
+  /** UTC エポック分 */
+  nowMinutes: number;
+  /** 作るテナントの id(`tenantStatements` が insert するもの。pending に記録する) */
+  tenantId: string;
+  /**
+   * テナント一式を作る文(実行先を受け取ってビルダを返す関数)の列。apps/api の
+   * `bootstrapTenantStatements` の出力をそのまま渡す。2つの claim の**後**に積まれる
+   */
+  tenantStatements: readonly ((q: AtomicExecutor) => unknown)[];
+  /** 一緒に書く監査ログ(`tenant.signup`) */
+  audit: NewAuditLogInput;
+}
+
+/** confirmPendingSignup の結果。失敗時は何も書かれていない(pending も招待コードも未消費のまま)。 */
+export type ConfirmPendingSignupResult =
+  | { ok: true }
+  | {
+      ok: false;
+      /** pending_unavailable = 消費済み・期限切れ(二重確認の負け側を含む)/ invite_code_unavailable = 招待コードが失効・期限切れ・上限 */
+      reason: "pending_unavailable" | "invite_code_unavailable";
+    };
+
+/**
+ * セルフサインアップの確認(POST /signup/verify/:token)の書き込みを1単位で行う:
+ * pending の消費 → 招待コードの消費 → テナント一式の作成 → pending へのテナント記録 → 監査ログ。
+ *
+ * 判断点(2026-10-08、D1 対応。docs/design/d1-atomic-writes.md #27): db.transaction() から atomic plan
+ * (src/atomic.ts)へ移した。claim が2つ連なるので、それぞれの直後にガードを置く:
+ *
+ * 1. pending の消費(未消費・未期限の条件付き UPDATE)→ ガード `signup.pending`
+ * 2. 招待コードの消費(失効・期限・`used_count < max_uses` の条件付き UPDATE)→ ガード `signup.invite_code`
+ *
+ * どちらのガードが落ちても計画全体が巻き戻る — テナント一式(約10文)は書かれず、2 の失敗では 1 の
+ * 消費も戻る(pending は未消費のまま残り、従来どおり別のコードの発行を待てる)。1 の失敗では 2 は
+ * 実行すらされない(D1 / SQLite はガードの文で batch が止まり、PostgreSQL は例外でロールバック)ので、
+ * **pending を取れなかった要求が招待コードを減らすことは無い**。同じトークンの同時確認は 1 で
+ * 片方だけが通り、同じコードの残り1枠を争う別々の pending は 2 で片方だけが通る。
+ */
+export async function confirmPendingSignup(db: Database, input: ConfirmPendingSignupInput): Promise<ConfirmPendingSignupResult> {
+  const plan = new AtomicPlan();
+  plan.add((q) => consumePendingSignupQuery(q, { id: input.pendingId, nowMinutes: input.nowMinutes }));
+  plan.guard("signup.pending");
+  const inviteCodeId = input.inviteCodeId;
+  if (inviteCodeId !== null) {
+    plan.add((q) => consumeSignupInviteCodeQuery(q, { id: inviteCodeId, nowMinutes: input.nowMinutes }));
+    plan.guard("signup.invite_code");
+  }
+  for (const statement of input.tenantStatements) plan.add(statement);
+  plan.add((q) => q.update(pendingSignups).set({ tenantId: input.tenantId }).where(eq(pendingSignups.id, input.pendingId)));
+  plan.add((q) => auditLogInsertQuery(q, input.audit));
+
+  const result = await runAtomic(db, plan);
+  if (result.ok) return { ok: true };
+  return { ok: false, reason: result.failedGuard === "signup.invite_code" ? "invite_code_unavailable" : "pending_unavailable" };
 }
 
 /**

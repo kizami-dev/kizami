@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
-import { migrateDb, supportsTransactions, type Database } from "./support/db.js";
+import { migrateDb, type Database } from "./support/db.js";
 import {
   createPasswordResetToken,
   findPasswordResetTokenByHash,
@@ -19,18 +19,17 @@ import { uuidv7 } from "../src/uuid.js";
 
 const DAY_MINUTES = 24 * 60;
 
-// D1 は明示トランザクション(BEGIN/COMMIT)を拒否するため、db.transaction() を通る
-// テストは D1 レグでは skip する(support/db.ts の supportsTransactions と
-// docs/design/workers-d1.md「D1 で動かないもの」を参照)
-describe.skipIf(!supportsTransactions)("password-resets", () => {
+// createPasswordResetToken / usePasswordResetToken は atomic plan(src/atomic.ts)で書くので
+// D1 レグでも走る(2026-10-08、docs/design/d1-atomic-writes.md #3・#4)
+describe("password-resets", () => {
   let db: Database;
   const tenantId = uuidv7();
   const adminId = uuidv7();
   let targetId: string;
 
   beforeEach(async () => {
-    // db.transaction() を伴うクエリ(createPasswordResetToken / usePasswordResetToken)を
-    // 複数回、通常SELECTと混ぜて呼ぶため、invitations.test.ts と同じ理由でファイルバックエンドにする。
+    // 書き込みの単位(SQLite は batch)を伴うクエリを複数回、通常SELECTと混ぜて呼ぶため、
+    // invitations.test.ts と同じ理由でファイルバックエンドにする。
     const dbPath = join(tmpdir(), `kizami-db-test-${randomUUID()}.db`);
     ({ db } = await migrateDb({ url: `file:${dbPath}` }));
     await db.insert(tenants).values({ id: tenantId, name: "Tenant A", createdAt: 0 });
@@ -195,6 +194,92 @@ describe.skipIf(!supportsTransactions)("password-resets", () => {
     expect(used[0]?.actorId).toBe(targetId);
     expect(used[0]?.target).toBe(`user:${targetId}`);
     expect(used[0]?.occurredAt).toBe(42);
+  });
+
+  // atomic plan への移行(2026-10-08、docs/design/d1-atomic-writes.md #4)で固定する性質。
+  // 3レグ(SQLite / PostgreSQL / D1)で走る。
+  describe("usePasswordResetToken on the atomic plan", () => {
+    async function snapshot() {
+      const cred = (await db.select().from(authCredentials).where(eq(authCredentials.userId, targetId)))[0];
+      const sessionRows = await db.select().from(sessions).where(eq(sessions.userId, targetId));
+      const logs = (await db.select().from(auditLogs).where(eq(auditLogs.tenantId, tenantId))).filter((l) => l.action === "password_reset.use");
+      return { cred, sessionRows, logs };
+    }
+
+    it("concurrent double use: exactly one wins; the password, sessions and audit log are written once, by the winner", async () => {
+      await createPasswordResetToken(db, { tenantId, userId: targetId, tokenHash: "hash-race", expiresAt: DAY_MINUTES, createdBy: adminId, createdAt: 0 });
+      await db.insert(sessions).values({ id: "session-race", tenantId, userId: targetId, createdAt: 0, expiresAt: DAY_MINUTES, revokedAt: null });
+
+      const results = await Promise.all([
+        usePasswordResetToken(db, { tokenHash: "hash-race", passwordHash: "hash-a", nowMinutes: 10 }),
+        usePasswordResetToken(db, { tokenHash: "hash-race", passwordHash: "hash-b", nowMinutes: 11 }),
+      ]);
+      const winners = results.filter((r) => r !== null);
+      expect(winners).toHaveLength(1);
+      const winnerAt = winners[0]!.passwordResetToken.usedAt;
+
+      const { cred, sessionRows, logs } = await snapshot();
+      // 勝った側のパスワード・時刻だけが残る(負けた側は資格情報を一切上書きしていない)
+      expect(cred?.passwordHash).toBe(winnerAt === 10 ? "hash-a" : "hash-b");
+      expect(cred?.updatedAt).toBe(winnerAt);
+      expect(sessionRows[0]?.revokedAt).toBe(winnerAt);
+      expect(logs).toHaveLength(1);
+      expect(logs[0]?.occurredAt).toBe(winnerAt);
+    });
+
+    it("a claim lost to a concurrent revoke writes nothing: password, sessions, other tokens and audit log untouched", async () => {
+      const token = await createPasswordResetToken(db, {
+        tenantId,
+        userId: targetId,
+        tokenHash: "hash-lost",
+        expiresAt: DAY_MINUTES,
+        createdBy: adminId,
+        createdAt: 0,
+      });
+      await db.insert(sessions).values({ id: "session-lost", tenantId, userId: targetId, createdAt: 0, expiresAt: DAY_MINUTES, revokedAt: null });
+
+      // usePasswordResetToken は最初にトークンを読む(この時点では有効)→ その間に取り消しが走る →
+      // claim が 0 行。SQLite / D1 では呼び出し順どおりに文が流れるので、必ずこの TOCTOU の経路を通る
+      const [used, revoked] = await Promise.all([
+        usePasswordResetToken(db, { tokenHash: "hash-lost", passwordHash: "attacker", nowMinutes: 10 }),
+        revokePasswordResetToken(db, { tenantId, id: token.id, revokedAt: 10 }),
+      ]);
+      expect([used !== null, revoked !== null].filter(Boolean)).toHaveLength(1);
+
+      const { cred, sessionRows, logs } = await snapshot();
+      if (revoked !== null) {
+        expect(cred?.passwordHash).toBe("old-hash");
+        expect(cred?.updatedAt).toBe(0);
+        expect(sessionRows[0]?.revokedAt).toBeNull();
+        expect(logs).toHaveLength(0);
+        expect((await findPasswordResetTokenByHash(db, "hash-lost"))?.usedAt).toBeNull();
+      } else {
+        expect(cred?.passwordHash).toBe("attacker");
+        expect(logs).toHaveLength(1);
+      }
+    });
+
+    it("a token that expires between the pre-check and the claim is not used (the claim re-checks expiry)", async () => {
+      await createPasswordResetToken(db, { tenantId, userId: targetId, tokenHash: "hash-edge", expiresAt: 100, createdBy: adminId, createdAt: 0 });
+      // nowMinutes = expiresAt は事前判定(expiresAt <= now)でも claim(expiresAt > now)でも弾かれる
+      expect(await usePasswordResetToken(db, { tokenHash: "hash-edge", passwordHash: "x", nowMinutes: 100 })).toBeNull();
+      expect((await snapshot()).cred?.passwordHash).toBe("old-hash");
+    });
+
+    it("a user without auth_credentials: throws, and nothing is written (the token stays unused, sessions and other tokens stay valid)", async () => {
+      const noCredId = uuidv7();
+      await db.insert(users).values({ id: noCredId, tenantId, email: "nocred@example.com", name: "NoCred", createdAt: 0 });
+      await createPasswordResetToken(db, { tenantId, userId: noCredId, tokenHash: "hash-nocred", expiresAt: DAY_MINUTES, createdBy: adminId, createdAt: 0 });
+      await db.insert(sessions).values({ id: "session-nocred", tenantId, userId: noCredId, createdAt: 0, expiresAt: DAY_MINUTES, revokedAt: null });
+
+      await expect(usePasswordResetToken(db, { tokenHash: "hash-nocred", passwordHash: "x", nowMinutes: 10 })).rejects.toThrow(
+        "auth_credentials not found",
+      );
+      expect((await findPasswordResetTokenByHash(db, "hash-nocred"))?.usedAt).toBeNull();
+      expect((await db.select().from(sessions).where(eq(sessions.id, "session-nocred")))[0]?.revokedAt).toBeNull();
+      const logs = (await db.select().from(auditLogs).where(eq(auditLogs.tenantId, tenantId))).filter((l) => l.action === "password_reset.use");
+      expect(logs).toHaveLength(0);
+    });
   });
 
   it("revokePasswordResetToken revokes a pending token, and a revoked/used one is not revocable again", async () => {

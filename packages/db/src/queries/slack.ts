@@ -10,6 +10,7 @@
  */
 
 import { and, eq, gt, isNull, or } from "drizzle-orm";
+import { AtomicPlan, runAtomic } from "../atomic.js";
 import type { Database } from "../types.js";
 import { slackLinkTokens, slackUserLinks, tenantSlackSettings } from "../schema/index.js";
 import { uuidv7 } from "../uuid.js";
@@ -109,20 +110,26 @@ export interface LinkSlackUserInput {
  * PK 側の競合は解決できても user_id 側のUNIQUE制約には触れられない)。そのため、事前に
  * 「同じslack_user_id」または「同じuser_id」を持つ既存行をすべて削除してから挿入する
  * (依頼: 1人が複数のSlackアカウントを紐付けない → 再連携は「最後に確定した組が勝つ」)。
- * トランザクションで行うのは削除と挿入の間に他のリクエストが割り込んで一時的に制約違反の
+ * 削除と挿入を1単位で行うのは、間に他のリクエストが割り込んで一時的に制約違反の
  * 状態になるのを避けるため。
+ *
+ * 判断点(2026-10-08、D1 対応。docs/design/d1-atomic-writes.md #8): 削除 → 挿入は途中の結果で
+ * 分岐しないので、db.transaction() から atomic plan(src/atomic.ts)へそのまま移した(ガード不要)。
  */
 export async function linkSlackUser(db: Database, input: LinkSlackUserInput): Promise<SlackUserLink> {
-  return db.transaction(async (tx) => {
-    await tx
+  const plan = new AtomicPlan();
+  plan.add((q) =>
+    q
       .delete(slackUserLinks)
       .where(
         and(
           eq(slackUserLinks.tenantId, input.tenantId),
           or(eq(slackUserLinks.slackUserId, input.slackUserId), eq(slackUserLinks.userId, input.userId)),
         ),
-      );
-    const [row] = await tx
+      ),
+  );
+  const inserted = plan.add((q) =>
+    q
       .insert(slackUserLinks)
       .values({
         tenantId: input.tenantId,
@@ -130,12 +137,15 @@ export async function linkSlackUser(db: Database, input: LinkSlackUserInput): Pr
         userId: input.userId,
         linkedAt: input.linkedAt,
       })
-      .returning();
-    if (!row) {
-      throw new Error("linkSlackUser: insert returned no row");
-    }
-    return row;
-  });
+      .returning(),
+  );
+  const result = await runAtomic(db, plan);
+  // ガードを積んでいないので ok: false にはならない
+  const row = result.ok ? result.get(inserted)[0] : undefined;
+  if (!row) {
+    throw new Error("linkSlackUser: insert returned no row");
+  }
+  return row;
 }
 
 export type SlackLinkToken = typeof slackLinkTokens.$inferSelect;

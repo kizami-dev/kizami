@@ -8,9 +8,12 @@
  */
 
 import { and, eq, isNull } from "drizzle-orm";
+import { AtomicPlan, chunkRowsForInsert, runAtomic, type AtomicExecutor } from "../atomic.js";
 import type { Database, Transaction } from "../types.js";
 import { userTotp, userTotpRecoveryCodes } from "../schema/index.js";
 import { uuidv7 } from "../uuid.js";
+import { auditLogInsertQuery, type NewAuditLogInput } from "./audit.js";
+import { notificationInsertIfAbsentQuery, type NewNotificationInput } from "./notifications.js";
 
 export type UserTotp = typeof userTotp.$inferSelect;
 export type UserTotpRecoveryCode = typeof userTotpRecoveryCodes.$inferSelect;
@@ -82,15 +85,24 @@ export async function updateUserTotpLastUsedCounter(
  * 残しておくと次に有効化したときに古い(既に本人の手元にない)コードが混ざるため。
  */
 export async function deleteUserTotp(db: Database | Transaction, params: { tenantId: string; userId: string }): Promise<void> {
-  await db
-    .delete(userTotpRecoveryCodes)
-    .where(and(eq(userTotpRecoveryCodes.tenantId, params.tenantId), eq(userTotpRecoveryCodes.userId, params.userId)));
-  await db.delete(userTotp).where(and(eq(userTotp.tenantId, params.tenantId), eq(userTotp.userId, params.userId)));
+  for (const statement of deleteUserTotpQueries(db, params)) await statement;
+}
+
+/** deleteUserTotp と同じ delete ビルダ2本(リカバリコード → TOTP 行)を返す(実行しない。atomic plan 用)。 */
+function deleteUserTotpQueries(q: AtomicExecutor, params: { tenantId: string; userId: string }) {
+  return [
+    q
+      .delete(userTotpRecoveryCodes)
+      .where(and(eq(userTotpRecoveryCodes.tenantId, params.tenantId), eq(userTotpRecoveryCodes.userId, params.userId))),
+    q.delete(userTotp).where(and(eq(userTotp.tenantId, params.tenantId), eq(userTotp.userId, params.userId))),
+  ] as const;
 }
 
 /**
  * リカバリコードを入れ替える(既存を全削除して新しいハッシュ群を入れる)。
  * 有効化時と再生成時の両方で使う。使用済みの行も消える(= 古いコードは一切残らない)。
+ * 単独では1単位にならない(呼び出し側のトランザクションに乗せる用)。API の有効化・再生成は
+ * atomic plan 版の `enableUserTotpWithRecoveryCodes` / `regenerateRecoveryCodes` を使う。
  */
 export async function replaceRecoveryCodes(
   db: Database | Transaction,
@@ -99,17 +111,144 @@ export async function replaceRecoveryCodes(
   await db
     .delete(userTotpRecoveryCodes)
     .where(and(eq(userTotpRecoveryCodes.tenantId, params.tenantId), eq(userTotpRecoveryCodes.userId, params.userId)));
-  if (params.codeHashes.length === 0) return;
-  await db.insert(userTotpRecoveryCodes).values(
-    params.codeHashes.map((codeHash) => ({
-      id: uuidv7(),
-      tenantId: params.tenantId,
-      userId: params.userId,
-      codeHash,
-      consumedAt: null,
-      createdAt: params.createdAt,
-    })),
+  for (const chunk of chunkRowsForInsert(userTotpRecoveryCodes, recoveryCodeRows(params))) {
+    await db.insert(userTotpRecoveryCodes).values(chunk);
+  }
+}
+
+function recoveryCodeRows(params: { tenantId: string; userId: string; codeHashes: string[]; createdAt: number }) {
+  return params.codeHashes.map((codeHash) => ({
+    id: uuidv7(),
+    tenantId: params.tenantId,
+    userId: params.userId,
+    codeHash,
+    consumedAt: null,
+    createdAt: params.createdAt,
+  }));
+}
+
+/**
+ * リカバリコードの入れ替え(全削除 → 挿入)を計画に積む。挿入は D1 のバインド変数上限
+ * (1文 100 個)に収まるよう `chunkRowsForInsert` で割る(6 列 → 16 行で1文。通常は 10 本で1文)。
+ */
+function addReplaceRecoveryCodes(
+  plan: AtomicPlan,
+  params: { tenantId: string; userId: string; codeHashes: string[]; createdAt: number },
+): void {
+  plan.add((q) =>
+    q
+      .delete(userTotpRecoveryCodes)
+      .where(and(eq(userTotpRecoveryCodes.tenantId, params.tenantId), eq(userTotpRecoveryCodes.userId, params.userId))),
   );
+  for (const chunk of chunkRowsForInsert(userTotpRecoveryCodes, recoveryCodeRows(params))) {
+    plan.add((q) => q.insert(userTotpRecoveryCodes).values(chunk));
+  }
+}
+
+export interface EnableUserTotpWithRecoveryCodesInput {
+  tenantId: string;
+  userId: string;
+  /** UTC エポック分。enabled_at・リカバリコードの created_at・監査ログの occurred_at に使う */
+  enabledAt: number;
+  /** 確認に使ったコードのカウンタ(以後のリプレイ防止の基準) */
+  lastUsedCounter: number;
+  /** 新しいリカバリコードの SHA-256 hex */
+  codeHashes: string[];
+}
+
+/**
+ * 2FA の有効化(POST /auth/totp/enable): セットアップ中の行の有効化・リカバリコードの置き換え・
+ * 監査ログ `auth.totp.enable` を1単位で書く(src/atomic.ts の atomic plan。D1 でも動く)。
+ * 有効化できなかった(セットアップ中の行が無い・既に有効)ときは何も書かずに false。
+ *
+ * 判断点(2026-10-08、D1 対応。docs/design/d1-atomic-writes.md #20): 監査表では A(分岐なし)だったが、
+ * 有効化の UPDATE に `enabled_at IS NULL` を足して claim にし、ガード `totp.enable` を置いた。
+ * 従来は同じコードでの同時の有効化が両方通り、後から書いた側のリカバリコードだけが残る
+ * (先に返った応答のコードは使えない — 本人が気づかないまま締め出されうる)ことがあった。
+ * claim にすれば負けた側は何も書かず、呼び出し側が 409 を返せる。同時でない限り挙動は従来と同じ
+ * (呼び出し側が事前に enabledAt を見て 409 already_enabled を返している)。
+ */
+export async function enableUserTotpWithRecoveryCodes(db: Database, input: EnableUserTotpWithRecoveryCodesInput): Promise<boolean> {
+  const plan = new AtomicPlan();
+  plan.add((q) =>
+    q
+      .update(userTotp)
+      .set({ enabledAt: input.enabledAt, lastUsedCounter: input.lastUsedCounter })
+      .where(and(eq(userTotp.tenantId, input.tenantId), eq(userTotp.userId, input.userId), isNull(userTotp.enabledAt)))
+      .returning({ userId: userTotp.userId }),
+  );
+  plan.guard("totp.enable");
+  addReplaceRecoveryCodes(plan, {
+    tenantId: input.tenantId,
+    userId: input.userId,
+    codeHashes: input.codeHashes,
+    createdAt: input.enabledAt,
+  });
+  plan.add((q) =>
+    auditLogInsertQuery(q, {
+      tenantId: input.tenantId,
+      actorId: input.userId,
+      action: "auth.totp.enable",
+      targetType: "users",
+      targetId: input.userId,
+      detail: JSON.stringify({}),
+      occurredAt: input.enabledAt,
+    }),
+  );
+  const result = await runAtomic(db, plan);
+  return result.ok;
+}
+
+/**
+ * リカバリコードの再生成(POST /auth/totp/recovery-codes): 置き換えと監査ログ
+ * `auth.totp.recovery_codes.regenerate` を1単位で書く(atomic plan。分岐なし — 監査表 #22)。
+ */
+export async function regenerateRecoveryCodes(
+  db: Database,
+  input: { tenantId: string; userId: string; codeHashes: string[]; createdAt: number },
+): Promise<void> {
+  const plan = new AtomicPlan();
+  addReplaceRecoveryCodes(plan, input);
+  plan.add((q) =>
+    auditLogInsertQuery(q, {
+      tenantId: input.tenantId,
+      actorId: input.userId,
+      action: "auth.totp.recovery_codes.regenerate",
+      targetType: "users",
+      targetId: input.userId,
+      detail: JSON.stringify({}),
+      occurredAt: input.createdAt,
+    }),
+  );
+  await runAtomic(db, plan);
+}
+
+export interface RemoveUserTotpInput {
+  tenantId: string;
+  userId: string;
+  /** 一緒に書く監査ログ(本人の無効化は `auth.totp.disable`、管理者のリセットは `member.totp.reset`) */
+  audit: NewAuditLogInput;
+  /** 一緒に作る本人宛の通知(管理者のリセットのみ)。同じキーの通知が既にあれば作らない */
+  notification?: NewNotificationInput;
+}
+
+/**
+ * 2FA の解除(本人の無効化 POST /auth/totp/disable と、管理者のリセット
+ * POST /members/:id/two-factor/reset): TOTP 行とリカバリコードの削除・監査ログ・(あれば)通知を
+ * 1単位で書く(atomic plan。分岐なし — 監査表 #21・#25)。
+ *
+ * 通知は `createNotificationIfAbsent` と同じく、UNIQUE(tenant_id, user_id, type, subject_date) が
+ * 既にあれば何もしない(`ON CONFLICT DO NOTHING`。計画の中で例外を捕まえられないため、
+ * 「違反を捕捉して null」を SQL 側の握りつぶしに置き換えた)。
+ */
+export async function removeUserTotp(db: Database, input: RemoveUserTotpInput): Promise<void> {
+  const plan = new AtomicPlan();
+  plan.add((q) => deleteUserTotpQueries(q, input)[0]);
+  plan.add((q) => deleteUserTotpQueries(q, input)[1]);
+  plan.add((q) => auditLogInsertQuery(q, input.audit));
+  const notification = input.notification;
+  if (notification !== undefined) plan.add((q) => notificationInsertIfAbsentQuery(q, notification));
+  await runAtomic(db, plan);
 }
 
 /** 未使用のリカバリコードの残数。設定画面に出す。 */

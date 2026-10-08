@@ -57,6 +57,29 @@ export async function createNotificationIfAbsent(db: Database | Transaction, inp
   }
 }
 
+/**
+ * createNotificationIfAbsent と同じ行を作る insert ビルダを返す(実行しない)。atomic plan
+ * (src/atomic.ts)へ積むためのもの。計画の中では UNIQUE 違反の例外を捕まえて続行できないので、
+ * 重複は `ON CONFLICT DO NOTHING` で握りつぶす(結果は 0 行 = 既に通知済み)。
+ */
+export function notificationInsertIfAbsentQuery(db: Database | Transaction, input: NewNotificationInput) {
+  return db
+    .insert(notifications)
+    .values({
+      id: uuidv7(),
+      tenantId: input.tenantId,
+      userId: input.userId,
+      type: input.type,
+      subjectDate: input.subjectDate ?? null,
+      title: input.title,
+      body: input.body,
+      createdAt: input.createdAt,
+      readAt: null,
+    })
+    .onConflictDoNothing()
+    .returning();
+}
+
 export interface FindNotificationByTypeAndDateParams {
   tenantId: string;
   userId: string;

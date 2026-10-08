@@ -13,6 +13,7 @@
 import { describe, expect, it } from "vitest";
 import { and, eq } from "drizzle-orm";
 import {
+  auditLogs,
   closingSnapshots,
   insertPunchEvent,
   punchEvents,
@@ -219,6 +220,20 @@ describe("POST /members/:id/erase — 退職日と保持期間のガード", () 
     const second = await erase(app, adminCookie, memberId);
     expect(second.status).toBe(409);
     expect(second.body.error).toBe("already_erased");
+  });
+
+  // atomic plan への移行(2026-10-08、docs/design/d1-atomic-writes.md #26): users の匿名化が
+  // `erased_at IS NULL` の claim なので、事前判定をすり抜けた同時の二重実行も片方だけが通る
+  it("同時の二重実行でも消去が通るのは1回だけ(負けた側は 409 already_erased、監査ログは1件)", async () => {
+    const { db, app, adminCookie, memberId } = await setupErasableMember();
+    await deactivate(app, adminCookie, memberId);
+    await backdateDeactivation(db, memberId, 5 * 366);
+
+    const results = await Promise.all([erase(app, adminCookie, memberId), erase(app, adminCookie, memberId)]);
+    expect(results.map((r) => r.status).sort()).toEqual([200, 409]);
+    expect(results.find((r) => r.status === 409)?.body.error).toBe("already_erased");
+    const logs = await db.select().from(auditLogs).where(eq(auditLogs.action, "member.erase"));
+    expect(logs).toHaveLength(1);
   });
 
   it("自分自身は消せない(409 cannot_erase_self)", async () => {

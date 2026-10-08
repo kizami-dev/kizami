@@ -15,8 +15,12 @@
  */
 
 import { and, eq, isNull } from "drizzle-orm";
+import { AtomicPlan, runAtomic, type AtomicExecutor } from "../atomic.js";
 import type { Database, Transaction } from "../types.js";
 import { invitations, users } from "../schema/index.js";
+import { auditLogInsertQuery } from "./audit.js";
+import { revokeAllPasswordResetTokensForUserQuery } from "./password-resets.js";
+import { revokeAllSessionsForUserQuery } from "./sessions.js";
 
 /**
  * isActive を false にする(退職処理)。対象が存在しない場合は例外を投げる(呼び出し側が事前に存在確認する前提)。
@@ -68,7 +72,12 @@ export async function revokePendingInvitationForUser(
   db: Database | Transaction,
   params: { tenantId: string; userId: string; revokedAt: number },
 ): Promise<void> {
-  await db
+  await revokePendingInvitationForUserQuery(db, params);
+}
+
+/** revokePendingInvitationForUser と同じ update ビルダを返す(実行しない。atomic plan 用)。 */
+function revokePendingInvitationForUserQuery(q: AtomicExecutor, params: { tenantId: string; userId: string; revokedAt: number }) {
+  return q
     .update(invitations)
     .set({ revokedAt: params.revokedAt })
     .where(
@@ -79,4 +88,54 @@ export async function revokePendingInvitationForUser(
         isNull(invitations.revokedAt),
       ),
     );
+}
+
+export interface DeactivateMemberInput {
+  tenantId: string;
+  userId: string;
+  /** 操作した管理者(監査ログの actor) */
+  actorId: string;
+  /** UTC エポック分。deactivated_at・各失効時刻・監査ログの occurred_at に使う */
+  nowMinutes: number;
+}
+
+/**
+ * 退職処理(POST /members/:id/deactivate)の書き込み一式を1単位で行う: 無効化(退職日の記録)→
+ * 全セッションの失効 → 未決着の招待の失効 → 未決着の再設定トークンの失効 → 監査ログ `member.deactivate`。
+ *
+ * 判断点(2026-10-08、D1 対応。docs/design/d1-atomic-writes.md #24): db.transaction() から
+ * atomic plan(src/atomic.ts)へ移した。どれも途中の結果で分岐しない書き込みだが、従来の
+ * `deactivateUser` は対象が無ければ例外にしていたので、users の UPDATE の直後にガード
+ * `member.deactivate.user` を置いて同じ挙動を保つ(呼び出し側が事前に存在確認するので、
+ * 通常は起きない不変条件違反 — 何も書かずに例外)。
+ */
+export async function deactivateMember(db: Database, input: DeactivateMemberInput): Promise<void> {
+  const { tenantId, userId, nowMinutes } = input;
+  const plan = new AtomicPlan();
+  plan.add((q) =>
+    q
+      .update(users)
+      .set({ isActive: false, deactivatedAt: nowMinutes })
+      .where(and(eq(users.tenantId, tenantId), eq(users.id, userId)))
+      .returning({ id: users.id }),
+  );
+  plan.guard("member.deactivate.user");
+  plan.add((q) => revokeAllSessionsForUserQuery(q, { tenantId, userId, revokedAt: nowMinutes }));
+  plan.add((q) => revokePendingInvitationForUserQuery(q, { tenantId, userId, revokedAt: nowMinutes }));
+  plan.add((q) => revokeAllPasswordResetTokensForUserQuery(q, { tenantId, userId, revokedAt: nowMinutes }));
+  plan.add((q) =>
+    auditLogInsertQuery(q, {
+      tenantId,
+      actorId: input.actorId,
+      action: "member.deactivate",
+      targetType: "user",
+      targetId: userId,
+      detail: JSON.stringify({}),
+      occurredAt: nowMinutes,
+    }),
+  );
+  const result = await runAtomic(db, plan);
+  if (!result.ok) {
+    throw new Error(`deactivateMember: user not found: ${userId}`);
+  }
 }

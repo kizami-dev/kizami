@@ -9,6 +9,7 @@
  */
 
 import { and, eq } from "drizzle-orm";
+import { AtomicPlan, chunkRowsForInsert, runAtomic } from "../atomic.js";
 import type { Database } from "../types.js";
 import { permissionPresets, presetAssignments } from "../schema/index.js";
 import { uuidv7 } from "../uuid.js";
@@ -212,23 +213,27 @@ export interface ReplacePresetAssignmentsInput {
   createdAt: number;
 }
 
-/** あるユーザーのプリセット割当を、指定した presetIds の集合で丸ごと置き換える(トランザクション)。 */
+/**
+ * あるユーザーのプリセット割当を、指定した presetIds の集合で丸ごと置き換える(1単位)。
+ *
+ * 判断点(2026-10-08、D1 対応。docs/design/d1-atomic-writes.md #7): 全削除 → 挿入は途中の結果で
+ * 分岐しないので atomic plan(src/atomic.ts)へそのまま積む。挿入は D1 のバインド変数上限
+ * (1文 100 個)に収まるよう `chunkRowsForInsert` で割る(preset_assignments は 5 列 → 20 行で1文)。
+ */
 export async function replacePresetAssignmentsForUser(db: Database, input: ReplacePresetAssignmentsInput): Promise<void> {
-  await db.transaction(async (tx) => {
-    await tx
-      .delete(presetAssignments)
-      .where(and(eq(presetAssignments.tenantId, input.tenantId), eq(presetAssignments.userId, input.userId)));
-
-    if (input.presetIds.length > 0) {
-      await tx.insert(presetAssignments).values(
-        input.presetIds.map((presetId) => ({
-          id: uuidv7(),
-          tenantId: input.tenantId,
-          userId: input.userId,
-          presetId,
-          createdAt: input.createdAt,
-        })),
-      );
-    }
-  });
+  const plan = new AtomicPlan();
+  plan.add((q) =>
+    q.delete(presetAssignments).where(and(eq(presetAssignments.tenantId, input.tenantId), eq(presetAssignments.userId, input.userId))),
+  );
+  const rows = input.presetIds.map((presetId) => ({
+    id: uuidv7(),
+    tenantId: input.tenantId,
+    userId: input.userId,
+    presetId,
+    createdAt: input.createdAt,
+  }));
+  for (const chunk of chunkRowsForInsert(presetAssignments, rows)) {
+    plan.add((q) => q.insert(presetAssignments).values(chunk));
+  }
+  await runAtomic(db, plan);
 }

@@ -32,10 +32,26 @@
  *
  * すべての操作は「対象が無ければ0件更新/削除」で完結する(条件付き UPDATE / DELETE のみ)。
  * ただし呼び出し側(routes/members.ts)は `erased_at` で二重実行を 409 で弾く。
+ *
+ * ## 1単位で書く(atomic plan、2026-10-08 D1 対応。docs/design/d1-atomic-writes.md #26)
+ *
+ * API は `eraseUserPersonalDataAtomically`(atomic plan。D1 でも動く)を使う。判断点:
+ *
+ * - users の匿名化を claim にする: `erased_at IS NULL` を WHERE に足し、直後にガード
+ *   `erasure.user`。同時の二重消去は片方だけが通り、負けた側は何も書かない(監査ログも重ならない)
+ * - **件数は計画の前に数える**。監査ログの detail に「何件消えたか」を入れるが、計画の中では前の文の
+ *   結果を読めない(read-your-writes 不可)。対象は退職処理済み(ログイン不可)のユーザーで、消去は
+ *   管理者の明示操作なので、数えてから消すまでの間に行が増減することは事実上無い。増えても削除は
+ *   ユーザー単位の条件で効くので**消し漏れは起きない**(ずれうるのは件数の報告だけ)
+ * - Slack 連携トークンは「連携の削除結果の slack_user_id」で消していた(read-your-writes)。計画では
+ *   連携の削除より**前**に、`slack_user_id IN (SELECT ... FROM slack_user_links ...)` のサブクエリで消す
  */
 
-import { and, eq, inArray } from "drizzle-orm";
+import { and, count, eq, inArray, isNull, type SQL } from "drizzle-orm";
+import type { SQLiteTable } from "drizzle-orm/sqlite-core";
+import { AtomicPlan, runAtomic } from "../atomic.js";
 import type { Database, Transaction } from "../types.js";
+import { auditLogInsertQuery, type NewAuditLogInput } from "./audit.js";
 import {
   apiKeys,
   authCredentials,
@@ -100,7 +116,8 @@ export interface EraseUserResult {
 }
 
 /**
- * 対象ユーザーの個人データを消去(匿名化)する。呼び出し側がトランザクションを張ること。
+ * 対象ユーザーの個人データを消去(匿名化)する。呼び出し側がトランザクションを張ること
+ * (D1 では張れないので、API は `eraseUserPersonalDataAtomically` を使う)。
  *
  * 保持期間の判定・権限・二重実行の防止は**行わない**(routes/members.ts の責務)。
  * ここは「消す」という操作そのものだけを担う。
@@ -223,4 +240,123 @@ export async function eraseUserPersonalData(db: Database | Transaction, params: 
       punchEventMeta: punchMeta.length,
     },
   };
+}
+
+export interface EraseUserAtomicallyParams extends EraseUserParams {
+  /**
+   * 消去と同じ単位で書く監査ログ(`member.erase`)を、計画の前に数えた件数から作る。
+   * 監査ログに**消した値そのもの**を入れないのは呼び出し側の責務(routes/members.ts)。
+   */
+  audit: (removed: EraseUserResult["removed"]) => NewAuditLogInput;
+}
+
+/** 消去の対象になる、ユーザー単位の条件(テーブルごと)。件数の見積もりと削除で同じ条件を使う。 */
+function erasureTargets(tenantId: string, userId: string) {
+  const slackUserIdsOfUser = (db: Database | Transaction) =>
+    db
+      .select({ slackUserId: slackUserLinks.slackUserId })
+      .from(slackUserLinks)
+      .where(and(eq(slackUserLinks.tenantId, tenantId), eq(slackUserLinks.userId, userId)));
+  const targets: Record<keyof EraseUserResult["removed"], { table: SQLiteTable; where: (db: Database | Transaction) => SQL | undefined }> = {
+    authCredentials: { table: authCredentials, where: () => and(eq(authCredentials.tenantId, tenantId), eq(authCredentials.userId, userId)) },
+    sessions: { table: sessions, where: () => and(eq(sessions.tenantId, tenantId), eq(sessions.userId, userId)) },
+    totp: { table: userTotp, where: () => and(eq(userTotp.tenantId, tenantId), eq(userTotp.userId, userId)) },
+    totpRecoveryCodes: {
+      table: userTotpRecoveryCodes,
+      where: () => and(eq(userTotpRecoveryCodes.tenantId, tenantId), eq(userTotpRecoveryCodes.userId, userId)),
+    },
+    pushSubscriptions: { table: pushSubscriptions, where: () => and(eq(pushSubscriptions.tenantId, tenantId), eq(pushSubscriptions.userId, userId)) },
+    userNotificationSettings: {
+      table: userNotificationSettings,
+      where: () => and(eq(userNotificationSettings.tenantId, tenantId), eq(userNotificationSettings.userId, userId)),
+    },
+    apiKeys: { table: apiKeys, where: () => and(eq(apiKeys.tenantId, tenantId), eq(apiKeys.userId, userId)) },
+    invitations: { table: invitations, where: () => and(eq(invitations.tenantId, tenantId), eq(invitations.userId, userId)) },
+    passwordResetTokens: {
+      table: passwordResetTokens,
+      where: () => and(eq(passwordResetTokens.tenantId, tenantId), eq(passwordResetTokens.userId, userId)),
+    },
+    slackUserLinks: { table: slackUserLinks, where: () => and(eq(slackUserLinks.tenantId, tenantId), eq(slackUserLinks.userId, userId)) },
+    // userId ではなく slackUserId で紐づく。連携の行から辿る(連携の削除より前に評価すること)
+    slackLinkTokens: {
+      table: slackLinkTokens,
+      where: (db) => and(eq(slackLinkTokens.tenantId, tenantId), inArray(slackLinkTokens.slackUserId, slackUserIdsOfUser(db))),
+    },
+    notifications: { table: notifications, where: () => and(eq(notifications.tenantId, tenantId), eq(notifications.userId, userId)) },
+    punchEventMeta: { table: punchEvents, where: () => and(eq(punchEvents.tenantId, tenantId), eq(punchEvents.userId, userId)) },
+  };
+  return targets;
+}
+
+/** 消去で消える(null 化される)件数を数える。`eraseUserPersonalData` の `removed` と同じ数え方。 */
+export async function countUserPersonalData(db: Database, params: { tenantId: string; userId: string }): Promise<EraseUserResult["removed"]> {
+  const targets = erasureTargets(params.tenantId, params.userId);
+  const entries = await Promise.all(
+    (Object.keys(targets) as (keyof EraseUserResult["removed"])[]).map(async (key) => {
+      const target = targets[key];
+      const [row] = await db.select({ n: count() }).from(target.table).where(target.where(db));
+      return [key, Number(row?.n ?? 0)] as const;
+    }),
+  );
+  return Object.fromEntries(entries) as EraseUserResult["removed"];
+}
+
+/**
+ * 対象ユーザーの個人データの消去(匿名化)と監査ログを1単位で書く(src/atomic.ts の atomic plan。
+ * D1 でも動く)。消すもの・残すものは `eraseUserPersonalData` と同じ(このファイル冒頭)。
+ *
+ * 既に消去済み(または存在しない)なら何も書かずに null — 呼び出し側は 409 already_erased を返す
+ * (事前判定をすり抜けた同時の二重消去もここで止まる)。件数は計画の前に数える(ファイル冒頭の判断点)。
+ */
+export async function eraseUserPersonalDataAtomically(db: Database, params: EraseUserAtomicallyParams): Promise<EraseUserResult | null> {
+  const { tenantId, userId, erasedAt } = params;
+  const email = tombstoneEmail(userId);
+  const removed = await countUserPersonalData(db, { tenantId, userId });
+  const targets = erasureTargets(tenantId, userId);
+
+  const plan = new AtomicPlan();
+  // ---- 1. users 行の匿名化(claim。erased_at IS NULL を条件に、二重消去を排他) ----
+  plan.add((q) =>
+    q
+      .update(users)
+      .set({ name: ERASED_USER_NAME, email, isActive: false, erasedAt })
+      .where(and(eq(users.tenantId, tenantId), eq(users.id, userId), isNull(users.erasedAt)))
+      .returning({ id: users.id }),
+  );
+  plan.guard("erasure.user");
+
+  // ---- 2. 物理削除(理由は eraseUserPersonalData の各コメント)----
+  // Slack の連携トークンは連携の行から辿るので、連携の削除より前に消す
+  const deleteOrder: (keyof EraseUserResult["removed"])[] = [
+    "authCredentials",
+    "sessions",
+    "totp",
+    "totpRecoveryCodes",
+    "pushSubscriptions",
+    "userNotificationSettings",
+    "apiKeys",
+    "invitations",
+    "passwordResetTokens",
+    "slackLinkTokens",
+    "slackUserLinks",
+    "notifications",
+  ];
+  for (const key of deleteOrder) {
+    const target = targets[key];
+    plan.add((q) => q.delete(target.table).where(target.where(q)));
+  }
+
+  // ---- 3. punch_events のメタ情報の null 化(行は残す) ----
+  plan.add((q) =>
+    q
+      .update(punchEvents)
+      .set({ metaIp: null, metaUa: null, metaGpsLat: null, metaGpsLng: null })
+      .where(targets.punchEventMeta.where(q)),
+  );
+
+  plan.add((q) => auditLogInsertQuery(q, params.audit(removed)));
+
+  const result = await runAtomic(db, plan);
+  if (!result.ok) return null;
+  return { email, name: ERASED_USER_NAME, removed };
 }

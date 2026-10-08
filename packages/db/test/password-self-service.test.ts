@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
-import { migrateDb, supportsTransactions, type Database } from "./support/db.js";
+import { migrateDb, type Database } from "./support/db.js";
 import {
   acquirePasswordResetRequestSlot,
   changeOwnPassword,
@@ -16,8 +16,9 @@ import {
 import { auditLogs, authCredentials, sessions, tenants, users } from "../src/schema/index.js";
 import { uuidv7 } from "../src/uuid.js";
 
-// db.transaction() を通るクエリを含むため、D1 レグでは skip する(password-resets.test.ts と同じ理由)
-describe.skipIf(!supportsTransactions)("password self-service queries", () => {
+// changeOwnPassword / issueSelfServicePasswordResetToken は atomic plan で書くので D1 レグでも走る
+// (2026-10-08、docs/design/d1-atomic-writes.md #5・#6)
+describe("password self-service queries", () => {
   let db: Database;
   const tenantA = uuidv7();
   const tenantB = uuidv7();
@@ -100,6 +101,27 @@ describe.skipIf(!supportsTransactions)("password self-service queries", () => {
       expect(ok).toBe(false);
       expect((await db.select().from(sessions))[0]?.revokedAt).toBeNull();
       expect(await db.select().from(auditLogs)).toHaveLength(0);
+    });
+  });
+
+  describe("concurrency on the atomic plan (2026-10-08、docs/design/d1-atomic-writes.md #4・#5)", () => {
+    it("a self-issued token used concurrently by two requests: exactly one wins and only one audit log is written", async () => {
+      const u = await addUser({ tenantId: tenantA, email: "u@example.com" });
+      await issueSelfServicePasswordResetToken(db, { tenantId: tenantA, userId: u, tokenHash: "self-race", expiresAt: 60, createdAt: 0 });
+      const results = await Promise.all([
+        usePasswordResetToken(db, { tokenHash: "self-race", passwordHash: "a", nowMinutes: 5 }),
+        usePasswordResetToken(db, { tokenHash: "self-race", passwordHash: "b", nowMinutes: 5 }),
+      ]);
+      expect(results.filter((r) => r !== null)).toHaveLength(1);
+      expect(await db.select().from(auditLogs).where(eq(auditLogs.action, "password_reset.use"))).toHaveLength(1);
+    });
+
+    it("changeOwnPassword without a credential leaves the user's reset tokens valid too (nothing is written)", async () => {
+      const sso = await addUser({ tenantId: tenantA, email: "sso2@example.com", withCredential: false });
+      await issueSelfServicePasswordResetToken(db, { tenantId: tenantA, userId: sso, tokenHash: "sso-h", expiresAt: 60, createdAt: 0 });
+      expect(await changeOwnPassword(db, { tenantId: tenantA, userId: sso, passwordHash: "new", currentSessionId: "x", nowMinutes: 5 })).toBe(false);
+      expect((await findPasswordResetTokenByHash(db, "sso-h"))?.revokedAt).toBeNull();
+      expect(await db.select().from(auditLogs).where(eq(auditLogs.action, "auth.password_change"))).toHaveLength(0);
     });
   });
 

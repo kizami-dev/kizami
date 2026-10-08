@@ -12,7 +12,8 @@
  *    **パスワードはここでは受け取らない**(下記「アカウント乗っ取り対策」)。
  * 2. `GET /signup/verify/:token`: 確認画面の表示用(組織名・氏名・メール)。
  * 3. `POST /signup/verify/:token`(body `{ password }`): パスワードを検証・ハッシュ化したうえで、
- *    1トランザクションで pending 消費・招待コード消費・テナント作成(`bootstrapTenant`)・監査ログを行い、
+ *    1単位(packages/db の atomic plan `confirmPendingSignup`。D1 でも動く)で pending 消費・招待コード消費・
+ *    テナント作成(`bootstrapTenantStatements`)・監査ログを行い、
  *    セッションを発行してログイン済みで返す。
  *
  * ## アカウント乗っ取り対策: パスワードは確認時に設定させる(判断点)
@@ -67,22 +68,19 @@
  *
  * ## 招待コードの消費タイミング
  *
- * 入口(POST /signup)では有効性を見るだけで消費しない。消費は確認完了のトランザクション内の
+ * 入口(POST /signup)では有効性を見るだけで消費しない。消費は確認完了の計画の中の
  * 条件付き UPDATE(used_count + 1 を、失効・期限・上限を WHERE に含めて行う)なので、複数の
  * pending が同じコードを持っていても、実際に作れるテナント数は max_uses を超えない。
- * 確認時点でコードが使えなくなっていれば 409 invite_code_unavailable(トランザクション全体が
- * ロールバックされ、pending は未消費のまま残る)。
+ * 確認時点でコードが使えなくなっていれば 409 invite_code_unavailable(ガードで計画全体が
+ * 巻き戻され、pending は未消費のまま残る。packages/db/src/queries/signup.ts の confirmPendingSignup)。
  */
 
 import {
-  consumePendingSignup,
-  consumeSignupInviteCode,
+  confirmPendingSignup,
   findPendingSignupByTokenHash,
   findSignupInviteCodeByHash,
   getUserById,
-  insertAuditLog,
   isSignupInviteCodeUsable,
-  setPendingSignupTenant,
   upsertPendingSignupUnlessRecent,
   type Database,
 } from "@kizami/db";
@@ -98,7 +96,7 @@ import { resolveLocale, type Locale } from "../lib/locale.js";
 import { hashSignupInviteCode } from "../lib/signup-invite-code.js";
 import type { SystemMailSendFn } from "../lib/system-mail.js";
 import { signupVerificationContent } from "../lib/system-mail-i18n.js";
-import { bootstrapTenant } from "../lib/tenant-bootstrap.js";
+import { bootstrapTenantStatements } from "../lib/tenant-bootstrap.js";
 import { nowMinutes } from "../lib/time.js";
 import { verifyTurnstile } from "../lib/turnstile.js";
 
@@ -129,13 +127,6 @@ export interface SignupRoutesOptions {
   signup: SignupDeps | null;
   secureCookies: boolean;
   trustProxy: boolean;
-}
-
-/** トランザクションを巻き戻して呼び出し側へ失敗理由を伝えるための内部用の例外。 */
-class SignupConfirmError extends Error {
-  constructor(readonly reason: "not_found" | "invite_code_unavailable") {
-    super(reason);
-  }
 }
 
 /** トークンから pending を探し、有効性を判定する(理由の区別は 404 / 410 の使い分けのためだけ)。 */
@@ -310,45 +301,37 @@ export function createSignupRoutes(db: Database, options: SignupRoutesOptions) {
     // PBKDF2(重い)は書き込みロックを持つトランザクションの外で済ませる。
     const passwordHash = await hashPassword(password);
 
-    let created: { tenantId: string; userId: string };
-    try {
-      // 1トランザクション: pending 消費 → 招待コード消費 → テナント作成 → 記録 → 監査ログ。
-      // どれかが失敗すれば全体を巻き戻す(招待コードだけ減ってテナントが無い、を作らない)。
-      // 最初の pending 消費が条件付き UPDATE(未消費・未期限)なので、同じトークンの二重確認は
-      // 片方だけがここを通る。
-      created = await db.transaction(async (tx) => {
-        const consumed = await consumePendingSignup(tx, { id: pending.id, nowMinutes: now });
-        if (!consumed) throw new SignupConfirmError("not_found");
-
-        if (pending.inviteCodeId !== null) {
-          const ok = await consumeSignupInviteCode(tx, { id: pending.inviteCodeId, nowMinutes: now });
-          if (!ok) throw new SignupConfirmError("invite_code_unavailable");
-        }
-
-        const boot = await bootstrapTenant(tx, {
-          tenantName: pending.organizationName,
-          adminEmail: pending.email,
-          adminName: pending.adminName,
-          adminPasswordHash: passwordHash,
-          now,
-        });
-        await setPendingSignupTenant(tx, { id: pending.id, tenantId: boot.tenantId });
-        await insertAuditLog(tx, {
-          tenantId: boot.tenantId,
-          actorId: boot.userId,
-          action: "tenant.signup",
-          targetType: "tenant",
-          targetId: boot.tenantId,
-          detail: JSON.stringify({ inviteCodeId: pending.inviteCodeId, mode: signup.mode }),
-          occurredAt: now,
-        });
-        return { tenantId: boot.tenantId, userId: boot.userId };
-      });
-    } catch (err) {
-      if (err instanceof SignupConfirmError) {
-        return err.reason === "not_found" ? c.json({ error: "not_found" }, 404) : c.json({ error: "invite_code_unavailable" }, 409);
-      }
-      throw err;
+    // 1単位: pending 消費 → 招待コード消費 → テナント作成 → 記録 → 監査ログ(packages/db の
+    // confirmPendingSignup。atomic plan なので D1 でも動く)。どれかが失敗すれば全体を巻き戻す
+    // (招待コードだけ減ってテナントが無い、を作らない)。最初の pending 消費が条件付き UPDATE
+    // (未消費・未期限)+ ガードなので、同じトークンの二重確認は片方だけが通り、負けた側は
+    // 招待コードもテナントも書かない。
+    const boot = bootstrapTenantStatements({
+      tenantName: pending.organizationName,
+      adminEmail: pending.email,
+      adminName: pending.adminName,
+      adminPasswordHash: passwordHash,
+      now,
+    });
+    const created = boot.result;
+    const confirmed = await confirmPendingSignup(db, {
+      pendingId: pending.id,
+      inviteCodeId: pending.inviteCodeId,
+      nowMinutes: now,
+      tenantId: created.tenantId,
+      tenantStatements: boot.statements,
+      audit: {
+        tenantId: created.tenantId,
+        actorId: created.userId,
+        action: "tenant.signup",
+        targetType: "tenant",
+        targetId: created.tenantId,
+        detail: JSON.stringify({ inviteCodeId: pending.inviteCodeId, mode: signup.mode }),
+        occurredAt: now,
+      },
+    });
+    if (!confirmed.ok) {
+      return confirmed.reason === "pending_unavailable" ? c.json({ error: "not_found" }, 404) : c.json({ error: "invite_code_unavailable" }, 409);
     }
 
     // セッション発行はテナント作成とは別の関心事(招待受諾と同じ分離。失敗してもテナントは

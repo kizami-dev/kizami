@@ -63,13 +63,11 @@
 import { Hono } from "hono";
 import {
   createInvitation,
-  createInvitationInTx,
+  createInvitedMember,
+  deactivateMember,
+  eraseUserPersonalDataAtomically,
+  removeUserTotp,
   createPasswordResetToken,
-  createNotificationIfAbsent,
-  createUser,
-  deactivateUser,
-  deleteUserTotp,
-  eraseUserPersonalData,
   getDepartmentById,
   getLatestInvitationForUser,
   getLatestPasswordResetTokenForUser,
@@ -92,11 +90,8 @@ import {
   listWorkPolicyVersions,
   getTenantById,
   reactivateUser,
-  revokeAllPasswordResetTokensForUser,
-  revokeAllSessionsForUser,
   revokeInvitation,
   revokePasswordResetToken,
-  revokePendingInvitationForUser,
   updateUserHireDate,
   updateUserLeaveGrantClass,
   upsertMembership,
@@ -517,81 +512,41 @@ export function createMembersRoutes(db: Database, deps: { quotas?: TenantQuotas 
 
     const now = nowMinutes();
     // トークンの生成自体は DB を伴わない純粋な計算(crypto乱数 + ハッシュ化)のため、
-    // トランザクションの外で先に済ませておく(トランザクションの保持時間を必要最小限にする)。
+    // 書き込みの前に済ませておく(トランザクションの保持時間を必要最小限にする)。
     const { token, hash } = await generateInvitationToken();
 
-    // トランザクション化(レビュー指摘): createUser・upsertMembership・招待作成・監査ログ追記を
-    // 1つの db.transaction にまとめる。以前はこの4つが個別のクエリとして実行されており、
-    // 例えば招待作成が失敗すると「ユーザー行だけ作られ、招待が一切飛ばない」ユーザーが
-    // 残ってしまっていた(手動での後始末が必要になる不整合)。
+    // 1単位(レビュー指摘): ユーザー作成・所属・制度の割当・招待作成・監査ログ追記をまとめて書く。
+    // 以前はこれらが個別のクエリとして実行されており、例えば招待作成が失敗すると
+    // 「ユーザー行だけ作られ、招待が一切飛ばない」ユーザーが残ってしまっていた(手動での後始末が
+    // 必要になる不整合)。2026-10-08 から db.transaction() ではなく packages/db の atomic plan
+    // (`createInvitedMember`)で書く — D1 でも動く(docs/design/d1-atomic-writes.md #23)。
     //
-    // presetIds の割当(assignPresetsToMember)は既存の設計判断どおりトランザクションの外に
+    // テナント既定の労働時間制を自動割当する(2026-08-23)。これが無いと招待で作られた
+    // メンバーは制度未割当のまま(buildSettingsTimeline が解決できず有給・月次が 500)。
+    // 適用開始日は入社日(未指定なら今日)— 入社日より前の期間は集計対象にならないため。
+    // 別の制度にしたい場合は後から work policy の割当を追加すれば上書きされる(effective-dated)。
+    // 2026-10-05: 招待で制度を選んだ場合(workPolicyId)はその制度を割り当てる(上の検証済み)。
+    //
+    // presetIds の割当(assignPresetsToMember)は既存の設計判断どおりこの単位の外に
     // 残す: 固定原則(自己昇格・自己降格・最後の権限管理保持者保護)の検証を含む独立した
     // ドメインロジックであり、万一 presetIds が不正でも「作成・招待自体は確実に成立させる」
     // という元々のコメントの意図(下記参照)をそのまま維持するため。
-    let target: Awaited<ReturnType<typeof createUser>>;
-    let invitation: Awaited<ReturnType<typeof createInvitationInTx>>;
+    let target: Awaited<ReturnType<typeof createInvitedMember>>["user"];
+    let invitation: Awaited<ReturnType<typeof createInvitedMember>>["invitation"];
     try {
-      const created = await db.transaction(async (tx) => {
-        const createdUser = await createUser(tx, {
-          tenantId: actor.tenantId,
-          email,
-          name: name.trim(),
-          hireDate: resolvedHireDate,
-          createdAt: now,
-        });
-
-        if (resolvedDepartmentId !== undefined) {
-          await upsertMembership(tx, { tenantId: actor.tenantId, userId: createdUser.id, departmentId: resolvedDepartmentId, createdAt: now });
-        }
-
-        // テナント既定の労働時間制を自動割当する(2026-08-23)。これが無いと招待で作られた
-        // メンバーは制度未割当のまま(buildSettingsTimeline が解決できず有給・月次が 500)。
-        // 適用開始日は入社日(未指定なら今日)— 入社日より前の期間は集計対象にならないため。
-        // 別の制度にしたい場合は後から work policy の割当を追加すれば上書きされる(effective-dated)。
-        // 2026-10-05: 招待で制度を選んだ場合(workPolicyId)はその制度を割り当てる(上の検証済み)。
-        const assignedPolicyId =
-          chosenWorkPolicyId ??
-          (
-            await getOrCreateTenantWorkPolicy(tx, {
-              tenantId: actor.tenantId,
-              name: "標準",
-              createdAt: now,
-            })
-          ).id;
-        await assignUserWorkPolicy(tx, {
-          tenantId: actor.tenantId,
-          userId: createdUser.id,
-          workPolicyId: assignedPolicyId,
-          effectiveFrom: assignmentEffectiveFrom,
-          createdAt: now,
-        });
-
-        const createdInvitation = await createInvitationInTx(tx, {
-          tenantId: actor.tenantId,
-          userId: createdUser.id,
-          tokenHash: hash,
-          expiresAt: now + INVITATION_TTL_MINUTES,
-          createdBy: actor.id,
-          createdAt: now,
-        });
-
-        await insertAuditLog(tx, {
-          tenantId: actor.tenantId,
-          actorId: actor.id,
-          action: "member.invite",
-          targetType: "user",
-          targetId: createdUser.id,
-          detail: JSON.stringify({
-            email: createdUser.email,
-            departmentId: resolvedDepartmentId ?? null,
-            // 招待で制度を選んだときだけ残す(既定の制度の自動割当は従来どおり記録しない)。
-            ...(chosenWorkPolicyId !== undefined ? { workPolicyId: chosenWorkPolicyId } : {}),
-          }),
-          occurredAt: now,
-        });
-
-        return { user: createdUser, invitation: createdInvitation };
+      const created = await createInvitedMember(db, {
+        tenantId: actor.tenantId,
+        email,
+        name: name.trim(),
+        hireDate: resolvedHireDate,
+        ...(resolvedDepartmentId !== undefined ? { departmentId: resolvedDepartmentId } : {}),
+        ...(chosenWorkPolicyId !== undefined ? { workPolicyId: chosenWorkPolicyId } : {}),
+        defaultWorkPolicyName: "標準",
+        effectiveFrom: assignmentEffectiveFrom,
+        tokenHash: hash,
+        expiresAt: now + INVITATION_TTL_MINUTES,
+        actorId: actor.id,
+        createdAt: now,
       });
       target = created.user;
       invitation = created.invitation;
@@ -602,7 +557,7 @@ export function createMembersRoutes(db: Database, deps: { quotas?: TenantQuotas 
       throw err;
     }
 
-    // presetIds の反映は招待発行の後(トランザクション確定後)に行う: 万一 presetIds が
+    // presetIds の反映は招待発行の後(書き込みの確定後)に行う: 万一 presetIds が
     // 不正(未知のID等)でも、「作成はしたが招待は一切飛ばせなかった」状態を避け、招待自体は
     // 確実に成立させる(presetsは後からでも PUT /members/:id/presets で直せるが、招待し直しは
     // 再発行の手間がかかるため、失敗時の実害が小さい方を後段に置いた判断)。
@@ -895,23 +850,10 @@ export function createMembersRoutes(db: Database, deps: { quotas?: TenantQuotas 
     }
 
     const now = nowMinutes();
-    await db.transaction(async (tx) => {
-      // deactivatedAt を同時に記録する(2026-08-27)。個人データ保持期間の起算日になる
-      // — これが無いと「いつ退職したか」が分からず消去可能日を決められない。
-      await deactivateUser(tx, { tenantId: actor.tenantId, userId: id, deactivatedAt: now });
-      await revokeAllSessionsForUser(tx, { tenantId: actor.tenantId, userId: id, revokedAt: now });
-      await revokePendingInvitationForUser(tx, { tenantId: actor.tenantId, userId: id, revokedAt: now });
-      await revokeAllPasswordResetTokensForUser(tx, { tenantId: actor.tenantId, userId: id, revokedAt: now });
-      await insertAuditLog(tx, {
-        tenantId: actor.tenantId,
-        actorId: actor.id,
-        action: "member.deactivate",
-        targetType: "user",
-        targetId: id,
-        detail: JSON.stringify({}),
-        occurredAt: now,
-      });
-    });
+    // 無効化(deactivatedAt の記録、2026-08-27。個人データ保持期間の起算日になる — これが無いと
+    // 「いつ退職したか」が分からず消去可能日を決められない)・全セッション・招待・リセットトークンの
+    // 失効・監査ログを1単位で書く(packages/db の deactivateMember。atomic plan なので D1 でも動く)。
+    await deactivateMember(db, { tenantId: actor.tenantId, userId: id, actorId: actor.id, nowMinutes: now });
 
     return c.json({ member: { id, isActive: false, deactivatedAt: now } });
   });
@@ -960,9 +902,12 @@ export function createMembersRoutes(db: Database, deps: { quotas?: TenantQuotas 
     if (!existing) return c.json({ error: "not_enabled" }, 409);
 
     const now = nowMinutes();
-    await db.transaction(async (tx) => {
-      await deleteUserTotp(tx, { tenantId: actor.tenantId, userId: id });
-      await insertAuditLog(tx, {
+    // TOTP・リカバリコードの削除・監査ログ・本人への通知を1単位で書く(packages/db の removeUserTotp。
+    // atomic plan なので D1 でも動く)。
+    await removeUserTotp(db, {
+      tenantId: actor.tenantId,
+      userId: id,
+      audit: {
         tenantId: actor.tenantId,
         actorId: actor.id,
         action: "member.totp.reset",
@@ -970,8 +915,8 @@ export function createMembersRoutes(db: Database, deps: { quotas?: TenantQuotas 
         targetId: id,
         detail: JSON.stringify({}),
         occurredAt: now,
-      });
-      await createNotificationIfAbsent(tx, {
+      },
+      notification: {
         tenantId: actor.tenantId,
         userId: id,
         type: "security_totp_reset",
@@ -981,7 +926,7 @@ export function createMembersRoutes(db: Database, deps: { quotas?: TenantQuotas 
         title: "二要素認証が管理者によって解除されました",
         body: `${actor.displayName} が二要素認証の設定を解除しました。心当たりがない場合は、すぐに管理者へ連絡してください。再設定は「設定 → セキュリティ」から行えます。`,
         createdAt: now,
-      });
+      },
     });
 
     return c.json({ member: { id, twoFactorEnabled: false } });
@@ -1112,9 +1057,15 @@ export function createMembersRoutes(db: Database, deps: { quotas?: TenantQuotas 
     }
 
     const now = nowMinutes();
-    const result = await db.transaction(async (tx) => {
-      const erased = await eraseUserPersonalData(tx, { tenantId: actor.tenantId, userId: id, erasedAt: now });
-      await insertAuditLog(tx, {
+    // 匿名化・物理削除・null 化・監査ログを1単位で書く(packages/db の eraseUserPersonalDataAtomically。
+    // atomic plan なので D1 でも動く)。users の匿名化は `erased_at IS NULL` の claim なので、
+    // 事前判定をすり抜けた同時の二重消去は片方だけが通り、負けた側は何も書かない(→ 409)。
+    // 監査ログの件数は計画の前に数えたもの(packages/db/src/queries/erasure.ts 冒頭の判断点)。
+    const result = await eraseUserPersonalDataAtomically(db, {
+      tenantId: actor.tenantId,
+      userId: id,
+      erasedAt: now,
+      audit: (removed) => ({
         tenantId: actor.tenantId,
         actorId: actor.id,
         action: "member.erase",
@@ -1123,15 +1074,17 @@ export function createMembersRoutes(db: Database, deps: { quotas?: TenantQuotas 
         // 消した値そのものは入れない(上記コメント)。何件消えたかの内訳と、
         // どの保持期間設定・どの退職日を根拠に許可したかだけを残す。
         detail: JSON.stringify({
-          removed: erased.removed,
+          removed,
           retentionYears,
           deactivatedDate: retention.deactivatedDate,
           erasableFrom: retention.erasableFrom,
         }),
         occurredAt: now,
-      });
-      return erased;
+      }),
     });
+    if (result === null) {
+      return c.json({ error: "already_erased" }, 409);
+    }
 
     return c.json({
       member: { id, isActive: false, erasedAt: now, name: result.name, email: result.email },

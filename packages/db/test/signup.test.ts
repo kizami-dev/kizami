@@ -2,8 +2,9 @@ import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
-import { migrateDb, supportsTransactions, type Database } from "./support/db.js";
+import { migrateDb, type Database } from "./support/db.js";
 import {
+  confirmPendingSignup,
   consumePendingSignup,
   consumeSignupInviteCode,
   createSignupInviteCode,
@@ -16,12 +17,14 @@ import {
   upsertPendingSignupUnlessRecent,
   revokeSignupInviteCode,
 } from "../src/queries/index.js";
-import { tenants, users } from "../src/schema/index.js";
+import { auditLogs, pendingSignups, signupInviteCodes, tenants, users } from "../src/schema/index.js";
+import { eq } from "drizzle-orm";
 import { uuidv7 } from "../src/uuid.js";
 
-// replacePendingSignup が db.transaction() を使うため、D1 レグでは skip する
-// (invitations.test.ts と同じ理由)
-describe.skipIf(!supportsTransactions)("signup system tables", () => {
+// 確認(confirmPendingSignup)は atomic plan で書き、他は1文ずつなので D1 レグでも走る
+// (2026-10-08、docs/design/d1-atomic-writes.md #27。以前の skip 理由だった replacePendingSignup は
+// upsertPendingSignupUnlessRecent の1文に置き換わって既に無い)
+describe("signup system tables", () => {
   let db: Database;
 
   beforeEach(async () => {
@@ -170,5 +173,110 @@ describe.skipIf(!supportsTransactions)("signup system tables", () => {
       ["T", 1],
       ["Empty", 0],
     ]);
+  });
+
+  // セルフサインアップの確認(atomic plan、2026-10-08、docs/design/d1-atomic-writes.md #27)。3レグで走る。
+  describe("confirmPendingSignup", () => {
+    /** テナント一式の代わり(本物は apps/api の bootstrapTenantStatements。ここでは tenants + users の2文) */
+    function confirm(params: { pendingId: string; inviteCodeId: string | null; nowMinutes: number }) {
+      const tenantId = uuidv7();
+      const userId = uuidv7();
+      return confirmPendingSignup(db, {
+        ...params,
+        tenantId,
+        tenantStatements: [
+          (q) => q.insert(tenants).values({ id: tenantId, name: "New", createdAt: params.nowMinutes }),
+          (q) => q.insert(users).values({ id: userId, tenantId, email: "admin@new.example", name: "管理者", createdAt: params.nowMinutes }),
+        ],
+        audit: {
+          tenantId,
+          actorId: userId,
+          action: "tenant.signup",
+          targetType: "tenant",
+          targetId: tenantId,
+          detail: JSON.stringify({ inviteCodeId: params.inviteCodeId }),
+          occurredAt: params.nowMinutes,
+        },
+      });
+    }
+
+    async function counts(codeId?: string) {
+      const code = codeId ? (await db.select().from(signupInviteCodes).where(eq(signupInviteCodes.id, codeId)))[0] : undefined;
+      return {
+        tenants: (await db.select().from(tenants)).length,
+        users: (await db.select().from(users)).length,
+        audits: (await db.select().from(auditLogs).where(eq(auditLogs.action, "tenant.signup"))).length,
+        usedCount: code?.usedCount,
+      };
+    }
+
+    it("consumes the pending and the invite code, creates the tenant, records it on the pending, and writes the audit log", async () => {
+      const code = await newCode({ maxUses: 2 });
+      const row = await upsert(pending({ inviteCodeId: code.id }));
+      expect(await confirm({ pendingId: row.id, inviteCodeId: code.id, nowMinutes: 10 })).toEqual({ ok: true });
+
+      const after = (await db.select().from(pendingSignups).where(eq(pendingSignups.id, row.id)))[0];
+      expect(after?.consumedAt).toBe(10);
+      const [tenant] = await db.select().from(tenants);
+      expect(after?.tenantId).toBe(tenant?.id);
+      expect(await counts(code.id)).toEqual({ tenants: 1, users: 1, audits: 1, usedCount: 1 });
+    });
+
+    it("concurrent double confirm of the same pending: exactly one wins; one tenant, one code use, one audit log", async () => {
+      const code = await newCode({ maxUses: 5 });
+      const row = await upsert(pending({ inviteCodeId: code.id }));
+      const results = await Promise.all([
+        confirm({ pendingId: row.id, inviteCodeId: code.id, nowMinutes: 10 }),
+        confirm({ pendingId: row.id, inviteCodeId: code.id, nowMinutes: 10 }),
+      ]);
+      expect(results.filter((r) => r.ok)).toHaveLength(1);
+      expect(results.filter((r) => !r.ok)).toEqual([{ ok: false, reason: "pending_unavailable" }]);
+      // 負けた側は招待コードを消費していない(used_count は 1)
+      expect(await counts(code.id)).toEqual({ tenants: 1, users: 1, audits: 1, usedCount: 1 });
+    });
+
+    it("a lost pending claim writes nothing and does not consume the invite code", async () => {
+      const code = await newCode({ maxUses: 5 });
+      const row = await upsert(pending({ inviteCodeId: code.id }));
+      await consumePendingSignup(db, { id: row.id, nowMinutes: 5 });
+      expect(await confirm({ pendingId: row.id, inviteCodeId: code.id, nowMinutes: 10 })).toEqual({ ok: false, reason: "pending_unavailable" });
+      expect(await counts(code.id)).toEqual({ tenants: 0, users: 0, audits: 0, usedCount: 0 });
+      // 期限切れも同じ(未消費のまま)
+      const expired = await upsert(pending({ email: "e@example.com", inviteCodeId: code.id, expiresAt: 10 }));
+      expect(await confirm({ pendingId: expired.id, inviteCodeId: code.id, nowMinutes: 10 })).toEqual({ ok: false, reason: "pending_unavailable" });
+      expect((await findPendingSignupByTokenHash(db, expired.tokenHash))?.consumedAt).toBeNull();
+      expect(await counts(code.id)).toEqual({ tenants: 0, users: 0, audits: 0, usedCount: 0 });
+    });
+
+    it("an unusable invite code writes nothing: the pending stays unconsumed (409 path), no tenant is created", async () => {
+      const code = await newCode({ maxUses: 1 });
+      await consumeSignupInviteCode(db, { id: code.id, nowMinutes: 1 });
+      const row = await upsert(pending({ inviteCodeId: code.id }));
+      expect(await confirm({ pendingId: row.id, inviteCodeId: code.id, nowMinutes: 10 })).toEqual({ ok: false, reason: "invite_code_unavailable" });
+      // ガードより前の pending の消費も巻き戻っている
+      expect((await findPendingSignupByTokenHash(db, row.tokenHash))?.consumedAt).toBeNull();
+      expect(await counts(code.id)).toEqual({ tenants: 0, users: 0, audits: 0, usedCount: 1 });
+    });
+
+    it("two different pendings racing for the last use of a code: exactly one tenant; the loser's pending stays unconsumed", async () => {
+      const code = await newCode({ maxUses: 1 });
+      const a = await upsert(pending({ email: "a@example.com", inviteCodeId: code.id }));
+      const b = await upsert(pending({ email: "b@example.com", inviteCodeId: code.id }));
+      const results = await Promise.all([
+        confirm({ pendingId: a.id, inviteCodeId: code.id, nowMinutes: 10 }),
+        confirm({ pendingId: b.id, inviteCodeId: code.id, nowMinutes: 10 }),
+      ]);
+      expect(results.filter((r) => r.ok)).toHaveLength(1);
+      expect(results.filter((r) => !r.ok)).toEqual([{ ok: false, reason: "invite_code_unavailable" }]);
+      expect(await counts(code.id)).toEqual({ tenants: 1, users: 1, audits: 1, usedCount: 1 });
+      const consumed = (await db.select().from(pendingSignups)).filter((p) => p.consumedAt !== null);
+      expect(consumed).toHaveLength(1);
+    });
+
+    it("open mode (no invite code) confirms without touching any code", async () => {
+      const row = await upsert(pending());
+      expect(await confirm({ pendingId: row.id, inviteCodeId: null, nowMinutes: 10 })).toEqual({ ok: true });
+      expect(await counts()).toMatchObject({ tenants: 1, users: 1, audits: 1 });
+    });
   });
 });
