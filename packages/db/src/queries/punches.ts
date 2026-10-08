@@ -8,6 +8,7 @@
 
 import { and, asc, eq, gte, lte, ne, notExists } from "drizzle-orm";
 import { alias } from "../alias.js";
+import type { AtomicExecutor } from "../atomic.js";
 import type { Database, Transaction } from "../types.js";
 import { punchEvents } from "../schema/index.js";
 import { uuidv7 } from "../uuid.js";
@@ -20,15 +21,22 @@ export type PunchEvent = typeof punchEvents.$inferSelect;
  * トランザクション内(修正申請の承認反映等)からも呼べるよう `Database | Transaction` を受け取る。
  */
 export async function insertPunchEvent(db: Database | Transaction, event: NewPunchEvent): Promise<PunchEvent> {
-  const id = event.id ?? uuidv7();
-  const [row] = await db
-    .insert(punchEvents)
-    .values({ ...event, id })
-    .returning();
+  const [row] = await punchEventInsertQuery(db, event);
   if (!row) {
     throw new Error("insertPunchEvent: insert returned no row");
   }
   return row;
+}
+
+/**
+ * insertPunchEvent と同じ行を作る insert ビルダを返す(実行しない)。アトミックな書き込み計画
+ * (src/atomic.ts の `AtomicPlan.add`)へ打刻の追記を積むためのもの(修正申請の承認反映)。
+ */
+export function punchEventInsertQuery(db: AtomicExecutor, event: NewPunchEvent) {
+  return db
+    .insert(punchEvents)
+    .values({ ...event, id: event.id ?? uuidv7() })
+    .returning();
 }
 
 export interface ListValidPunchesParams {

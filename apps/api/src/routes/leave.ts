@@ -64,6 +64,8 @@
 import { Hono } from "hono";
 import {
   appendClosingEvent,
+  approveLeaveGrantProposal,
+  approveLeaveRequest,
   createNotificationIfAbsent,
   getClosingSnapshots,
   getClosingState,
@@ -84,6 +86,7 @@ import {
   listLeaveGrantProposals,
   listTenantUsers,
   supersedeProposedLeaveGrantProposals,
+  supportsInteractiveTransactions,
   updateLeaveGrantProposalStatus,
   updateLeaveRequestStatus,
   type Database,
@@ -123,7 +126,7 @@ import {
   resolveRequiredSteps,
 } from "../lib/approval-flow.js";
 import { resolveApproversForUser } from "../lib/approvers.js";
-import { assertAmendAllowed } from "../lib/closing-guard.js";
+import { AMEND_UNSUPPORTED_ON_D1, assertAmendAllowed, closedPeriodsRequiringAmend, type AmendCapabilityDeps } from "../lib/closing-guard.js";
 import { computeMonthlyOutputForUser } from "../lib/closing-amend.js";
 import { engineOutputFromSnapshots, snapshotInputsFromEngineOutput, sumFixedBreakdown } from "../lib/closing-snapshot.js";
 import { buildPersonalChannels, buildTenantChannels, type BuildPersonalChannelsOptions } from "../lib/notification-channels.js";
@@ -347,10 +350,12 @@ function detectRequestConflict(
   return null;
 }
 
-export type LeaveRoutesDeps = BuildPersonalChannelsOptions;
+export type LeaveRoutesDeps = BuildPersonalChannelsOptions & AmendCapabilityDeps;
 
 export function createLeaveRoutes(db: Database, deps: LeaveRoutesDeps = {}) {
   const app = new Hono<AppEnv>();
+  // 締め済み月への承認(amend)を db.transaction() で扱えるか(D1 では false — lib/closing-guard.ts)
+  const interactiveTransactions = deps.interactiveTransactions ?? supportsInteractiveTransactions(db);
 
   // ---- GET /leave/balance ----
   /**
@@ -714,9 +719,12 @@ export function createLeaveRoutes(db: Database, deps: LeaveRoutesDeps = {}) {
     // 締め後修正(amend): 対象日が締め済み月なら closing.unlock を持つ場合のみ承認できる。
     // 反映(status 更新)・監査ログ・(必要なら)スナップショット再計算・amend 追記を
     // 同一トランザクションで行う(routes/corrections.ts の POST /:id/approve と同じ形)。
-    let result: { updated: LeaveRequest; amended: boolean };
-    try {
-      result = await db.transaction(async (tx) => {
+    /**
+     * 締め済み月に影響する承認(amend)。従来の db.transaction() の実装のまま(Node / PostgreSQL のみ。
+     * D1 ではここへ来る前に断る — 下の判断点)。
+     */
+    const approveWithAmend = () =>
+      db.transaction(async (tx) => {
         const wasClosed = await assertAmendAllowed(tx, { tenantId: user.tenantId, period, permissions });
 
         const updatedRow = await updateLeaveRequestStatus(tx, {
@@ -807,11 +815,63 @@ export function createLeaveRoutes(db: Database, deps: LeaveRoutesDeps = {}) {
 
         return { updated: updatedRow, amended: wasClosed };
       });
-    } catch (err) {
-      if (err instanceof NotPendingConflictError) {
+
+    // 判断点(2026-10-08、D1 対応。docs/design/d1-atomic-writes.md §6 #16): routes/corrections.ts の
+    // POST /:id/approve と同じ振り分け。対象月が締め前なら atomic plan(@kizami/db の approveLeaveRequest。
+    // D1 でも動く)、締め済み(amend)なら従来の db.transaction()。D1 では amend に入る前に 409
+    // `amend_unsupported_on_d1` で断る(何も書かない)。計画の前に読んだ後で締められたら(month_closed)、
+    // amend の経路で締め状態を読み直す。
+    let result: { updated: LeaveRequest; amended: boolean } | null = null;
+    const closedPeriods = await closedPeriodsRequiringAmend(db, { tenantId: user.tenantId, periods: [period], permissions });
+    if (closedPeriods.length === 0) {
+      const planned = await approveLeaveRequest(db, {
+        id: existing.id,
+        tenantId: user.tenantId,
+        // 単段なら "pending"、二段の二次承認なら "approved_step1"(楽観ロック)。
+        fromStatus: plan.fromStatus,
+        decidedBy: user.id,
+        decidedAt: now,
+        decisionNote: note,
+        openPeriod: period,
+        audit: {
+          tenantId: user.tenantId,
+          actorId: user.id,
+          action: "leave_request.approve",
+          targetType: "leave_request",
+          targetId: existing.id,
+          detail: JSON.stringify({
+            selfApproved,
+            leaveDate: existing.leaveDate,
+            unit: existing.unit,
+            leaveType: existing.leaveType,
+            amended: false,
+            step: plan.step,
+            requiredSteps: existing.requiredSteps,
+            step1DecidedBy: existing.step1DecidedBy,
+          }),
+          occurredAt: now,
+        },
+      });
+      if (planned.ok) {
+        result = { updated: planned.request, amended: false };
+      } else if (planned.reason === "not_pending") {
         return c.json({ error: "not_pending" }, 409);
       }
-      throw err;
+      // month_closed: 読んだ後で締められた。下の amend の経路で締め状態を読み直す
+    }
+
+    if (result === null) {
+      if (!interactiveTransactions) {
+        return c.json({ error: AMEND_UNSUPPORTED_ON_D1 }, 409);
+      }
+      try {
+        result = await approveWithAmend();
+      } catch (err) {
+        if (err instanceof NotPendingConflictError) {
+          return c.json({ error: "not_pending" }, 409);
+        }
+        throw err;
+      }
     }
 
     // 本人へ通知(決裁者が申請者本人と異なる場合のみ。自己承認では自分に通知しない —
@@ -1187,56 +1247,44 @@ export function createLeaveRoutes(db: Database, deps: LeaveRoutesDeps = {}) {
     if (existingGrantDates.has(existing.grantedOn)) return c.json({ error: "grant_already_exists" }, 409);
 
     const now = nowMinutes();
-    let grant: LeaveGrant;
-    let updated: LeaveGrantProposal;
-    try {
-      const result = await db.transaction(async (tx) => {
-        const insertedGrant = await insertLeaveGrant(tx, {
-          tenantId: actor.tenantId,
+    // 予告の claim → 付与の作成 → 予告への付与 id の記録 → 監査ログを1単位で(@kizami/db の
+    // approveLeaveGrantProposal — atomic plan。D1 でも動く。docs/design/d1-atomic-writes.md §6 #17)。
+    // claim できなければ(同時の二重承認・先に却下された)付与も監査ログも残らない。
+    const approved = await approveLeaveGrantProposal(db, {
+      tenantId: actor.tenantId,
+      id: existing.id,
+      decidedBy: actor.id,
+      decidedAt: now,
+      grant: {
+        tenantId: actor.tenantId,
+        userId: existing.userId,
+        leaveType: existing.leaveType,
+        grantedOn: existing.grantedOn,
+        days: existing.days,
+        expiresOn: existing.expiresOn,
+        // "proposal": 予告フロー由来の付与(auto〔一括自動計算〕・manual〔個別調整〕とは
+        // 経路が違うことを残す。packages/db/src/schema/leave.ts の source コメント参照)。
+        source: "proposal",
+        createdAt: now,
+      },
+      buildAudit: (grantId) => ({
+        tenantId: actor.tenantId,
+        actorId: actor.id,
+        action: "leave_grant_proposal.approve",
+        targetType: "leave_grant_proposal",
+        targetId: existing.id,
+        detail: JSON.stringify({
           userId: existing.userId,
-          leaveType: existing.leaveType,
           grantedOn: existing.grantedOn,
           days: existing.days,
-          expiresOn: existing.expiresOn,
-          // "proposal": 予告フロー由来の付与(auto〔一括自動計算〕・manual〔個別調整〕とは
-          // 経路が違うことを残す。packages/db/src/schema/leave.ts の source コメント参照)。
-          source: "proposal",
-          createdAt: now,
-        });
-        const updatedRow = await updateLeaveGrantProposalStatus(tx, {
-          tenantId: actor.tenantId,
-          id: existing.id,
-          fromStatus: "proposed",
-          status: "approved",
-          decidedBy: actor.id,
-          decidedAt: now,
-          grantId: insertedGrant.id,
-        });
-        if (!updatedRow) throw new NotPendingConflictError();
-
-        await insertAuditLog(tx, {
-          tenantId: actor.tenantId,
-          actorId: actor.id,
-          action: "leave_grant_proposal.approve",
-          targetType: "leave_grant_proposal",
-          targetId: existing.id,
-          detail: JSON.stringify({
-            userId: existing.userId,
-            grantedOn: existing.grantedOn,
-            days: existing.days,
-            grantId: insertedGrant.id,
-            attendanceRate: JSON.parse(existing.attendanceRate) as AttendanceRateReference,
-          }),
-          occurredAt: now,
-        });
-        return { insertedGrant, updatedRow };
-      });
-      grant = result.insertedGrant;
-      updated = result.updatedRow;
-    } catch (err) {
-      if (err instanceof NotPendingConflictError) return c.json({ error: "not_proposed" }, 409);
-      throw err;
-    }
+          grantId,
+          attendanceRate: JSON.parse(existing.attendanceRate) as AttendanceRateReference,
+        }),
+        occurredAt: now,
+      }),
+    });
+    if (!approved) return c.json({ error: "not_proposed" }, 409);
+    const { grant, proposal: updated } = approved;
 
     // 3段目: 本人への通知(個人チャネルのみ。テナント共有 Webhook には流さない —
     // 「誰に何日付与されたか」は本人の勤怠情報であり共有チャネルの原則に反する)。

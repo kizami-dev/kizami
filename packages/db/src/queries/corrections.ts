@@ -8,9 +8,13 @@
  */
 
 import { and, desc, eq } from "drizzle-orm";
+import { AtomicPlan, runAtomic, type AtomicExecutor } from "../atomic.js";
 import type { Database, Transaction } from "../types.js";
 import { correctionRequests } from "../schema/index.js";
 import { uuidv7 } from "../uuid.js";
+import { auditLogInsertQuery, type NewAuditLogInput } from "./audit.js";
+import { closingSerializeKey, periodsOpenCondition } from "./closings.js";
+import { punchEventInsertQuery, type NewPunchEvent, type PunchEvent } from "./punches.js";
 
 export type CorrectionRequest = typeof correctionRequests.$inferSelect;
 export type CorrectionStatus = "pending" | "approved_step1" | "approved" | "rejected" | "withdrawn";
@@ -113,12 +117,17 @@ export async function updateCorrectionStatus(
   db: Database | Transaction,
   params: UpdateCorrectionStatusParams,
 ): Promise<CorrectionRequest | null> {
+  const [row] = await correctionStatusUpdateQuery(db, params);
+  return row ?? null;
+}
+
+/** updateCorrectionStatus と同じ条件付き UPDATE のビルダ(実行しない。atomic plan に積むためのもの)。 */
+export function correctionStatusUpdateQuery(q: AtomicExecutor, params: UpdateCorrectionStatusParams) {
   const conditions = [eq(correctionRequests.id, params.id), eq(correctionRequests.tenantId, params.tenantId)];
   if (params.fromStatus !== undefined) {
     conditions.push(eq(correctionRequests.status, params.fromStatus));
   }
-
-  const [row] = await db
+  return q
     .update(correctionRequests)
     .set({
       status: params.status,
@@ -130,5 +139,122 @@ export async function updateCorrectionStatus(
     })
     .where(and(...conditions))
     .returning();
-  return row ?? null;
+}
+
+export interface ApproveCorrectionRequestInput {
+  id: string;
+  tenantId: string;
+  /** 楽観ロックの遷移元(単段なら "pending"、二段の二次承認なら "approved_step1") */
+  fromStatus: CorrectionStatus;
+  decidedBy: string;
+  /** UTC エポック分 */
+  decidedAt: number;
+  decisionNote: string | null;
+  /** 反映する打刻(訂正・追加・取消)。id は呼び出し側で決める(監査ログの appliedEventId に使うため) */
+  punch: NewPunchEvent & { id: string };
+  /**
+   * 影響する月("YYYY-MM")。**どれも締められていないことを書き込みの条件にする**(締め済み月の承認 =
+   * amend はこの関数の対象外 — 呼び出し側が計画の前に締め状態を読んで振り分ける)
+   */
+  openPeriods: readonly string[];
+  audit: NewAuditLogInput;
+}
+
+export type ApproveCorrectionRequestResult =
+  | { ok: true; request: CorrectionRequest; event: PunchEvent }
+  /** not_pending: 別の決裁が先に入った / month_closed: 計画の前に読んだ後で対象月が締められた。どちらも何も書いていない */
+  | { ok: false; reason: "not_pending" | "month_closed" };
+
+/**
+ * 締め前の月への修正申請の最終承認を1単位で行う: 状態の claim → 「対象月がまだ締められていない」の
+ * 確認 → 打刻の追記 → 監査ログ(src/atomic.ts の atomic plan。D1 でも動く)。
+ *
+ * 判断点(2026-10-08、D1 対応。docs/design/d1-atomic-writes.md §6 #14):
+ * - **claim を先頭に置く**。以前の tx は「打刻 insert → 状態 update(0件なら throw)」の順だった。
+ *   追加(targetEventId 無し)の打刻には UNIQUE が無く、同時の二重承認を DB の制約では止められない。
+ *   ガードは計画全体を巻き戻すのでどちらの順でも打刻は残らないが、claim を先にしておけば
+ *   「負けた側が打刻を1行でも書く」瞬間そのものが無い(fail-closed の上に、順序でも閉じる)
+ * - 締めの再確認は **同じ行への2本目の条件付き UPDATE(status を同じ値で上書き)+ ガード**で表す。
+ *   claim の WHERE に混ぜるとガードが1本になり、「先に決裁された」と「締められた」を区別できない
+ *   (前者は 409、後者は呼び出し側が amend の経路へ回す)。SQLite の `changes()` も PostgreSQL の
+ *   rowCount も値が変わらない UPDATE を1行と数える
+ * - PostgreSQL では対象月ごとに closePeriod と同じキーで直列化する(src/atomic.ts「直列化キー」)。
+ *   同時の締めのコミット前に条件を評価して「まだ open」と誤判定しないため。キーは昇順に取り、
+ *   複数月の承認同士で待ち合いの順序が食い違わないようにする
+ * - 訂正・取消の二重 supersede は従来どおり punch_events.supersedes_id の UNIQUE 違反として投げる
+ *   (`runAtomic` は素通しする。呼び出し側が isUniqueConstraintError で 409 already_superseded にする)
+ */
+export async function approveCorrectionRequest(
+  db: Database,
+  input: ApproveCorrectionRequestInput,
+): Promise<ApproveCorrectionRequestResult> {
+  const periods = [...new Set(input.openPeriods)].sort();
+  const plan = new AtomicPlan();
+  for (const period of periods) plan.serialize(closingSerializeKey(input.tenantId, period));
+  const claim = plan.add((q) =>
+    correctionStatusUpdateQuery(q, {
+      id: input.id,
+      tenantId: input.tenantId,
+      fromStatus: input.fromStatus,
+      status: "approved",
+      decidedBy: input.decidedBy,
+      decidedAt: input.decidedAt,
+      decisionNote: input.decisionNote,
+    }),
+  );
+  plan.guard("correction.claim");
+  if (periods.length > 0) {
+    plan.add((q) =>
+      q
+        .update(correctionRequests)
+        .set({ status: "approved" })
+        .where(and(eq(correctionRequests.id, input.id), periodsOpenCondition(q, { tenantId: input.tenantId, periods }))),
+    );
+    plan.guard("correction.month_open");
+  }
+  const inserted = plan.add((q) => punchEventInsertQuery(q, input.punch));
+  plan.add((q) => auditLogInsertQuery(q, input.audit));
+
+  const result = await runAtomic(db, plan);
+  if (!result.ok) return { ok: false, reason: result.failedGuard === "correction.claim" ? "not_pending" : "month_closed" };
+  const [request] = result.get(claim);
+  const [event] = result.get(inserted);
+  if (!request || !event) throw new Error("approveCorrectionRequest: a statement returned no row after the guards passed");
+  return { ok: true, request, event };
+}
+
+export interface RejectCorrectionRequestInput {
+  id: string;
+  tenantId: string;
+  /** 楽観ロックの遷移元(pending / approved_step1) */
+  fromStatus: CorrectionStatus;
+  decidedBy: string;
+  /** UTC エポック分 */
+  decidedAt: number;
+  decisionNote: string | null;
+  audit: NewAuditLogInput;
+}
+
+/**
+ * 修正申請を却下する: 状態の claim → 監査ログを1単位で(atomic plan。D1 でも動く)。
+ * claim できなければ null(先に別の決裁・取り下げが入った。監査ログも残らない)。
+ */
+export async function rejectCorrectionRequest(db: Database, input: RejectCorrectionRequestInput): Promise<CorrectionRequest | null> {
+  const plan = new AtomicPlan();
+  const claim = plan.add((q) =>
+    correctionStatusUpdateQuery(q, {
+      id: input.id,
+      tenantId: input.tenantId,
+      fromStatus: input.fromStatus,
+      status: "rejected",
+      decidedBy: input.decidedBy,
+      decidedAt: input.decidedAt,
+      decisionNote: input.decisionNote,
+    }),
+  );
+  plan.guard("correction.claim");
+  plan.add((q) => auditLogInsertQuery(q, input.audit));
+  const result = await runAtomic(db, plan);
+  if (!result.ok) return null;
+  return result.get(claim)[0] ?? null;
 }

@@ -33,6 +33,7 @@ import {
   createAutoBreakWaiver,
   createNotificationIfAbsent,
   decideAutoBreakWaiver,
+  decideAutoBreakWaiverAtomic,
   getAutoBreakWaiverById,
   getClosingSnapshots,
   getClosingState,
@@ -41,6 +42,7 @@ import {
   isUniqueConstraintError,
   listAutoBreakWaivers,
   saveClosingSnapshots,
+  supportsInteractiveTransactions,
   withdrawAutoBreakWaiver,
   type AutoBreakWaiver,
   type AutoBreakWaiverStatus,
@@ -59,7 +61,7 @@ import {
 } from "../lib/approval-flow.js";
 import { resolveApproversForUser } from "../lib/approvers.js";
 import { computeMonthlyOutputForUser } from "../lib/closing-amend.js";
-import { assertAmendAllowed } from "../lib/closing-guard.js";
+import { AMEND_UNSUPPORTED_ON_D1, assertAmendAllowed, closedPeriodsRequiringAmend, type AmendCapabilityDeps } from "../lib/closing-guard.js";
 import { engineOutputFromSnapshots, snapshotInputsFromEngineOutput, sumFixedBreakdown } from "../lib/closing-snapshot.js";
 import { buildPersonalChannels, buildTenantChannels, type BuildPersonalChannelsOptions } from "../lib/notification-channels.js";
 import { resolveAccessibleUserIds } from "../lib/scope.js";
@@ -120,10 +122,12 @@ function isValidReason(value: unknown): value is string {
   return typeof value === "string" && value.length >= 1 && value.length <= MAX_REASON_LENGTH;
 }
 
-export type AutoBreakWaiversRoutesDeps = BuildPersonalChannelsOptions;
+export type AutoBreakWaiversRoutesDeps = BuildPersonalChannelsOptions & AmendCapabilityDeps;
 
 export function createAutoBreakWaiversRoutes(db: Database, deps: AutoBreakWaiversRoutesDeps = {}) {
   const app = new Hono<AppEnv>();
+  // 締め済み月への承認(amend)を db.transaction() で扱えるか(D1 では false — lib/closing-guard.ts)
+  const interactiveTransactions = deps.interactiveTransactions ?? supportsInteractiveTransactions(db);
 
   // ---- GET / ----
   // 既定は自分の一覧。?userId= で他者を明示指定した場合、または VIEW_ALL_PERMISSION
@@ -358,9 +362,12 @@ export function createAutoBreakWaiversRoutes(db: Database, deps: AutoBreakWaiver
       throw new Error(`auto_break_waiver ${existing.id} has an unparsable waiveDate: ${existing.waiveDate}`);
     }
 
-    let result: { updated: AutoBreakWaiver; amended: boolean };
-    try {
-      result = await db.transaction(async (tx) => {
+    /**
+     * 締め済み月に影響する承認(amend)。従来の db.transaction() の実装のまま(Node / PostgreSQL のみ。
+     * D1 ではここへ来る前に断る — 下の判断点)。
+     */
+    const approveWithAmend = () =>
+      db.transaction(async (tx) => {
         // 締め済み月への反映は closing.unlock を持つ場合のみ許可する(corrections.ts と同じ)。
         const wasClosed = await assertAmendAllowed(tx, { tenantId: user.tenantId, period, permissions });
 
@@ -457,6 +464,60 @@ export function createAutoBreakWaiversRoutes(db: Database, deps: AutoBreakWaiver
 
         return { updated, amended: wasClosed };
       });
+
+    // 判断点(2026-10-08、D1 対応。docs/design/d1-atomic-writes.md §6 #18): routes/corrections.ts の
+    // POST /:id/approve と同じ振り分け。対象月が締め前なら atomic plan(@kizami/db の
+    // decideAutoBreakWaiverAtomic。D1 でも動く)、締め済み(amend)なら従来の db.transaction()。
+    // D1 では amend に入る前に 409 `amend_unsupported_on_d1` で断る(何も書かない)。
+    // approved の重複(部分 UNIQUE index)は、どちらの経路でも同じ 409 already_approved にそろえる。
+    let result: { updated: AutoBreakWaiver; amended: boolean } | null = null;
+    try {
+      const closedPeriods = await closedPeriodsRequiringAmend(db, { tenantId: user.tenantId, periods: [period], permissions });
+      if (closedPeriods.length === 0) {
+        const planned = await decideAutoBreakWaiverAtomic(db, {
+          decision: {
+            id: existing.id,
+            tenantId: user.tenantId,
+            // 単段なら "pending"、二段の二次承認なら "approved_step1"(楽観ロック)。
+            fromStatus: plan.fromStatus,
+            status: "approved",
+            decidedBy: user.id,
+            decidedAt: now,
+            decisionNote: note,
+          },
+          openPeriod: period,
+          audit: {
+            tenantId: user.tenantId,
+            actorId: user.id,
+            action: "auto_break_waiver.approve",
+            targetType: "auto_break_waiver",
+            targetId: existing.id,
+            detail: JSON.stringify({
+              selfApproved,
+              userId: existing.userId,
+              waiveDate: existing.waiveDate,
+              amended: false,
+              step: plan.step,
+              requiredSteps: existing.requiredSteps,
+              step1DecidedBy: existing.step1DecidedBy,
+            }),
+            occurredAt: now,
+          },
+        });
+        if (planned.ok) {
+          result = { updated: planned.waiver, amended: false };
+        } else if (planned.reason === "not_pending") {
+          return c.json({ error: "not_pending" }, 409);
+        }
+        // month_closed: 読んだ後で締められた。下の amend の経路で締め状態を読み直す
+      }
+
+      if (result === null) {
+        if (!interactiveTransactions) {
+          return c.json({ error: AMEND_UNSUPPORTED_ON_D1 }, 409);
+        }
+        result = await approveWithAmend();
+      }
     } catch (err) {
       if (err instanceof NotPendingConflictError) {
         return c.json({ error: "not_pending" }, 409);
@@ -540,40 +601,33 @@ export function createAutoBreakWaiversRoutes(db: Database, deps: AutoBreakWaiver
     const selfApproved = existing.requestedBy === user.id;
     const step = rejectionStep(existing);
 
-    try {
-      const updated = await db.transaction(async (tx) => {
-        const result = await decideAutoBreakWaiver(tx, {
-          id: existing.id,
-          tenantId: user.tenantId,
-          fromStatus: existing.status as AutoBreakWaiverStatus,
-          status: "rejected",
-          decidedBy: user.id,
-          decidedAt: now,
-          decisionNote: note,
-        });
-        if (!result) {
-          throw new NotPendingConflictError();
-        }
-        await insertAuditLog(tx, {
-          tenantId: user.tenantId,
-          actorId: user.id,
-          action: "auto_break_waiver.reject",
-          targetType: "auto_break_waiver",
-          targetId: existing.id,
-          // どの段で却下されたかを残す。
-          detail: JSON.stringify({ selfApproved, userId: existing.userId, waiveDate: existing.waiveDate, step, requiredSteps: existing.requiredSteps }),
-          occurredAt: now,
-        });
-        return result;
-      });
-
-      return c.json({ waiver: serializeWaiver(updated) }, 200);
-    } catch (err) {
-      if (err instanceof NotPendingConflictError) {
-        return c.json({ error: "not_pending" }, 409);
-      }
-      throw err;
+    // 状態の claim と監査ログを1単位で(@kizami/db の decideAutoBreakWaiverAtomic — atomic plan。D1 でも動く)。
+    // 却下は締めに影響しないので openPeriod を渡さない(従来も締め状態を見ていない)。
+    const decided = await decideAutoBreakWaiverAtomic(db, {
+      decision: {
+        id: existing.id,
+        tenantId: user.tenantId,
+        fromStatus: existing.status as AutoBreakWaiverStatus,
+        status: "rejected",
+        decidedBy: user.id,
+        decidedAt: now,
+        decisionNote: note,
+      },
+      audit: {
+        tenantId: user.tenantId,
+        actorId: user.id,
+        action: "auto_break_waiver.reject",
+        targetType: "auto_break_waiver",
+        targetId: existing.id,
+        // どの段で却下されたかを残す。
+        detail: JSON.stringify({ selfApproved, userId: existing.userId, waiveDate: existing.waiveDate, step, requiredSteps: existing.requiredSteps }),
+        occurredAt: now,
+      },
+    });
+    if (!decided.ok) {
+      return c.json({ error: "not_pending" }, 409);
     }
+    return c.json({ waiver: serializeWaiver(decided.waiver) }, 200);
   });
 
   // ---- POST /:id/withdraw ----

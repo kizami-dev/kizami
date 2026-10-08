@@ -77,3 +77,44 @@ export async function assertAmendAllowed(
   }
   return true;
 }
+
+/**
+ * 締め済み月への承認(amend)を D1 ではまだ扱えないときの 409 の error コード
+ * (docs/design/d1-atomic-writes.md §6.1)。
+ *
+ * 判断点(2026-10-08、承認経路の atomic plan 移行): amend は「同じトランザクションで書いた打刻・申請の
+ * 状態を読み直して月次を再計算する」ので atomic plan にできず、`db.transaction()` に残している。
+ * D1 は `BEGIN` を拒否するため、そこへ入ると 500 になっていた。フェーズ2(書く予定の行を読み取り結果へ
+ * 重ねる in-memory overlay)までは、**何も書かずに** この 409 で断る。締め前の月の承認は D1 でも通る。
+ * 締めを解除(POST /closings/:period/reopen)してから承認し、締め直せば同じ結果に辿り着ける。
+ */
+export const AMEND_UNSUPPORTED_ON_D1 = "amend_unsupported_on_d1";
+
+/** 承認ルート(corrections / leave / auto-break-waivers)の deps のうち、amend の可否に関わるもの。 */
+export interface AmendCapabilityDeps {
+  /**
+   * `db.transaction()`(途中の結果で分岐できる対話的なトランザクション)が使えるか。省略時は
+   * `supportsInteractiveTransactions(db)`(@kizami/db)でハンドルから判定する(D1 なら false)。
+   * テストが Node の SQLite で「D1 の配備」を再現するときだけ明示する。
+   */
+  interactiveTransactions?: boolean;
+}
+
+/**
+ * 承認が影響する月のうち、締め済みで amend が要るものを返す(順序は `periods` のまま)。
+ * 締め済みの月があり actor が closing.unlock を持たなければ、assertAmendAllowed と同じく
+ * MonthClosedRequiresUnlockError を投げる(409 `month_closed_requires_unlock`)。
+ *
+ * atomic plan の**前に**読む(計画の中では読めない)。読んだ後で締められた場合は、計画側の
+ * 「まだ締められていない」の条件付き文 + ガードが拾う(@kizami/db の approveCorrectionRequest 等)。
+ */
+export async function closedPeriodsRequiringAmend(
+  db: Database,
+  params: { tenantId: string; periods: Iterable<string>; permissions: Map<PermissionKey, Scope> },
+): Promise<string[]> {
+  const closed: string[] = [];
+  for (const period of params.periods) {
+    if (await assertAmendAllowed(db, { tenantId: params.tenantId, period, permissions: params.permissions })) closed.push(period);
+  }
+  return closed;
+}

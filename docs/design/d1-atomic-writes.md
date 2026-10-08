@@ -194,16 +194,16 @@ libSQL では `LibsqlBatchError`(cause が `SqliteError: bad JSON path: …`)で
 | 7 | `packages/db/src/queries/permissions.ts` `replacePresetAssignmentsForUser` | 割当の全削除 → 挿入 | A | 挿入を `chunkRowsForInsert` で割る |
 | 8 | `packages/db/src/queries/slack.ts` `linkSlackUser` | 既存の連携の削除 → 挿入 | A | |
 | 9 | `packages/db/src/queries/tenant-purge.ts` `purgeTenant` | テナントの物理削除 | — | D1 は既存の `transactional: false`(1文ずつ冪等)で動く。移行不要 |
-| 10 | `apps/api/src/routes/tenant-withdrawal.ts` 退会の申請 | 退会の claim(条件付き update)→ 監査 | B | |
-| 11 | `apps/api/src/routes/tenant-withdrawal.ts` 退会の取り消し | before の読み取り → 取り消しの claim → 監査 | B | before の読み取りは計画の前へ(監査の detail 用。claim が通れば値は同じ) |
+| 10 | `apps/api/src/routes/tenant-withdrawal.ts` 退会の申請 | 退会の claim(条件付き update)→ 監査 | B | ✅ 移行済み(`requestTenantWithdrawalWithAudit`) |
+| 11 | `apps/api/src/routes/tenant-withdrawal.ts` 退会の取り消し | before の読み取り → 取り消しの claim → 監査 | B | ✅ 移行済み(`cancelTenantWithdrawalWithAudit`)。before の読み取りは計画の前へ(監査の detail 用。claim が通れば値は同じ) |
 | 12 | `apps/api/src/routes/closings.ts` 締め | 状態の再確認 → close 追記 → スナップショット → 監査 | B | ✅ 移行済み(`closePeriod`)。PostgreSQL の TOCTOU も解消 |
 | 13 | `apps/api/src/routes/closings.ts` 締め解除 | 状態の再確認 → reopen 追記 → 監査 | B | ✅ 移行済み(`reopenPeriod`) |
-| 14 | `apps/api/src/routes/corrections.ts` 修正申請の承認 | 締め状態の確認 → 打刻の supersede/追加 → 状態 claim → 監査 →(締め済みなら)月次を再計算して amend | **C**(締め済み月) / B(それ以外) | 締め前の月は B で移せる。tx 内の `assertAmendAllowed`(締め状態の再確認)は、claim の前に「その月が close でない」を条件にした文 + ガードで表す。UNIQUE(supersedes_id)の 409 は従来どおり |
-| 15 | `apps/api/src/routes/corrections.ts` 修正申請の却下 | 状態 claim → 監査 | B | |
-| 16 | `apps/api/src/routes/leave.ts` 休暇申請の承認 | 締め状態の確認 → 状態 claim → 監査 →(締め済みなら)再計算して amend | **C** / B | #14 と同じ |
-| 17 | `apps/api/src/routes/leave.ts` 付与予告の承認 | 付与の insert → 予告の claim → 監査 | B | claim が2文目でもよい(ガード失敗で手前の付与の insert ごと巻き戻る)。付与 ID は先に決める |
-| 18 | `apps/api/src/routes/auto-break-waivers.ts` 免除申請の承認 | 締め状態の確認 → 状態 claim → 監査 →(締め済みなら)再計算して amend | **C** / B | #14 と同じ。部分 UNIQUE の 409 は従来どおり |
-| 19 | `apps/api/src/routes/auto-break-waivers.ts` 免除申請の却下 | 状態 claim → 監査 | B | |
+| 14 | `apps/api/src/routes/corrections.ts` 修正申請の承認 | 締め状態の確認 → 打刻の supersede/追加 → 状態 claim → 監査 →(締め済みなら)月次を再計算して amend | **C**(締め済み月) / B(それ以外) | ✅ B を移行済み(`approveCorrectionRequest`)。順序は claim(ガード `correction.claim`)→ 同じ行への2本目の条件付き update「対象月がどれも close でない」(ガード `correction.month_open`)→ 打刻 → 監査。2本に分けるのは「先に決裁された(409)」と「読んだ後で締められた(amend へ回す)」を区別するため。対象月ごとに `closing:` キーで直列化。UNIQUE(supersedes_id)の 409 は従来どおり。C は §6.1 |
+| 15 | `apps/api/src/routes/corrections.ts` 修正申請の却下 | 状態 claim → 監査 | B | ✅ 移行済み(`rejectCorrectionRequest`) |
+| 16 | `apps/api/src/routes/leave.ts` 休暇申請の承認 | 締め状態の確認 → 状態 claim → 監査 →(締め済みなら)再計算して amend | **C** / B | ✅ B を移行済み(`approveLeaveRequest`)。#14 と同じ形 |
+| 17 | `apps/api/src/routes/leave.ts` 付与予告の承認 | 付与の insert → 予告の claim → 監査 | B | ✅ 移行済み(`approveLeaveGrantProposal`)。claim を先頭に置く — `grant_id` は leave_grants への外部キー(文ごとに検査)なので、claim では null のまま状態だけ進め、付与の insert の後に grant_id を書く(3文目)。付与 ID は先に決める |
+| 18 | `apps/api/src/routes/auto-break-waivers.ts` 免除申請の承認 | 締め状態の確認 → 状態 claim → 監査 →(締め済みなら)再計算して amend | **C** / B | ✅ B を移行済み(`decideAutoBreakWaiverAtomic`)。#14 と同じ形。部分 UNIQUE の 409 `already_approved` は両経路で従来どおり |
+| 19 | `apps/api/src/routes/auto-break-waivers.ts` 免除申請の却下 | 状態 claim → 監査 | B | ✅ 移行済み(`decideAutoBreakWaiverAtomic`) |
 | 20 | `apps/api/src/routes/auth-totp.ts` 2FA の有効化 | TOTP の有効化 → リカバリコードの置き換え → 監査 | A | リカバリコードの挿入を割る |
 | 21 | `apps/api/src/routes/auth-totp.ts` 2FA の無効化 | TOTP の削除 → 監査 | A | |
 | 22 | `apps/api/src/routes/auth-totp.ts` リカバリコードの再生成 | 置き換え → 監査 | A | |
@@ -227,9 +227,13 @@ libSQL では `LibsqlBatchError`(cause が `SqliteError: bad JSON path: …`)で
 claim(申請の状態)と「その月がまだ close のまま」の条件付き文にガードを置く。前提が崩れていれば
 (同時に別の承認・解除が入った)ガードで全体が失敗するので、overlay の読み取りが古くても不整合な世代は残らない。
 
-**それまでの暫定**: D1 配備で締め済み月に影響する承認は、`db.transaction()` に入る前に
-**409 と明確なエラーコード**(例: `amend_unsupported_on_d1`)で断る(いまは `BEGIN` が拒否されて 500 になる)。
-締め前の月の承認は B として先に移す。
+**それまでの暫定**(✅ 2026-10-08 実装): D1 配備で締め済み月に影響する承認は、`db.transaction()` に入る前に
+**409 `amend_unsupported_on_d1`** で断る(何も書かない。以前は `BEGIN` が拒否されて 500)。判定は
+`supportsInteractiveTransactions(db)`(`src/d1.ts`。drizzle の D1 ドライバの印を見る — 配線の書き忘れでも
+D1 なら必ず断る側に倒れる)。締めの確認は計画の前に読み(closing.unlock が無ければ従来どおり
+`month_closed_requires_unlock`)、締め前なら B の計画へ、締め済みなら Node/PostgreSQL は従来の
+`db.transaction()`、D1 は 409。計画の前に読んだ後で締められたら、計画のガード(`*.month_open`)が
+失敗して何も書かず、amend の経路で読み直す。締め前の月の承認は B として移行済み。
 
 ## 7. 今後の候補
 

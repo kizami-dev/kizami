@@ -56,6 +56,7 @@
 import { Hono } from "hono";
 import {
   appendClosingEvent,
+  approveCorrectionRequest,
   createCorrectionRequest,
   createNotificationIfAbsent,
   getClosingSnapshots,
@@ -68,11 +69,15 @@ import {
   insertPunchEvent,
   isUniqueConstraintError,
   listCorrectionRequests,
+  rejectCorrectionRequest,
   saveClosingSnapshots,
+  supportsInteractiveTransactions,
   updateCorrectionStatus,
+  uuidv7,
   type CorrectionRequest,
   type CorrectionStatus,
   type Database,
+  type NewPunchEvent,
   type PunchEvent,
 } from "@kizami/db";
 import { dispatch } from "@kizami/notify";
@@ -89,7 +94,7 @@ import {
 } from "../lib/approval-flow.js";
 import { resolveApproversForUser } from "../lib/approvers.js";
 import { periodFromDate, resolveAttendanceDate } from "../lib/attendance-date.js";
-import { assertAmendAllowed } from "../lib/closing-guard.js";
+import { AMEND_UNSUPPORTED_ON_D1, assertAmendAllowed, closedPeriodsRequiringAmend, type AmendCapabilityDeps } from "../lib/closing-guard.js";
 import { computeMonthlyOutputForUser } from "../lib/closing-amend.js";
 import { engineOutputFromSnapshots, snapshotInputsFromEngineOutput, sumFixedBreakdown } from "../lib/closing-snapshot.js";
 import { buildPersonalChannels, buildTenantChannels, type BuildPersonalChannelsOptions } from "../lib/notification-channels.js";
@@ -166,10 +171,12 @@ function isValidReason(value: unknown): value is string {
   return typeof value === "string" && value.length >= 1 && value.length <= MAX_REASON_LENGTH;
 }
 
-export type CorrectionsRoutesDeps = BuildPersonalChannelsOptions;
+export type CorrectionsRoutesDeps = BuildPersonalChannelsOptions & AmendCapabilityDeps;
 
 export function createCorrectionsRoutes(db: Database, deps: CorrectionsRoutesDeps = {}) {
   const app = new Hono<AppEnv>();
+  // 締め済み月への承認(amend)を db.transaction() で扱えるか(D1 では false — lib/closing-guard.ts)
+  const interactiveTransactions = deps.interactiveTransactions ?? supportsInteractiveTransactions(db);
 
   // ---- GET / ----
   // 既定は自分の一覧。?userId= で他者を明示指定した場合、または VIEW_ALL_PERMISSION
@@ -487,9 +494,42 @@ export function createCorrectionsRoutes(db: Database, deps: CorrectionsRoutesDep
       candidatePeriods.add(periodFromDate(date));
     }
 
-    let result: { correctionRequest: CorrectionRequest; newEvent: PunchEvent; amendedPeriods: string[] };
-    try {
-      result = await db.transaction(async (tx) => {
+    // 反映する打刻(訂正・追加・取消)。id は先に決める — atomic plan では監査ログの appliedEventId を
+    // 計画を組む時点で書く必要があるため(docs/design/d1-atomic-writes.md §2「ID は計画の前に決める」)。
+    let punch: NewPunchEvent & { id: string };
+    const punchBase = {
+      id: uuidv7(),
+      tenantId: user.tenantId,
+      userId: existing.userId,
+      recordedAt: now,
+      source: "web",
+      actorId: user.id,
+      correctionRequestId: existing.id,
+    };
+    if (existing.targetEventId && existing.proposedKind && existing.proposedOccurredAt !== null) {
+      // 訂正
+      punch = {
+        ...punchBase,
+        kind: existing.proposedKind,
+        occurredAt: existing.proposedOccurredAt,
+        supersedesId: existing.targetEventId,
+      };
+    } else if (!existing.targetEventId && existing.proposedKind && existing.proposedOccurredAt !== null) {
+      // 追加
+      punch = { ...punchBase, kind: existing.proposedKind, occurredAt: existing.proposedOccurredAt };
+    } else if (existing.targetEventId && !existing.proposedKind && voidOccurredAt !== null) {
+      // 取消
+      punch = { ...punchBase, kind: "void", occurredAt: voidOccurredAt, supersedesId: existing.targetEventId };
+    } else {
+      throw new Error(`correction_request ${existing.id} has an unrecognized shape`);
+    }
+
+    /**
+     * 締め済み月に影響する承認(amend)。従来の db.transaction() の実装のまま(Node / PostgreSQL のみ。
+     * D1 ではここへ来る前に断る — 下の判断点)。
+     */
+    const approveWithAmend = () =>
+      db.transaction(async (tx) => {
         // 締め済み月への反映は closing.unlock を持つ場合のみ許可する(assertAmendAllowed)。
         // 申請作成後に締められた場合にも対応できるよう、書き込み直前(tx 内)で再評価する。
         // closed だった period は amendedPeriods に集め、反映後にスナップショットを
@@ -500,48 +540,7 @@ export function createCorrectionsRoutes(db: Database, deps: CorrectionsRoutesDep
           if (wasClosed) amendedPeriods.push(period);
         }
 
-        let newEvent;
-        if (existing.targetEventId && existing.proposedKind && existing.proposedOccurredAt !== null) {
-          // 訂正
-          newEvent = await insertPunchEvent(tx, {
-            tenantId: user.tenantId,
-            userId: existing.userId,
-            kind: existing.proposedKind,
-            occurredAt: existing.proposedOccurredAt,
-            recordedAt: now,
-            source: "web",
-            actorId: user.id,
-            supersedesId: existing.targetEventId,
-            correctionRequestId: existing.id,
-          });
-        } else if (!existing.targetEventId && existing.proposedKind && existing.proposedOccurredAt !== null) {
-          // 追加
-          newEvent = await insertPunchEvent(tx, {
-            tenantId: user.tenantId,
-            userId: existing.userId,
-            kind: existing.proposedKind,
-            occurredAt: existing.proposedOccurredAt,
-            recordedAt: now,
-            source: "web",
-            actorId: user.id,
-            correctionRequestId: existing.id,
-          });
-        } else if (existing.targetEventId && !existing.proposedKind && voidOccurredAt !== null) {
-          // 取消
-          newEvent = await insertPunchEvent(tx, {
-            tenantId: user.tenantId,
-            userId: existing.userId,
-            kind: "void",
-            occurredAt: voidOccurredAt,
-            recordedAt: now,
-            source: "web",
-            actorId: user.id,
-            supersedesId: existing.targetEventId,
-            correctionRequestId: existing.id,
-          });
-        } else {
-          throw new Error(`correction_request ${existing.id} has an unrecognized shape`);
-        }
+        const newEvent = await insertPunchEvent(tx, punch);
 
         const updated = await updateCorrectionStatus(tx, {
           id: existing.id,
@@ -637,14 +636,76 @@ export function createCorrectionsRoutes(db: Database, deps: CorrectionsRoutesDep
 
         return { correctionRequest: updated, newEvent, amendedPeriods };
       });
-    } catch (err) {
-      if (err instanceof NotPendingConflictError) {
+
+    // 判断点(2026-10-08、D1 対応。docs/design/d1-atomic-writes.md §6 #14):
+    // 影響する月がどれも締め前なら atomic plan(@kizami/db の approveCorrectionRequest。D1 でも動く)で反映する。
+    // 締め済みの月がある(amend)ときだけ、従来の db.transaction() に入る — 書いた打刻を読み直して月次を
+    // 再計算するので計画にできない(§6.1、フェーズ2で in-memory overlay に置き換える)。D1 では
+    // そこへ入る前に 409 `amend_unsupported_on_d1` で断る(何も書かない)。
+    // 締めの確認は計画の前に読む(closing.unlock が無ければここで 409 month_closed_requires_unlock)。
+    // 読んだ後で締められた場合は計画のガードが month_closed を返すので、amend の経路で判定し直す。
+    let result: { correctionRequest: CorrectionRequest; newEvent: PunchEvent; amendedPeriods: string[] } | null = null;
+    const closedPeriods = await closedPeriodsRequiringAmend(db, { tenantId: user.tenantId, periods: candidatePeriods, permissions });
+    if (closedPeriods.length === 0) {
+      let planned;
+      try {
+        planned = await approveCorrectionRequest(db, {
+          id: existing.id,
+          tenantId: user.tenantId,
+          // 単段なら "pending"、二段の二次承認なら "approved_step1"(楽観ロック)。
+          fromStatus: plan.fromStatus,
+          decidedBy: user.id,
+          decidedAt: now,
+          decisionNote: note,
+          punch,
+          openPeriods: [...candidatePeriods],
+          audit: {
+            tenantId: user.tenantId,
+            actorId: user.id,
+            action: "correction.approve",
+            targetType: "correction_request",
+            targetId: existing.id,
+            detail: JSON.stringify({
+              selfApproved,
+              targetEventId: existing.targetEventId,
+              appliedEventId: punch.id,
+              amendedPeriods: [],
+              step: plan.step,
+              requiredSteps: existing.requiredSteps,
+              step1DecidedBy: existing.step1DecidedBy,
+            }),
+            occurredAt: now,
+          },
+        });
+      } catch (err) {
+        if (isUniqueConstraintError(err)) {
+          return c.json({ error: "already_superseded" }, 409);
+        }
+        throw err;
+      }
+      if (planned.ok) {
+        result = { correctionRequest: planned.request, newEvent: planned.event, amendedPeriods: [] };
+      } else if (planned.reason === "not_pending") {
         return c.json({ error: "not_pending" }, 409);
       }
-      if (isUniqueConstraintError(err)) {
-        return c.json({ error: "already_superseded" }, 409);
+      // month_closed: 読んだ後で締められた。下の amend の経路で締め状態を読み直す
+    }
+
+    if (result === null) {
+      if (!interactiveTransactions) {
+        return c.json({ error: AMEND_UNSUPPORTED_ON_D1 }, 409);
       }
-      throw err;
+      try {
+        result = await approveWithAmend();
+      } catch (err) {
+        if (err instanceof NotPendingConflictError) {
+          return c.json({ error: "not_pending" }, 409);
+        }
+        if (isUniqueConstraintError(err)) {
+          return c.json({ error: "already_superseded" }, 409);
+        }
+        throw err;
+      }
     }
 
     // 本人へ通知(決裁者が申請者本人と異なる場合のみ。自己承認では自分に通知しない —
@@ -731,38 +792,27 @@ export function createCorrectionsRoutes(db: Database, deps: CorrectionsRoutesDep
     const selfApproved = existing.requestedBy === user.id;
     const step = rejectionStep(existing);
 
-    let updated: CorrectionRequest;
-    try {
-      updated = await db.transaction(async (tx) => {
-        const result = await updateCorrectionStatus(tx, {
-          id: existing.id,
-          tenantId: user.tenantId,
-          fromStatus: existing.status as CorrectionStatus,
-          status: "rejected",
-          decidedBy: user.id,
-          decidedAt: now,
-          decisionNote: note,
-        });
-        if (!result) {
-          throw new NotPendingConflictError();
-        }
-        await insertAuditLog(tx, {
-          tenantId: user.tenantId,
-          actorId: user.id,
-          action: "correction.reject",
-          targetType: "correction_request",
-          targetId: existing.id,
-          // どの段で却下されたかを残す(依頼: 「Reject at either step = rejected(record which step)」)。
-          detail: JSON.stringify({ selfApproved, step, requiredSteps: existing.requiredSteps }),
-          occurredAt: now,
-        });
-        return result;
-      });
-    } catch (err) {
-      if (err instanceof NotPendingConflictError) {
-        return c.json({ error: "not_pending" }, 409);
-      }
-      throw err;
+    // 状態の claim と監査ログを1単位で(@kizami/db の rejectCorrectionRequest — atomic plan。D1 でも動く)。
+    const updated = await rejectCorrectionRequest(db, {
+      id: existing.id,
+      tenantId: user.tenantId,
+      fromStatus: existing.status as CorrectionStatus,
+      decidedBy: user.id,
+      decidedAt: now,
+      decisionNote: note,
+      audit: {
+        tenantId: user.tenantId,
+        actorId: user.id,
+        action: "correction.reject",
+        targetType: "correction_request",
+        targetId: existing.id,
+        // どの段で却下されたかを残す(依頼: 「Reject at either step = rejected(record which step)」)。
+        detail: JSON.stringify({ selfApproved, step, requiredSteps: existing.requiredSteps }),
+        occurredAt: now,
+      },
+    });
+    if (!updated) {
+      return c.json({ error: "not_pending" }, 409);
     }
 
     if (!selfApproved) {
