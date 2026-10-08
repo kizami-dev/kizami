@@ -17,7 +17,15 @@ export async function revokeAllSessionsForUser(
   db: Database | Transaction,
   params: { tenantId: string; userId: string; revokedAt: number },
 ): Promise<void> {
-  await db
+  await revokeAllSessionsForUserQuery(db, params);
+}
+
+/**
+ * revokeAllSessionsForUser と同じ update ビルダを返す(実行しない)。アトミックな書き込み計画
+ * (src/atomic.ts の `AtomicPlan.add`)へ積むためのもの。
+ */
+export function revokeAllSessionsForUserQuery(db: Database | Transaction, params: { tenantId: string; userId: string; revokedAt: number }) {
+  return db
     .update(sessions)
     .set({ revokedAt: params.revokedAt })
     .where(and(eq(sessions.tenantId, params.tenantId), eq(sessions.userId, params.userId), isNull(sessions.revokedAt)));
@@ -32,7 +40,15 @@ export async function revokeOtherSessionsForUser(
   db: Database | Transaction,
   params: { tenantId: string; userId: string; exceptSessionId: string; revokedAt: number },
 ): Promise<void> {
-  await db
+  await revokeOtherSessionsForUserQuery(db, params);
+}
+
+/** revokeOtherSessionsForUser と同じ update ビルダを返す(実行しない。atomic plan 用)。 */
+export function revokeOtherSessionsForUserQuery(
+  db: Database | Transaction,
+  params: { tenantId: string; userId: string; exceptSessionId: string; revokedAt: number },
+) {
+  return db
     .update(sessions)
     .set({ revokedAt: params.revokedAt })
     .where(

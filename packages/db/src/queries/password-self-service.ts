@@ -15,12 +15,13 @@
  */
 
 import { and, asc, eq, isNull, lt, sql } from "drizzle-orm";
+import { AtomicPlan, runAtomic } from "../atomic.js";
 import type { Database, Transaction } from "../types.js";
 import { authCredentials, passwordResetRequests, passwordResetTokens, users } from "../schema/index.js";
 import { uuidv7 } from "../uuid.js";
-import { insertAuditLog } from "./audit.js";
-import { revokeAllPasswordResetTokensForUser, type PasswordResetToken } from "./password-resets.js";
-import { revokeOtherSessionsForUser } from "./sessions.js";
+import { auditLogInsertQuery } from "./audit.js";
+import { revokeAllPasswordResetTokensForUserQuery, type PasswordResetToken } from "./password-resets.js";
+import { revokeOtherSessionsForUserQuery } from "./sessions.js";
 
 // ---- 1. ログイン中の本人によるパスワード変更 ----------------------------------
 
@@ -37,7 +38,8 @@ export interface ChangeOwnPasswordInput {
 
 /**
  * パスワードハッシュの更新・**今のセッション以外の全セッション失効**・監査ログ追記を
- * 1トランザクションで行う。資格情報の行が無ければ(SSO のみのユーザー等)何も書かずに false。
+ * 1単位で行う(src/atomic.ts の atomic plan。D1 でも動く)。資格情報の行が無ければ(SSO のみの
+ * ユーザー等)何も書かずに false。
  *
  * 管理者リセット(`usePasswordResetToken`)は「旧資格情報が漏れている疑い」で全セッションを
  * 失効させるが、本人の変更は今のセッションの持ち主が操作しているので、それだけは残す。
@@ -49,29 +51,38 @@ export interface ChangeOwnPasswordInput {
  * 時点」(この関数)で、そのユーザーの未使用・未失効のトークンが**発行経路を問わず全部**失効する。
  * 一方、`issueSelfServicePasswordResetToken` が失効させるのは本人発行の古いものだけ(管理者が手渡した
  * リンクを「忘れた」の操作で殺さない)。
+ *
+ * 判断点(2026-10-08、D1 対応。docs/design/d1-atomic-writes.md #5): 資格情報の UPDATE を claim とし、
+ * 直後にガード `password_change.credential` を置く。0 行(資格情報が無い)ならガードが計画ごと
+ * 失敗させ、セッションの失効・トークンの失効・監査ログのどれも書かれない(従来の `return false` と同じ)。
  */
 export async function changeOwnPassword(db: Database, input: ChangeOwnPasswordInput): Promise<boolean> {
-  return db.transaction(async (tx) => {
-    const [cred] = await tx
+  const plan = new AtomicPlan();
+  plan.add((q) =>
+    q
       .update(authCredentials)
       .set({ passwordHash: input.passwordHash, updatedAt: input.nowMinutes })
       .where(and(eq(authCredentials.tenantId, input.tenantId), eq(authCredentials.userId, input.userId)))
-      .returning({ id: authCredentials.id });
-    if (!cred) return false;
+      .returning({ id: authCredentials.id }),
+  );
+  plan.guard("password_change.credential");
 
-    await revokeOtherSessionsForUser(tx, {
+  plan.add((q) =>
+    revokeOtherSessionsForUserQuery(q, {
       tenantId: input.tenantId,
       userId: input.userId,
       exceptSessionId: input.currentSessionId,
       revokedAt: input.nowMinutes,
-    });
+    }),
+  );
 
-    // 未使用・未失効の再設定トークンも**本人発行・管理者発行を問わず全部失効**させる。乗っ取りを疑って
-    // 本人がパスワードを変えても、攻撃者が持つ(または攻撃者が要求した)再設定リンクが生き残ると、
-    // それでパスワードを上書きされてしまうため。
-    await revokeAllPasswordResetTokensForUser(tx, { tenantId: input.tenantId, userId: input.userId, revokedAt: input.nowMinutes });
+  // 未使用・未失効の再設定トークンも**本人発行・管理者発行を問わず全部失効**させる。乗っ取りを疑って
+  // 本人がパスワードを変えても、攻撃者が持つ(または攻撃者が要求した)再設定リンクが生き残ると、
+  // それでパスワードを上書きされてしまうため。
+  plan.add((q) => revokeAllPasswordResetTokensForUserQuery(q, { tenantId: input.tenantId, userId: input.userId, revokedAt: input.nowMinutes }));
 
-    await insertAuditLog(tx, {
+  plan.add((q) =>
+    auditLogInsertQuery(q, {
       tenantId: input.tenantId,
       actorId: input.userId,
       action: "auth.password_change",
@@ -79,9 +90,10 @@ export async function changeOwnPassword(db: Database, input: ChangeOwnPasswordIn
       targetId: input.userId,
       detail: JSON.stringify({}),
       occurredAt: input.nowMinutes,
-    });
-    return true;
-  });
+    }),
+  );
+  const result = await runAtomic(db, plan);
+  return result.ok;
 }
 
 // ---- 2. 「パスワードを忘れた」本人用の再設定 -----------------------------------
@@ -164,7 +176,7 @@ export interface NewSelfServiceResetTokenInput {
 }
 
 /**
- * 本人発行(source = 'self')のリセットトークンを1本発行する(1トランザクション):
+ * 本人発行(source = 'self')のリセットトークンを1本発行する(1単位 — src/atomic.ts の atomic plan):
  * 同じユーザーの**本人発行で未使用・未失効**の古いトークンを失効させてから新規作成し、
  * 監査ログ `password_reset.self_request` を追記する。
  *
@@ -172,13 +184,17 @@ export interface NewSelfServiceResetTokenInput {
  * 手渡したリンクが勝手に死ぬのを避ける)。逆に管理者の再発行(`createPasswordResetToken`)は
  * 従来どおり未決着の全トークン(本人発行を含む)を失効させる。
  * created_by は本人(user_id)。
+ *
+ * 判断点(2026-10-08、D1 対応。docs/design/d1-atomic-writes.md #6): 失効・発行・監査はどれも
+ * 無条件の書き込みで途中の結果で分岐しないので、atomic plan へそのまま積む(ガード不要)。
  */
 export async function issueSelfServicePasswordResetToken(
   db: Database,
   input: NewSelfServiceResetTokenInput,
 ): Promise<PasswordResetToken> {
-  return db.transaction(async (tx) => {
-    await tx
+  const plan = new AtomicPlan();
+  plan.add((q) =>
+    q
       .update(passwordResetTokens)
       .set({ revokedAt: input.createdAt })
       .where(
@@ -189,9 +205,10 @@ export async function issueSelfServicePasswordResetToken(
           isNull(passwordResetTokens.usedAt),
           isNull(passwordResetTokens.revokedAt),
         ),
-      );
-
-    const [row] = await tx
+      ),
+  );
+  const inserted = plan.add((q) =>
+    q
       .insert(passwordResetTokens)
       .values({
         id: uuidv7(),
@@ -205,12 +222,10 @@ export async function issueSelfServicePasswordResetToken(
         source: "self",
         createdAt: input.createdAt,
       })
-      .returning();
-    if (!row) {
-      throw new Error("issueSelfServicePasswordResetToken: insert returned no row");
-    }
-
-    await insertAuditLog(tx, {
+      .returning(),
+  );
+  plan.add((q) =>
+    auditLogInsertQuery(q, {
       tenantId: input.tenantId,
       actorId: input.userId,
       action: "password_reset.self_request",
@@ -218,7 +233,13 @@ export async function issueSelfServicePasswordResetToken(
       targetId: input.userId,
       detail: JSON.stringify({ expiresAt: input.expiresAt }),
       occurredAt: input.createdAt,
-    });
-    return row;
-  });
+    }),
+  );
+  const result = await runAtomic(db, plan);
+  // ガードを積んでいないので ok: false にはならない
+  const row = result.ok ? result.get(inserted)[0] : undefined;
+  if (!row) {
+    throw new Error("issueSelfServicePasswordResetToken: insert returned no row");
+  }
+  return row;
 }

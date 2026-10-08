@@ -153,7 +153,7 @@ libSQL では `LibsqlBatchError`(cause が `SqliteError: bad JSON path: …`)で
 | `changes()` はトリガーと外部キーの連鎖削除を数えない | KIZAMI にトリガーは無い | claim を連鎖削除で表さない |
 | ガードのラベルは `[a-z0-9_.-]{1,64}` | SQL に文字列リテラルで埋め込むため | 検査して例外 |
 | drizzle 0.45 の D1 batch はパラメータ付きの生 SQL(`db.run(sql\`...${x}\`)`)を扱えない | `SQLiteRaw` に stmt が無く `reading 'bind'` で落ちる(spike で確認) | 計画にはビルダ(insert/update/delete/select、`insert().select(sql)` を含む)だけを積む。ガード文はパラメータ無しで組んである |
-| `runAtomic` はトランザクションの中から呼べない | PostgreSQL 経路は自分で `db.transaction()` を開く | 外側のトランザクションに乗せたい既存経路(members.ts の招待発行)は `*InTx` 版を残す |
+| `runAtomic` はトランザクションの中から呼べない | PostgreSQL 経路は自分で `db.transaction()` を開く | 外側のトランザクションに乗せたい Node 専用の呼び出しのために `*InTx` 版を残す(members.ts の招待発行は 2026-10-08 に `createInvitedMember` へ移行済み) |
 
 ## 5. 移行チェックリスト(残りの経路を1つずつ移すとき)
 
@@ -187,12 +187,12 @@ libSQL では `LibsqlBatchError`(cause が `SqliteError: bad JSON path: …`)で
 | --- | --- | --- | --- | --- |
 | 1 | `packages/db/src/queries/invitations.ts` `createInvitation` | 未決着の招待の revoke → 新規発行 | A | ✅ 移行済み |
 | 2 | `packages/db/src/queries/invitations.ts` `acceptInvitation` | 招待の claim → 資格情報 → 監査 | B | ✅ 移行済み |
-| 3 | `packages/db/src/queries/password-resets.ts` `createPasswordResetToken` | 未決着トークンの revoke → 新規発行 | A | #1 と同形 |
-| 4 | `packages/db/src/queries/password-resets.ts` `usePasswordResetToken` | トークンの claim → パスワード更新 → 全セッション失効 → 他トークン失効 → 監査 | B | ガード2つ(`password_reset.claim`、資格情報の update の後に `password_reset.credential` — 後者の失敗は例外に戻す) |
-| 5 | `packages/db/src/queries/password-self-service.ts` `changeOwnPassword` | 資格情報の update(0行なら false)→ 他セッション失効 → トークン失効 → 監査 | B | 資格情報の update が claim |
-| 6 | `packages/db/src/queries/password-self-service.ts` `issueSelfServicePasswordResetToken` | 本人発行トークンの revoke → 発行 → 監査 | A | |
-| 7 | `packages/db/src/queries/permissions.ts` `replacePresetAssignmentsForUser` | 割当の全削除 → 挿入 | A | 挿入を `chunkRowsForInsert` で割る |
-| 8 | `packages/db/src/queries/slack.ts` `linkSlackUser` | 既存の連携の削除 → 挿入 | A | |
+| 3 | `packages/db/src/queries/password-resets.ts` `createPasswordResetToken` | 未決着トークンの revoke → 新規発行 | A | ✅ 移行済み(#1 と同形) |
+| 4 | `packages/db/src/queries/password-resets.ts` `usePasswordResetToken` | トークンの claim → パスワード更新 → 全セッション失効 → 他トークン失効 → 監査 | B | ✅ 移行済み。ガード2つ(`password_reset.claim` → null、`password_reset.credential` → 例外)。claim の WHERE に期限も入れた |
+| 5 | `packages/db/src/queries/password-self-service.ts` `changeOwnPassword` | 資格情報の update(0行なら false)→ 他セッション失効 → トークン失効 → 監査 | B | ✅ 移行済み(ガード `password_change.credential` → false) |
+| 6 | `packages/db/src/queries/password-self-service.ts` `issueSelfServicePasswordResetToken` | 本人発行トークンの revoke → 発行 → 監査 | A | ✅ 移行済み |
+| 7 | `packages/db/src/queries/permissions.ts` `replacePresetAssignmentsForUser` | 割当の全削除 → 挿入 | A | ✅ 移行済み(挿入を `chunkRowsForInsert` で割る。5 列 → 20 行で1文) |
+| 8 | `packages/db/src/queries/slack.ts` `linkSlackUser` | 既存の連携の削除 → 挿入 | A | ✅ 移行済み |
 | 9 | `packages/db/src/queries/tenant-purge.ts` `purgeTenant` | テナントの物理削除 | — | D1 は既存の `transactional: false`(1文ずつ冪等)で動く。移行不要 |
 | 10 | `apps/api/src/routes/tenant-withdrawal.ts` 退会の申請 | 退会の claim(条件付き update)→ 監査 | B | ✅ 移行済み(`requestTenantWithdrawalWithAudit`) |
 | 11 | `apps/api/src/routes/tenant-withdrawal.ts` 退会の取り消し | before の読み取り → 取り消しの claim → 監査 | B | ✅ 移行済み(`cancelTenantWithdrawalWithAudit`)。before の読み取りは計画の前へ(監査の detail 用。claim が通れば値は同じ) |
@@ -204,14 +204,14 @@ libSQL では `LibsqlBatchError`(cause が `SqliteError: bad JSON path: …`)で
 | 17 | `apps/api/src/routes/leave.ts` 付与予告の承認 | 付与の insert → 予告の claim → 監査 | B | ✅ 移行済み(`approveLeaveGrantProposal`)。claim を先頭に置く — `grant_id` は leave_grants への外部キー(文ごとに検査)なので、claim では null のまま状態だけ進め、付与の insert の後に grant_id を書く(3文目)。付与 ID は先に決める |
 | 18 | `apps/api/src/routes/auto-break-waivers.ts` 免除申請の承認 | 締め状態の確認 → 状態 claim → 監査 →(締め済みなら)再計算して amend | **C** / B | ✅ B を移行済み(`decideAutoBreakWaiverAtomic`)。#14 と同じ形。部分 UNIQUE の 409 `already_approved` は両経路で従来どおり |
 | 19 | `apps/api/src/routes/auto-break-waivers.ts` 免除申請の却下 | 状態 claim → 監査 | B | ✅ 移行済み(`decideAutoBreakWaiverAtomic`) |
-| 20 | `apps/api/src/routes/auth-totp.ts` 2FA の有効化 | TOTP の有効化 → リカバリコードの置き換え → 監査 | A | リカバリコードの挿入を割る |
-| 21 | `apps/api/src/routes/auth-totp.ts` 2FA の無効化 | TOTP の削除 → 監査 | A | |
-| 22 | `apps/api/src/routes/auth-totp.ts` リカバリコードの再生成 | 置き換え → 監査 | A | |
-| 23 | `apps/api/src/routes/members.ts` メンバー作成と招待 | ユーザー作成 → 所属 → 制度の割当(getOrCreate)→ 招待 → 監査 → プリセット | A | `getOrCreateTenantWorkPolicy` は tx 内で読む — 計画の前で get、無ければ作る側を計画に積む(同時作成は名前の UNIQUE か `onConflictDoNothing`)。メール重複の UNIQUE → 409 は従来どおり |
-| 24 | `apps/api/src/routes/members.ts` 退職処理 | 無効化 → セッション・招待・トークンの失効 → 監査 | A | |
-| 25 | `apps/api/src/routes/members.ts` 2FA のリセット | TOTP の削除 → 監査 → 通知 | A | `createNotificationIfAbsent` をビルダ版に |
-| 26 | `apps/api/src/routes/members.ts` 個人データの消去 | users の匿名化(0行なら例外)→ 多数の削除 → 監査(削除件数入り) | B | users の update にガード。Slack 連携トークンの削除は「連携の削除結果」を使っている(read-your-writes)ので、連携の削除より**前**に `slack_user_id IN (SELECT ... FROM slack_user_links ...)` のサブクエリで消す。監査の detail の件数は計画の後でしか分からない — 計画の前に数える(管理者の明示操作で同時実行は事実上無い)か、件数を監査から外す判断が要る |
-| 27 | `apps/api/src/routes/signup.ts` 申し込みの確定 | pending の claim → 招待コードの claim → テナント一式の作成 → 記録 → 監査 | B | ガード2つ(`signup.pending` → 404、`signup.invite_code` → 409)。`bootstrapTenant` をビルダの列に |
+| 20 | `apps/api/src/routes/auth-totp.ts` 2FA の有効化 | TOTP の有効化 → リカバリコードの置き換え → 監査 | A → **B** | ✅ 移行済み(`enableUserTotpWithRecoveryCodes`)。有効化に `enabled_at IS NULL` を足して claim にした(ガード `totp.enable` → 409。同時の有効化で先に返したリカバリコードが上書きされる穴を塞ぐ)。挿入は割る |
+| 21 | `apps/api/src/routes/auth-totp.ts` 2FA の無効化 | TOTP の削除 → 監査 | A | ✅ 移行済み(`removeUserTotp`) |
+| 22 | `apps/api/src/routes/auth-totp.ts` リカバリコードの再生成 | 置き換え → 監査 | A | ✅ 移行済み(`regenerateRecoveryCodes`) |
+| 23 | `apps/api/src/routes/members.ts` メンバー作成と招待 | ユーザー作成 → 所属 → 制度の割当(getOrCreate)→ 招待 → 監査 → プリセット | A | ✅ 移行済み(`createInvitedMember`)。ID は計画の前に決め、既定の制度は計画の前に get・無ければ insert を積む。メール重複の UNIQUE → 409 は従来どおり。プリセットは従来どおり単位の外 |
+| 24 | `apps/api/src/routes/members.ts` 退職処理 | 無効化 → セッション・招待・トークンの失効 → 監査 | A | ✅ 移行済み(`deactivateMember`。users の update にガード `member.deactivate.user` → 例外。従来の `deactivateUser` の throw と同じ) |
+| 25 | `apps/api/src/routes/members.ts` 2FA のリセット | TOTP の削除 → 監査 → 通知 | A | ✅ 移行済み(`removeUserTotp`。通知は `ON CONFLICT DO NOTHING` のビルダ `notificationInsertIfAbsentQuery`) |
+| 26 | `apps/api/src/routes/members.ts` 個人データの消去 | users の匿名化(0行なら例外)→ 多数の削除 → 監査(削除件数入り) | B | ✅ 移行済み(`eraseUserPersonalDataAtomically`)。users の update に `erased_at IS NULL` を足して claim(ガード `erasure.user` → 409 already_erased)。件数は計画の前に数える(`countUserPersonalData`。消し漏れは起きず、ずれうるのは報告だけ)。Slack 連携トークンは連携の削除より前にサブクエリで消す。応答の形は不変 |
+| 27 | `apps/api/src/routes/signup.ts` 申し込みの確定 | pending の claim → 招待コードの claim → テナント一式の作成 → 記録 → 監査 | B | ✅ 移行済み(`confirmPendingSignup` + apps/api の `bootstrapTenantStatements`)。ガード2つ(`signup.pending` → 404、`signup.invite_code` → 409)。pending を取れなかった要求は招待コードを消費しない |
 
 対象外: `packages/db/src/migrate-data.ts`(SQLite → PostgreSQL のデータ移行ツール。Node 専用で D1 では走らない)。
 

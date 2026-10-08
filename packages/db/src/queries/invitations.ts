@@ -24,9 +24,11 @@
 import { and, desc, eq, gt, isNull } from "drizzle-orm";
 import { AtomicPlan, runAtomic, type AtomicExecutor } from "../atomic.js";
 import type { Database, Transaction } from "../types.js";
-import { authCredentials, invitations } from "../schema/index.js";
+import { authCredentials, invitations, memberships, userPolicyAssignments, users, workPolicies } from "../schema/index.js";
 import { uuidv7 } from "../uuid.js";
 import { auditLogInsertQuery } from "./audit.js";
+import type { MemberUser } from "./members.js";
+import { getTenantWorkPolicy } from "./work-policies.js";
 
 export type Invitation = typeof invitations.$inferSelect;
 
@@ -76,8 +78,8 @@ function insertInvitationQuery(q: AtomicExecutor, input: NewInvitationInput) {
 
 /**
  * invitations へ1件発行する(既存の未決着招待を revoke してから作成、1単位)。
- * 単独呼び出し用。既に外側のトランザクション内にいる場合(メンバー作成を1トランザクションに
- * まとめる apps/api/src/routes/members.ts の POST /)は、代わりに createInvitationInTx を使うこと。
+ * 単独呼び出し用。メンバー作成と同じ単位で発行したい場合(apps/api/src/routes/members.ts の POST /)は
+ * `createInvitedMember` を使うこと。
  *
  * 判断点(2026-10-07、D1 対応): revoke と insert はどちらも無条件の書き込みで、途中の結果で
  * 分岐しない。そのため atomic plan(src/atomic.ts)へそのまま積める(ガード不要)。
@@ -97,8 +99,9 @@ export async function createInvitation(db: Database, input: NewInvitationInput):
 
 /**
  * createInvitation と同じ処理を、呼び出し側が既に開始した外側のトランザクション `tx` の中で
- * 行う(自分では db.transaction() を呼ばない)。apps/api/src/routes/members.ts の POST /
- * (createUser・upsertMembership・招待発行・監査ログ追記を1トランザクションにまとめる)専用。
+ * 行う(自分では db.transaction() を呼ばない)。D1 では外側のトランザクションを張れないので、
+ * API(members.ts の POST /)は 2026-10-08 から atomic plan 版の `createInvitedMember` を使う。
+ * これは外側のトランザクションに乗せたい Node 専用の呼び出し(テスト・運用ツール)のために残す。
  */
 export async function createInvitationInTx(tx: Transaction, input: NewInvitationInput): Promise<Invitation> {
   await revokePendingInvitationsQuery(tx, input);
@@ -273,4 +276,139 @@ export async function listTenantUserIdsWithCredentials(db: Database, tenantId: s
     .from(authCredentials)
     .where(eq(authCredentials.tenantId, tenantId));
   return new Set(rows.map((r) => r.userId));
+}
+
+export interface CreateInvitedMemberInput {
+  tenantId: string;
+  email: string;
+  name: string;
+  hireDate: string | null;
+  /** 所属部署(省略 = 部署未設定) */
+  departmentId?: string;
+  /**
+   * 割り当てる制度。省略時はテナント既定の制度(`getTenantWorkPolicy`。無ければ
+   * `defaultWorkPolicyName` で作る)。指定時の妥当性(同テナント・未アーカイブ)の検証は呼び出し側の責務
+   */
+  workPolicyId?: string;
+  /** 既定の制度が1つも無いときに作る制度の名前(通常運用では seed 済みで使われない) */
+  defaultWorkPolicyName: string;
+  /** 制度の割当の適用開始日(ローカル日付 "YYYY-MM-DD") */
+  effectiveFrom: string;
+  /** 招待トークンの SHA-256(hex) */
+  tokenHash: string;
+  /** UTC エポック分 */
+  expiresAt: number;
+  /** 招待した管理者(招待の created_by・監査ログの actor) */
+  actorId: string;
+  /** UTC エポック分 */
+  createdAt: number;
+}
+
+export interface CreatedInvitedMember {
+  user: MemberUser;
+  invitation: Invitation;
+}
+
+/**
+ * メンバーの作成と招待(POST /members)の書き込み一式を1単位で行う: users → 所属 →(既定の制度が
+ * 無ければ作成)→ 制度の割当 → 招待 → 監査ログ `member.invite`。
+ *
+ * 判断点(2026-10-08、D1 対応。docs/design/d1-atomic-writes.md #23): db.transaction() + `*InTx` から
+ * atomic plan(src/atomic.ts)へ移した。どれも途中の結果で分岐しない書き込みなので、ガードは無い:
+ *
+ * - **ID はすべて計画の前に決める**(users・制度)。後続の文(所属・割当・招待)の外部キーに使う
+ * - 既定の制度の get-or-create は、get を計画の前に済ませ、無いときだけ insert を計画に積む。
+ *   既定の制度は seed / テナント作成で必ず作られるので、ここで作るのは移行前のデータだけ
+ *   (同時に2本作られうるのは従来の db.transaction() 版と同じ。READ COMMITTED では従来も防げていない)
+ * - 新規ユーザーなので未決着の招待は無い。createInvitation の「revoke → 発行」の revoke は省く
+ * - メールの重複は UNIQUE(tenant_id, email) 違反として**そのまま投げる**(計画ごと巻き戻る)。
+ *   呼び出し側は従来どおり `isUniqueConstraintError` で 409 にする
+ */
+export async function createInvitedMember(db: Database, input: CreateInvitedMemberInput): Promise<CreatedInvitedMember> {
+  const userId = uuidv7();
+  const plan = new AtomicPlan();
+
+  const createdUser = plan.add((q) =>
+    q
+      .insert(users)
+      .values({
+        id: userId,
+        tenantId: input.tenantId,
+        email: input.email,
+        name: input.name,
+        isActive: true,
+        hireDate: input.hireDate,
+        createdAt: input.createdAt,
+      })
+      .returning(),
+  );
+
+  const departmentId = input.departmentId;
+  if (departmentId !== undefined) {
+    plan.add((q) =>
+      q.insert(memberships).values({ id: uuidv7(), tenantId: input.tenantId, userId, departmentId, createdAt: input.createdAt }),
+    );
+  }
+
+  let workPolicyId = input.workPolicyId;
+  if (workPolicyId === undefined) {
+    const existing = await getTenantWorkPolicy(db, input.tenantId);
+    if (existing) {
+      workPolicyId = existing.id;
+    } else {
+      const newPolicyId = uuidv7();
+      workPolicyId = newPolicyId;
+      plan.add((q) =>
+        q.insert(workPolicies).values({ id: newPolicyId, tenantId: input.tenantId, name: input.defaultWorkPolicyName, createdAt: input.createdAt }),
+      );
+    }
+  }
+  const assignedPolicyId = workPolicyId;
+  plan.add((q) =>
+    q.insert(userPolicyAssignments).values({
+      id: uuidv7(),
+      tenantId: input.tenantId,
+      userId,
+      workPolicyId: assignedPolicyId,
+      effectiveFrom: input.effectiveFrom,
+      createdAt: input.createdAt,
+    }),
+  );
+
+  const invitation = plan.add((q) =>
+    insertInvitationQuery(q, {
+      tenantId: input.tenantId,
+      userId,
+      tokenHash: input.tokenHash,
+      expiresAt: input.expiresAt,
+      createdBy: input.actorId,
+      createdAt: input.createdAt,
+    }),
+  );
+
+  plan.add((q) =>
+    auditLogInsertQuery(q, {
+      tenantId: input.tenantId,
+      actorId: input.actorId,
+      action: "member.invite",
+      targetType: "user",
+      targetId: userId,
+      detail: JSON.stringify({
+        email: input.email,
+        departmentId: input.departmentId ?? null,
+        // 招待で制度を選んだときだけ残す(既定の制度の自動割当は従来どおり記録しない)。
+        ...(input.workPolicyId !== undefined ? { workPolicyId: input.workPolicyId } : {}),
+      }),
+      occurredAt: input.createdAt,
+    }),
+  );
+
+  const result = await runAtomic(db, plan);
+  // ガードを積んでいないので ok: false にはならない
+  const user = result.ok ? result.get(createdUser)[0] : undefined;
+  const createdInvitation = result.ok ? result.get(invitation)[0] : undefined;
+  if (!user || !createdInvitation) {
+    throw new Error("createInvitedMember: insert returned no row");
+  }
+  return { user, invitation: createdInvitation };
 }

@@ -32,12 +32,11 @@ import type { Context } from "hono";
 import {
   authCredentials,
   countUnusedRecoveryCodes,
-  enableUserTotp,
+  enableUserTotpWithRecoveryCodes,
   getTenantById,
   getUserTotp,
-  insertAuditLog,
-  replaceRecoveryCodes,
-  deleteUserTotp,
+  regenerateRecoveryCodes,
+  removeUserTotp,
   upsertPendingUserTotp,
   type Database,
 } from "@kizami/db";
@@ -168,31 +167,23 @@ export function createTotpRoutes(db: Database, options: TotpRoutesOptions) {
 
     const now = nowMinutes();
     const recovery = await generateRecoveryCodes();
-    await db.transaction(async (tx) => {
-      await enableUserTotp(tx, {
-        tenantId: user.tenantId,
-        userId: user.id,
-        enabledAt: now,
-        // 確認に使ったコードはこの時点で「使用済み」にする(同じコードでログインの
-        // 第2段階を通せてしまうと、有効化直後だけリプレイ防止に穴が空く)。
-        lastUsedCounter: verified.counter,
-      });
-      await replaceRecoveryCodes(tx, {
-        tenantId: user.tenantId,
-        userId: user.id,
-        codeHashes: recovery.hashes,
-        createdAt: now,
-      });
-      await insertAuditLog(tx, {
-        tenantId: user.tenantId,
-        actorId: user.id,
-        action: "auth.totp.enable",
-        targetType: "users",
-        targetId: user.id,
-        detail: JSON.stringify({}),
-        occurredAt: now,
-      });
+    // 有効化・リカバリコードの置き換え・監査ログを1単位で書く(packages/db の atomic plan。D1 でも動く)。
+    // 有効化は `enabled_at IS NULL` の claim なので、同じコードでの同時の有効化は片方だけが通り、
+    // 負けた側はリカバリコードを書き換えない(先に返したコードが使えなくなる事故を防ぐ)。
+    // 確認に使ったコードはこの時点で「使用済み」にする(同じコードでログインの
+    // 第2段階を通せてしまうと、有効化直後だけリプレイ防止に穴が空く)。
+    const enabled = await enableUserTotpWithRecoveryCodes(db, {
+      tenantId: user.tenantId,
+      userId: user.id,
+      enabledAt: now,
+      lastUsedCounter: verified.counter,
+      codeHashes: recovery.hashes,
     });
+    if (!enabled) {
+      // 事前判定の後に別の要求が有効化した(または setup がやり直された/消された)。
+      const current = await getUserTotp(db, { tenantId: user.tenantId, userId: user.id });
+      return c.json({ error: current ? "already_enabled" : "setup_required" }, 409);
+    }
 
     return c.json({ enabled: true, recoveryCodes: recovery.codes });
   });
@@ -239,9 +230,10 @@ export function createTotpRoutes(db: Database, options: TotpRoutesOptions) {
     if (!verified) return c.json({ error: "invalid_code" }, 400);
 
     const now = nowMinutes();
-    await db.transaction(async (tx) => {
-      await deleteUserTotp(tx, { tenantId: user.tenantId, userId: user.id });
-      await insertAuditLog(tx, {
+    await removeUserTotp(db, {
+      tenantId: user.tenantId,
+      userId: user.id,
+      audit: {
         tenantId: user.tenantId,
         actorId: user.id,
         action: "auth.totp.disable",
@@ -249,7 +241,7 @@ export function createTotpRoutes(db: Database, options: TotpRoutesOptions) {
         targetId: user.id,
         detail: JSON.stringify({}),
         occurredAt: now,
-      });
+      },
     });
 
     return c.json({ enabled: false });
@@ -257,7 +249,7 @@ export function createTotpRoutes(db: Database, options: TotpRoutesOptions) {
 
   // ---- POST /auth/totp/recovery-codes --------------------------------------
   /**
-   * リカバリコードの再生成。**古いコードは全て無効になる**(replaceRecoveryCodes が全削除する)。
+   * リカバリコードの再生成。**古いコードは全て無効になる**(regenerateRecoveryCodes が全削除する)。
    * 無効化と同じく、その場でパスワードとコードの両方を要求する。
    */
   app.post("/recovery-codes", async (c) => {
@@ -301,22 +293,11 @@ export function createTotpRoutes(db: Database, options: TotpRoutesOptions) {
 
     const now = nowMinutes();
     const recovery = await generateRecoveryCodes();
-    await db.transaction(async (tx) => {
-      await replaceRecoveryCodes(tx, {
-        tenantId: user.tenantId,
-        userId: user.id,
-        codeHashes: recovery.hashes,
-        createdAt: now,
-      });
-      await insertAuditLog(tx, {
-        tenantId: user.tenantId,
-        actorId: user.id,
-        action: "auth.totp.recovery_codes.regenerate",
-        targetType: "users",
-        targetId: user.id,
-        detail: JSON.stringify({}),
-        occurredAt: now,
-      });
+    await regenerateRecoveryCodes(db, {
+      tenantId: user.tenantId,
+      userId: user.id,
+      codeHashes: recovery.hashes,
+      createdAt: now,
     });
 
     return c.json({ recoveryCodes: recovery.codes });

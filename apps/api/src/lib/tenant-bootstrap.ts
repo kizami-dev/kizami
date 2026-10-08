@@ -26,6 +26,7 @@ import {
   uuidv7,
   workPolicies,
   workPolicyVersions,
+  type AtomicExecutor,
   type Database,
   type MemberUser,
   type Tenant,
@@ -148,10 +149,10 @@ export interface BootstrapTenantResult {
  * 既存ユーザーの有無は**確認しない**(呼び出し側の責務)。同じメールで2回呼べば
  * (tenant_id, email) が異なるため両方作られてしまうので、CLI 側で必ず冪等判定を行うこと。
  *
- * `db` には外側のトランザクション(`tx`)も渡せる(セルフサインアップの確認が「招待コード消費・
- * テナント作成・監査ログ」を1トランザクションにまとめるため。2026-10-03)。この関数自身は
- * トランザクションを開始しないので、`Database` を渡した場合は従来どおり文ごとのコミットになる
- * (seed / create-tenant の既存呼び出しの挙動は変わらない)。
+ * `db` には外側のトランザクション(`tx`)も渡せる。この関数自身はトランザクションを開始しないので、
+ * `Database` を渡した場合は従来どおり文ごとのコミットになる(seed / create-tenant の既存呼び出しの
+ * 挙動は変わらない)。セルフサインアップの確認は、同じ文の列(`bootstrapTenantStatements`)を
+ * atomic plan に積んで1単位で書く(D1 でも動くように。2026-10-08)。
  */
 export async function bootstrapTenant(db: Database | Transaction, params: BootstrapTenantParams): Promise<BootstrapTenantResult> {
   if ((params.adminPassword === undefined) === (params.adminPasswordHash === undefined)) {
@@ -160,104 +161,134 @@ export async function bootstrapTenant(db: Database | Transaction, params: Bootst
   // ハッシュ化(PBKDF2、重い)は DB へ書き始める前に済ませる。トランザクション内で呼ばれても
   // 書き込みロックを保持したまま計算しないよう、ハッシュ済みを渡す経路を用意してある。
   const passwordHash = params.adminPasswordHash ?? (await hashPassword(params.adminPassword!));
+  const { result, statements } = bootstrapTenantStatements({ ...params, adminPasswordHash: passwordHash });
+  for (const statement of statements) await statement(db);
+  return result;
+}
+
+/** `bootstrapTenantStatements` の入力。パスワードはハッシュ済みだけを受け取る(計画の中で計算しない)。 */
+export type BootstrapTenantStatementsParams = Omit<BootstrapTenantParams, "adminPassword" | "adminPasswordHash"> & {
+  adminPasswordHash: string;
+};
+
+/**
+ * bootstrapTenant が書く文の列を、**実行せずに**返す(各要素は実行先を受け取ってビルダを返す関数 —
+ * packages/db の atomic plan の `plan.add` にそのまま渡せる形)。ID はここで全部決まるので、
+ * 戻り値の `result` は実行前から確定している。
+ *
+ * 判断点(2026-10-08、D1 対応。docs/design/d1-atomic-writes.md #27): セルフサインアップの確認は
+ * 「pending の claim → 招待コードの claim → テナント一式」を1単位で書く必要があり、D1 では
+ * db.transaction() が使えない。テナント一式を文の列として切り出し、確認側(packages/db の
+ * `confirmPendingSignup`)が claim のガードの後ろへ積む。bootstrapTenant 自身は同じ列を順に
+ * await するだけにして、seed / create-tenant の挙動を変えない。複数行の insert(同梱プリセット3行)は
+ * D1 のバインド変数上限(1文 100 個)に十分収まる(7 列 × 3 行)。
+ */
+export function bootstrapTenantStatements(params: BootstrapTenantStatementsParams): {
+  result: BootstrapTenantResult;
+  statements: ((q: AtomicExecutor) => PromiseLike<unknown>)[];
+} {
+  const passwordHash = params.adminPasswordHash;
   const now = params.now ?? Math.floor(Date.now() / 60_000);
 
   const tenantId = uuidv7();
-  await db.insert(tenants).values({ id: tenantId, name: params.tenantName, createdAt: now });
-
-  await db.insert(tenantSettingVersions).values({
-    id: uuidv7(),
-    tenantId,
-    effectiveFrom: "1970-01-01",
-    dayBoundaryMinutes: 0,
-    legalHolidayRule: JSON.stringify({ kind: "weekday", weekday: 0 }),
-    breakRule: JSON.stringify({ mode: "punch" }),
-    gpsEnabled: false,
-    gpsRetentionDays: null,
-    createdAt: now,
-  });
-
   const workPolicyId = uuidv7();
-  await db.insert(workPolicies).values({ id: workPolicyId, tenantId, name: "標準フレックス", createdAt: now });
-  await db.insert(workPolicyVersions).values({
-    id: uuidv7(),
-    tenantId,
-    workPolicyId,
-    effectiveFrom: "1970-01-01",
-    settlementPeriod: "monthly",
-    core: null,
-    standardDayMinutes: 480,
-    createdAt: now,
-  });
-
   const userId = uuidv7();
-  await db.insert(users).values({
-    id: userId,
-    tenantId,
-    email: params.adminEmail,
-    name: params.adminName ?? "管理者",
-    isActive: true,
-    createdAt: now,
-  });
-
-  await db.insert(authCredentials).values({
-    id: uuidv7(),
-    tenantId,
-    userId,
-    passwordHash,
-    createdAt: now,
-    updatedAt: now,
-  });
-
-  await db.insert(userPolicyAssignments).values({
-    id: uuidv7(),
-    tenantId,
-    userId,
-    workPolicyId,
-    effectiveFrom: "1970-01-01",
-    createdAt: now,
-  });
-
   const adminPresetId = uuidv7();
-  await db.insert(permissionPresets).values([
-    {
-      id: adminPresetId,
-      tenantId,
-      name: "管理者",
-      description: "全業務タスク権限をテナント全体スコープで保持する同梱プリセット",
-      grants: JSON.stringify(ADMIN_GRANTS),
-      isSystem: true,
-      createdAt: now,
-    },
-    {
-      id: uuidv7(),
-      tenantId,
-      name: "マネージャー",
-      description: "自部署+配下部署スコープでの承認・閲覧権限を持つ同梱プリセット",
-      grants: JSON.stringify(MANAGER_GRANTS),
-      isSystem: true,
-      createdAt: now,
-    },
-    {
-      id: uuidv7(),
-      tenantId,
-      name: "メンバー",
-      description: "業務タスク権限を持たない同梱プリセット(セルフサービス権限は別途常時付与)",
-      grants: JSON.stringify(MEMBER_GRANTS),
-      isSystem: true,
-      createdAt: now,
-    },
-  ]);
 
-  await db.insert(presetAssignments).values({
-    id: uuidv7(),
-    tenantId,
-    userId,
-    presetId: adminPresetId,
-    createdAt: now,
-  });
+  const statements: ((q: AtomicExecutor) => PromiseLike<unknown>)[] = [
+    (q) => q.insert(tenants).values({ id: tenantId, name: params.tenantName, createdAt: now }),
+    (q) =>
+      q.insert(tenantSettingVersions).values({
+        id: uuidv7(),
+        tenantId,
+        effectiveFrom: "1970-01-01",
+        dayBoundaryMinutes: 0,
+        legalHolidayRule: JSON.stringify({ kind: "weekday", weekday: 0 }),
+        breakRule: JSON.stringify({ mode: "punch" }),
+        gpsEnabled: false,
+        gpsRetentionDays: null,
+        createdAt: now,
+      }),
+    (q) => q.insert(workPolicies).values({ id: workPolicyId, tenantId, name: "標準フレックス", createdAt: now }),
+    (q) =>
+      q.insert(workPolicyVersions).values({
+        id: uuidv7(),
+        tenantId,
+        workPolicyId,
+        effectiveFrom: "1970-01-01",
+        settlementPeriod: "monthly",
+        core: null,
+        standardDayMinutes: 480,
+        createdAt: now,
+      }),
+    (q) =>
+      q.insert(users).values({
+        id: userId,
+        tenantId,
+        email: params.adminEmail,
+        name: params.adminName ?? "管理者",
+        isActive: true,
+        createdAt: now,
+      }),
+    (q) =>
+      q.insert(authCredentials).values({
+        id: uuidv7(),
+        tenantId,
+        userId,
+        passwordHash,
+        createdAt: now,
+        updatedAt: now,
+      }),
+    (q) =>
+      q.insert(userPolicyAssignments).values({
+        id: uuidv7(),
+        tenantId,
+        userId,
+        workPolicyId,
+        effectiveFrom: "1970-01-01",
+        createdAt: now,
+      }),
+    (q) =>
+      q.insert(permissionPresets).values([
+        {
+          id: adminPresetId,
+          tenantId,
+          name: "管理者",
+          description: "全業務タスク権限をテナント全体スコープで保持する同梱プリセット",
+          grants: JSON.stringify(ADMIN_GRANTS),
+          isSystem: true,
+          createdAt: now,
+        },
+        {
+          id: uuidv7(),
+          tenantId,
+          name: "マネージャー",
+          description: "自部署+配下部署スコープでの承認・閲覧権限を持つ同梱プリセット",
+          grants: JSON.stringify(MANAGER_GRANTS),
+          isSystem: true,
+          createdAt: now,
+        },
+        {
+          id: uuidv7(),
+          tenantId,
+          name: "メンバー",
+          description: "業務タスク権限を持たない同梱プリセット(セルフサービス権限は別途常時付与)",
+          grants: JSON.stringify(MEMBER_GRANTS),
+          isSystem: true,
+          createdAt: now,
+        },
+      ]),
+    (q) =>
+      q.insert(presetAssignments).values({
+        id: uuidv7(),
+        tenantId,
+        userId,
+        presetId: adminPresetId,
+        createdAt: now,
+      }),
+  ];
 
-  return { tenantId, userId, adminPresetId, workPolicyId };
+  return { result: { tenantId, userId, adminPresetId, workPolicyId }, statements };
 }
 
 /**

@@ -126,6 +126,33 @@ describe("POST /auth/totp/setup, /enable(有効化)", () => {
     expect(await status.json()).toMatchObject({ enabled: false, recoveryCodesRemaining: 0 });
   });
 
+  // atomic plan への移行(2026-10-08、docs/design/d1-atomic-writes.md #20): 有効化は
+  // `enabled_at IS NULL` の claim なので、同じコードでの同時の有効化は片方だけが通る。
+  // 負けた側はリカバリコードを書き換えない(勝った側が返したコードがそのまま使える)
+  it("同時の有効化は1つだけが通り、負けた側は 409 already_enabled でリカバリコードを上書きしない", async () => {
+    const seeded = await setupTestDb();
+    const app = createApp({ db: seeded.db, encryptor: testEncryptor() });
+    const cookie = await loginAndGetCookie(app, seeded.email, seeded.password);
+    const setupRes = await app.request("/auth/totp/setup", { method: "POST", headers: { cookie } });
+    const { secret } = (await setupRes.json()) as { secret: string };
+    const code = await generateTotp(secret, nowSeconds());
+
+    const responses = await Promise.all([
+      app.request("/auth/totp/enable", jsonInit({ code }, cookie)),
+      app.request("/auth/totp/enable", jsonInit({ code }, cookie)),
+    ]);
+    expect(responses.map((r) => r.status).sort()).toEqual([200, 409]);
+    const loser = responses.find((r) => r.status === 409)!;
+    expect(await loser.json()).toEqual({ error: "already_enabled" });
+    const winner = responses.find((r) => r.status === 200)!;
+    const { recoveryCodes } = (await winner.json()) as { recoveryCodes: string[] };
+    expect(recoveryCodes).toHaveLength(10);
+
+    const status = await app.request("/auth/totp", { headers: { cookie } });
+    expect(await status.json()).toMatchObject({ enabled: true, recoveryCodesRemaining: 10 });
+    expect(await seeded.db.select().from(auditLogs).where(eq(auditLogs.action, "auth.totp.enable"))).toHaveLength(1);
+  });
+
   it("setup を通らずに enable すると 409 setup_required", async () => {
     const seeded = await setupTestDb();
     const app = createApp({ db: seeded.db, encryptor: testEncryptor() });

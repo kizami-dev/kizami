@@ -1,6 +1,10 @@
+import { randomUUID } from "node:crypto";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 import { migrateDb, type Database } from "./support/db.js";
-import { listAssignedPresetGrants, listTenantPresetAssignmentRows } from "../src/queries/permissions.js";
+import { listAssignedPresetGrants, listTenantPresetAssignmentRows, replacePresetAssignmentsForUser } from "../src/queries/permissions.js";
 import { permissionPresets, presetAssignments, tenants, users } from "../src/schema/index.js";
 import { uuidv7 } from "../src/uuid.js";
 
@@ -113,5 +117,52 @@ describe("listAssignedPresetGrants", () => {
         denies: JSON.stringify(["closing.execute"]),
       },
     ]);
+  });
+});
+
+// 割当の置き換え(atomic plan、2026-10-08、docs/design/d1-atomic-writes.md #7)。3レグで走る。
+describe("replacePresetAssignmentsForUser", () => {
+  let db: Database;
+  const tenantId = uuidv7();
+  const userId = uuidv7();
+
+  beforeEach(async () => {
+    const dbPath = join(tmpdir(), `kizami-db-test-${randomUUID()}.db`);
+    ({ db } = await migrateDb({ url: `file:${dbPath}` }));
+    await db.insert(tenants).values({ id: tenantId, name: "Tenant A", createdAt: 0 });
+    await db.insert(users).values({ id: userId, tenantId, email: "a@example.com", name: "A", createdAt: 0 });
+  });
+
+  async function presets(n: number): Promise<string[]> {
+    const ids = Array.from({ length: n }, () => uuidv7());
+    for (const id of ids) {
+      await db.insert(permissionPresets).values({ id, tenantId, name: `P-${id}`, grants: "[]", createdAt: 0 });
+    }
+    return ids;
+  }
+  const assigned = async () =>
+    (await db.select().from(presetAssignments).where(eq(presetAssignments.userId, userId))).map((r) => r.presetId).sort();
+
+  it("replaces the whole set, and an empty set clears it", async () => {
+    const [a, b, c] = await presets(3);
+    await replacePresetAssignmentsForUser(db, { tenantId, userId, presetIds: [a!, b!], createdAt: 1 });
+    expect(await assigned()).toEqual([a, b].sort());
+    await replacePresetAssignmentsForUser(db, { tenantId, userId, presetIds: [c!], createdAt: 2 });
+    expect(await assigned()).toEqual([c]);
+    await replacePresetAssignmentsForUser(db, { tenantId, userId, presetIds: [], createdAt: 3 });
+    expect(await assigned()).toEqual([]);
+  });
+
+  it("splits a large set into inserts under D1's 100-bound-parameter limit (5 columns × 45 rows)", async () => {
+    const ids = await presets(45);
+    await replacePresetAssignmentsForUser(db, { tenantId, userId, presetIds: ids, createdAt: 1 });
+    expect(await assigned()).toEqual([...ids].sort());
+  });
+
+  it("an invalid preset id rolls the whole replacement back (the old assignments survive)", async () => {
+    const [a] = await presets(1);
+    await replacePresetAssignmentsForUser(db, { tenantId, userId, presetIds: [a!], createdAt: 1 });
+    await expect(replacePresetAssignmentsForUser(db, { tenantId, userId, presetIds: [uuidv7()], createdAt: 2 })).rejects.toThrow();
+    expect(await assigned()).toEqual([a]);
   });
 });

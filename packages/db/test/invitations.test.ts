@@ -9,6 +9,7 @@ import {
   acceptInvitation,
   createInvitation,
   createInvitationInTx,
+  createInvitedMember,
   createUser,
   findInvitationByTokenHash,
   getLatestInvitationForUser,
@@ -19,7 +20,7 @@ import {
   upsertMembership,
   userHasCredential,
 } from "../src/queries/index.js";
-import { auditLogs, authCredentials, departments, tenants, users } from "../src/schema/index.js";
+import { auditLogs, authCredentials, departments, invitations, memberships, tenants, userPolicyAssignments, users, workPolicies } from "../src/schema/index.js";
 import { uuidv7 } from "../src/uuid.js";
 
 const DAY_MINUTES = 24 * 60;
@@ -397,6 +398,76 @@ describe("invitations", () => {
     const logs = await db.select().from(auditLogs).where(eq(auditLogs.tenantId, tenantId));
     expect(logs.some((l) => l.action === "member.invite" && l.target === `user:${created.user.id}`)).toBe(true);
   });
+
+  // メンバーの作成と招待(atomic plan、2026-10-08、docs/design/d1-atomic-writes.md #23)。3レグで走る。
+  describe("createInvitedMember", () => {
+    const base = {
+      tenantId,
+      name: "New",
+      hireDate: null,
+      defaultWorkPolicyName: "標準",
+      effectiveFrom: "2026-10-08",
+      expiresAt: 7 * DAY_MINUTES,
+      actorId: adminId,
+      createdAt: 0,
+    };
+
+    it("creates the user, membership, default work policy assignment, invitation and audit log together", async () => {
+      const deptId = uuidv7();
+      await db.insert(departments).values({ id: deptId, tenantId, name: "開発", createdAt: 0 });
+      const policyId = uuidv7();
+      await db.insert(workPolicies).values({ id: policyId, tenantId, name: "既定", createdAt: 0 });
+
+      const { user, invitation } = await createInvitedMember(db, { ...base, email: "m@example.com", departmentId: deptId, tokenHash: "h-m" });
+      expect(user.email).toBe("m@example.com");
+      expect(invitation.userId).toBe(user.id);
+      expect((await findInvitationByTokenHash(db, "h-m"))?.id).toBe(invitation.id);
+      expect((await db.select().from(memberships).where(eq(memberships.userId, user.id)))[0]?.departmentId).toBe(deptId);
+      const [assignment] = await db.select().from(userPolicyAssignments).where(eq(userPolicyAssignments.userId, user.id));
+      expect(assignment).toMatchObject({ workPolicyId: policyId, effectiveFrom: "2026-10-08" });
+      const [log] = (await db.select().from(auditLogs).where(eq(auditLogs.tenantId, tenantId))).filter((l) => l.action === "member.invite");
+      // 既定の制度の自動割当は監査に残さない(従来どおり)
+      expect(JSON.parse(log?.afterDigest ?? "{}")).toEqual({ email: "m@example.com", departmentId: deptId });
+    });
+
+    it("creates the default work policy when the tenant has none, and records a chosen policy in the audit log", async () => {
+      const { user } = await createInvitedMember(db, { ...base, email: "first@example.com", tokenHash: "h-first" });
+      const policies = await db.select().from(workPolicies).where(eq(workPolicies.tenantId, tenantId));
+      expect(policies.map((p) => p.name)).toEqual(["標準"]);
+      expect((await db.select().from(userPolicyAssignments).where(eq(userPolicyAssignments.userId, user.id)))[0]?.workPolicyId).toBe(policies[0]?.id);
+
+      const chosen = uuidv7();
+      await db.insert(workPolicies).values({ id: chosen, tenantId, name: "時短", createdAt: 1 });
+      const second = await createInvitedMember(db, { ...base, email: "second@example.com", workPolicyId: chosen, tokenHash: "h-second" });
+      expect((await db.select().from(userPolicyAssignments).where(eq(userPolicyAssignments.userId, second.user.id)))[0]?.workPolicyId).toBe(chosen);
+      const logs = (await db.select().from(auditLogs).where(eq(auditLogs.tenantId, tenantId))).filter((l) => l.action === "member.invite");
+      expect(logs.map((l) => JSON.parse(l.afterDigest ?? "{}").workPolicyId)).toContain(chosen);
+    });
+
+    it("a duplicate email throws a UNIQUE violation and writes nothing (no orphan policy, assignment, invitation or audit log)", async () => {
+      await db.insert(users).values({ id: uuidv7(), tenantId, email: "dup@example.com", name: "Dup", createdAt: 0 });
+      const before = {
+        users: (await db.select().from(users)).length,
+        invitations: (await db.select().from(invitations)).length,
+        audits: (await db.select().from(auditLogs)).length,
+      };
+      let caught: unknown;
+      try {
+        await createInvitedMember(db, { ...base, email: "dup@example.com", tokenHash: "h-dup" });
+      } catch (err) {
+        caught = err;
+      }
+      expect(isUniqueConstraintError(caught)).toBe(true);
+      expect({
+        users: (await db.select().from(users)).length,
+        invitations: (await db.select().from(invitations)).length,
+        audits: (await db.select().from(auditLogs)).length,
+      }).toEqual(before);
+      // 既定の制度を作る文も巻き戻っている
+      expect(await db.select().from(workPolicies).where(eq(workPolicies.tenantId, tenantId))).toHaveLength(0);
+      expect(await db.select().from(userPolicyAssignments)).toHaveLength(0);
+    });
+  });
 });
 
 describe("同一分内の再発行(createdAt が同値)の最新解決(2026-08-23 バグ修正)", () => {
@@ -426,4 +497,5 @@ describe("同一分内の再発行(createdAt が同値)の最新解決(2026-08-2
     expect(latest?.id).not.toBe(first.id);
     expect(latest?.revokedAt).toBeNull(); // 旧招待は createInvitation が revoke 済み
   });
+
 });
