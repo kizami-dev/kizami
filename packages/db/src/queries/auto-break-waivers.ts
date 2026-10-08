@@ -8,9 +8,12 @@
  */
 
 import { and, asc, desc, eq, gte, inArray, lte } from "drizzle-orm";
+import { AtomicPlan, runAtomic, type AtomicExecutor } from "../atomic.js";
 import type { Database, Transaction } from "../types.js";
 import { autoBreakWaivers } from "../schema/index.js";
 import { uuidv7 } from "../uuid.js";
+import { auditLogInsertQuery, type NewAuditLogInput } from "./audit.js";
+import { closingSerializeKey, periodsOpenCondition } from "./closings.js";
 
 export type AutoBreakWaiver = typeof autoBreakWaivers.$inferSelect;
 export type AutoBreakWaiverStatus = "pending" | "approved_step1" | "approved" | "rejected" | "withdrawn";
@@ -117,10 +120,16 @@ export interface DecideAutoBreakWaiverParams {
  * ここでは事前チェックをせず UNIQUE 制約違反を呼び出し側(isUniqueConstraintError)に委ねる。
  */
 export async function decideAutoBreakWaiver(db: Database | Transaction, params: DecideAutoBreakWaiverParams): Promise<AutoBreakWaiver | null> {
+  const [row] = await autoBreakWaiverDecisionQuery(db, params);
+  return row ?? null;
+}
+
+/** decideAutoBreakWaiver と同じ条件付き UPDATE のビルダ(実行しない。atomic plan 用)。 */
+export function autoBreakWaiverDecisionQuery(q: AtomicExecutor, params: DecideAutoBreakWaiverParams) {
   // 一次承認は「最終決裁ではない」ので decided_by / decided_at を埋めない(承認済み表示や
   // 監査で「誰が決裁したか」を読むときに、一次承認者を最終決裁者と取り違えないため)。
   const isStep1 = params.status === "approved_step1";
-  const [row] = await db
+  return q
     .update(autoBreakWaivers)
     .set({
       status: params.status,
@@ -138,7 +147,60 @@ export async function decideAutoBreakWaiver(db: Database | Transaction, params: 
       ),
     )
     .returning();
-  return row ?? null;
+}
+
+export interface DecideAutoBreakWaiverAtomicInput {
+  /** 最終決裁(approved / rejected)だけ。一次承認は単文の decideAutoBreakWaiver + 監査ログのまま */
+  decision: DecideAutoBreakWaiverParams & { status: "approved" | "rejected" };
+  /**
+   * 承認のとき、対象日の月("YYYY-MM")。まだ締められていないことを書き込みの条件にする
+   * (締め済み月の承認 = amend は対象外)。却下では渡さない
+   */
+  openPeriod?: string;
+  audit: NewAuditLogInput;
+}
+
+export type DecideAutoBreakWaiverAtomicResult =
+  | { ok: true; waiver: AutoBreakWaiver }
+  /** not_pending: 別の決裁・取り下げが先に入った / month_closed: 計画の前に読んだ後で対象月が締められた。何も書いていない */
+  | { ok: false; reason: "not_pending" | "month_closed" };
+
+/**
+ * 休憩自動控除の打ち消し申請の最終承認・却下を1単位で行う: 状態の claim →(承認なら)対象月がまだ
+ * 締められていないことの確認 → 監査ログ(atomic plan。D1 でも動く)。ガードと直列化は
+ * approveCorrectionRequest(queries/corrections.ts)と同じ(docs/design/d1-atomic-writes.md §6 #18・#19)。
+ *
+ * 同じ (tenantId, userId, waiveDate) の approved の重複は、従来どおり部分 UNIQUE index
+ * (auto_break_waivers_approved_unique_idx)が claim の UPDATE そのものを違反させる。`runAtomic` は
+ * それを素通しするので、呼び出し側は isUniqueConstraintError で 409 にする(計画全体が巻き戻る)。
+ */
+export async function decideAutoBreakWaiverAtomic(
+  db: Database,
+  input: DecideAutoBreakWaiverAtomicInput,
+): Promise<DecideAutoBreakWaiverAtomicResult> {
+  const { decision, openPeriod } = input;
+  const plan = new AtomicPlan();
+  if (openPeriod !== undefined) plan.serialize(closingSerializeKey(decision.tenantId, openPeriod));
+  const claim = plan.add((q) => autoBreakWaiverDecisionQuery(q, decision));
+  plan.guard("auto_break_waiver.claim");
+  if (openPeriod !== undefined) {
+    plan.add((q) =>
+      q
+        .update(autoBreakWaivers)
+        .set({ status: decision.status })
+        .where(
+          and(eq(autoBreakWaivers.id, decision.id), periodsOpenCondition(q, { tenantId: decision.tenantId, periods: [openPeriod] })),
+        ),
+    );
+    plan.guard("auto_break_waiver.month_open");
+  }
+  plan.add((q) => auditLogInsertQuery(q, input.audit));
+
+  const result = await runAtomic(db, plan);
+  if (!result.ok) return { ok: false, reason: result.failedGuard === "auto_break_waiver.claim" ? "not_pending" : "month_closed" };
+  const [waiver] = result.get(claim);
+  if (!waiver) throw new Error("decideAutoBreakWaiverAtomic: the claim returned no row after the guard passed");
+  return { ok: true, waiver };
 }
 
 export interface WithdrawAutoBreakWaiverParams {

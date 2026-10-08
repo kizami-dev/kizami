@@ -149,6 +149,13 @@ export interface CreateAppDeps {
    * (申請そのものが db.transaction() を使うため。workers.ts の D1_TRANSACTIONS_SUPPORTED)。
    */
   tenantWithdrawalMail?: TenantWithdrawalMailDeps;
+  /**
+   * `db.transaction()`(途中の結果で分岐できるトランザクション)が使えるか。**省略時は `db` から判定する**
+   * (@kizami/db の supportsInteractiveTransactions — D1 なら false。Workers エントリは渡さない)。
+   * false だと、締め済み月への承認(amend)が 409 `amend_unsupported_on_d1` になる(lib/closing-guard.ts)。
+   * テストが Node の SQLite で D1 の配備を再現するときだけ明示する。
+   */
+  interactiveTransactions?: boolean;
 }
 
 /**
@@ -177,10 +184,13 @@ export function createApp(deps: CreateAppDeps) {
     signup,
     selfServiceReset,
     tenantWithdrawalMail,
+    interactiveTransactions,
   } = deps;
   const app = new Hono<AppEnv>();
   // 外向きの通知の上限は通知の依存(notify)に載せて、各ルートの buildTenantChannels / buildPersonalChannels へ流す
   const notify = quotas ? { ...(notifyBase ?? {}), quotas } : notifyBase;
+  // 承認ルート(corrections / auto-break-waivers / leave)へ渡す amend の可否(省略時は各ルートが db から判定)
+  const amendCapability = interactiveTransactions !== undefined ? { interactiveTransactions } : {};
 
   if (corsOrigin) {
     app.use("*", cors({ origin: corsOrigin, credentials: true }));
@@ -396,10 +406,10 @@ export function createApp(deps: CreateAppDeps) {
   authed.route("/attendance", createAttendanceRoutes(db));
   authed.route("/shifts", createShiftsRoutes(db));
   // 承認・却下の本人通知を外部チャネル(メール/個人Webhook)へも流すための deps(2026-08-23 承認モデル統一の配線)
-  authed.route("/corrections", createCorrectionsRoutes(db, { ...(notify ?? {}), encryptor: encryptor ?? null, vapid: vapid ?? null }));
+  authed.route("/corrections", createCorrectionsRoutes(db, { ...(notify ?? {}), encryptor: encryptor ?? null, vapid: vapid ?? null, ...amendCapability }));
   // 休憩自動控除の打ち消し申請(docs/design/breaks.md)。承認通知の送信に settings.ts と同じ
   // notify 依存(smtpSendFn 等)+ encryptor を必要とするため、同じ deps をそのまま渡す。
-  authed.route("/auto-break-waivers", createAutoBreakWaiversRoutes(db, { ...(notify ?? {}), encryptor: encryptor ?? null, vapid: vapid ?? null }));
+  authed.route("/auto-break-waivers", createAutoBreakWaiversRoutes(db, { ...(notify ?? {}), encryptor: encryptor ?? null, vapid: vapid ?? null, ...amendCapability }));
   authed.route("/notifications", createNotificationsRoutes(db));
   authed.route("/settings", createSettingsRoutes(db, { ...(notify ?? {}), encryptor: encryptor ?? null }));
   // 個人の通知受け取り設定(GET/PUT /settings/notifications/me, POST /settings/notifications/me/test)。
@@ -419,7 +429,7 @@ export function createApp(deps: CreateAppDeps) {
   authed.route("/presets", createPresetsRoutes(db));
   authed.route("/closings", createClosingsRoutes(db));
   authed.route("/exports", createExportsRoutes(db));
-  authed.route("/leave", createLeaveRoutes(db, { ...(notify ?? {}), encryptor: encryptor ?? null, vapid: vapid ?? null }));
+  authed.route("/leave", createLeaveRoutes(db, { ...(notify ?? {}), encryptor: encryptor ?? null, vapid: vapid ?? null, ...amendCapability }));
   authed.route("/audit-logs", createAuditLogsRoutes(db));
   authed.route("/tenant", createTenantWithdrawalRoutes(db, { mail: tenantWithdrawalMail ?? null }));
   app.route("/", authed);

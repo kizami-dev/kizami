@@ -4,9 +4,12 @@
  */
 
 import { and, asc, desc, eq, gte, inArray, lte, ne } from "drizzle-orm";
+import { AtomicPlan, runAtomic, type AtomicExecutor } from "../atomic.js";
 import type { Database, Transaction } from "../types.js";
 import { leaveGrantProposals, leaveGrants, leaveRequests, tenantLeaveSettings } from "../schema/index.js";
 import { uuidv7 } from "../uuid.js";
+import { auditLogInsertQuery, type NewAuditLogInput } from "./audit.js";
+import { closingSerializeKey, periodsOpenCondition } from "./closings.js";
 
 // ---- tenant_leave_settings ----
 
@@ -75,10 +78,19 @@ export interface NewLeaveGrantInput {
 }
 
 export async function insertLeaveGrant(db: Database | Transaction, input: NewLeaveGrantInput): Promise<LeaveGrant> {
-  const [row] = await db
+  const [row] = await leaveGrantInsertQuery(db, input);
+  if (!row) {
+    throw new Error("insertLeaveGrant: insert returned no row");
+  }
+  return row;
+}
+
+/** insertLeaveGrant と同じ行を作る insert ビルダ(実行しない。atomic plan 用)。`id` を渡すとその id で作る。 */
+export function leaveGrantInsertQuery(q: AtomicExecutor, input: NewLeaveGrantInput & { id?: string }) {
+  return q
     .insert(leaveGrants)
     .values({
-      id: uuidv7(),
+      id: input.id ?? uuidv7(),
       tenantId: input.tenantId,
       userId: input.userId,
       leaveType: input.leaveType,
@@ -91,10 +103,6 @@ export async function insertLeaveGrant(db: Database | Transaction, input: NewLea
       createdAt: input.createdAt,
     })
     .returning();
-  if (!row) {
-    throw new Error("insertLeaveGrant: insert returned no row");
-  }
-  return row;
 }
 
 export async function listLeaveGrants(db: Database, params: { tenantId: string; userId: string }): Promise<LeaveGrant[]> {
@@ -267,12 +275,17 @@ export async function updateLeaveRequestStatus(
   db: Database | Transaction,
   params: UpdateLeaveRequestStatusParams,
 ): Promise<LeaveRequest | null> {
+  const [row] = await leaveRequestStatusUpdateQuery(db, params);
+  return row ?? null;
+}
+
+/** updateLeaveRequestStatus と同じ条件付き UPDATE のビルダ(実行しない。atomic plan 用)。 */
+export function leaveRequestStatusUpdateQuery(q: AtomicExecutor, params: UpdateLeaveRequestStatusParams) {
   const conditions = [eq(leaveRequests.id, params.id), eq(leaveRequests.tenantId, params.tenantId)];
   if (params.fromStatus !== undefined) {
     conditions.push(eq(leaveRequests.status, params.fromStatus));
   }
-
-  const [row] = await db
+  return q
     .update(leaveRequests)
     .set({
       status: params.status,
@@ -284,7 +297,62 @@ export async function updateLeaveRequestStatus(
     })
     .where(and(...conditions))
     .returning();
-  return row ?? null;
+}
+
+export interface ApproveLeaveRequestInput {
+  id: string;
+  tenantId: string;
+  /** 楽観ロックの遷移元(単段なら "pending"、二段の二次承認なら "approved_step1") */
+  fromStatus: LeaveRequestStatus;
+  decidedBy: string;
+  /** UTC エポック分 */
+  decidedAt: number;
+  decisionNote: string | null;
+  /** 対象日の月("YYYY-MM")。まだ締められていないことを書き込みの条件にする(amend は対象外) */
+  openPeriod: string;
+  audit: NewAuditLogInput;
+}
+
+export type ApproveLeaveRequestResult =
+  | { ok: true; request: LeaveRequest }
+  /** not_pending: 別の決裁が先に入った / month_closed: 計画の前に読んだ後で対象月が締められた。どちらも何も書いていない */
+  | { ok: false; reason: "not_pending" | "month_closed" };
+
+/**
+ * 締め前の月の休暇申請の最終承認を1単位で行う: 状態の claim → 対象月がまだ締められていないことの確認 →
+ * 監査ログ(atomic plan。D1 でも動く)。ガードの組み方と直列化は approveCorrectionRequest
+ * (queries/corrections.ts)と同じ(docs/design/d1-atomic-writes.md §6 #16)。
+ */
+export async function approveLeaveRequest(db: Database, input: ApproveLeaveRequestInput): Promise<ApproveLeaveRequestResult> {
+  const periods = [input.openPeriod];
+  const plan = new AtomicPlan();
+  plan.serialize(closingSerializeKey(input.tenantId, input.openPeriod));
+  const claim = plan.add((q) =>
+    leaveRequestStatusUpdateQuery(q, {
+      id: input.id,
+      tenantId: input.tenantId,
+      fromStatus: input.fromStatus,
+      status: "approved",
+      decidedBy: input.decidedBy,
+      decidedAt: input.decidedAt,
+      decisionNote: input.decisionNote,
+    }),
+  );
+  plan.guard("leave_request.claim");
+  plan.add((q) =>
+    q
+      .update(leaveRequests)
+      .set({ status: "approved" })
+      .where(and(eq(leaveRequests.id, input.id), periodsOpenCondition(q, { tenantId: input.tenantId, periods }))),
+  );
+  plan.guard("leave_request.month_open");
+  plan.add((q) => auditLogInsertQuery(q, input.audit));
+
+  const result = await runAtomic(db, plan);
+  if (!result.ok) return { ok: false, reason: result.failedGuard === "leave_request.claim" ? "not_pending" : "month_closed" };
+  const [request] = result.get(claim);
+  if (!request) throw new Error("approveLeaveRequest: the claim returned no row after the guard passed");
+  return { ok: true, request };
 }
 
 // ---- leave_grant_proposals(有給付与の予告、v0.7) ----
@@ -427,11 +495,17 @@ export async function updateLeaveGrantProposalStatus(
   db: Database | Transaction,
   params: UpdateLeaveGrantProposalStatusParams,
 ): Promise<LeaveGrantProposal | null> {
+  const [row] = await leaveGrantProposalStatusUpdateQuery(db, params);
+  return row ?? null;
+}
+
+/** updateLeaveGrantProposalStatus と同じ条件付き UPDATE のビルダ(実行しない。atomic plan 用)。 */
+export function leaveGrantProposalStatusUpdateQuery(q: AtomicExecutor, params: UpdateLeaveGrantProposalStatusParams) {
   const conditions = [eq(leaveGrantProposals.tenantId, params.tenantId), eq(leaveGrantProposals.id, params.id)];
   if (params.fromStatus !== undefined) {
     conditions.push(eq(leaveGrantProposals.status, params.fromStatus));
   }
-  const [row] = await db
+  return q
     .update(leaveGrantProposals)
     .set({
       status: params.status,
@@ -442,7 +516,65 @@ export async function updateLeaveGrantProposalStatus(
     })
     .where(and(...conditions))
     .returning();
-  return row ?? null;
+}
+
+export interface ApproveLeaveGrantProposalInput {
+  tenantId: string;
+  id: string;
+  decidedBy: string;
+  /** UTC エポック分 */
+  decidedAt: number;
+  /** 作る付与(予告の内容を呼び出し側が写す) */
+  grant: NewLeaveGrantInput;
+  /** 監査ログ。付与の id(detail に入れる)は `buildAudit` が受け取る */
+  buildAudit: (grantId: string) => NewAuditLogInput;
+}
+
+/**
+ * 付与予告を承認する: 予告の claim(proposed → approved)→ 付与の作成 → 予告に付与 id を結ぶ → 監査ログを
+ * 1単位で(atomic plan。D1 でも動く)。claim できなければ null(先に別の決裁が入った。付与も監査ログも残らない)。
+ *
+ * 判断点(2026-10-08、D1 対応。docs/design/d1-atomic-writes.md §6 #17):
+ * leave_grants には「同じ予告から2本作らない」ための UNIQUE が無いので、二重承認を止めるのは
+ * 予告の claim だけ。**claim を先頭に置き、付与の insert をガードの後ろにする**。
+ * ただし leave_grant_proposals.grant_id は leave_grants.id への外部キーで、SQLite も PostgreSQL も
+ * 文ごとに検査するため、claim の UPDATE でまだ無い付与 id を書けない。そこで claim では grant_id を
+ * null のまま状態だけを進め、付与を作った後に同じ行へ grant_id を書く(3文目)。付与 id は計画の前に決める。
+ */
+export async function approveLeaveGrantProposal(
+  db: Database,
+  input: ApproveLeaveGrantProposalInput,
+): Promise<{ grant: LeaveGrant; proposal: LeaveGrantProposal } | null> {
+  const grantId = uuidv7();
+  const plan = new AtomicPlan();
+  plan.add((q) =>
+    leaveGrantProposalStatusUpdateQuery(q, {
+      tenantId: input.tenantId,
+      id: input.id,
+      fromStatus: "proposed",
+      status: "approved",
+      decidedBy: input.decidedBy,
+      decidedAt: input.decidedAt,
+      grantId: null,
+    }),
+  );
+  plan.guard("leave_grant_proposal.claim");
+  const insertedGrant = plan.add((q) => leaveGrantInsertQuery(q, { ...input.grant, id: grantId }));
+  const linked = plan.add((q) =>
+    q
+      .update(leaveGrantProposals)
+      .set({ grantId })
+      .where(and(eq(leaveGrantProposals.tenantId, input.tenantId), eq(leaveGrantProposals.id, input.id)))
+      .returning(),
+  );
+  plan.add((q) => auditLogInsertQuery(q, input.buildAudit(grantId)));
+
+  const result = await runAtomic(db, plan);
+  if (!result.ok) return null;
+  const [grant] = result.get(insertedGrant);
+  const [proposal] = result.get(linked);
+  if (!grant || !proposal) throw new Error("approveLeaveGrantProposal: a statement returned no row after the guard passed");
+  return { grant, proposal };
 }
 
 /**

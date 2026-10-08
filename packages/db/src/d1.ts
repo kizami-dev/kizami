@@ -27,6 +27,7 @@
  * - 1クエリあたり・1リクエストあたりのサイズ/時間制限は Workers 側の制約に従う。
  */
 
+import { entityKind } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import type { Database, DatabaseHandle, DbClient } from "./types.js";
 import * as schema from "./schema/index.js";
@@ -69,4 +70,21 @@ export function createD1Database(binding: D1DatabaseBinding): DatabaseHandle {
     dialect: "d1",
     client,
   };
+}
+
+/**
+ * この DB ハンドルで `db.transaction(async (tx) => ...)`(途中の結果を JS で見て分岐できる
+ * 対話的なトランザクション)が使えるか。SQLite(libSQL)・PostgreSQL は true、D1 は false。
+ *
+ * 判断点(2026-10-08、承認経路の atomic plan 移行。docs/design/d1-atomic-writes.md §6.1):
+ * 締め済み月への承認(amend)は書いた行を読み直して月次を再計算するため、まだ atomic plan に
+ * できず `db.transaction()` に残している。D1 ではそこへ入る前に 409 で断る必要があり、その判定に使う。
+ * 呼び出し側へ「ダイアレクト」を配線する代わりに **ハンドル自身から判定する** — createApp に渡る
+ * のは `db` だけで、Workers エントリ(apps/api/src/workers.ts)に設定を足し忘れても安全側
+ * (D1 なら必ず false)に倒れるようにするため。判定は drizzle の D1 ドライバのクラス印
+ * (entityKind "D1Database")だけを見る(drizzle-orm/d1 の実体を import しなくて済む)。
+ */
+export function supportsInteractiveTransactions(db: Database): boolean {
+  const kind = (db as unknown as { constructor?: Record<symbol, unknown> } | null)?.constructor?.[entityKind];
+  return kind !== "D1Database";
 }

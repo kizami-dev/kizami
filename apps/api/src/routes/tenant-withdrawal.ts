@@ -26,10 +26,10 @@
 
 import { Hono } from "hono";
 import {
-  cancelTenantWithdrawal,
+  cancelTenantWithdrawalWithAudit,
   getTenantById,
   insertAuditLog,
-  requestTenantWithdrawal,
+  requestTenantWithdrawalWithAudit,
   type Database,
 } from "@kizami/db";
 import type { AppEnv } from "../auth/middleware.js";
@@ -95,10 +95,13 @@ export function createTenantWithdrawalRoutes(db: Database, deps: { mail: TenantW
 
     const now = nowMinutes();
     const scheduledPurgeAt = now + WITHDRAWAL_GRACE_MINUTES;
-    const updated = await db.transaction(async (tx) => {
-      const row = await requestTenantWithdrawal(tx, { tenantId: user.tenantId, requestedAt: now, scheduledPurgeAt });
-      if (!row) return null;
-      await insertAuditLog(tx, {
+    // 退会の claim(条件付き UPDATE)と監査ログを1単位で(@kizami/db の requestTenantWithdrawalWithAudit —
+    // atomic plan。D1 でも動く。docs/design/d1-atomic-writes.md §6 #10)。claim できなければ監査ログも残らない。
+    const updated = await requestTenantWithdrawalWithAudit(db, {
+      tenantId: user.tenantId,
+      requestedAt: now,
+      scheduledPurgeAt,
+      audit: {
         tenantId: user.tenantId,
         actorId: user.id,
         action: "tenant.withdrawal.request",
@@ -106,8 +109,7 @@ export function createTenantWithdrawalRoutes(db: Database, deps: { mail: TenantW
         targetId: user.tenantId,
         detail: JSON.stringify({ scheduledPurgeAt, graceDays: WITHDRAWAL_GRACE_DAYS }),
         occurredAt: now,
-      });
-      return row;
+      },
     });
     // 既に手続き中(二重送信・別の管理者が先に申請した)。冪等に 200 にせず 409 で伝える —
     // 削除予定の時刻は最初の申請のまま動かないことを、呼び出し側が取り違えないように。
@@ -133,11 +135,13 @@ export function createTenantWithdrawalRoutes(db: Database, deps: { mail: TenantW
     requirePermission(c, TENANT_WITHDRAW_PERMISSION, "tenant");
     const user = c.get("user");
     const now = nowMinutes();
-    const cancelled = await db.transaction(async (tx) => {
-      const before = await getTenantById(tx, user.tenantId);
-      const row = await cancelTenantWithdrawal(tx, { tenantId: user.tenantId });
-      if (!row) return null;
-      await insertAuditLog(tx, {
+    // 取り消しの claim と監査ログを1単位で(@kizami/db の cancelTenantWithdrawalWithAudit — atomic plan。
+    // D1 でも動く。§6 #11)。監査の detail に入れる「取り消す前の値」は計画の前に読む(計画の中では読めない。
+    // claim が通ったならこの値は取り消した申請のもの — 間に「取り消し → 再申請」が割り込んだときだけ古い申請を指す)。
+    const before = await getTenantById(db, user.tenantId);
+    const cancelled = await cancelTenantWithdrawalWithAudit(db, {
+      tenantId: user.tenantId,
+      audit: {
         tenantId: user.tenantId,
         actorId: user.id,
         action: "tenant.withdrawal.cancel",
@@ -148,8 +152,7 @@ export function createTenantWithdrawalRoutes(db: Database, deps: { mail: TenantW
           scheduledPurgeAt: before?.withdrawalScheduledPurgeAt ?? null,
         }),
         occurredAt: now,
-      });
-      return row;
+      },
     });
     if (!cancelled) {
       // 削除が始まっている(「削除中」の印がある)テナントは取り消せない — 確認と削除のすき間で

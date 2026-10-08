@@ -231,6 +231,25 @@ function latestStateEventSql(q: AtomicExecutor, params: { tenantId: string; peri
   return sql`coalesce((${latest}), 'reopen')`;
 }
 
+/**
+ * 「`periods` のどれもまだ締められていない(最新の close/reopen が close でない)」を表す SQL 条件。
+ * 承認(修正申請・休暇申請・休憩自動控除の打ち消し)の atomic plan で、計画の前に読んだ
+ * 「締め前」が書き込みの時点でも成り立つことを条件付き文 + ガードで担保するために使う
+ * (docs/design/d1-atomic-writes.md §6 の #14・#16・#18)。`periods` が空なら常に真。
+ */
+export function periodsOpenCondition(q: AtomicExecutor, params: { tenantId: string; periods: readonly string[] }): SQL {
+  if (params.periods.length === 0) return sql`1 = 1`;
+  return sql.join(
+    params.periods.map((period) => sql`${latestStateEventSql(q, { tenantId: params.tenantId, period })} <> 'close'`),
+    sql` and `,
+  );
+}
+
+/** periodsOpenCondition と組にする直列化キー(closePeriod / reopenPeriod と同じキー)。 */
+export function closingSerializeKey(tenantId: string, period: string): string {
+  return `closing:${tenantId}:${period}`;
+}
+
 /** close/reopen の監査ログ(tenantId・actorId・occurredAt は締め操作と同じ値を使う)。 */
 export type ClosingAuditInput = Omit<NewAuditLogInput, "tenantId" | "actorId" | "occurredAt">;
 
@@ -266,7 +285,7 @@ export async function closePeriod(db: Database, input: ClosePeriodInput): Promis
   const eventId = uuidv7();
   const snapshots = input.buildSnapshots(eventId);
   const plan = new AtomicPlan();
-  plan.serialize(`closing:${input.tenantId}:${input.period}`);
+  plan.serialize(closingSerializeKey(input.tenantId, input.period));
   const inserted = plan.add((q) =>
     insertSelectWhere(
       q,
@@ -319,7 +338,7 @@ export type ReopenPeriodResult = { ok: true; event: ClosingEvent } | { ok: false
  */
 export async function reopenPeriod(db: Database, input: ReopenPeriodInput): Promise<ReopenPeriodResult> {
   const plan = new AtomicPlan();
-  plan.serialize(`closing:${input.tenantId}:${input.period}`);
+  plan.serialize(closingSerializeKey(input.tenantId, input.period));
   const inserted = plan.add((q) =>
     insertSelectWhere(
       q,

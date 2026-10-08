@@ -17,8 +17,10 @@
  */
 
 import { and, asc, eq, isNotNull, isNull, lte, or } from "drizzle-orm";
+import { AtomicPlan, runAtomic, type AtomicExecutor } from "../atomic.js";
 import type { Database, Transaction } from "../types.js";
 import { tenants } from "../schema/index.js";
+import { auditLogInsertQuery, type NewAuditLogInput } from "./audit.js";
 import type { Tenant } from "./tenants.js";
 
 export interface RequestTenantWithdrawalParams {
@@ -37,7 +39,13 @@ export async function requestTenantWithdrawal(
   db: Database | Transaction,
   params: RequestTenantWithdrawalParams,
 ): Promise<Tenant | null> {
-  const [row] = await db
+  const [row] = await requestTenantWithdrawalQuery(db, params);
+  return row ?? null;
+}
+
+/** requestTenantWithdrawal と同じ条件付き UPDATE のビルダ(実行しない。atomic plan 用)。 */
+function requestTenantWithdrawalQuery(q: AtomicExecutor, params: RequestTenantWithdrawalParams) {
+  return q
     .update(tenants)
     .set({
       withdrawalRequestedAt: params.requestedAt,
@@ -47,7 +55,24 @@ export async function requestTenantWithdrawal(
     })
     .where(and(eq(tenants.id, params.tenantId), isNull(tenants.withdrawalRequestedAt)))
     .returning();
-  return row ?? null;
+}
+
+/**
+ * 退会を申請し、監査ログを残す(1単位。src/atomic.ts の atomic plan — D1 でも動く)。
+ * 既に手続き中なら null で、監査ログも残らない(条件付き UPDATE が claim、直後のガードで計画ごと失敗)。
+ * apps/api/src/routes/tenant-withdrawal.ts の POST /tenant/withdrawal が使う(docs/design/d1-atomic-writes.md §6 #10)。
+ */
+export async function requestTenantWithdrawalWithAudit(
+  db: Database,
+  params: RequestTenantWithdrawalParams & { audit: NewAuditLogInput },
+): Promise<Tenant | null> {
+  const plan = new AtomicPlan();
+  const claim = plan.add((q) => requestTenantWithdrawalQuery(q, params));
+  plan.guard("tenant_withdrawal.request");
+  plan.add((q) => auditLogInsertQuery(q, params.audit));
+  const result = await runAtomic(db, plan);
+  if (!result.ok) return null;
+  return result.get(claim)[0] ?? null;
 }
 
 /**
@@ -56,14 +81,41 @@ export async function requestTenantWithdrawal(
  * 列をすべて null に戻すので、取り消した後にもう一度申請すれば猶予期間は申請の時点から数え直す。
  */
 export async function cancelTenantWithdrawal(db: Database | Transaction, params: { tenantId: string }): Promise<Tenant | null> {
-  const [row] = await db
+  const [row] = await cancelTenantWithdrawalQuery(db, params);
+  return row ?? null;
+}
+
+/** cancelTenantWithdrawal と同じ条件付き UPDATE のビルダ(実行しない。atomic plan 用)。 */
+function cancelTenantWithdrawalQuery(q: AtomicExecutor, params: { tenantId: string }) {
+  return q
     .update(tenants)
     .set({ withdrawalRequestedAt: null, withdrawalScheduledPurgeAt: null, withdrawalReminderSentAt: null })
     .where(
       and(eq(tenants.id, params.tenantId), isNotNull(tenants.withdrawalRequestedAt), isNull(tenants.withdrawalPurgeStartedAt)),
     )
     .returning();
-  return row ?? null;
+}
+
+/**
+ * 退会の申請を取り消し、監査ログを残す(1単位。atomic plan — D1 でも動く)。取り消せなければ null で、
+ * 監査ログも残らない(手続き中でない・削除が始まっている — cancelTenantWithdrawal と同じ条件)。
+ *
+ * 判断点(2026-10-08、docs/design/d1-atomic-writes.md §6 #11): 監査の detail に入れる「取り消す前の
+ * 申請時刻・削除予定」は、以前はトランザクションの中で読み直していた。計画の中では読めないので、
+ * 呼び出し側が**計画の前に**読んで `audit` に入れる。claim が通ったなら、その間に値を変えうるのは
+ * 「取り消し → 再申請」が割り込んだ場合だけで、そのときも detail が古い申請を指すだけ(取り消し自体は正しい)。
+ */
+export async function cancelTenantWithdrawalWithAudit(
+  db: Database,
+  params: { tenantId: string; audit: NewAuditLogInput },
+): Promise<Tenant | null> {
+  const plan = new AtomicPlan();
+  const claim = plan.add((q) => cancelTenantWithdrawalQuery(q, params));
+  plan.guard("tenant_withdrawal.cancel");
+  plan.add((q) => auditLogInsertQuery(q, params.audit));
+  const result = await runAtomic(db, plan);
+  if (!result.ok) return null;
+  return result.get(claim)[0] ?? null;
 }
 
 /**
