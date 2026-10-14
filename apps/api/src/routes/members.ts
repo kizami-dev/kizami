@@ -1126,6 +1126,19 @@ export function createMembersRoutes(db: Database, deps: { quotas?: TenantQuotas 
       }
       const department = await getDepartmentById(db, { tenantId: user.tenantId, id: body.departmentId });
       if (!department) return c.json({ error: "invalid_department_id" }, 400);
+
+      // セキュリティ: 部署スコープの編集者は、自分の管轄内の部署へしか異動させられない
+      // (POST / の招待と同じ絞り込み)。以前は存在確認だけで、管轄外の部署へも送れた —
+      // 編集対象には自分自身も含まれる(lib/scope.ts)ため、自分を親部署へ移すことを
+      // 繰り返してルート部署まで上がり、部署スコープの全権限を全社に広げられた。
+      // 管轄は「移動前の所属」から計算されるので、親部署・兄弟部署はここで弾かれる。
+      const accessibleDeptIds = await resolveAccessibleDepartmentIds(db, {
+        actor: { id: user.id, tenantId: user.tenantId, permissions: c.get("permissions") },
+        permission: EDIT_PERMISSION,
+      });
+      if (accessibleDeptIds !== "all" && !accessibleDeptIds.has(department.id)) {
+        throw new ForbiddenError(`department ${department.id} is outside actor's scope`);
+      }
       departmentId = department.id;
     }
 

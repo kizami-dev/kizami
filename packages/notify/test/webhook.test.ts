@@ -28,6 +28,20 @@ describe("webhookChannel", () => {
     await expect(channel.send({ to: {}, title: "t", body: "b" })).rejects.toThrow(/responded 500/);
   });
 
+  // URL のパスは送信権限そのもの(秘密)。エラー文は呼び出し側で監査ログ・応答に流れるので、
+  // origin までにとどめる(以前は全文を載せていて、テスト送信の失敗で監査ログに平文で残った)。
+  it("does not include the secret path of the webhook URL in the error message", async () => {
+    const fetchImpl = vi.fn(async (_url: RequestInfo | URL, _init?: RequestInit) => new Response(null, { status: 404 }));
+    const channel = webhookChannel("https://hooks.slack.com/services/T000/B000/SECRETTOKEN", { fetchImpl });
+
+    const error = await channel.send({ to: {}, title: "t", body: "b" }).then(
+      () => null,
+      (e: unknown) => e as Error,
+    );
+    expect(error?.message).toBe("webhookChannel: POST https://hooks.slack.com/... responded 404");
+    expect(error?.message).not.toContain("SECRETTOKEN");
+  });
+
   it("has name 'webhook'", () => {
     const channel = webhookChannel("https://hooks.example.com/xyz");
     expect(channel.name).toBe("webhook");

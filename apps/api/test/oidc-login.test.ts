@@ -273,6 +273,18 @@ describe("OIDC SSO ログイン", () => {
     expect(errorCodeFromRedirect(res)).toBe("sso_state_mismatch");
   });
 
+  // Encryptor.decrypt は "enc:" の無い値を平文として素通しするため、以前は中身を平文に
+  // 置き換えた状態 Cookie もサーバーが発行したものとして通っていた。
+  it("平文に置き換えた状態 Cookie は拒否する(暗号化された Cookie だけを受け付ける)", async () => {
+    const { seeded, idp, app } = await scenario();
+
+    const { txCookie, state } = await startSso(app, idp, seeded.tenantId);
+    const sealed = decodeURIComponent(txCookie.slice("kizami_oidc_tx=".length));
+    const plain = (await testEncryptor().decrypt(sealed)) as string;
+    const res = await callback(app, { code: "auth-code-1", state, cookie: `kizami_oidc_tx=${encodeURIComponent(plain)}` });
+    expect(errorCodeFromRedirect(res)).toBe("sso_state_mismatch");
+  });
+
   it("ID トークンの nonce が一致しなければ拒否する", async () => {
     const { seeded, idp, app } = await scenario();
 

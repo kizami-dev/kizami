@@ -30,6 +30,7 @@
  *   (dispatch() が allSettled で拾い、他チャネルの送信は止まらない)。
  */
 
+import { redactUrl } from "./redact-url.js";
 import type { NotificationChannel, NotificationMessage } from "./types.js";
 
 /** ブラウザの PushSubscription(`subscription.toJSON()` 相当)。 */
@@ -69,7 +70,7 @@ export class WebPushGoneError extends Error {
   readonly status: number;
 
   constructor(endpoint: string, status: number) {
-    super(`webPushChannel: subscription is gone (${status}) for ${endpoint}`);
+    super(`webPushChannel: subscription is gone (${status}) for ${redactUrl(endpoint)}`);
     this.name = "WebPushGoneError";
     this.endpoint = endpoint;
     this.status = status;
@@ -296,7 +297,7 @@ export function webPushChannel(
         throw new WebPushGoneError(subscription.endpoint, res.status);
       }
       if (!res.ok) {
-        throw new Error(`webPushChannel: POST ${subscription.endpoint} responded ${res.status}`);
+        throw new Error(`webPushChannel: POST ${redactUrl(subscription.endpoint)} responded ${res.status}`);
       }
     },
   };
