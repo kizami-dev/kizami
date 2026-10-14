@@ -38,4 +38,17 @@ export async function decryptSecret(encryptor: Encryptor | null | undefined, sto
   return encryptor.decrypt(stored);
 }
 
+/**
+ * サーバー自身が暗号化して渡した値(TOTP / OIDC の tx Cookie など)を復号する。
+ * `decryptSecret` と違い平文フォールバックを持たない — "enc:v1:" で始まらない値は null。
+ *
+ * Encryptor.decrypt は「"enc:" が無ければ平文の既存データ」として素通しするため、
+ * クライアントが書き換えられる値にそのまま使うと、攻撃者が平文の JSON を置くだけで
+ * 「サーバーが発行した値」として通ってしまう。Cookie の復号は必ずこちらを使うこと。
+ */
+export async function decryptSealed(encryptor: Encryptor, value: string): Promise<string | null> {
+  if (!value.startsWith("enc:v1:")) return null;
+  return encryptor.decrypt(value);
+}
+
 export type { Encryptor };

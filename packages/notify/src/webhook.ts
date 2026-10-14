@@ -6,6 +6,7 @@
  * キーは無視するため、両立できる)。
  */
 
+import { redactUrl } from "./redact-url.js";
 import type { NotificationChannel, NotificationMessage } from "./types.js";
 
 export interface WebhookChannelOptions {
@@ -26,7 +27,8 @@ export function webhookChannel(url: string, options: WebhookChannelOptions = {})
         body: JSON.stringify({ content: text, text }),
       });
       if (!res.ok) {
-        throw new Error(`webhookChannel: POST ${url} responded ${res.status}`);
+        // URL のパスは送信権限そのもの(秘密)なので、エラー文には origin だけを載せる。
+        throw new Error(`webhookChannel: POST ${redactUrl(url)} responded ${res.status}`);
       }
     },
   };

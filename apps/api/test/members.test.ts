@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { auditLogs, tenants, users, uuidv7, type Database } from "@kizami/db";
+import { auditLogs, tenants, upsertMembership, users, uuidv7, type Database } from "@kizami/db";
 import { eq } from "drizzle-orm";
 import { createApp } from "../src/app.js";
-import { grantPermission, loginAndGetCookie, setupSecondUser, setupTestDb } from "./support/setup.js";
+import { grantPermission, loginAndGetCookie, setupExtraUser, setupSecondUser, setupTestDb } from "./support/setup.js";
 import { buildSettingsTimeline } from "../src/lib/settings.js";
 
 async function auditActionsFor(db: Database, tenantId: string): Promise<string[]> {
@@ -37,7 +37,7 @@ describe("members API", () => {
   it("GET returns the tenant's members with department and assigned preset names", async () => {
     const { db, tenantId, userId, email, password, displayName } = await setupTestDb();
     await grantPermission(db, { tenantId, userId, permission: "member.view", scope: "department" });
-    await grantPermission(db, { tenantId, userId, permission: "member.profile.edit", scope: "department" });
+    await grantPermission(db, { tenantId, userId, permission: "member.profile.edit", scope: "tenant" });
     await grantPermission(db, { tenantId, userId, permission: "department.manage", scope: "tenant" });
     const app = createApp({ db });
     const cookie = await loginAndGetCookie(app, email, password);
@@ -95,7 +95,7 @@ describe("members API", () => {
 
   it("PATCH updates the department and records an audit log entry", async () => {
     const { db, tenantId, userId, email, password } = await setupTestDb();
-    await grantPermission(db, { tenantId, userId, permission: "member.profile.edit", scope: "department" });
+    await grantPermission(db, { tenantId, userId, permission: "member.profile.edit", scope: "tenant" });
     await grantPermission(db, { tenantId, userId, permission: "department.manage", scope: "tenant" });
     const app = createApp({ db });
     const cookie = await loginAndGetCookie(app, email, password);
@@ -111,6 +111,53 @@ describe("members API", () => {
     expect(await res.json()).toEqual({ member: { id: userId, departmentId: dept.id } });
 
     expect(await auditActionsFor(db, tenantId)).toContain("member.update");
+  });
+
+  // セキュリティ: 部署スコープの編集者が自分(=編集対象に必ず含まれる)を親部署へ移すことを
+  // 繰り返すと、ルート部署まで上がって部署スコープの全権限を全社に広げられた。
+  it("PATCH rejects moving a member (including oneself) to a department outside the actor's scope", async () => {
+    const { db, tenantId, userId, email, password } = await setupTestDb();
+    await grantPermission(db, { tenantId, userId, permission: "department.manage", scope: "tenant" });
+    const app = createApp({ db });
+    const adminCookie = await loginAndGetCookie(app, email, password);
+    const createChild = async (name: string, parentId: string) => {
+      const res = await app.request("/departments", {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie: adminCookie },
+        body: JSON.stringify({ name, parentId }),
+      });
+      return ((await res.json()) as { department: { id: string } }).department;
+    };
+    const root = await createDepartment(app, adminCookie, "本社");
+    const child = await createChild("営業部", root.id);
+    const grandchild = await createChild("営業一課", child.id);
+
+    // 営業部のマネージャー(標準プリセットと同じ department_and_descendants)と、その部下
+    const manager = await setupSecondUser(db, tenantId);
+    await upsertMembership(db, { tenantId, userId: manager.userId, departmentId: child.id, createdAt: 0 });
+    await grantPermission(db, {
+      tenantId,
+      userId: manager.userId,
+      permission: "member.profile.edit",
+      scope: "department_and_descendants",
+    });
+    const report = await setupExtraUser(db, { tenantId, email: "report@example.com", name: "部下" });
+    await upsertMembership(db, { tenantId, userId: report.userId, departmentId: child.id, createdAt: 0 });
+    const managerCookie = await loginAndGetCookie(app, manager.email, manager.password);
+
+    const patch = (targetId: string, departmentId: string) =>
+      app.request(`/members/${targetId}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json", cookie: managerCookie },
+        body: JSON.stringify({ departmentId }),
+      });
+
+    // 自分を親部署へ: 403(以前は 200 で、以後の管轄が本社配下=全社に広がった)
+    expect((await patch(manager.userId, root.id)).status).toBe(403);
+    // 部下を管轄外(親部署)へ: 403
+    expect((await patch(report.userId, root.id)).status).toBe(403);
+    // 部下を管轄内(配下部署)へ: 200
+    expect((await patch(report.userId, grandchild.id)).status).toBe(200);
   });
 
   it("PATCH of a nonexistent member returns 404", async () => {

@@ -38,7 +38,7 @@ import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import type { Context } from "hono";
 import { getTenantById, getTenantOidcSettings, insertAuditLog, users, type Database } from "@kizami/db";
 import { createSession, setSessionCookie } from "../auth/session.js";
-import { decryptSecret, type Encryptor } from "../lib/encryption.js";
+import { decryptSealed, decryptSecret, type Encryptor } from "../lib/encryption.js";
 import {
   buildAuthorizationUrl,
   createPkce,
@@ -273,7 +273,7 @@ export function createOidcRoutes(db: Database, options: OidcRoutesOptions) {
 
     const cookieValue = getCookie(c, OIDC_TX_COOKIE_NAME);
     if (!cookieValue) return failRedirect(c, "sso_state_mismatch");
-    const decrypted = await encryptor.decrypt(cookieValue);
+    const decrypted = await decryptSealed(encryptor, cookieValue);
     if (decrypted === null) return failRedirect(c, "sso_state_mismatch");
 
     let tx: OidcTransaction;
@@ -292,7 +292,9 @@ export function createOidcRoutes(db: Database, options: OidcRoutesOptions) {
       return failRedirect(c, "sso_state_mismatch");
     }
     // Cookie の Max-Age はクライアント任せなので、サーバー側でも期限を確認する。
-    if (nowMinutes() - tx.issuedAt > OIDC_TX_TTL_SECONDS / 60) return failRedirect(c, "sso_state_mismatch");
+    // 未来の issuedAt は差が負になり期限判定をすり抜けるため拒否する。
+    const txAgeMinutes = nowMinutes() - tx.issuedAt;
+    if (txAgeMinutes < 0 || txAgeMinutes > OIDC_TX_TTL_SECONDS / 60) return failRedirect(c, "sso_state_mismatch");
     if (!timingSafeEqual(tx.state, state)) return failRedirect(c, "sso_state_mismatch");
 
     const config = await loadUsableConfig(tx.tenantId);

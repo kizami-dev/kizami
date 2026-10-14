@@ -318,6 +318,36 @@ describe("POST /auth/login → /auth/login/totp(2段階ログイン)", () => {
     expect(await res.json()).toEqual({ error: "totp_expired" });
   });
 
+  // セキュリティ: Encryptor.decrypt は "enc:" の無い値を「暗号化前の既存データ」として素通しする。
+  // 以前は tx Cookie にもそれを使っていたため、平文の JSON を置くだけでパスワード(第1段階)を
+  // 飛ばして TOTP の総当たりに進めた。
+  it("平文の tx Cookie は受け付けない(パスワード無しで第2段階に進めない)", async () => {
+    const { seeded, app, secret } = await scenario();
+    advanceSeconds(TOTP_STEP_SECONDS);
+    const forged = JSON.stringify({ tenantId: seeded.tenantId, userId: seeded.userId, issuedAt: Math.floor(currentMs / 60_000) });
+    const res = await app.request(
+      "/auth/login/totp",
+      jsonInit({ code: await generateTotp(secret, nowSeconds()) }, `kizami_totp_tx=${encodeURIComponent(forged)}`),
+    );
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: "totp_expired" });
+    expect(cookieNamed(res, "kizami_session")).toBeNull();
+  });
+
+  it("issuedAt が未来の tx は期限切れとして扱う(差が負になって期限判定をすり抜けない)", async () => {
+    const { seeded, app, secret } = await scenario();
+    advanceSeconds(TOTP_STEP_SECONDS);
+    const future = await testEncryptor().encrypt(
+      JSON.stringify({ tenantId: seeded.tenantId, userId: seeded.userId, issuedAt: Math.floor(currentMs / 60_000) + 60 * 24 * 365 }),
+    );
+    const res = await app.request(
+      "/auth/login/totp",
+      jsonInit({ code: await generateTotp(secret, nowSeconds()) }, `kizami_totp_tx=${encodeURIComponent(future)}`),
+    );
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: "totp_expired" });
+  });
+
   it("code と recoveryCode を同時に送ると 400(曖昧な挙動を作らない)", async () => {
     const { seeded, app, secret, recoveryCodes } = await scenario();
     const first = await login(app, seeded.email, seeded.password);

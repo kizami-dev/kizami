@@ -39,7 +39,7 @@ import {
   type TotpTransaction,
 } from "../auth/totp.js";
 import { getClientIp } from "../lib/client-ip.js";
-import { decryptSecret, type Encryptor } from "../lib/encryption.js";
+import { decryptSealed, decryptSecret, type Encryptor } from "../lib/encryption.js";
 import { rateLimitedResponse, type RateLimiter } from "../lib/rate-limit.js";
 import { isLoginBlockedByWithdrawal, TENANT_WITHDRAWING_ERROR } from "../lib/tenant-withdrawal.js";
 import { nowMinutes } from "../lib/time.js";
@@ -259,7 +259,7 @@ export function createAuthRoutes(db: Database, options: AuthRoutesOptions) {
 
     const cookieValue = getCookie(c, TOTP_TX_COOKIE_NAME);
     if (!cookieValue) return c.json({ error: "totp_expired" }, 401);
-    const decrypted = await encryptor.decrypt(cookieValue);
+    const decrypted = await decryptSealed(encryptor, cookieValue);
     if (decrypted === null) {
       deleteCookie(c, TOTP_TX_COOKIE_NAME, { path: "/" });
       return c.json({ error: "totp_expired" }, 401);
@@ -277,7 +277,9 @@ export function createAuthRoutes(db: Database, options: AuthRoutesOptions) {
     }
     // Cookie の Max-Age はクライアント任せなので、サーバー側でも期限を確認する
     // (routes/auth-oidc.ts の OIDC_TX と同じ理由)。
-    if (nowMinutes() - tx.issuedAt > TOTP_TX_TTL_MINUTES) {
+    // 未来の issuedAt は差が負になり期限判定をすり抜けるため、発行時刻より後でなければ拒否する。
+    const txAgeMinutes = nowMinutes() - tx.issuedAt;
+    if (txAgeMinutes < 0 || txAgeMinutes > TOTP_TX_TTL_MINUTES) {
       deleteCookie(c, TOTP_TX_COOKIE_NAME, { path: "/" });
       return c.json({ error: "totp_expired" }, 401);
     }
