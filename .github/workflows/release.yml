@@ -47,7 +47,7 @@ jobs:
       # pnpm install を待たずに(= 一番安いところで)判定できる。
       - uses: actions/setup-node@v4
         with:
-          node-version: 26
+          node-version: 26.12.1
 
       # タグ名は GITHUB_REF_NAME から読む(スクリプト側が対応済み)。
       - name: Check tag / package.json / CHANGELOG
@@ -159,7 +159,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 26
+          node-version: 26.12.1
 
       # CHANGELOG.md からタグに対応する節だけを切り出して本文にする
       # (見出し行は含めない — Release のタイトルと二重になるため)。
