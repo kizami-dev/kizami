@@ -24,7 +24,7 @@
 # --frozen-lockfile); only the subset needed at runtime is copied out into
 # later stages.
 ########################################################################
-FROM node:26-slim AS deps
+FROM node:26.12.1-slim AS deps
 WORKDIR /app
 
 # node:26-slim does not ship corepack pre-installed; install pnpm directly,
@@ -41,7 +41,7 @@ RUN pnpm install --frozen-lockfile --prod --filter @kizami/api...
 # node_modules produced above (pnpm workspace deps are filesystem
 # symlinks, so the relative apps/packages layout must be preserved).
 ########################################################################
-FROM node:26-slim AS runtime
+FROM node:26.12.1-slim AS runtime
 ENV NODE_ENV=production \
     PORT=3001 \
     DATABASE_URL=file:/data/kizami.db

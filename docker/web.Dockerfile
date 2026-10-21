@@ -18,7 +18,7 @@
 # only shaves off @types/react and @types/react-dom (tiny, type-only),
 # so a full install is kept for simplicity/robustness.
 ########################################################################
-FROM node:26-slim AS build
+FROM node:26.12.1-slim AS build
 WORKDIR /app
 
 # node:26-slim does not ship corepack pre-installed; install pnpm directly,
@@ -36,7 +36,7 @@ RUN pnpm --filter @kizami/web build
 # Stage: runtime — only the built dist/ plus the production node_modules
 # needed to run `waku start` (waku itself + its runtime deps).
 ########################################################################
-FROM node:26-slim AS runtime
+FROM node:26.12.1-slim AS runtime
 ENV NODE_ENV=production \
     PORT=3000
 WORKDIR /app
