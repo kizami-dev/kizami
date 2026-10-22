@@ -344,5 +344,6 @@ pnpm --filter @kizami/api build:workers
   テナントの SMTP は SMTPUTF8(ASCII 以外のアドレス)と、名前の解決を伴う `OUTBOUND_DENY_CIDRS` を扱わない
 - **レート制限**: `apps/api/src/lib/rate-limit.ts` のカウンタはプロセス内メモリで、
   Workers ではアイソレートごとに分かれるため実効的な制限が Node よりずっと緩い。
+  アカウント単位・2段階認証の失敗回数の上限(`FailureLimiter`、2026-10-22)も同じ置き場所で、同じく緩くなる。
   厳密にやるなら Durable Object か KV に載せ替える(差し替え点はファイル冒頭に明記してある)。
 - **トランザクション**: 上記「D1 で動かないもの」を参照。

@@ -683,11 +683,14 @@ describe("レート制限(コードの総当たり対策)", () => {
     const cookie = await loginAndGetCookie(app, seeded.email, seeded.password);
     await enableTotp(app, cookie);
 
-    const first = await login(app, seeded.email, seeded.password);
-    const tx = cookieNamed(first, "kizami_totp_tx") as string;
-
     // 有効化(enable)の検証で既に1回消費しているため、残りは 9 回。
+    // 1つの tx は5回の失敗で使い切りになる(totpFailuresPerTx)ので、3回ごとに取り直す。
+    let tx = "";
     for (let i = 0; i < 9; i++) {
+      if (i % 3 === 0) {
+        advanceSeconds(60);
+        tx = cookieNamed(await login(app, seeded.email, seeded.password), "kizami_totp_tx") as string;
+      }
       const res = await app.request("/auth/login/totp", jsonInit({ code: "000000" }, tx));
       expect(res.status).toBe(401);
     }
@@ -713,5 +716,115 @@ describe("レート制限(コードの総当たり対策)", () => {
     const tx = cookieNamed(first, "kizami_totp_tx") as string;
     const blocked = await app.request("/auth/login/totp", jsonInit({ code: "000000" }, tx));
     expect(blocked.status).toBe(429);
+  });
+});
+
+describe("失敗回数の上限(IP を回しながらの総当たり対策、M3)", () => {
+  /** 毎回別の IP から送る(IP+ユーザーの上限 totpPerIpUser には掛からない)。 */
+  let ipSeq = 0;
+  function fromNewIp(body: unknown, cookie: string): RequestInit {
+    ipSeq += 1;
+    return {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie, "cf-connecting-ip": `198.51.100.${(ipSeq % 250) + 1}` },
+      body: JSON.stringify(body),
+    };
+  }
+
+  async function scenario() {
+    const seeded = await setupTestDb();
+    const app = createApp({ db: seeded.db, encryptor: testEncryptor() });
+    const cookie = await loginAndGetCookie(app, seeded.email, seeded.password);
+    const { secret } = await enableTotp(app, cookie);
+    // enable で消費したカウンタの次へ進める
+    advanceSeconds(TOTP_STEP_SECONDS);
+    return { seeded, app, secret };
+  }
+
+  async function newTx(app: RequestLike, email: string, password: string): Promise<string> {
+    // tx のキーは issuedAt(分単位)を含むので、取り直すときは1分進めて別の tx にする。
+    advanceSeconds(60);
+    return cookieNamed(await login(app, email, password), "kizami_totp_tx") as string;
+  }
+
+  it("1つの tx で5回間違えるとその tx は無効になり、正しいコードでも通らない(パスワードからやり直し)", async () => {
+    const { seeded, app, secret } = await scenario();
+    const tx = await newTx(app, seeded.email, seeded.password);
+
+    for (let i = 0; i < 4; i++) {
+      const res = await app.request("/auth/login/totp", fromNewIp({ code: "000000" }, tx));
+      expect(res.status).toBe(401);
+      expect(await res.json()).toEqual({ error: "invalid_code" });
+    }
+    // 5回目の失敗(リカバリコードの失敗も数える)で使い切り。Cookie も消す。
+    const fifth = await app.request("/auth/login/totp", fromNewIp({ recoveryCode: "AAAAA-AAAAA" }, tx));
+    expect(fifth.status).toBe(401);
+    expect(await fifth.json()).toEqual({ error: "totp_expired" });
+    expect(fifth.headers.getSetCookie().some((l) => l.startsWith("kizami_totp_tx=;"))).toBe(true);
+
+    // 攻撃者は古い Cookie の値を持ち続けられる。それを送り直しても、正しいコードでも通らない。
+    const replay = await app.request("/auth/login/totp", fromNewIp({ code: await generateTotp(secret, nowSeconds()) }, tx));
+    expect(replay.status).toBe(401);
+    expect(await replay.json()).toEqual({ error: "totp_expired" });
+    expect(cookieNamed(replay, "kizami_session")).toBeNull();
+
+    // パスワードからやり直せば通る
+    const fresh = await newTx(app, seeded.email, seeded.password);
+    advanceSeconds(TOTP_STEP_SECONDS);
+    const ok = await app.request("/auth/login/totp", fromNewIp({ code: await generateTotp(secret, nowSeconds()) }, fresh));
+    expect(ok.status).toBe(200);
+  });
+
+  it("tx を取り直し IP を回しても、ユーザー単位で 10回失敗したら 429(正しいコードでも)", async () => {
+    const { seeded, app, secret } = await scenario();
+
+    for (let round = 0; round < 2; round++) {
+      const tx = await newTx(app, seeded.email, seeded.password);
+      for (let i = 0; i < 5; i++) {
+        const res = await app.request("/auth/login/totp", fromNewIp(i % 2 === 0 ? { code: "000000" } : { recoveryCode: "AAAAA-AAAAA" }, tx));
+        expect(res.status).toBe(401);
+      }
+    }
+
+    const tx = await newTx(app, seeded.email, seeded.password);
+    const blocked = await app.request("/auth/login/totp", fromNewIp({ code: await generateTotp(secret, nowSeconds()) }, tx));
+    expect(blocked.status).toBe(429);
+    expect(await blocked.json()).toMatchObject({ error: "rate_limited" });
+    expect(blocked.headers.get("Retry-After")).toBeTruthy();
+  });
+
+  it("同じ tx へ同時に投げても、検証まで進めるのは5回まで(判定と記録の間をすり抜けない)", async () => {
+    const { seeded, app } = await scenario();
+    const tx = await newTx(app, seeded.email, seeded.password);
+
+    const responses = await Promise.all(
+      Array.from({ length: 12 }, (_, i) =>
+        app.request("/auth/login/totp", fromNewIp(i % 2 === 0 ? { code: "000000" } : { recoveryCode: "AAAAA-AAAAA" }, tx)),
+      ),
+    );
+    const bodies = (await Promise.all(responses.map((r) => r.json()))) as Array<{ error: string }>;
+    // 5回の予約のうち4回が invalid_code、5回目(使い切り)と残り7回は totp_expired
+    expect(bodies.filter((b) => b.error === "invalid_code")).toHaveLength(4);
+    expect(bodies.filter((b) => b.error === "totp_expired")).toHaveLength(8);
+  });
+
+  it("成功すればユーザー単位の失敗記録は戻る", async () => {
+    const { seeded, app, secret } = await scenario();
+
+    const tx1 = await newTx(app, seeded.email, seeded.password);
+    for (let i = 0; i < 4; i++) await app.request("/auth/login/totp", fromNewIp({ code: "000000" }, tx1));
+    advanceSeconds(TOTP_STEP_SECONDS);
+    expect((await app.request("/auth/login/totp", fromNewIp({ code: await generateTotp(secret, nowSeconds()) }, tx1))).status).toBe(200);
+
+    // 戻っていなければ 4 + 4 + 4 = 12 回で 429 になるはず
+    for (let round = 0; round < 2; round++) {
+      const tx = await newTx(app, seeded.email, seeded.password);
+      for (let i = 0; i < 4; i++) {
+        expect((await app.request("/auth/login/totp", fromNewIp({ code: "000000" }, tx))).status).toBe(401);
+      }
+    }
+    const tx = await newTx(app, seeded.email, seeded.password);
+    advanceSeconds(TOTP_STEP_SECONDS);
+    expect((await app.request("/auth/login/totp", fromNewIp({ code: await generateTotp(secret, nowSeconds()) }, tx))).status).toBe(200);
   });
 });

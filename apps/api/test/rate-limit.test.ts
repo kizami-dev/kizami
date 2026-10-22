@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { createRateLimiter } from "../src/lib/rate-limit.js";
+import { createFailureLimiter, createRateLimiter } from "../src/lib/rate-limit.js";
 
 /** 手で進められる時計。`at` を書き換えると limiter の見る「現在時刻」が変わる。 */
 function fakeClock(start = 0) {
@@ -112,5 +112,68 @@ describe("createRateLimiter", () => {
     expect(result.allowed).toBe(false);
     // 窓内に試行が1件も無いケース。窓1つぶんを目安に返す(NaN を返さないことの回帰テスト)。
     expect(result.retryAfterSeconds).toBe(60);
+  });
+});
+
+describe("createFailureLimiter(失敗だけを数える、先に予約する)", () => {
+  it("max 回まで予約でき、max 回目の予約は reachedLimit。その次は拒否", () => {
+    const { now } = fakeClock();
+    const limiter = createFailureLimiter({ windowMs: 60_000, max: 3, now });
+
+    const a = limiter.reserve("k");
+    const b = limiter.reserve("k");
+    const c = limiter.reserve("k");
+    expect([a.allowed, b.allowed, c.allowed]).toEqual([true, true, true]);
+    expect([a.reachedLimit, b.reachedLimit, c.reachedLimit]).toEqual([false, false, true]);
+    expect(limiter.reserve("k").allowed).toBe(false);
+    expect(limiter.reserve("other").allowed).toBe(true);
+  });
+
+  it("検証中(未確定)の予約も上限に数える — 同時の N 本が揃ってすり抜けない", () => {
+    const { now } = fakeClock();
+    const limiter = createFailureLimiter({ windowMs: 60_000, max: 5, now });
+    const results = Array.from({ length: 20 }, () => limiter.reserve("k"));
+    expect(results.filter((r) => r.allowed)).toHaveLength(5);
+  });
+
+  it("release は自分の予約だけを返す(過去の失敗は残る)。2回呼んでも1回ぶん", () => {
+    const { now } = fakeClock();
+    const limiter = createFailureLimiter({ windowMs: 60_000, max: 3, now });
+    limiter.reserve("k"); // 失敗として残す
+    limiter.reserve("k"); // 失敗として残す
+    const success = limiter.reserve("k");
+    expect(success.reachedLimit).toBe(true);
+    success.release();
+    success.release();
+    // 2件残っているので、あと1回だけ予約できる
+    expect(limiter.reserve("k").allowed).toBe(true);
+    expect(limiter.reserve("k").allowed).toBe(false);
+  });
+
+  it("reset で記録が消え、窓を過ぎれば自然に解ける", () => {
+    const { clock, now } = fakeClock();
+    const limiter = createFailureLimiter({ windowMs: 60_000, max: 2, now });
+    limiter.reserve("a");
+    limiter.reserve("a");
+    limiter.reserve("b");
+    limiter.reserve("b");
+    expect(limiter.reserve("a").allowed).toBe(false);
+    limiter.reset("a");
+    expect(limiter.reserve("a").allowed).toBe(true);
+
+    expect(limiter.reserve("b").retryAfterSeconds).toBe(60);
+    clock.at += 60_001;
+    expect(limiter.reserve("b").allowed).toBe(true);
+  });
+
+  it("retryAfterSeconds は上限を割り込むのに必要な失敗が窓を出るまでの秒数", () => {
+    const { clock, now } = fakeClock();
+    const limiter = createFailureLimiter({ windowMs: 60_000, max: 2, now });
+    limiter.reserve("k"); // t=0
+    clock.at = 10_000;
+    limiter.reserve("k"); // t=10s(上限2)
+    clock.at = 20_000;
+    // 1件以下に減るには t=0 が窓を出る必要がある → t=60s、今から 40秒
+    expect(limiter.reserve("k").retryAfterSeconds).toBe(40);
   });
 });
