@@ -10,6 +10,9 @@
 # - web の本番ビルドは同一オリジンの /api/* を叩く前提(docker/web.Dockerfile の
 #   WAKU_PUBLIC_API_URL=/api 焼き込み)のため、前段の Caddy が / → web、/api/* → api に
 #   振り分ける。API を別オリジンにしたい場合は web イメージの再ビルドが必要。
+# - セキュリティヘッダ(CSP・X-Frame-Options・nosniff・Referrer-Policy・HSTS 等)は web / api が自分で付ける。
+#   Caddy で Content-Security-Policy を足したり上書きしたりしないこと(web の CSP はページごとのインライン
+#   スクリプトのハッシュを含む)。Caddy で TLS を終端する場合、HSTS は Caddy が渡す X-Forwarded-Proto: https で付く。
 # - DB は SQLite ファイル(named volume)。バックアップは `sqlite3 ... ".backup"` の整合コピーを
 #   推奨(WAL があるため生 cp は不可)。k8s 構成や運用の詳細は ../k8s/README.md を参照。
 #   PostgreSQL を使いたい場合はファイル末尾の「PostgreSQL 構成」を参照(既定は SQLite のまま)。

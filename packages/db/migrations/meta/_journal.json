@@ -281,6 +281,13 @@
       "when": 1791299042021,
       "tag": "0039_outgoing_cassandra_nova",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "6",
+      "when": 1792643015942,
+      "tag": "0040_friendly_sersi",
+      "breakpoints": true
     }
   ]
 }

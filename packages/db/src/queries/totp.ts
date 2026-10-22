@@ -7,7 +7,7 @@
  * (packages/db は他の秘密情報カラムでも同じ分担にしてある — schema/oidc.ts 参照)。
  */
 
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNotNull, isNull, lt, or } from "drizzle-orm";
 import { AtomicPlan, chunkRowsForInsert, runAtomic, type AtomicExecutor } from "../atomic.js";
 import type { Database, Transaction } from "../types.js";
 import { userTotp, userTotpRecoveryCodes } from "../schema/index.js";
@@ -69,12 +69,35 @@ export async function enableUserTotp(
     .where(and(eq(userTotp.tenantId, params.tenantId), eq(userTotp.userId, params.userId)));
 }
 
-/** リプレイ防止用に、最後に受理したカウンタを記録する。 */
-export async function updateUserTotpLastUsedCounter(
+/**
+ * リプレイ防止: 検証に通ったコードのカウンタ(TOTP の時間ステップ)を「使用済み」として奪い取る。
+ * 記録済みのカウンタより**大きい**ときだけ書き換え、書き換えられたら true。false なら
+ * 同じ(またはそれ以前の)コードが既に使われている — 呼び出し側は invalid_code として扱う。
+ *
+ * 判断点(2026-10-22、セキュリティレビュー Low): 以前は「SELECT した lastUsedCounter で検証 →
+ * 無条件に UPDATE」で、同じコードを同時に2回送ると両方が古い値を読んで両方通った。また、
+ * 無効化・リカバリコード再生成の確認に使ったコードは記録していなかったので、そのコードを
+ * ログインの第2段階にもう一度使えた。UPDATE の WHERE に「今より小さい」を含め、更新できた行数
+ * (RETURNING)で判定する(consumeRecoveryCode と同じ作法。SQLite / PostgreSQL / D1 のどれでも
+ * 1文で原子的)。有効化済みの行だけを対象にする(セットアップ中の鍵のコードで奪わない)。
+ */
+export async function claimUserTotpCounter(
   db: Database | Transaction,
-  params: { userId: string; lastUsedCounter: number },
-): Promise<void> {
-  await db.update(userTotp).set({ lastUsedCounter: params.lastUsedCounter }).where(eq(userTotp.userId, params.userId));
+  params: { tenantId: string; userId: string; counter: number },
+): Promise<boolean> {
+  const updated = await db
+    .update(userTotp)
+    .set({ lastUsedCounter: params.counter })
+    .where(
+      and(
+        eq(userTotp.tenantId, params.tenantId),
+        eq(userTotp.userId, params.userId),
+        isNotNull(userTotp.enabledAt),
+        or(isNull(userTotp.lastUsedCounter), lt(userTotp.lastUsedCounter, params.counter)),
+      ),
+    )
+    .returning({ userId: userTotp.userId });
+  return updated.length > 0;
 }
 
 /**

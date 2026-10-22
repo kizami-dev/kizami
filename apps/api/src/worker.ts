@@ -48,6 +48,7 @@ import IORedis from "ioredis";
 import { migrateDb } from "@kizami/db/node";
 import { buildEncryptorFromEnv } from "./lib/encryption.js";
 import { buildErrorReporterFromEnv } from "./lib/error-report.js";
+import { redactUrlCredentials } from "./lib/log-safe.js";
 import { withStartupRetry } from "./lib/startup-retry.js";
 import { resolveRelease } from "./lib/version.js";
 import { createTenantQuotas, parseQuotaEnv } from "./lib/tenant-quotas.js";
@@ -185,7 +186,7 @@ async function main(): Promise<void> {
   process.on("SIGTERM", () => void shutdown());
   process.on("SIGINT", () => void shutdown());
 
-  console.log(`kizami reminder worker started (interval=${reminderIntervalMinutes}min, redis=${redisUrl})`);
+  console.log(`kizami reminder worker started (interval=${reminderIntervalMinutes}min, redis=${redactUrlCredentials(redisUrl)})`);
 }
 
 // 起動失敗(DB 未起動でのマイグレーション失敗など)は明示的に終了する。exitCode を立てるだけだと、

@@ -46,6 +46,7 @@ spec:
         - name: postgres
           # CI の PG レグと同じメジャー(docs/design/db-dialects.md)
           image: postgres:17-alpine
+          securityContext: {allowPrivilegeEscalation: false, seccompProfile: {type: RuntimeDefault}}
           ports: [{containerPort: 5432}]
           env:
             - name: POSTGRES_USER
@@ -96,6 +97,7 @@ spec:
       containers:
         - name: api
           image: ghcr.io/kizami-dev/kizami-api:latest
+          securityContext: {allowPrivilegeEscalation: false, runAsNonRoot: true, runAsUser: 1001, runAsGroup: 1001, capabilities: {drop: [ALL]}, seccompProfile: {type: RuntimeDefault}}
           imagePullPolicy: Always
           ports: [{name: api-http, containerPort: 3001}]
           env:
@@ -150,6 +152,7 @@ spec:
             limits: {memory: 512Mi}
         - name: web
           image: ghcr.io/kizami-dev/kizami-web:latest
+          securityContext: {allowPrivilegeEscalation: false, runAsNonRoot: true, runAsUser: 1001, runAsGroup: 1001, capabilities: {drop: [ALL]}, seccompProfile: {type: RuntimeDefault}}
           imagePullPolicy: Always
           ports: [{name: web-http, containerPort: 3000}]
           readinessProbe:
@@ -184,6 +187,7 @@ spec:
       containers:
         - name: worker
           image: ghcr.io/kizami-dev/kizami-api:latest
+          securityContext: {allowPrivilegeEscalation: false, runAsNonRoot: true, runAsUser: 1001, runAsGroup: 1001, capabilities: {drop: [ALL]}, seccompProfile: {type: RuntimeDefault}}
           imagePullPolicy: Always
           command: ["node_modules/.bin/tsx", "src/worker.ts"]
           env:
@@ -216,6 +220,7 @@ spec:
             limits: {memory: 384Mi}
         - name: valkey
           image: valkey/valkey:8-alpine
+          securityContext: {allowPrivilegeEscalation: false, seccompProfile: {type: RuntimeDefault}}
           args: ["--save", "", "--appendonly", "no"]
           resources:
             requests: {cpu: 10m, memory: 32Mi}
@@ -274,6 +279,7 @@ spec:
           containers:
             - name: pg-dump
               image: postgres:17-alpine
+              securityContext: {allowPrivilegeEscalation: false, seccompProfile: {type: RuntimeDefault}}
               command: ["/bin/sh", "-c"]
               args:
                 - |

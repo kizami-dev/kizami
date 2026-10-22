@@ -9,7 +9,7 @@ import {
   getSlackUserLinkBySlackUserId,
   getSlackUserLinkByUserId,
   getTenantSlackSettings,
-  getTenantSlackSettingsByTeamId,
+  listEnabledTenantSlackSettingsByTeamId,
   insertSlackLinkToken,
   linkSlackUser,
   markSlackLinkTokenUsed,
@@ -66,7 +66,7 @@ describe("slack settings queries", () => {
     expect(fetched?.teamId).toBe("T0000002");
   });
 
-  it("getTenantSlackSettingsByTeamId looks the tenant up by team_id", async () => {
+  it("listEnabledTenantSlackSettingsByTeamId returns the enabled rows for the team_id", async () => {
     await upsertTenantSlackSettings(db, {
       tenantId,
       teamId: "T0000001",
@@ -76,9 +76,26 @@ describe("slack settings queries", () => {
       updatedBy: userId,
     });
 
-    const found = await getTenantSlackSettingsByTeamId(db, "T0000001");
-    expect(found?.tenantId).toBe(tenantId);
-    expect(await getTenantSlackSettingsByTeamId(db, "T-unknown")).toBeNull();
+    expect((await listEnabledTenantSlackSettingsByTeamId(db, "T0000001")).map((row) => row.tenantId)).toEqual([tenantId]);
+    expect(await listEnabledTenantSlackSettingsByTeamId(db, "T-unknown")).toEqual([]);
+  });
+
+  it("team_id is not unique: another tenant entering the same id first does not block the owner (先取り対策)", async () => {
+    const squatterTenantId = uuidv7();
+    const squatterUserId = uuidv7();
+    await db.insert(tenants).values({ id: squatterTenantId, name: "Squatter", createdAt: 0 });
+    await db.insert(users).values({ id: squatterUserId, tenantId: squatterTenantId, email: "s@example.com", name: "S", createdAt: 0 });
+    const save = (t: string, u: string, enabled = true) =>
+      upsertTenantSlackSettings(db, { tenantId: t, teamId: "T-SHARED", signingSecret: null, enabled, updatedAt: 1, updatedBy: u });
+
+    await save(squatterTenantId, squatterUserId);
+    await expect(save(tenantId, userId)).resolves.toBeDefined();
+    expect((await listEnabledTenantSlackSettingsByTeamId(db, "T-SHARED")).map((row) => row.tenantId).sort()).toEqual(
+      [tenantId, squatterTenantId].sort(),
+    );
+    // 無効化した行は候補に入らない
+    await save(squatterTenantId, squatterUserId, false);
+    expect((await listEnabledTenantSlackSettingsByTeamId(db, "T-SHARED")).map((row) => row.tenantId)).toEqual([tenantId]);
   });
 
   it("multiple tenants can each leave team_id unset (null) without violating uniqueness", async () => {

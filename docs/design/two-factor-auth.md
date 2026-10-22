@@ -133,6 +133,13 @@ TOTP のコードは 30 秒間有効なので、肩越しに見られた/中間�
 `±1` ステップの許容(受理窓 90 秒)と組み合わせると、「1つ前のコードを使った直後に、
 より新しいコードを使う」は通り、「同じコードを2回」は通らない。
 
+**記録は条件付き UPDATE で奪い取る**(2026-10-22、セキュリティレビュー Low)。読んだ値で検証して
+無条件に書くと、同じコードの同時送信が両方とも古い値を読んで両方通る。検証のあと
+`UPDATE user_totp SET last_used_counter = ? WHERE … AND enabled_at IS NOT NULL AND (last_used_counter IS NULL OR last_used_counter < ?)`
+を投げ、更新できた行が無ければ `invalid_code` にする(`claimUserTotpCounter`。SQLite / PostgreSQL / D1 のどれでも1文で原子的)。
+ログインの第2段階だけでなく、**無効化とリカバリコード再生成の確認に使ったコードも同じく使用済みにする**
+(以前は記録しておらず、再生成の画面で入力したコードをそのままログインの第2段階に使い回せた)。
+
 ### レート制限
 
 `ip|userId` ごとに **10回/15分**(`RATE_LIMITS.totpPerIpUser`)。6桁は 100 万通りしかなく、

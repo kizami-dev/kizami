@@ -14,6 +14,8 @@ interface ImportMetaEnv {
   readonly WAKU_PUBLIC_API_URL?: string;
   /** VitePress 制度ガイドのベース URL。未設定時は /docs にフォールバックする(lib/help.ts)。 */
   readonly WAKU_PUBLIC_DOCS_URL?: string;
+  /** Vite の組み込み。開発サーバー(waku dev)なら true(src/waku.server.tsx が CSP の有無の判定に使う)。 */
+  readonly DEV: boolean;
 }
 
 interface ImportMeta {

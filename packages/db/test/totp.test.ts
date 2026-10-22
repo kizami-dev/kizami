@@ -10,6 +10,7 @@ import { and, eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 import { migrateDb, type Database } from "./support/db.js";
 import {
+  claimUserTotpCounter,
   countUnusedRecoveryCodes,
   enableUserTotpWithRecoveryCodes,
   getUserTotp,
@@ -102,6 +103,33 @@ describe("totp writes on the atomic plan", () => {
     await regenerateRecoveryCodes(db, { tenantId, userId, codeHashes: hashes("new"), createdAt: 20 });
     expect(await codeHashesInDb()).toEqual(hashes("new").sort());
     expect(await auditCount("auth.totp.recovery_codes.regenerate")).toBe(1);
+  });
+
+  describe("claimUserTotpCounter(リプレイ防止)", () => {
+    it("records only a counter greater than the last used one; same or older is rejected", async () => {
+      await upsertPendingUserTotp(db, { tenantId, userId, secretEncrypted: "enc:v1:x", createdAt: 0 });
+      // セットアップ中の行では奪えない(有効化前の鍵のコードを使用済みにしない)
+      expect(await claimUserTotpCounter(db, { tenantId, userId, counter: 5 })).toBe(false);
+      await enableUserTotpWithRecoveryCodes(db, { tenantId, userId, enabledAt: 10, lastUsedCounter: 7, codeHashes: hashes("a") });
+
+      expect(await claimUserTotpCounter(db, { tenantId, userId, counter: 7 })).toBe(false);
+      expect(await claimUserTotpCounter(db, { tenantId, userId, counter: 6 })).toBe(false);
+      expect(await claimUserTotpCounter(db, { tenantId, userId, counter: 8 })).toBe(true);
+      expect(await claimUserTotpCounter(db, { tenantId, userId, counter: 8 })).toBe(false);
+      expect((await getUserTotp(db, { tenantId, userId }))?.lastUsedCounter).toBe(8);
+      // 別テナントの指定では触れない
+      expect(await claimUserTotpCounter(db, { tenantId: uuidv7(), userId, counter: 99 })).toBe(false);
+    });
+
+    it("concurrent claims of the same counter: exactly one wins", async () => {
+      await upsertPendingUserTotp(db, { tenantId, userId, secretEncrypted: "enc:v1:x", createdAt: 0 });
+      await enableUserTotpWithRecoveryCodes(db, { tenantId, userId, enabledAt: 10, lastUsedCounter: 1, codeHashes: hashes("a") });
+      const results = await Promise.all([
+        claimUserTotpCounter(db, { tenantId, userId, counter: 2 }),
+        claimUserTotpCounter(db, { tenantId, userId, counter: 2 }),
+      ]);
+      expect(results.filter(Boolean)).toHaveLength(1);
+    });
   });
 
   describe("removeUserTotp", () => {

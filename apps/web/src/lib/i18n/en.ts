@@ -313,6 +313,7 @@ export const en = {
     /** SSO (OIDC) login failure reasons (added 2026-08-24). The codes map 1:1 to OidcErrorCode
      * in apps/api/src/lib/oidc.ts (the callback redirects to /login?error=<code>). */
       sso_not_enabled: "SSO login is not enabled for this company",
+      sso_multiple_tenants: "This email address can use SSO at more than one company. Log in with your password, choose the company, then choose SSO",
       sso_config_incomplete: "SSO is not fully configured. Please contact your administrator",
       sso_discovery_failed: "Could not reach the identity provider. Please contact your administrator",
       sso_token_failed: "SSO sign-in failed. Please try again",
@@ -340,7 +341,6 @@ export const en = {
      * button is shown for any match. Password login remains available alongside it. */
     ssoDivider: "or",
     ssoButton: "Log in with SSO",
-    ssoButtonForTenant: (tenantName: string) => `Log in to ${tenantName} with SSO`,
     ssoStarting: "Redirecting to SSO…",
 
     totpTitle: "Enter your verification code",

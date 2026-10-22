@@ -291,6 +291,7 @@ export const zh = {
     /** SSO(OIDC)登录失败原因(2026-08-24 添加)。这些代码与 apps/api/src/lib/oidc.ts 的
      * OidcErrorCode 一一对应(回调会 302 重定向到 /login?error=<code>)。 */
       sso_not_enabled: "本公司未启用 SSO 登录",
+      sso_multiple_tenants: "该邮箱地址可在多家公司使用 SSO。请先用密码登录并选择公司,然后再选择 SSO",
       sso_config_incomplete: "SSO 尚未配置完成,请联系管理员",
       sso_discovery_failed: "无法连接到身份提供方(IdP),请联系管理员",
       sso_token_failed: "SSO 认证失败,请重试",
@@ -316,7 +317,6 @@ export const zh = {
      * 查询该用户所属公司中已启用 SSO 的公司,若有匹配则显示按钮。密码登录仍然可用。 */
     ssoDivider: "或",
     ssoButton: "使用 SSO 登录",
-    ssoButtonForTenant: (tenantName: string) => `使用 SSO 登录 ${tenantName}`,
     ssoStarting: "正在跳转到 SSO…",
 
     totpTitle: "请输入验证码",

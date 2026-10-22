@@ -319,6 +319,7 @@ export const ja = {
     /** SSO(OIDC)ログインの失敗理由(2026-08-24 追加)。コードは apps/api/src/lib/oidc.ts の
      * OidcErrorCode と 1:1 で対応する(コールバックは /login?error=<code> へ 302 で戻す)。 */
       sso_not_enabled: "この会社では SSO ログインが有効になっていません",
+      sso_multiple_tenants: "同じメールアドレスで SSO の使える会社が複数あります。パスワードでログインし、会社を選んでから SSO を選んでください",
       sso_config_incomplete: "SSO の設定が完了していません。管理者にお問い合わせください",
       sso_discovery_failed: "IdP(SSO の認証基盤)に接続できませんでした。管理者にお問い合わせください",
       sso_token_failed: "SSO の認証に失敗しました。もう一度お試しください",
@@ -341,12 +342,11 @@ export const ja = {
     tenantUnnamed: "(名称未設定)",
     backToEmail: "別のアカウントでログイン",
 
-    /** SSO(OIDC)ログイン(2026-08-24 追加)。メールアドレスを入力すると、その人が在籍する
-     * 会社のうち SSO が有効なものを GET /auth/oidc/available で照会し、該当があればボタンを出す。
+    /** SSO(OIDC)ログイン(2026-08-24 追加)。メールアドレスを入力すると、その人が SSO の使える
+     * 会社に在籍するかを GET /auth/oidc/available で照会し(真偽だけ。社名は返らない)、該当があればボタンを出す。
      * パスワードログインは併存させる(SSO を必須にする切り替えは今後の課題)。 */
     ssoDivider: "または",
     ssoButton: "SSO でログイン",
-    ssoButtonForTenant: (tenantName: string) => `${tenantName} に SSO でログイン`,
     ssoStarting: "SSO へ移動中…",
 
     /**

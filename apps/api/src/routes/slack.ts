@@ -10,7 +10,9 @@
  *   (Hono の `c.req.parseBody()` は既にデコード済みの値を返すため、生ボディの再構築が必要になり
  *   URLエンコードの正規化差異で署名が合わなくなるリスクがある。生文字列をそのまま署名検証に使う)
  * - テナントの特定は `team_id`(Slack ワークスペースID)から `tenant_slack_settings` を逆引きする
- *   唯一の経路(「1テナント=1ワークスペース」前提。依頼どおり複数テナント共有は想定しない)
+ *   唯一の経路(「1テナント=1ワークスペース」前提。依頼どおり複数テナント共有は想定しない)。
+ *   team_id は UNIQUE ではなく、同じ team_id を持つ有効な行のうち **Signing Secret で署名を検証できた行**へ
+ *   振り分ける(先取り対策。判断点は packages/db/src/schema/slack.ts 冒頭)
  * - 打刻の実装は routes/punches.ts の POST ハンドラを**HTTPで叩き直さず**、同じ下位関数
  *   (resolveAttendanceDate・assertMonthOpen・insertPunchEvent)を直接呼ぶ
  * - 応答は必ず `response_type: "ephemeral"`。打刻の事実が他のメンバーに流れないようにするため
@@ -32,7 +34,7 @@
 import { Hono } from "hono";
 import {
   getSlackUserLinkBySlackUserId,
-  getTenantSlackSettingsByTeamId,
+  listEnabledTenantSlackSettingsByTeamId,
   getUserById,
   insertPunchEvent,
   insertSlackLinkToken,
@@ -165,22 +167,34 @@ export function createSlackRoutes(db: Database, deps: SlackRoutesDeps = {}) {
       return c.json(ephemeral("リクエストの形式が不正です。"), 400);
     }
 
-    const settings = await getTenantSlackSettingsByTeamId(db, teamId);
-    if (!settings || !settings.enabled) {
+    // team_id は手掛かりにすぎない(UNIQUE ではない)。同じ team_id を持つ有効な行のうち、Signing Secret で
+    // このリクエストの署名を検証できた行が宛先(先取り対策、2026-10-22。packages/db/src/schema/slack.ts 冒頭)。
+    // 他テナントが同じ team_id を入れていても、持ち主の Signing Secret を知らない限り正規のリクエストは
+    // そちらでは検証できないので、横取りも妨害もできない。
+    const candidates = await listEnabledTenantSlackSettingsByTeamId(db, teamId);
+    if (candidates.length === 0) {
       // 未設定/無効化されたテナントの区別はしない(存在有無を漏らさないため同一メッセージ)。
       return c.json(ephemeral("このワークスペースではSlack打刻が設定されていません。管理者に設定を依頼してください。"));
     }
-
-    const signingSecretPlain = settings.signingSecret ? await decryptSecret(deps.encryptor, settings.signingSecret) : null;
-    const verified = await verifySlackSignature({
-      signingSecret: signingSecretPlain,
-      signatureHeader: c.req.header("x-slack-signature") ?? null,
-      timestampHeader: c.req.header("x-slack-request-timestamp") ?? null,
-      rawBody,
-    });
-    if (!verified) {
+    const matched: typeof candidates = [];
+    for (const row of candidates) {
+      const verified = await verifySlackSignature({
+        signingSecret: row.signingSecret ? await decryptSecret(deps.encryptor, row.signingSecret) : null,
+        signatureHeader: c.req.header("x-slack-signature") ?? null,
+        timestampHeader: c.req.header("x-slack-request-timestamp") ?? null,
+        rawBody,
+      });
+      if (verified) matched.push(row);
+    }
+    if (matched.length !== 1) {
+      // 0件 = 署名が合わない。2件以上 = 同じ team_id と同じ Signing Secret を複数のテナントが登録している
+      // (同じ Slack アプリを複数テナントに登録した設定ミス)。どちらへ送るべきか決まらないので断る。
+      if (matched.length > 1) {
+        console.error(`slack commands: ${matched.length} tenants verified the same request (duplicated Slack app registration)`);
+      }
       return c.json({ error: "invalid_signature" }, 401);
     }
+    const settings = matched[0] as (typeof matched)[number];
 
     const tenantId = settings.tenantId;
     // 退会手続き中のテナントでは打刻も連携も受け付けない(docs/design/tenant-withdrawal.md)。

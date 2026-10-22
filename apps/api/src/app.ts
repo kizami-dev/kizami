@@ -40,7 +40,8 @@ import { createMetricsRoutes } from "./routes/metrics.js";
 import { createFailureLimiter, createRateLimiter, ipRateLimitMiddleware, RATE_LIMITS } from "./lib/rate-limit.js";
 import { noopErrorReporter, type ErrorReporter } from "./lib/error-report.js";
 import { createHttpMetrics } from "./lib/metrics.js";
-import { jsonPostGuard } from "./lib/json-post-guard.js";
+import { jsonPostGuard, sameOriginPostGuard } from "./lib/json-post-guard.js";
+import { apiSecurityHeaders } from "./lib/security-headers.js";
 import type { TenantQuotas } from "./lib/tenant-quotas.js";
 
 export interface CreateAppDeps {
@@ -59,9 +60,14 @@ export interface CreateAppDeps {
    * セッション Cookie を発行する未認証の POST(ログイン・2FA 第2段階・招待受諾・パスワード再設定の使用・
    * OIDC の開始)に Origin 検証と `Content-Type: application/json` の必須化を掛けるときの、許可するオリジン
    * (`APP_BASE_URL` と `CORS_ORIGIN` のうち明示されたもの。lib/json-post-guard.ts の authPostAllowedOrigins)。
-   * **省略 / 空 = 掛けない**(開発・テスト・オリジンを宣言していない配備は従来どおり)。
+   * **省略 / 空 = リクエストの Host と `corsOrigin` だけを許す代わりのガード**(lib/json-post-guard.ts の sameOriginPostGuard)。
    */
   authPostOrigins?: string[];
+  /**
+   * 配備者が宣言した Web のベース URL(`APP_BASE_URL`、無ければ `CORS_ORIGIN`)。https なら
+   * リクエストの経路によらず HSTS を付ける(lib/security-headers.ts の isHttpsRequest)。省略可。
+   */
+  appBaseUrl?: string;
   /**
    * テナントごとの利用上限(メンバー数・API キー数・外向きの通知・招待/再設定メールの1日の送信数。
    * lib/tenant-quotas.ts、docs/design/tenant-quotas.md)。**省略 = 無制限**(セルフホストの既定)。
@@ -171,6 +177,7 @@ export function createApp(deps: CreateAppDeps) {
     secureCookies = false,
     corsOrigin,
     authPostOrigins = [],
+    appBaseUrl,
     quotas,
     notify: notifyBase,
     encryptor,
@@ -191,6 +198,10 @@ export function createApp(deps: CreateAppDeps) {
   const notify = quotas ? { ...(notifyBase ?? {}), quotas } : notifyBase;
   // 承認ルート(corrections / auto-break-waivers / leave)へ渡す amend の可否(省略時は各ルートが db から判定)
   const amendCapability = interactiveTransactions !== undefined ? { interactiveTransactions } : {};
+
+  // セキュリティヘッダ(2026-10-22、セキュリティレビュー M4。lib/security-headers.ts)。
+  // 最初に登録して、404・429・onError の 500 を含むすべての応答に付ける。
+  app.use("*", apiSecurityHeaders(appBaseUrl !== undefined ? { appBaseUrl } : {}));
 
   if (corsOrigin) {
     app.use("*", cors({ origin: corsOrigin, credentials: true }));
@@ -274,10 +285,13 @@ export function createApp(deps: CreateAppDeps) {
   // 対象は下の5経路だけ。**掛けないもの**: Bearer(API キー)認証の経路(Origin を持たない非ブラウザの
   // クライアント、打刻 API・MCP)、OIDC の callback(IdP からの GET リダイレクトで、Origin も JSON も付かない)、
   // /slack/commands(Slack の署名検証が認証)、認証済みの POST。signup と本人用再設定は各ルータが自分で掛ける。
-  // 許可オリジンが無い配備(authPostOrigins が空)では何も掛けない。Hono は登録順に評価するので、
-  // 対応する route() より前に置く。
-  if (authPostOrigins.length > 0) {
-    const guard = jsonPostGuard(authPostOrigins);
+  // 許可オリジンが無い配備(authPostOrigins が空)では、リクエストが届いた自分自身のオリジン(Host)と
+  // CORS を許しているオリジンを許可オリジンとして扱う代わりのガードを掛ける(2026-10-22。以前は何も
+  // 掛けておらず、APP_BASE_URL を設定していない配備でログイン CSRF が通った。sameOriginPostGuard 参照)。
+  // Hono は登録順に評価するので、対応する route() より前に置く。
+  {
+    const guard =
+      authPostOrigins.length > 0 ? jsonPostGuard(authPostOrigins) : sameOriginPostGuard(corsOrigin ? [corsOrigin] : []);
     for (const path of [
       "/auth/login",
       "/auth/login/totp",

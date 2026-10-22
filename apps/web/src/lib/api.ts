@@ -39,6 +39,8 @@ export class UnauthorizedError extends ApiError {
 export interface LoginTenantOption {
   id: string;
   name: string | null;
+  /** その会社で SSO が使えるか(2026-10-22 追加)。選択画面で会社ごとに SSO ボタンを添えるのに使う。 */
+  ssoEnabled?: boolean;
 }
 
 function isMultipleTenantsBody(body: unknown): body is { error: "multiple_tenants"; tenants: LoginTenantOption[] } {
@@ -620,16 +622,6 @@ export interface UpdateSsoSettingsInput {
   allowUnverifiedEmail?: boolean;
 }
 
-/**
- * GET /auth/oidc/available のレスポンス要素(未認証で叩ける)。
- * **SSO が有効なテナントしか返らない**(在籍の有無を無闇に漏らさないための設計 —
- * apps/api/src/routes/auth-oidc.ts のコメント参照)ため、ssoEnabled は常に true になる。
- */
-export interface SsoAvailableTenant {
-  id: string;
-  name: string | null;
-  ssoEnabled: boolean;
-}
 
 /**
  * 多段承認のテナント設定(GET/PUT /settings/approval-flow、docs/design/approval-flows.md)。
@@ -1879,18 +1871,21 @@ export const api = {
 
   /**
    * ログイン画面で「SSO でログイン」ボタンを出すかどうかの照会(未認証・レート制限あり)。
-   * 該当が無い場合も空配列で 200 が返る(存在しないメールアドレスと区別できない)。
+   * 真偽だけが返る(2026-10-22 から、どの会社かは返さない — apps/api/src/routes/auth-oidc.ts の判断点)。
+   * 該当が無い場合も 200 で false(存在しないメールアドレスと区別できない)。
    */
-  async ssoAvailable(email: string): Promise<{ tenants: SsoAvailableTenant[] }> {
+  async ssoAvailable(email: string): Promise<{ available: boolean }> {
     return request(`/auth/oidc/available?email=${encodeURIComponent(email)}`);
   },
 
   /**
    * SSO ログインの開始。IdP の認可エンドポイントへの URL を返すので、呼び出し側は
    * `window.location.assign()` でそこへ遷移する(状態は httpOnly Cookie 側に入る)。
+   * ログイン画面からは `{ email }`(在籍先はサーバーが決める)、パスワード検証後のテナント選択画面からは
+   * `{ tenantId }` を渡す。
    */
-  async startSso(tenantId: string): Promise<{ redirectUrl: string }> {
-    return request("/auth/oidc/start", { method: "POST", body: JSON.stringify({ tenantId }) });
+  async startSso(target: { email: string } | { tenantId: string }): Promise<{ redirectUrl: string }> {
+    return request("/auth/oidc/start", { method: "POST", body: JSON.stringify(target) });
   },
 
   async testNotificationSettings(): Promise<{ results: NotificationTestResult[] }> {

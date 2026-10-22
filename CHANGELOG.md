@@ -83,6 +83,37 @@ API・DB スキーマの互換方針とアップグレード手順は
 
 ### Security
 
+- **2段階認証のコードを使い回せた問題を修正**。同じ TOTP コードを同時に2回送ると両方通り、リカバリコード再生成・無効化の確認に
+  入力したコードはログインの第2段階にもう一度使えた。使ったコードの時間ステップを条件付き UPDATE で記録し、記録済み以下は
+  拒否する(ログイン・無効化・リカバリコード再生成の全経路。スキーマの変更は無い)
+- **`APP_BASE_URL` と `CORS_ORIGIN` を設定していない配備で、ログイン CSRF が通った問題を修正**。他サイトのフォームから
+  ログインを POST させ、被害者を攻撃者のアカウントでログインさせられた。未設定でも、ログイン・2FA 第2段階・SSO の開始・
+  招待受諾・パスワード再設定の使用に、リクエストの Host(と X-Forwarded-Host・CORS を許したオリジン)と一致しない Origin・
+  `Sec-Fetch-Site: cross-site` を 403、JSON 以外を 415 で弾くガードを掛ける。**API を Host を書き換えるプロキシの
+  後ろで別ホスト名から公開している配備は `APP_BASE_URL` を設定すること**
+- **SSO の照会(`GET /auth/oidc/available`)が、未認証の相手にメールアドレスの在籍先の社名を返していた問題を修正**。
+  応答を `{ available: boolean }` だけにし、ログイン画面の SSO ボタンは `POST /auth/oidc/start { email }` で在籍先を
+  サーバー側で決める。SSO の使える在籍先が複数ある人は 409 `sso_multiple_tenants` になり、パスワードでログインした後の
+  会社選択画面(`multiple_tenants` の各行に `ssoEnabled` を追加)から SSO を選ぶ。**API の応答形が変わる**(Web は同梱で対応済み)
+- **Slack 連携で、他のテナントがワークスペース ID(team_id)を先に入力して持ち主の連携を妨げられた問題を修正**。
+  team_id は UNIQUE をやめて振り分けの手掛かりだけにし、`/slack/commands` は同じ team_id を持つ有効なテナントのうち
+  **登録された Signing Secret で署名を検証できたテナント**へ振り分ける。他人が同じ team_id を登録しても、受け取れるのは
+  自分で署名した(自分のテナントの中の)リクエストだけになる。同じ team_id と Signing Secret のテナントが複数あれば拒否する
+  (マイグレーション: `tenant_slack_settings_team_id_idx` を UNIQUE から通常のインデックスへ。既存の連携はそのまま動く)
+- **ログに資格情報と外部の値をそのまま出していた問題を修正**。通知ワーカーの起動ログが `REDIS_URL` を丸ごと出しており、
+  パスワード入りの接続文字列がログに残った(ユーザー名・パスワードを `***` に伏せる)。SSO のトークンエンドポイントの
+  失敗応答とコールバックの `error` を生のまま載せており、改行で偽のログ行を作れ、想定外の応答ならトークンも残りえた
+  (`error` / `error_description` だけをエスケープして載せる)
+- **Web と API の応答にセキュリティヘッダを付けた**。これまで本番・クラウド・デモのどれにも CSP・クリックジャッキング対策・
+  `nosniff`・HSTS・Referrer-Policy が無かった。配備の形(Caddy / Cloudflare Tunnel / k8s / Workers)によらず効くよう、
+  リバースプロキシではなくアプリで付ける。API は `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'`・
+  `X-Frame-Options: DENY`・`X-Content-Type-Options: nosniff`・`Referrer-Policy: no-referrer` ほか(Hono の secureHeaders)。
+  Web は `script-src` に `'unsafe-inline'` を使わず、HTML の応答ごとにインラインスクリプト(テーマの初期化・RSC のペイロード)の
+  SHA-256 を並べる CSP に、`frame-ancestors 'none'`・`base-uri 'self'`・`form-action 'self'`・`object-src 'none'`、
+  `Permissions-Policy`(カメラ・マイク無効、位置情報は自オリジンのみ)、`Referrer-Policy: strict-origin-when-cross-origin`。
+  外部は Google Fonts と Cloudflare Turnstile だけを許可する。HSTS(`max-age=31536000`、includeSubDomains なし)は
+  HTTPS で届いたとき(`X-Forwarded-Proto` / `CF-Visitor`、API は `APP_BASE_URL` が https のときも)だけ付ける。
+  Web を別オリジンの API(`WAKU_PUBLIC_API_URL` に絶対 URL)でビルドした場合は、そのオリジンを `connect-src` に自動で足す
 - **公開デモ(demo.kizami.dev)に SSRF 対策を入れた**。認証情報が公開の管理者が、テナントの SMTP ホストや Webhook URL を
   内部アドレスに向け、テスト送信のエラーでクラスタ内をポートスキャンできた。api / worker に `OUTBOUND_BLOCK_PRIVATE=true` とノードのグローバル IP を拒否する `OUTBOUND_DENY_CIDRS` を
   設定し、NetworkPolicy で Pod の出口を DNS と公開インターネットだけに絞った。あわせてデモの `KIZAMI_ENCRYPTION_KEY` が
@@ -138,6 +169,10 @@ API・DB スキーマの互換方針とアップグレード手順は
   月次画面の締め・解除のボタンはテナント全体スコープの保持者にだけ出す。**これらの権限を部署スコープで付けている
   テナントは、見える監査ログが減り、締め・解除が 403 になる**。締め・解除を任せたい人にはテナント全体スコープで付けること
   ([permission-catalog.md](docs/design/permission-catalog.md) §1.5 / §1.13)
+- **GitHub Actions のサードパーティアクションをコミット SHA で固定した**(`# vX.Y.Z` の注記付き)。タグの付け替えによるサプライチェーン攻撃を防ぐ。`ci.yml` にもトップレベルの `permissions: contents: read` を付けた
+- **k8s マニフェストのコンテナに `securityContext` を付けた**(`allowPrivilegeEscalation: false`・`capabilities.drop: [ALL]`・`seccompProfile: RuntimeDefault`、api / web / worker はさらに `runAsNonRoot`・uid/gid 1001)。valkey・postgres は起動時に root で chown するためユーザー指定と capabilities の drop は見送った。イメージの `USER` は元から非 root(1001)で、`fsGroup: 1001` も設定済みのため、データの書き込み権限は変わらない。手動で再適用すること。デモのリセット用 Role も `resourceNames: [kizami-demo]` で対象の Deployment だけに絞った
+- **Service Worker**: 通知クリックで開く URL を同一オリジンのものに限った(それ以外は `/`)。再設定・招待・サインアップ確認などトークン付きの URL と認証・API のパス、`no-store` / `private` のレスポンスはキャッシュしない(旧キャッシュは `kizami-shell-v2` への更新で一掃)
+- **MCP サーバー**: `KIZAMI_API_URL` は https のみ許可(localhost / 127.0.0.1 / [::1] だけ http 可)。API キーが平文で送られるのを防ぐ。修正申請の理由・決定メモはユーザー入力の信頼できないデータとして、引用符付きの JSON 文字列とラベルで渡す(プロンプトインジェクション対策)
 
 ## [0.9.0] - 2026-10-06
 
