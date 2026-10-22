@@ -1220,7 +1220,6 @@ export const ja = {
     teamIdLabel: "Slack ワークスペースID(Team ID)",
     teamIdPlaceholder: "T0123456",
     teamIdHint: "Slackの「Basic Information」ページなどで確認できます。1テナントにつき1ワークスペースのみ設定できます。",
-    teamIdUnverifiedHint: "このワークスペースはまだ確認されていません。Slack で /punch を1回実行すると、Signing Secret で確認されて使えるようになります。",
 
     signingSecretLabel: "Signing Secret",
     signingSecretConfigured: "設定済み",

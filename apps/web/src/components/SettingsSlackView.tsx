@@ -155,9 +155,6 @@ export function SettingsSlackView() {
                   onChange={(e) => updateForm({ teamId: e.target.value })}
                 />
                 <p className="field__hint">{messages.settingsSlack.teamIdHint}</p>
-                {settings.teamId && settings.teamIdVerified === false ? (
-                  <p className="field__hint">{messages.settingsSlack.teamIdUnverifiedHint}</p>
-                ) : null}
               </div>
 
               <div className="field">

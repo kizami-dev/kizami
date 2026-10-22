@@ -1,5 +1,5 @@
 {
-  "id": "93a441fa-c57a-411d-a072-e0d7b01401ac",
+  "id": "7c79af6b-5fbb-4516-be70-1d80a3a53c28",
   "prevId": "289648f5-d890-42fa-9c1f-44f63c2d953f",
   "version": "7",
   "dialect": "postgresql",
@@ -5133,12 +5133,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "team_id_verified_at": {
-          "name": "team_id_verified_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
         "signing_secret": {
           "name": "signing_secret",
           "type": "text",
@@ -5177,22 +5171,6 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "tenant_slack_settings_verified_team_id_idx": {
-          "name": "tenant_slack_settings_verified_team_id_idx",
-          "columns": [
-            {
-              "expression": "team_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"team_id_verified_at\" is not null",
           "concurrently": false,
           "method": "btree",
           "with": {}

@@ -1194,7 +1194,6 @@ export const en = {
     teamIdLabel: "Slack workspace ID (Team ID)",
     teamIdPlaceholder: "T0123456",
     teamIdHint: "Found on Slack's \"Basic Information\" page, among others. Only one workspace can be configured per tenant.",
-    teamIdUnverifiedHint: "This workspace has not been verified yet. Run /punch once in Slack; it is verified with the Signing Secret and then becomes active.",
 
     signingSecretLabel: "Signing secret",
     signingSecretConfigured: "Configured",

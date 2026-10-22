@@ -569,11 +569,6 @@ export interface PushSubscriptionJson {
  */
 export interface SlackSettingsDto {
   teamId: string | null;
-  /**
-   * team_id の持ち主の確認が済んだか(2026-10-22、先取り対策)。そのワークスペースから署名付きの `/punch` が
-   * 1回届けば true。入力しただけでは false(同じ ID を他テナントが入れていても衝突しない)。
-   */
-  teamIdVerified?: boolean;
   enabled: boolean;
   signingSecretSet: boolean;
   updatedAt: number | null;

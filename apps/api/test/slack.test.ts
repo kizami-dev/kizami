@@ -128,7 +128,7 @@ describe("Slack slash command punching", () => {
 
       const res = await app.request("/settings/slack", { headers: { cookie } });
       expect(res.status).toBe(200);
-      expect(await res.json()).toEqual({ teamId: null, teamIdVerified: false, enabled: false, signingSecretSet: false, updatedAt: null, updatedBy: null });
+      expect(await res.json()).toEqual({ teamId: null, enabled: false, signingSecretSet: false, updatedAt: null, updatedBy: null });
     });
 
     it("PUT rejects enabling without both teamId and signingSecret set", async () => {
@@ -174,13 +174,12 @@ describe("Slack slash command punching", () => {
       });
       expect(putRes.status).toBe(200);
       const putBody = (await putRes.json()) as Record<string, unknown>;
-      expect(putBody).toEqual({ teamId: "T12345", teamIdVerified: false, enabled: true, signingSecretSet: true, updatedAt: expect.any(Number), updatedBy: userId });
+      expect(putBody).toEqual({ teamId: "T12345", enabled: true, signingSecretSet: true, updatedAt: expect.any(Number), updatedBy: userId });
       expect(JSON.stringify(putBody)).not.toContain("shhh-secret");
 
       const getRes = await app.request("/settings/slack", { headers: { cookie } });
       expect(await getRes.json()).toEqual({
         teamId: "T12345",
-        teamIdVerified: false,
         enabled: true,
         signingSecretSet: true,
         updatedAt: expect.any(Number),
@@ -194,8 +193,8 @@ describe("Slack slash command punching", () => {
     const signingSecret = "shhh-secret";
     const slackUserId = "U0000001";
 
-    async function setup() {
-      const seeded = await setupTestDb();
+    async function setup(existing?: Awaited<ReturnType<typeof setupTestDb>>) {
+      const seeded = existing ?? (await setupTestDb());
       const { db, tenantId, userId } = seeded;
       await grantPermission(db, { tenantId, userId, permission: "notification.settings.manage", scope: "tenant" });
       const app = createApp({ db, encryptor: testEncryptor() });
@@ -211,44 +210,65 @@ describe("Slack slash command punching", () => {
       return { ...seeded, app, cookie };
     }
 
-    it("別テナントが同じ team_id を先に入力していても(先取り)、持ち主は保存でき、署名の通った側だけが確認済みになる", async () => {
-      const seeded = await setupTestDb();
-      const { db, tenantId, userId } = seeded;
-      // 攻撃者のテナントが、他社のワークスペース ID を自分の Signing Secret と一緒に先に入れておく
+    /** 攻撃者のテナントが、他社のワークスペース ID を自分の Signing Secret と一緒に登録しておく。 */
+    async function addSquatter(db: Database, secret: string): Promise<string> {
       const squatterTenantId = uuidv7();
       const squatterUserId = uuidv7();
-      const squatterSecret = "squatter-secret";
       await db.insert(tenants).values({ id: squatterTenantId, name: "Squatter", createdAt: 0 });
       await db.insert(users).values({ id: squatterUserId, tenantId: squatterTenantId, email: "sq@example.com", name: "Sq", createdAt: 0 });
       await upsertTenantSlackSettings(db, {
         tenantId: squatterTenantId,
         teamId,
-        signingSecret: await testEncryptor().encrypt(squatterSecret),
+        signingSecret: await testEncryptor().encrypt(secret),
         enabled: true,
         updatedAt: 0,
         updatedBy: squatterUserId,
       });
+      return squatterTenantId;
+    }
 
-      await grantPermission(db, { tenantId, userId, permission: "notification.settings.manage", scope: "tenant" });
-      const app = createApp({ db, encryptor: testEncryptor() });
-      const cookie = await loginAndGetCookie(app, seeded.email, seeded.password);
-      const putRes = await app.request("/settings/slack", {
-        method: "PUT",
+    it("別テナントが同じ team_id を先に登録し偽のリクエストを自分で署名して送っても、持ち主の保存も受信も妨げられない(先取り)", async () => {
+      const seeded = await setupTestDb();
+      const squatterSecret = "squatter-secret";
+      await addSquatter(seeded.db, squatterSecret);
+
+      // 持ち主はあとから同じ team_id を保存できる(以前は UNIQUE 違反で保存できなかった)
+      const { app, cookie } = await setup(seeded);
+
+      // 攻撃者は Slack を通さず、team_id=持ち主 の本文を自分の Signing Secret で署名して送れる。
+      // これは攻撃者自身のテナントへ振り分けられる(攻撃者のテナントの中の操作にしかならない)
+      const forged = await postSlackCommand(app, squatterSecret, { teamId, slackUserId, text: "link" });
+      expect(forged.status).toBe(200);
+      const forgedToken = /(kzsl_[A-Za-z0-9_-]+)/.exec(String(forged.body.text))?.[1];
+      expect(forgedToken).toBeDefined();
+      // 攻撃者のテナントで発行されたトークンは、持ち主のテナントのユーザーには使えない
+      const redeemForged = await app.request("/settings/slack-link", {
+        method: "POST",
         headers: { "content-type": "application/json", cookie },
-        body: JSON.stringify({ enabled: true, teamId, signingSecret }),
+        body: JSON.stringify({ token: forgedToken }),
       });
-      expect(putRes.status).toBe(200);
-      expect(((await putRes.json()) as { teamIdVerified: boolean }).teamIdVerified).toBe(false);
+      expect(redeemForged.status).toBe(400);
 
-      // そのワークスペースの Slack アプリ(= 持ち主の Signing Secret)からのコマンドで確認済みになる
-      const first = await postSlackCommand(app, signingSecret, { teamId, slackUserId, text: "" });
-      expect(first.status).toBe(200);
-      const after = await app.request("/settings/slack", { headers: { cookie } });
-      expect(((await after.json()) as { teamIdVerified: boolean }).teamIdVerified).toBe(true);
+      // 持ち主の Slack アプリ(= 持ち主の Signing Secret)からの正規のリクエストは、その後も持ち主へ届く
+      const real = await postSlackCommand(app, signingSecret, { teamId, slackUserId, text: "link" });
+      expect(real.status).toBe(200);
+      const realToken = /(kzsl_[A-Za-z0-9_-]+)/.exec(String(real.body.text))?.[1];
+      const redeemReal = await app.request("/settings/slack-link", {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie },
+        body: JSON.stringify({ token: realToken }),
+      });
+      expect(redeemReal.status).toBe(200);
+    });
 
-      // 先取りした側の Signing Secret で署名しても、もう通らない
-      const squatter = await postSlackCommand(app, squatterSecret, { teamId, slackUserId, text: "" });
-      expect(squatter.status).toBe(401);
+    it("同じ team_id と同じ Signing Secret のテナントが複数あれば、どちらへも振り分けず 401", async () => {
+      const seeded = await setupTestDb();
+      await addSquatter(seeded.db, signingSecret);
+      const { app } = await setup(seeded);
+      const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+      const res = await postSlackCommand(app, signingSecret, { teamId, slackUserId, text: "" });
+      spy.mockRestore();
+      expect(res.status).toBe(401);
     });
 
     it("/punch (no args) shows usage without requiring a link", async () => {

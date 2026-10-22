@@ -11,8 +11,8 @@
  *   URLエンコードの正規化差異で署名が合わなくなるリスクがある。生文字列をそのまま署名検証に使う)
  * - テナントの特定は `team_id`(Slack ワークスペースID)から `tenant_slack_settings` を逆引きする
  *   唯一の経路(「1テナント=1ワークスペース」前提。依頼どおり複数テナント共有は想定しない)。
- *   管理画面で入力しただけの team_id は「未確認」で、そのワークスペースからの署名付きリクエストを
- *   そのテナントの Signing Secret で検証できたときに確認済みにする(先取り対策。packages/db/src/schema/slack.ts)
+ *   team_id は UNIQUE ではなく、同じ team_id を持つ有効な行のうち **Signing Secret で署名を検証できた行**へ
+ *   振り分ける(先取り対策。判断点は packages/db/src/schema/slack.ts 冒頭)
  * - 打刻の実装は routes/punches.ts の POST ハンドラを**HTTPで叩き直さず**、同じ下位関数
  *   (resolveAttendanceDate・assertMonthOpen・insertPunchEvent)を直接呼ぶ
  * - 応答は必ず `response_type: "ephemeral"`。打刻の事実が他のメンバーに流れないようにするため
@@ -34,12 +34,11 @@
 import { Hono } from "hono";
 import {
   getSlackUserLinkBySlackUserId,
-  findTenantSlackSettingsByTeamId,
+  listEnabledTenantSlackSettingsByTeamId,
   getUserById,
   insertPunchEvent,
   insertSlackLinkToken,
   listValidPunches,
-  markTenantSlackTeamVerified,
   uuidv7,
   type Database,
 } from "@kizami/db";
@@ -168,44 +167,34 @@ export function createSlackRoutes(db: Database, deps: SlackRoutesDeps = {}) {
       return c.json(ephemeral("リクエストの形式が不正です。"), 400);
     }
 
-    const candidates = await findTenantSlackSettingsByTeamId(db, teamId);
-    const verifyWith = async (row: { signingSecret: string | null }): Promise<boolean> =>
-      verifySlackSignature({
+    // team_id は手掛かりにすぎない(UNIQUE ではない)。同じ team_id を持つ有効な行のうち、Signing Secret で
+    // このリクエストの署名を検証できた行が宛先(先取り対策、2026-10-22。packages/db/src/schema/slack.ts 冒頭)。
+    // 他テナントが同じ team_id を入れていても、持ち主の Signing Secret を知らない限り正規のリクエストは
+    // そちらでは検証できないので、横取りも妨害もできない。
+    const candidates = await listEnabledTenantSlackSettingsByTeamId(db, teamId);
+    if (candidates.length === 0) {
+      // 未設定/無効化されたテナントの区別はしない(存在有無を漏らさないため同一メッセージ)。
+      return c.json(ephemeral("このワークスペースではSlack打刻が設定されていません。管理者に設定を依頼してください。"));
+    }
+    const matched: typeof candidates = [];
+    for (const row of candidates) {
+      const verified = await verifySlackSignature({
         signingSecret: row.signingSecret ? await decryptSecret(deps.encryptor, row.signingSecret) : null,
         signatureHeader: c.req.header("x-slack-signature") ?? null,
         timestampHeader: c.req.header("x-slack-request-timestamp") ?? null,
         rawBody,
       });
-
-    let settings: NonNullable<typeof candidates.verified>;
-    if (candidates.verified) {
-      if (!candidates.verified.enabled) {
-        // 未設定/無効化されたテナントの区別はしない(存在有無を漏らさないため同一メッセージ)。
-        return c.json(ephemeral("このワークスペースではSlack打刻が設定されていません。管理者に設定を依頼してください。"));
-      }
-      if (!(await verifyWith(candidates.verified))) return c.json({ error: "invalid_signature" }, 401);
-      settings = candidates.verified;
-    } else {
-      // まだ誰もこの team_id を確認していない。同じ team_id を入力した(有効な)テナントのうち、
-      // Signing Secret でこのリクエストの署名を検証できた行が本物の持ち主(先取り対策、2026-10-22)。
-      // 入力しただけの他テナントの行は、そのワークスペースから正しく署名されたリクエストを作れないので選ばれない。
-      if (candidates.pending.length === 0) {
-        return c.json(ephemeral("このワークスペースではSlack打刻が設定されていません。管理者に設定を依頼してください。"));
-      }
-      let matched: (typeof candidates.pending)[number] | null = null;
-      for (const row of candidates.pending) {
-        if (await verifyWith(row)) {
-          matched = row;
-          break;
-        }
-      }
-      if (!matched) return c.json({ error: "invalid_signature" }, 401);
-      // 同時に別の行が確認済みになっていたら(部分 UNIQUE で false)、そちらを正としてこの要求は断る。
-      if (!(await markTenantSlackTeamVerified(db, { tenantId: matched.tenantId, teamId, verifiedAt: nowMinutes() }))) {
-        return c.json({ error: "invalid_signature" }, 401);
-      }
-      settings = matched;
+      if (verified) matched.push(row);
     }
+    if (matched.length !== 1) {
+      // 0件 = 署名が合わない。2件以上 = 同じ team_id と同じ Signing Secret を複数のテナントが登録している
+      // (同じ Slack アプリを複数テナントに登録した設定ミス)。どちらへ送るべきか決まらないので断る。
+      if (matched.length > 1) {
+        console.error(`slack commands: ${matched.length} tenants verified the same request (duplicated Slack app registration)`);
+      }
+      return c.json({ error: "invalid_signature" }, 401);
+    }
+    const settings = matched[0] as (typeof matched)[number];
 
     const tenantId = settings.tenantId;
     // 退会手続き中のテナントでは打刻も連携も受け付けない(docs/design/tenant-withdrawal.md)。

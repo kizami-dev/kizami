@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "690362e8-a644-4fd9-85b4-dfc33ffeeabd",
+  "id": "e35bbf9c-3e12-4d24-94fe-ffbfd4dae006",
   "prevId": "0bc17c16-3a58-49a0-87fb-111371525c4c",
   "tables": {
     "allowance_definition_versions": {
@@ -3758,13 +3758,6 @@
           "notNull": false,
           "autoincrement": false
         },
-        "team_id_verified_at": {
-          "name": "team_id_verified_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
         "signing_secret": {
           "name": "signing_secret",
           "type": "text",
@@ -3802,14 +3795,6 @@
             "team_id"
           ],
           "isUnique": false
-        },
-        "tenant_slack_settings_verified_team_id_idx": {
-          "name": "tenant_slack_settings_verified_team_id_idx",
-          "columns": [
-            "team_id"
-          ],
-          "isUnique": true,
-          "where": "\"tenant_slack_settings\".\"team_id_verified_at\" is not null"
         }
       },
       "foreignKeys": {

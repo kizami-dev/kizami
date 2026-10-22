@@ -96,10 +96,10 @@ API・DB スキーマの互換方針とアップグレード手順は
   サーバー側で決める。SSO の使える在籍先が複数ある人は 409 `sso_multiple_tenants` になり、パスワードでログインした後の
   会社選択画面(`multiple_tenants` の各行に `ssoEnabled` を追加)から SSO を選ぶ。**API の応答形が変わる**(Web は同梱で対応済み)
 - **Slack 連携で、他のテナントがワークスペース ID(team_id)を先に入力して持ち主の連携を妨げられた問題を修正**。
-  入力しただけの team_id は「未確認」で何社が入れても衝突せず、そのワークスペースからの署名付き `/punch` を
-  そのテナントの Signing Secret で検証できた時点で確認済みにし、以後はそのテナントだけが使う
-  (マイグレーション: `tenant_slack_settings.team_id_verified_at` を追加し、team_id の UNIQUE を確認済みの行だけの部分 UNIQUE に変更。
-  既存の連携は次の `/punch` で自動的に確認済みになる)。`GET /settings/slack` に `teamIdVerified` を追加
+  team_id は UNIQUE をやめて振り分けの手掛かりだけにし、`/slack/commands` は同じ team_id を持つ有効なテナントのうち
+  **登録された Signing Secret で署名を検証できたテナント**へ振り分ける。他人が同じ team_id を登録しても、受け取れるのは
+  自分で署名した(自分のテナントの中の)リクエストだけになる。同じ team_id と Signing Secret のテナントが複数あれば拒否する
+  (マイグレーション: `tenant_slack_settings_team_id_idx` を UNIQUE から通常のインデックスへ。既存の連携はそのまま動く)
 - **ログに資格情報と外部の値をそのまま出していた問題を修正**。通知ワーカーの起動ログが `REDIS_URL` を丸ごと出しており、
   パスワード入りの接続文字列がログに残った(ユーザー名・パスワードを `***` に伏せる)。SSO のトークンエンドポイントの
   失敗応答とコールバックの `error` を生のまま載せており、改行で偽のログ行を作れ、想定外の応答ならトークンも残りえた
