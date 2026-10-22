@@ -13,7 +13,7 @@ import {
 } from "@kizami/db";
 import { eq } from "drizzle-orm";
 import { createApp } from "../src/app.js";
-import { grantPermission, loginAndGetCookie, setupExtraUser, setupSecondUser, setupTestDb } from "./support/setup.js";
+import { grantPermission, loginAndGetCookie, setupExtraUser, setupSecondUser, setupTestDb, loginAsHrEditor } from "./support/setup.js";
 import { buildSettingsTimeline } from "../src/lib/settings.js";
 import { ADMIN_GRANTS } from "../src/lib/tenant-bootstrap.js";
 
@@ -53,11 +53,12 @@ describe("members API", () => {
     await grantPermission(db, { tenantId, userId, permission: "department.manage", scope: "tenant" });
     const app = createApp({ db });
     const cookie = await loginAndGetCookie(app, email, password);
+    const hrCookie = await loginAsHrEditor(app, db, { tenantId, fromUserId: userId });
 
     const dept = await createDepartment(app, cookie, "営業部");
     const patchRes = await app.request(`/members/${userId}`, {
       method: "PATCH",
-      headers: { "content-type": "application/json", cookie },
+      headers: { "content-type": "application/json", cookie: hrCookie },
       body: JSON.stringify({ departmentId: dept.id }),
     });
     expect(patchRes.status).toBe(200);
@@ -92,13 +93,14 @@ describe("members API", () => {
 
   it("PATCH with an unknown departmentId returns 400 invalid_department_id", async () => {
     const { db, tenantId, userId, email, password } = await setupTestDb();
-    await grantPermission(db, { tenantId, userId, permission: "member.profile.edit", scope: "department" });
+    await grantPermission(db, { tenantId, userId, permission: "member.profile.edit", scope: "tenant" });
     const app = createApp({ db });
     const cookie = await loginAndGetCookie(app, email, password);
+    const hrCookie = await loginAsHrEditor(app, db, { tenantId, fromUserId: userId });
 
     const res = await app.request(`/members/${userId}`, {
       method: "PATCH",
-      headers: { "content-type": "application/json", cookie },
+      headers: { "content-type": "application/json", cookie: hrCookie },
       body: JSON.stringify({ departmentId: "nonexistent" }),
     });
     expect(res.status).toBe(400);
@@ -111,12 +113,13 @@ describe("members API", () => {
     await grantPermission(db, { tenantId, userId, permission: "department.manage", scope: "tenant" });
     const app = createApp({ db });
     const cookie = await loginAndGetCookie(app, email, password);
+    const hrCookie = await loginAsHrEditor(app, db, { tenantId, fromUserId: userId });
 
     const dept = await createDepartment(app, cookie, "開発部");
 
     const res = await app.request(`/members/${userId}`, {
       method: "PATCH",
-      headers: { "content-type": "application/json", cookie },
+      headers: { "content-type": "application/json", cookie: hrCookie },
       body: JSON.stringify({ departmentId: dept.id }),
     });
     expect(res.status).toBe(200);
@@ -200,14 +203,15 @@ describe("members API", () => {
 
   it("PATCH sets hireDate, GET reflects it, and an audit log entry is recorded", async () => {
     const { db, tenantId, userId, email, password } = await setupTestDb();
-    await grantPermission(db, { tenantId, userId, permission: "member.profile.edit", scope: "department" });
+    await grantPermission(db, { tenantId, userId, permission: "member.profile.edit", scope: "tenant" });
     await grantPermission(db, { tenantId, userId, permission: "member.view", scope: "tenant" });
     const app = createApp({ db });
     const cookie = await loginAndGetCookie(app, email, password);
+    const hrCookie = await loginAsHrEditor(app, db, { tenantId, fromUserId: userId });
 
     const patchRes = await app.request(`/members/${userId}`, {
       method: "PATCH",
-      headers: { "content-type": "application/json", cookie },
+      headers: { "content-type": "application/json", cookie: hrCookie },
       body: JSON.stringify({ hireDate: "2020-04-01" }),
     });
     expect(patchRes.status).toBe(200);
@@ -222,13 +226,14 @@ describe("members API", () => {
 
   it("PATCH rejects a malformed hireDate with 400 invalid_hire_date", async () => {
     const { db, tenantId, userId, email, password } = await setupTestDb();
-    await grantPermission(db, { tenantId, userId, permission: "member.profile.edit", scope: "department" });
+    await grantPermission(db, { tenantId, userId, permission: "member.profile.edit", scope: "tenant" });
     const app = createApp({ db });
     const cookie = await loginAndGetCookie(app, email, password);
+    const hrCookie = await loginAsHrEditor(app, db, { tenantId, fromUserId: userId });
 
     const res = await app.request(`/members/${userId}`, {
       method: "PATCH",
-      headers: { "content-type": "application/json", cookie },
+      headers: { "content-type": "application/json", cookie: hrCookie },
       body: JSON.stringify({ hireDate: "not-a-date" }),
     });
     expect(res.status).toBe(400);
@@ -237,18 +242,19 @@ describe("members API", () => {
 
   it("PATCH with hireDate: null clears a previously set hire date", async () => {
     const { db, tenantId, userId, email, password } = await setupTestDb();
-    await grantPermission(db, { tenantId, userId, permission: "member.profile.edit", scope: "department" });
+    await grantPermission(db, { tenantId, userId, permission: "member.profile.edit", scope: "tenant" });
     const app = createApp({ db });
     const cookie = await loginAndGetCookie(app, email, password);
+    const hrCookie = await loginAsHrEditor(app, db, { tenantId, fromUserId: userId });
 
     await app.request(`/members/${userId}`, {
       method: "PATCH",
-      headers: { "content-type": "application/json", cookie },
+      headers: { "content-type": "application/json", cookie: hrCookie },
       body: JSON.stringify({ hireDate: "2020-04-01" }),
     });
     const res = await app.request(`/members/${userId}`, {
       method: "PATCH",
-      headers: { "content-type": "application/json", cookie },
+      headers: { "content-type": "application/json", cookie: hrCookie },
       body: JSON.stringify({ hireDate: null }),
     });
     expect(res.status).toBe(200);
@@ -261,11 +267,12 @@ describe("members API", () => {
    */
   it("GET returns leaveGrantClass 'full' by default and PATCH updates it with an audit entry", async () => {
     const { db, tenantId, userId, email, password } = await setupTestDb();
-    await grantPermission(db, { tenantId, userId, permission: "member.profile.edit", scope: "department" });
+    await grantPermission(db, { tenantId, userId, permission: "member.profile.edit", scope: "tenant" });
     await grantPermission(db, { tenantId, userId, permission: "member.view", scope: "tenant" });
     await grantPermission(db, { tenantId, userId, permission: "audit_log.view", scope: "tenant" });
     const app = createApp({ db });
     const cookie = await loginAndGetCookie(app, email, password);
+    const hrCookie = await loginAsHrEditor(app, db, { tenantId, fromUserId: userId });
 
     const before = await app.request("/members", { headers: { cookie } });
     const beforeBody = (await before.json()) as { members: { id: string; leaveGrantClass: string }[] };
@@ -273,7 +280,7 @@ describe("members API", () => {
 
     const patchRes = await app.request(`/members/${userId}`, {
       method: "PATCH",
-      headers: { "content-type": "application/json", cookie },
+      headers: { "content-type": "application/json", cookie: hrCookie },
       body: JSON.stringify({ leaveGrantClass: "days4" }),
     });
     expect(patchRes.status).toBe(200);
@@ -293,14 +300,15 @@ describe("members API", () => {
 
   it("PATCH rejects an unknown leaveGrantClass with 400 invalid_leave_grant_class", async () => {
     const { db, tenantId, userId, email, password } = await setupTestDb();
-    await grantPermission(db, { tenantId, userId, permission: "member.profile.edit", scope: "department" });
+    await grantPermission(db, { tenantId, userId, permission: "member.profile.edit", scope: "tenant" });
     const app = createApp({ db });
     const cookie = await loginAndGetCookie(app, email, password);
+    const hrCookie = await loginAsHrEditor(app, db, { tenantId, fromUserId: userId });
 
     for (const value of ["days5", "", null, 4]) {
       const res = await app.request(`/members/${userId}`, {
         method: "PATCH",
-        headers: { "content-type": "application/json", cookie },
+        headers: { "content-type": "application/json", cookie: hrCookie },
         body: JSON.stringify({ leaveGrantClass: value }),
       });
       expect(res.status).toBe(400);
@@ -323,10 +331,11 @@ describe("members API", () => {
 
   it("hireDate enables the statutory leave auto-grant that otherwise fails with hire_date_not_set", async () => {
     const { db, tenantId, userId, email, password } = await setupTestDb();
-    await grantPermission(db, { tenantId, userId, permission: "member.profile.edit", scope: "department" });
+    await grantPermission(db, { tenantId, userId, permission: "member.profile.edit", scope: "tenant" });
     await grantPermission(db, { tenantId, userId, permission: "leave.grant.manage", scope: "tenant" });
     const app = createApp({ db });
     const cookie = await loginAndGetCookie(app, email, password);
+    const hrCookie = await loginAsHrEditor(app, db, { tenantId, fromUserId: userId });
 
     // 法定付与の実行には有給の制度設定(GET/PUT /settings/leave)が事前に必要。
     await app.request("/settings/leave", {
@@ -345,7 +354,7 @@ describe("members API", () => {
 
     const before = await app.request("/leave/grants/auto", {
       method: "POST",
-      headers: { "content-type": "application/json", cookie },
+      headers: { "content-type": "application/json", cookie: hrCookie },
       body: JSON.stringify({ userId }),
     });
     expect(before.status).toBe(400);
@@ -353,13 +362,13 @@ describe("members API", () => {
 
     await app.request(`/members/${userId}`, {
       method: "PATCH",
-      headers: { "content-type": "application/json", cookie },
+      headers: { "content-type": "application/json", cookie: hrCookie },
       body: JSON.stringify({ hireDate: "2020-04-01" }),
     });
 
     const after = await app.request("/leave/grants/auto", {
       method: "POST",
-      headers: { "content-type": "application/json", cookie },
+      headers: { "content-type": "application/json", cookie: hrCookie },
       body: JSON.stringify({ userId }),
     });
     expect(after.status).toBe(201);

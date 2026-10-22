@@ -16,7 +16,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { listAuditLogs } from "@kizami/db";
 import { listScheduledWorkDates } from "@kizami/engine";
 import { createApp } from "../src/app.js";
-import { grantPermission, jstMinutes, loginAndGetCookie, setupTestDb } from "./support/setup.js";
+import { grantPermission, jstMinutes, loginAndGetCookie, setupTestDb, loginAsHrEditor } from "./support/setup.js";
 import { requestPunch } from "./support/punch.js";
 
 /** 制度・割当を作る「今日」(JST 2026-07-01 00:30)。割当は過去日にできないため対象の最初の月の初日 */
@@ -112,7 +112,9 @@ async function setupShortHoursFlex(options: { carryOverShortfall: boolean } = { 
   const policy = ((await createRes.json()) as { policy: { id: string; effective: { totalHoursBasis: string; carryOverShortfall: boolean } } }).policy;
   expect(policy.effective).toMatchObject({ totalHoursBasis: "scheduled_days", carryOverShortfall: options.carryOverShortfall });
 
-  const assignRes = await postJson(app, cookie, `/members/${userId}/work-policy`, { workPolicyId: policy.id, effectiveFrom: "2026-07-01" });
+  // 自分の労働時間制は自分で割り当てられない(authz.ts の rejectOwnHrAttributeEdit)ので、別の管理者が割り当てる
+  const hrCookie = await loginAsHrEditor(app, db, { tenantId, fromUserId: userId });
+  const assignRes = await postJson(app, hrCookie, `/members/${userId}/work-policy`, { workPolicyId: policy.id, effectiveFrom: "2026-07-01" });
   expect(assignRes.status).toBe(201);
 
   vi.setSystemTime(CHECK_NOW);

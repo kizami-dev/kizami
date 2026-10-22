@@ -935,10 +935,15 @@ export function MembersView() {
             </div>
             {(() => {
               const member = expandedMember;
+              // 自分の人事属性(所属・入社日・付与区分・労働時間制)は自分では変えられない(API は 403
+              // cannot_edit_own_hr_attributes。apps/api/src/authz.ts の rejectOwnHrAttributeEdit)。
+              // 押してから断られるのではなく、最初から欄を無効にして理由を出す。
+              const isSelfHr = member.id === guard.user?.id;
               return (
           <div className="member-detail">
             <section className="member-detail__section member-detail__section--full">
               <h2 className="member-detail__section-title">{messages.members.basicsTitle}</h2>
+              {isSelfHr ? <p className="notice notice--caution">{messages.members.ownHrAttributesLocked}</p> : null}
               <div className="field-row">
                 <div className="field">
                   <label htmlFor={`member-department-${member.id}`}>{messages.members.columnDepartment}</label>
@@ -946,7 +951,7 @@ export function MembersView() {
                     <select
                       id={`member-department-${member.id}`}
                       value={member.department?.id ?? ""}
-                      disabled={deptChangePendingId === member.id}
+                      disabled={deptChangePendingId === member.id || isSelfHr}
                       onChange={(e) => handleDepartmentChange(member.id, e.target.value)}
                     >
                       {member.department === null ? <option value="">{messages.members.noDepartment}</option> : null}
@@ -972,13 +977,13 @@ export function MembersView() {
                       id={`member-hire-date-${member.id}`}
                       type="date"
                       value={hireDateDraftFor(member)}
-                      disabled={hireDatePendingId === member.id}
+                      disabled={hireDatePendingId === member.id || isSelfHr}
                       onChange={(e) => setHireDateDrafts((prev) => ({ ...prev, [member.id]: e.target.value }))}
                     />
                     <button
                       type="button"
                       className="btn btn--secondary btn--sm"
-                      disabled={hireDatePendingId === member.id}
+                      disabled={hireDatePendingId === member.id || isSelfHr}
                       onClick={() => handleHireDateSave(member)}
                     >
                       {hireDatePendingId === member.id ? messages.members.hireDateSaving : messages.members.hireDateSave}
@@ -1056,7 +1061,7 @@ export function MembersView() {
                 <select
                   aria-label={messages.members.leaveGrantClassLabel}
                   value={grantClassDraftFor(member)}
-                  disabled={grantClassPendingId === member.id}
+                  disabled={grantClassPendingId === member.id || isSelfHr}
                   onChange={(e) => {
                     const next = e.target.value as LeaveGrantClass;
                     setGrantClassSavedId(null);
@@ -1082,7 +1087,7 @@ export function MembersView() {
               <button
                 type="button"
                 className="btn btn--secondary"
-                disabled={grantClassPendingId === member.id}
+                disabled={grantClassPendingId === member.id || isSelfHr}
                 onClick={() => handleGrantClassSave(member)}
               >
                 {grantClassPendingId === member.id
@@ -1138,6 +1143,7 @@ export function MembersView() {
                         <select
                           id={`member-work-policy-id-${member.id}`}
                           value={workPolicyForm.workPolicyId}
+                          disabled={isSelfHr}
                           onChange={(e) =>
                             setWorkPolicyForm((prev) => ({ ...prev, workPolicyId: e.target.value }))
                           }
@@ -1171,6 +1177,7 @@ export function MembersView() {
                           id={`member-work-policy-effective-from-${member.id}`}
                           type="date"
                           min={todayDate}
+                          disabled={isSelfHr}
                           value={workPolicyForm.effectiveFrom}
                           onChange={(e) =>
                             setWorkPolicyForm((prev) => ({ ...prev, effectiveFrom: e.target.value }))
@@ -1193,7 +1200,7 @@ export function MembersView() {
                       <button
                         type="submit"
                         className="btn btn--primary"
-                        disabled={workPolicySaving}
+                        disabled={workPolicySaving || isSelfHr}
                       >
                         {workPolicySaving ? messages.members.workPolicySubmitting : messages.members.workPolicySubmit}
                       </button>

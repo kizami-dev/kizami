@@ -2053,6 +2053,7 @@ export const zhHant = {
   },
 
   members: {
+    ownHrAttributesLocked: "不能自行修改自己的到職日期・特休授予類別・所屬部門・工時制度。如需修改,請聯絡其他管理員。",
     title: "成員管理",
     tagline: "變更所屬部門、分配權限預設、檢視實際生效的權限(可執行的操作)。",
     noPermission: "沒有權限使用此頁面",
@@ -2278,6 +2279,7 @@ export const zhHant = {
     effectiveDeniedBy: (names: string) => `由於「${names}」的拒絕設定,此權限無法行使`,
 
     errors: {
+      cannot_edit_own_hr_attributes: "不能修改自己的人事屬性(到職日期・特休授予類別・所屬部門・工時制度・特休授予)。請聯絡其他管理員",
       invalid_body: "請確認輸入內容",
       invalid_email: "請確認電子郵件地址格式",
       invalid_name: "姓名請輸入1〜200個字元",
@@ -2531,6 +2533,7 @@ export const zhHant = {
 
   /** 帶薪年假的制度設定(/settings/leave)。 */
   settingsLeave: {
+    targetUserSelfSuffix: "(本人 — 由其他管理員操作)",
     title: "帶薪年假設定",
     tagline: "設定授予方式、按小時計年假、結轉休假等租用戶全域設定。",
     noPermission: "沒有權限更改此設定",
@@ -2600,6 +2603,7 @@ export const zhHant = {
     convertResultEmpty: "沒有可結轉的對象",
 
     errors: {
+      cannot_edit_own_hr_attributes: "不能修改自己的人事屬性(到職日期・特休授予類別・所屬部門・工時制度・特休授予)。請聯絡其他管理員",
       invalid_grant_method: "請確認授予方式",
       invalid_fixed_date_mm_dd: "基準日請使用MM-DD格式輸入",
       invalid_hourly_leave_enabled: "請確認輸入內容",
@@ -2630,6 +2634,7 @@ export const zhHant = {
    * 出勤率(《勞動基準法》第39條第1款的八成要求)僅作為參考值呈現。
    */
   leaveGrantProposals: {
+    ownProposalNote: "針對本人的授予預告由其他管理員審核",
     sectionTitle: "授予預告",
     sectionDesc:
       "這是每日自動計算產生的授予「預告」。僅停留在預告狀態不會實際授予,需要負責人確認內容並簽核後才會生效。出勤率僅供參考,八成要求的最終判斷請由人來做出。",
@@ -2677,6 +2682,7 @@ export const zhHant = {
     },
 
     errors: {
+      cannot_edit_own_hr_attributes: "不能修改自己的人事屬性(到職日期・特休授予類別・所屬部門・工時制度・特休授予)。請聯絡其他管理員",
       not_found: "找不到目標預告",
       not_proposed: "該預告已被簽核,請重新整理頁面確認最新狀態",
       grant_already_exists: "相同基準日的授予已存在,請確認是否與手動授予重複",

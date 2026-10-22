@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import { auditLogs } from "@kizami/db";
 import { createApp } from "../src/app.js";
-import { grantPermission, loginAndGetCookie, setupSecondUser, setupTestDb } from "./support/setup.js";
+import { grantPermission, loginAndGetCookie, setupSecondUser, setupTestDb, loginAsHrEditor } from "./support/setup.js";
 
 const PERMISSION = "tenant_settings.flex.manage";
 
@@ -80,10 +80,11 @@ describe("GET/POST /members/:id/work-policy", () => {
     await grantPermission(db, { tenantId, userId, permission: PERMISSION, scope: "tenant" });
     const app = createApp({ db });
     const cookie = await loginAndGetCookie(app, email, password);
+    const hrCookie = await loginAsHrEditor(app, db, { tenantId, fromUserId: userId });
 
     const res = await app.request(`/members/${userId}/work-policy`, {
       method: "POST",
-      headers: { "content-type": "application/json", cookie },
+      headers: { "content-type": "application/json", cookie: hrCookie },
       body: JSON.stringify({ kind: "fixed", effectiveFrom: "2026-04-14" }),
     });
     expect(res.status).toBe(409);
@@ -95,10 +96,11 @@ describe("GET/POST /members/:id/work-policy", () => {
     await grantPermission(db, { tenantId, userId, permission: PERMISSION, scope: "tenant" });
     const app = createApp({ db });
     const cookie = await loginAndGetCookie(app, email, password);
+    const hrCookie = await loginAsHrEditor(app, db, { tenantId, fromUserId: userId });
 
     const res = await app.request(`/members/${userId}/work-policy`, {
       method: "POST",
-      headers: { "content-type": "application/json", cookie },
+      headers: { "content-type": "application/json", cookie: hrCookie },
       body: JSON.stringify({ kind: "yearly", effectiveFrom: "2026-05-01" }),
     });
     expect(res.status).toBe(400);
@@ -110,18 +112,19 @@ describe("GET/POST /members/:id/work-policy", () => {
     await grantPermission(db, { tenantId, userId, permission: PERMISSION, scope: "tenant" });
     const app = createApp({ db });
     const cookie = await loginAndGetCookie(app, email, password);
+    const hrCookie = await loginAsHrEditor(app, db, { tenantId, fromUserId: userId });
 
     const body = JSON.stringify({ kind: "fixed", effectiveFrom: "2026-05-01" });
     const first = await app.request(`/members/${userId}/work-policy`, {
       method: "POST",
-      headers: { "content-type": "application/json", cookie },
+      headers: { "content-type": "application/json", cookie: hrCookie },
       body,
     });
     expect(first.status).toBe(201);
 
     const second = await app.request(`/members/${userId}/work-policy`, {
       method: "POST",
-      headers: { "content-type": "application/json", cookie },
+      headers: { "content-type": "application/json", cookie: hrCookie },
       body,
     });
     expect(second.status).toBe(409);
@@ -133,10 +136,11 @@ describe("GET/POST /members/:id/work-policy", () => {
     await grantPermission(db, { tenantId, userId, permission: PERMISSION, scope: "tenant" });
     const app = createApp({ db });
     const cookie = await loginAndGetCookie(app, email, password);
+    const hrCookie = await loginAsHrEditor(app, db, { tenantId, fromUserId: userId });
 
     const res = await app.request(`/members/${userId}/work-policy`, {
       method: "POST",
-      headers: { "content-type": "application/json", cookie },
+      headers: { "content-type": "application/json", cookie: hrCookie },
       body: JSON.stringify({ kind: "fixed", effectiveFrom: "2026-05-01" }),
     });
     expect(res.status).toBe(201);
@@ -163,7 +167,7 @@ describe("GET/POST /members/:id/work-policy", () => {
       afterWorkPolicyName: "標準(固定時間制)",
     });
 
-    const getRes = await app.request(`/members/${userId}/work-policy`, { headers: { cookie } });
+    const getRes = await app.request(`/members/${userId}/work-policy`, { headers: { cookie: hrCookie } });
     const getBody = await getRes.json();
     expect(getBody.history.map((h: { effectiveFrom: string; kind: string }) => [h.effectiveFrom, h.kind])).toEqual([
       ["1970-01-01", "flex"],
@@ -179,6 +183,7 @@ describe("GET/POST /members/:id/work-policy", () => {
     await grantPermission(db, { tenantId, userId, permission: "member.view", scope: "tenant" });
     const app = createApp({ db });
     const cookie = await loginAndGetCookie(app, email, password);
+    const hrCookie = await loginAsHrEditor(app, db, { tenantId, fromUserId: userId });
 
     const before = await app.request("/members", { headers: { cookie } });
     const beforeBody = await before.json();
@@ -188,7 +193,7 @@ describe("GET/POST /members/:id/work-policy", () => {
     // 今日(2026-04-15)から有効な割当なら、一覧にすぐ反映される。
     const post = await app.request(`/members/${userId}/work-policy`, {
       method: "POST",
-      headers: { "content-type": "application/json", cookie },
+      headers: { "content-type": "application/json", cookie: hrCookie },
       body: JSON.stringify({ kind: "fixed", effectiveFrom: "2026-04-15" }),
     });
     expect(post.status).toBe(201);
@@ -204,10 +209,11 @@ describe("GET/POST /members/:id/work-policy", () => {
     await grantPermission(db, { tenantId, userId, permission: PERMISSION, scope: "tenant" });
     const app = createApp({ db });
     const cookie = await loginAndGetCookie(app, email, password);
+    const hrCookie = await loginAsHrEditor(app, db, { tenantId, fromUserId: userId });
 
     const post = await app.request(`/members/${userId}/work-policy`, {
       method: "POST",
-      headers: { "content-type": "application/json", cookie },
+      headers: { "content-type": "application/json", cookie: hrCookie },
       body: JSON.stringify({ kind: "fixed", effectiveFrom: "2026-05-01" }),
     });
     expect(post.status).toBe(201);
@@ -249,9 +255,10 @@ describe("GET/POST /members/:id/work-policy", () => {
       await grantPermission(db, { tenantId, userId, permission: "member.view", scope: "tenant" });
       const app = createApp({ db });
       const cookie = await loginAndGetCookie(app, email, password);
+      const hrCookie = await loginAsHrEditor(app, db, { tenantId, fromUserId: userId });
       const shortId = await createPolicy(app, cookie, { name: "固定・時短(6時間)", kind: "fixed", effectiveFrom: "2026-04-01", standardDayMinutes: 360 });
 
-      const res = await assign(app, cookie, userId, { workPolicyId: shortId, effectiveFrom: "2026-04-15" });
+      const res = await assign(app, hrCookie, userId, { workPolicyId: shortId, effectiveFrom: "2026-04-15" });
       expect(res.status).toBe(201);
       expect((await res.json()).assignment).toEqual({
         workPolicyId: shortId,
@@ -261,7 +268,7 @@ describe("GET/POST /members/:id/work-policy", () => {
         standardDayMinutes: 360,
       });
 
-      const getBody = await (await app.request(`/members/${userId}/work-policy`, { headers: { cookie } })).json();
+      const getBody = await (await app.request(`/members/${userId}/work-policy`, { headers: { cookie: hrCookie } })).json();
       expect(getBody.effective).toMatchObject({ workPolicyId: shortId, workPolicyName: "固定・時短(6時間)", kind: "fixed", standardDayMinutes: 360 });
 
       const list = await (await app.request("/members", { headers: { cookie } })).json();
@@ -284,8 +291,9 @@ describe("GET/POST /members/:id/work-policy", () => {
       await grantPermission(db, { tenantId, userId, permission: PERMISSION, scope: "tenant" });
       const app = createApp({ db });
       const cookie = await loginAndGetCookie(app, email, password);
+      const hrCookie = await loginAsHrEditor(app, db, { tenantId, fromUserId: userId });
 
-      const unknown = await assign(app, cookie, userId, { workPolicyId: "00000000-0000-0000-0000-000000000000", effectiveFrom: "2026-05-01" });
+      const unknown = await assign(app, hrCookie, userId, { workPolicyId: "00000000-0000-0000-0000-000000000000", effectiveFrom: "2026-05-01" });
       expect(unknown.status).toBe(400);
       expect(await unknown.json()).toEqual({ error: "invalid_work_policy_id" });
 
@@ -294,16 +302,16 @@ describe("GET/POST /members/:id/work-policy", () => {
       const otherApp = createApp({ db: other.db });
       const otherCookie = await loginAndGetCookie(otherApp, other.email, other.password);
       const otherPolicyId = await createPolicy(otherApp, otherCookie, { name: "他社の制度", kind: "fixed", effectiveFrom: "2026-04-01", standardDayMinutes: 360 });
-      const crossTenant = await assign(app, cookie, userId, { workPolicyId: otherPolicyId, effectiveFrom: "2026-05-01" });
+      const crossTenant = await assign(app, hrCookie, userId, { workPolicyId: otherPolicyId, effectiveFrom: "2026-05-01" });
       expect(crossTenant.status).toBe(400);
       expect(await crossTenant.json()).toEqual({ error: "invalid_work_policy_id" });
 
       const futureId = await createPolicy(app, cookie, { name: "6月からの制度", kind: "fixed", effectiveFrom: "2026-06-01", standardDayMinutes: 360 });
-      const notYet = await assign(app, cookie, userId, { workPolicyId: futureId, effectiveFrom: "2026-05-01" });
+      const notYet = await assign(app, hrCookie, userId, { workPolicyId: futureId, effectiveFrom: "2026-05-01" });
       expect(notYet.status).toBe(409);
       expect(await notYet.json()).toEqual({ error: "work_policy_not_effective_yet" });
       // 初版の日付以降からなら割り当てられる
-      expect((await assign(app, cookie, userId, { workPolicyId: futureId, effectiveFrom: "2026-06-01" })).status).toBe(201);
+      expect((await assign(app, hrCookie, userId, { workPolicyId: futureId, effectiveFrom: "2026-06-01" })).status).toBe(201);
 
       const archivedId = await createPolicy(app, cookie, { name: "使わなくなった制度", kind: "fixed", effectiveFrom: "2026-04-01", standardDayMinutes: 420 });
       const patch = await app.request(`/settings/work-policies/${archivedId}`, {
@@ -312,7 +320,7 @@ describe("GET/POST /members/:id/work-policy", () => {
         body: JSON.stringify({ archived: true }),
       });
       expect(patch.status).toBe(200);
-      const archived = await assign(app, cookie, userId, { workPolicyId: archivedId, effectiveFrom: "2026-07-01" });
+      const archived = await assign(app, hrCookie, userId, { workPolicyId: archivedId, effectiveFrom: "2026-07-01" });
       expect(archived.status).toBe(409);
       expect(await archived.json()).toEqual({ error: "work_policy_archived" });
     });
@@ -322,10 +330,11 @@ describe("GET/POST /members/:id/work-policy", () => {
       await grantPermission(db, { tenantId, userId, permission: PERMISSION, scope: "tenant" });
       const app = createApp({ db });
       const cookie = await loginAndGetCookie(app, email, password);
+      const hrCookie = await loginAsHrEditor(app, db, { tenantId, fromUserId: userId });
       const id = await createPolicy(app, cookie, { name: "固定・時短(6時間)", kind: "fixed", effectiveFrom: "2026-04-01", standardDayMinutes: 360 });
 
       for (const extra of [{ standardDayMinutes: 300 }, { kind: "fixed" }]) {
-        const res = await assign(app, cookie, userId, { workPolicyId: id, effectiveFrom: "2026-05-01", ...extra });
+        const res = await assign(app, hrCookie, userId, { workPolicyId: id, effectiveFrom: "2026-05-01", ...extra });
         expect(res.status).toBe(400);
         expect(await res.json()).toEqual({ error: "invalid_body" });
       }
@@ -336,10 +345,11 @@ describe("GET/POST /members/:id/work-policy", () => {
       await grantPermission(db, { tenantId, userId, permission: PERMISSION, scope: "tenant" });
       const app = createApp({ db });
       const cookie = await loginAndGetCookie(app, email, password);
+      const hrCookie = await loginAsHrEditor(app, db, { tenantId, fromUserId: userId });
       const fullId = await createPolicy(app, cookie, { name: "固定(8時間)", kind: "fixed", effectiveFrom: "2000-01-01", standardDayMinutes: 480 });
       const shortId = await createPolicy(app, cookie, { name: "固定・時短(6時間)", kind: "fixed", effectiveFrom: "2000-01-01", standardDayMinutes: 360 });
 
-      const res = await assign(app, cookie, userId, { kind: "fixed", effectiveFrom: "2026-05-01" });
+      const res = await assign(app, hrCookie, userId, { kind: "fixed", effectiveFrom: "2026-05-01" });
       expect(res.status).toBe(201);
       expect((await res.json()).assignment).toMatchObject({ workPolicyId: fullId, workPolicyName: "固定(8時間)" });
 
@@ -349,7 +359,7 @@ describe("GET/POST /members/:id/work-policy", () => {
         headers: { "content-type": "application/json", cookie },
         body: JSON.stringify({ archived: true }),
       });
-      const res2 = await assign(app, cookie, userId, { kind: "fixed", effectiveFrom: "2026-06-01" });
+      const res2 = await assign(app, hrCookie, userId, { kind: "fixed", effectiveFrom: "2026-06-01" });
       expect((await res2.json()).assignment).toMatchObject({ workPolicyId: shortId });
     });
 
@@ -358,7 +368,8 @@ describe("GET/POST /members/:id/work-policy", () => {
       await grantPermission(db, { tenantId, userId, permission: PERMISSION, scope: "tenant" });
       const app = createApp({ db });
       const cookie = await loginAndGetCookie(app, email, password);
-      const res = await assign(app, cookie, userId, { kind: "fixed", effectiveFrom: "2026-05-01", standardDayMinutes: 540 });
+      const hrCookie = await loginAsHrEditor(app, db, { tenantId, fromUserId: userId });
+      const res = await assign(app, hrCookie, userId, { kind: "fixed", effectiveFrom: "2026-05-01", standardDayMinutes: 540 });
       expect(res.status).toBe(400);
       expect(await res.json()).toEqual({ error: "invalid_standard_day_minutes" });
     });

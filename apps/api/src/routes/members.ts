@@ -113,6 +113,7 @@ import { generatePasswordResetToken, PASSWORD_RESET_TTL_MINUTES } from "../auth/
 import {
   effectivePermissionsFromPresets,
   ForbiddenError,
+  rejectOwnHrAttributeEdit,
   requireActorDominatesTarget,
   requirePermission,
 } from "../authz.js";
@@ -1132,6 +1133,9 @@ export function createMembersRoutes(db: Database, deps: { quotas?: TenantQuotas 
 
     const target = await getUserById(db, { tenantId: user.tenantId, id });
     if (!target) return c.json({ error: "not_found" }, 404);
+    // 所属・入社日・付与区分はいずれも人事属性。自分の分は変えられない(authz.ts)。
+    const ownEdit = rejectOwnHrAttributeEdit(c, target.id);
+    if (ownEdit) return ownEdit;
 
     // 404(存在しない)を先に判定してから、実在する対象がスコープ外かを判定する
     // (対象の有無を先に漏らさない一般的な優先順位に加え、既存テストの404期待とも整合する)。
@@ -1297,6 +1301,9 @@ export function createMembersRoutes(db: Database, deps: { quotas?: TenantQuotas 
 
     const target = await getUserById(db, { tenantId: actor.tenantId, id });
     if (!target) return c.json({ error: "not_found" }, 404);
+    // 労働時間制の割当は人事属性。自分の分は変えられない(authz.ts)。
+    const ownEdit = rejectOwnHrAttributeEdit(c, target.id);
+    if (ownEdit) return ownEdit;
 
     const body = await parseJsonBody(c);
     if (body === null) return c.json({ error: "invalid_body" }, 400);

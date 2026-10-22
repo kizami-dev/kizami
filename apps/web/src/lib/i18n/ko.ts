@@ -2070,6 +2070,7 @@ export const ko = {
   },
 
   members: {
+    ownHrAttributesLocked: "자신의 입사일·연차 부여 구분·소속 부서·근로시간제는 직접 변경할 수 없습니다. 변경이 필요하면 다른 관리자에게 요청해 주세요.",
     title: "멤버 관리",
     tagline: "소속 부서 변경, 권한 프리셋 할당, 실효 권한(가능한 작업) 확인을 수행합니다.",
     noPermission: "이 화면을 이용할 권한이 없습니다",
@@ -2298,6 +2299,7 @@ export const ko = {
     effectiveDeniedBy: (names: string) => `「${names}」의 거부 설정으로 인해 이 권한은 행사할 수 없습니다`,
 
     errors: {
+      cannot_edit_own_hr_attributes: "자신의 인사 속성(입사일·연차 부여 구분·소속 부서·근로시간제·연차 부여)은 변경할 수 없습니다. 다른 관리자에게 요청해 주세요",
       invalid_body: "입력 내용을 확인해 주세요",
       invalid_email: "이메일 주소 형식을 확인해 주세요",
       invalid_name: "이름을 1~200자로 입력해 주세요",
@@ -2551,6 +2553,7 @@ export const ko = {
 
   /** 연차유급휴가 제도 설정(/settings/leave, v0.3). GET/PUT /settings/leave 와 부여 관리 엔드포인트의 문구를 정리. */
   settingsLeave: {
+    targetUserSelfSuffix: " (본인 — 다른 관리자가 처리합니다)",
     title: "연차유급휴가 설정",
     tagline: "부여 방식·시간 단위 연차·적립 휴가의 테넌트 전체 설정을 수행합니다.",
     noPermission: "이 설정을 변경할 권한이 없습니다",
@@ -2620,6 +2623,7 @@ export const ko = {
     convertResultEmpty: "전환 대상이 없었습니다",
 
     errors: {
+      cannot_edit_own_hr_attributes: "자신의 인사 속성(입사일·연차 부여 구분·소속 부서·근로시간제·연차 부여)은 변경할 수 없습니다. 다른 관리자에게 요청해 주세요",
       invalid_grant_method: "부여 방식을 확인해 주세요",
       invalid_fixed_date_mm_dd: "기준일은 MM-DD 형식으로 입력해 주세요",
       invalid_hourly_leave_enabled: "입력 내용을 확인해 주세요",
@@ -2650,6 +2654,7 @@ export const ko = {
    * 출근율(노동기준법 제39조 1항의 8할 요건)은 어디까지나 참고값으로만 제시한다.
    */
   leaveGrantProposals: {
+    ownProposalNote: "본인에 대한 부여 예고는 다른 관리자가 결재합니다",
     sectionTitle: "부여 예고",
     sectionDesc:
       "일일 자동 계산이 만든 부여 「예고」입니다. 예고 상태로는 부여되지 않으며, 내용을 확인하고 담당자가 승인해야 비로소 확정됩니다. 출근율은 참고값이며 8할 요건의 최종 판단은 사람이 해 주세요.",
@@ -2697,6 +2702,7 @@ export const ko = {
     },
 
     errors: {
+      cannot_edit_own_hr_attributes: "자신의 인사 속성(입사일·연차 부여 구분·소속 부서·근로시간제·연차 부여)은 변경할 수 없습니다. 다른 관리자에게 요청해 주세요",
       not_found: "대상 예고를 찾을 수 없습니다",
       not_proposed: "이 예고는 이미 결재되었습니다. 화면을 새로고침하여 최신 상태를 확인해 주세요",
       grant_already_exists: "같은 기준일의 부여가 이미 있습니다. 수동 부여와 중복되지 않았는지 확인해 주세요",

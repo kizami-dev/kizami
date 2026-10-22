@@ -116,7 +116,7 @@ import {
   type LeaveUsageInput,
 } from "@kizami/leave";
 import type { AppEnv } from "../auth/middleware.js";
-import { ForbiddenError, requirePermission } from "../authz.js";
+import { ForbiddenError, rejectOwnHrAttributeEdit, requirePermission } from "../authz.js";
 import {
   approvalFlowState,
   isOpenForDecision,
@@ -1064,6 +1064,9 @@ export function createLeaveRoutes(db: Database, deps: LeaveRoutesDeps = {}) {
 
     const target = await getUserById(db, { tenantId: actor.tenantId, id: userId });
     if (!target) return c.json({ error: "not_found" }, 404);
+    // 自分への有給の付与はできない(人事属性の自己編集の禁止、authz.ts)。
+    const ownEdit = rejectOwnHrAttributeEdit(c, target.id);
+    if (ownEdit) return ownEdit;
 
     const accessible = await resolveAccessibleUserIds(db, {
       actor: { id: actor.id, tenantId: actor.tenantId, permissions: c.get("permissions") },
@@ -1110,6 +1113,9 @@ export function createLeaveRoutes(db: Database, deps: LeaveRoutesDeps = {}) {
 
     const target = await getUserById(db, { tenantId: actor.tenantId, id: userId });
     if (!target) return c.json({ error: "not_found" }, 404);
+    // 自分への有給の付与はできない(人事属性の自己編集の禁止、authz.ts)。
+    const ownEdit = rejectOwnHrAttributeEdit(c, target.id);
+    if (ownEdit) return ownEdit;
     if (!target.hireDate) return c.json({ error: "hire_date_not_set" }, 400);
 
     const accessible = await resolveAccessibleUserIds(db, {
@@ -1232,6 +1238,9 @@ export function createLeaveRoutes(db: Database, deps: LeaveRoutesDeps = {}) {
 
     const existing = await getLeaveGrantProposal(db, { tenantId: actor.tenantId, id: c.req.param("id") });
     if (!existing) return c.json({ error: "not_found" }, 404);
+    // 自分宛ての付与の予告は自分で決裁できない(人事属性の自己編集の禁止、authz.ts)。
+    const ownEdit = rejectOwnHrAttributeEdit(c, existing.userId);
+    if (ownEdit) return ownEdit;
 
     const accessible = await resolveAccessibleUserIds(db, {
       actor: { id: actor.id, tenantId: actor.tenantId, permissions: c.get("permissions") },
@@ -1330,6 +1339,9 @@ export function createLeaveRoutes(db: Database, deps: LeaveRoutesDeps = {}) {
 
     const existing = await getLeaveGrantProposal(db, { tenantId: actor.tenantId, id: c.req.param("id") });
     if (!existing) return c.json({ error: "not_found" }, 404);
+    // 自分宛ての付与の予告は自分で決裁できない(人事属性の自己編集の禁止、authz.ts)。
+    const ownEdit = rejectOwnHrAttributeEdit(c, existing.userId);
+    if (ownEdit) return ownEdit;
 
     const accessible = await resolveAccessibleUserIds(db, {
       actor: { id: actor.id, tenantId: actor.tenantId, permissions: c.get("permissions") },
@@ -1378,6 +1390,9 @@ export function createLeaveRoutes(db: Database, deps: LeaveRoutesDeps = {}) {
 
     const target = await getUserById(db, { tenantId: actor.tenantId, id: userId });
     if (!target) return c.json({ error: "not_found" }, 404);
+    // 自分への有給の付与はできない(人事属性の自己編集の禁止、authz.ts)。
+    const ownEdit = rejectOwnHrAttributeEdit(c, target.id);
+    if (ownEdit) return ownEdit;
 
     const accessible = await resolveAccessibleUserIds(db, {
       actor: { id: actor.id, tenantId: actor.tenantId, permissions: c.get("permissions") },

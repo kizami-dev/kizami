@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { insertLeaveGrant } from "@kizami/db";
 import { createApp } from "../src/app.js";
-import { grantPermission, loginAndGetCookie, setupTestDb } from "./support/setup.js";
+import { grantPermission, loginAndGetCookie, setupTestDb, loginAsHrEditor } from "./support/setup.js";
 
 const FIXED_NOW = new Date("2022-07-15T03:00:00.000Z"); // JST 2022-07-15 12:00
 
@@ -54,10 +54,11 @@ describe("POST /leave/grants/convert-expired", () => {
     await grantPermission(db, { tenantId, userId, permission: "leave.grant.manage", scope: "tenant" });
     const app = createApp({ db });
     const cookie = await loginAndGetCookie(app, email, password);
+    const hrCookie = await loginAsHrEditor(app, db, { tenantId, fromUserId: userId });
 
     const res = await app.request("/leave/grants/convert-expired", {
       method: "POST",
-      headers: { "content-type": "application/json", cookie },
+      headers: { "content-type": "application/json", cookie: hrCookie },
       body: JSON.stringify({ userId }),
     });
     expect(res.status).toBe(400);
@@ -81,11 +82,12 @@ describe("POST /leave/grants/convert-expired", () => {
 
     const app = createApp({ db });
     const cookie = await loginAndGetCookie(app, email, password);
+    const hrCookie = await loginAsHrEditor(app, db, { tenantId, fromUserId: userId });
     await enableStockConversion(app, cookie);
 
     const firstRes = await app.request("/leave/grants/convert-expired", {
       method: "POST",
-      headers: { "content-type": "application/json", cookie },
+      headers: { "content-type": "application/json", cookie: hrCookie },
       body: JSON.stringify({ userId }),
     });
     expect(firstRes.status).toBe(201);
@@ -104,7 +106,7 @@ describe("POST /leave/grants/convert-expired", () => {
     // 再実行しても二重に変換しない
     const secondRes = await app.request("/leave/grants/convert-expired", {
       method: "POST",
-      headers: { "content-type": "application/json", cookie },
+      headers: { "content-type": "application/json", cookie: hrCookie },
       body: JSON.stringify({ userId }),
     });
     expect(secondRes.status).toBe(201);
@@ -132,11 +134,12 @@ describe("POST /leave/grants/convert-expired", () => {
 
     const app = createApp({ db });
     const cookie = await loginAndGetCookie(app, email, password);
+    const hrCookie = await loginAsHrEditor(app, db, { tenantId, fromUserId: userId });
     await enableStockConversion(app, cookie, 6); // 上限6日 < 未消化10日
 
     const res = await app.request("/leave/grants/convert-expired", {
       method: "POST",
-      headers: { "content-type": "application/json", cookie },
+      headers: { "content-type": "application/json", cookie: hrCookie },
       body: JSON.stringify({ userId }),
     });
     expect(res.status).toBe(201);
@@ -162,11 +165,12 @@ describe("POST /leave/grants/convert-expired", () => {
 
     const app = createApp({ db });
     const cookie = await loginAndGetCookie(app, email, password);
+    const hrCookie = await loginAsHrEditor(app, db, { tenantId, fromUserId: userId });
     await enableStockConversion(app, cookie);
 
     const convertRes = await app.request("/leave/grants/convert-expired", {
       method: "POST",
-      headers: { "content-type": "application/json", cookie },
+      headers: { "content-type": "application/json", cookie: hrCookie },
       body: JSON.stringify({ userId }),
     });
     expect(convertRes.status).toBe(201);

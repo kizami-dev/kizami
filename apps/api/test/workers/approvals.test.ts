@@ -21,6 +21,7 @@ import {
   permissionPresets,
   presetAssignments,
   punchEvents,
+  users,
   uuidv7,
   type Database,
 } from "@kizami/db";
@@ -129,9 +130,13 @@ describe("approvals on workerd + D1 (atomic plan)", () => {
   });
 
   it("付与予告の承認が付与を1本だけ作り、予告に結ぶ", async () => {
+    // 自分宛ての予告は自分で決裁できない(apps/api/src/authz.ts の rejectOwnHrAttributeEdit)ので、
+    // 予告は別のメンバー宛てにする。
+    const memberId = uuidv7();
+    await db.insert(users).values({ id: memberId, tenantId, email: "member@example.com", name: "Member", isActive: true, createdAt: 0 });
     const proposal = await insertLeaveGrantProposal(db, {
       tenantId,
-      userId,
+      userId: memberId,
       leaveType: "annual",
       grantedOn: "2026-10-01",
       days: 11,

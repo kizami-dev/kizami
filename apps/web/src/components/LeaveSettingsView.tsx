@@ -552,11 +552,16 @@ export function LeaveSettingsView() {
                   <option value="" disabled>
                     {messages.settingsLeave.targetUserPlaceholder}
                   </option>
-                  {members.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.name}({m.email})
-                    </option>
-                  ))}
+                  {/* 自分への付与・振替はできない(人事属性の自己編集の禁止、API は 403
+                      cannot_edit_own_hr_attributes)ので、自分は選べなくして理由を添える。 */}
+                  {members.map((m) => {
+                    const isSelf = m.id === guard.user?.id;
+                    return (
+                      <option key={m.id} value={m.id} disabled={isSelf}>
+                        {m.name}({m.email}){isSelf ? messages.settingsLeave.targetUserSelfSuffix : ""}
+                      </option>
+                    );
+                  })}
                 </select>
               </div>
 
@@ -787,32 +792,37 @@ export function LeaveSettingsView() {
                               </div>
                             </td>
                             <td>
-                              <div className="org-table__actions">
-                                <button
-                                  type="button"
-                                  className="btn btn--ghost btn--sm"
-                                  onClick={() => {
-                                    setProposalActionError(null);
-                                    setProposalSuccess(null);
-                                    setProposalNote("");
-                                    setProposalConfirm({ id: p.id, action: "approve" });
-                                  }}
-                                >
-                                  {messages.leaveGrantProposals.approve}
-                                </button>
-                                <button
-                                  type="button"
-                                  className="btn btn--danger-ghost btn--sm"
-                                  onClick={() => {
-                                    setProposalActionError(null);
-                                    setProposalSuccess(null);
-                                    setProposalNote("");
-                                    setProposalConfirm({ id: p.id, action: "reject" });
-                                  }}
-                                >
-                                  {messages.leaveGrantProposals.reject}
-                                </button>
-                              </div>
+                              {/* 自分宛ての予告は自分で決裁できない(API は 403 cannot_edit_own_hr_attributes)。 */}
+                              {p.userId === guard.user?.id ? (
+                                <span className="org-table__muted">{messages.leaveGrantProposals.ownProposalNote}</span>
+                              ) : (
+                                <div className="org-table__actions">
+                                  <button
+                                    type="button"
+                                    className="btn btn--ghost btn--sm"
+                                    onClick={() => {
+                                      setProposalActionError(null);
+                                      setProposalSuccess(null);
+                                      setProposalNote("");
+                                      setProposalConfirm({ id: p.id, action: "approve" });
+                                    }}
+                                  >
+                                    {messages.leaveGrantProposals.approve}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="btn btn--danger-ghost btn--sm"
+                                    onClick={() => {
+                                      setProposalActionError(null);
+                                      setProposalSuccess(null);
+                                      setProposalNote("");
+                                      setProposalConfirm({ id: p.id, action: "reject" });
+                                    }}
+                                  >
+                                    {messages.leaveGrantProposals.reject}
+                                  </button>
+                                </div>
+                              )}
                             </td>
                           </tr>
                         );

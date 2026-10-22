@@ -36,6 +36,28 @@ export function requireSelf(c: Context<AppEnv>, targetUserId: string): void {
   }
 }
 
+/**
+ * 自分自身の人事属性(入社日・有給付与の区分・所属部署・労働時間制の割当・有給の付与)を
+ * 自分で変えようとしたときに返すエラーコード(403)。
+ */
+export const CANNOT_EDIT_OWN_HR_ATTRIBUTES = "cannot_edit_own_hr_attributes";
+
+/**
+ * 人事属性の変更の対象が操作者本人なら 403 `cannot_edit_own_hr_attributes` の応答を返す
+ * (本人でなければ null)。
+ *
+ * 判断点(2026-10、セキュリティ診断): 入社日・付与区分・有給の付与は有給の日数に直結し、
+ * 所属部署・労働時間制は承認者と集計を決める。どれも監査ログには残るが、編集権限さえあれば
+ * 自分の分も変えられたため、管理者が自分の有給を増やす・勤続年数を盛ることができた。
+ * **誰も自分の人事属性は変えられない**(テナント全体スコープの管理者も、別の管理者に依頼する)
+ * を固定原則にする。管理者が1人しかいないテナントでは、その管理者の人事属性は誰も変えられない
+ * (権限を持つ2人目を置く。docs/requirements.md §4 に明記)。
+ */
+export function rejectOwnHrAttributeEdit(c: Context<AppEnv>, targetUserId: string): Response | null {
+  if (c.get("user").id !== targetUserId) return null;
+  return c.json({ error: CANNOT_EDIT_OWN_HR_ATTRIBUTES }, 403);
+}
+
 const VALID_SCOPES: ReadonlySet<Scope> = new Set(["self", "department", "department_and_descendants", "tenant"]);
 
 function isValidScope(value: string): value is Scope {
