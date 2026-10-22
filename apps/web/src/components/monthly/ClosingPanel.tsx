@@ -11,6 +11,8 @@ import {
   type MonthlyAttendance,
 } from "../../lib/api";
 import { mapClosingErrorMessage, messages } from "../../lib/messages";
+import { hasEffectivePermission } from "../../lib/permissions";
+import { useEffectivePermissions } from "../../lib/useEffectivePermissions";
 import { formatDateTimeJst } from "../../lib/time";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { HelpTip } from "../HelpTip";
@@ -39,6 +41,13 @@ export interface ClosingPanelProps {
  */
 export function ClosingPanel({ monthParam, reloadKey, onReload, userId, data }: ClosingPanelProps) {
   const router = useRouter();
+
+  // 締め・解除はテナント単位の操作なので、テナント全体スコープの closing.execute / closing.unlock
+  // を持つ人にだけボタンを出す(apps/api/src/routes/closings.ts。部署スコープの保持者は
+  // 状態と履歴の閲覧だけになる — 2026-10-22、セキュリティ指摘 M7)。
+  const { permissions } = useEffectivePermissions();
+  const canClose = hasEffectivePermission(permissions, "closing.execute", "tenant");
+  const canReopen = hasEffectivePermission(permissions, "closing.unlock", "tenant");
 
   // 締め状態(v0.3): GET /closings/:period が 403 ならパネル自体を非表示にする(依頼どおり)。
   const [closingState, setClosingState] = useState<ClosingStateDto | null>(null);
@@ -129,7 +138,7 @@ export function ClosingPanel({ monthParam, reloadKey, onReload, userId, data }: 
       {!closingForbidden && closingState ? (
         <div className={`closing-panel${closingState.status === "open" ? "" : " closing-panel--closed"}`} data-tour="monthly-closing">
           <div className="closing-panel__actions">
-            {closingState.status === "open" ? (
+            {closingState.status === "open" && canClose ? (
               <>
                 <button
                   type="button"
@@ -140,7 +149,8 @@ export function ClosingPanel({ monthParam, reloadKey, onReload, userId, data }: 
                 </button>
                 <HelpTip helpKey="closing.execute" />
               </>
-            ) : (
+            ) : null}
+            {closingState.status === "closed" && canReopen ? (
               <>
                 {/* 危険操作の入口は枠だけの副ボタン(押すと影響を説明する確認ダイアログが開く)。 */}
                 <button
@@ -152,7 +162,7 @@ export function ClosingPanel({ monthParam, reloadKey, onReload, userId, data }: 
                 </button>
                 <HelpTip helpKey="closing.unlock" />
               </>
-            )}
+            ) : null}
           </div>
 
           <details className="closing-history">

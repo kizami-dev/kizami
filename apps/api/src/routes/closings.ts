@@ -5,25 +5,36 @@
  * closing_snapshots、docs/requirements.md §6(締めと出口)、
  * docs/design/permission-catalog.md §1.5(締め)。
  *
- * 権限とスコープ:
- * - `closing.view`(閲覧): GET 系。カタログのスコープ選択肢は department / department_and_descendants
- *   / tenant(§1.5)なので最低 "department" を要求する
- * - `closing.execute` / `closing.unlock`: カタログのスコープ選択肢は department_and_descendants /
- *   tenant のみ(§1.5)なので最低 "department_and_descendants" を要求する
+ * 権限とスコープ(2026-10-22、セキュリティ指摘 M7 で変更):
+ * - `closing.view`(閲覧): GET 系。最低 "department"(カタログの選択肢は department /
+ *   department_and_descendants / tenant、§1.5)。締め状態(open/closed)と締め・解除の履歴は
+ *   テナント単位の事実なのでどのスコープでも同じに見せるが、締め後修正(amend)の履歴は
+ *   特定のメンバーの申請に由来するため、テナント全体スコープでなければ**スコープ内のメンバーの
+ *   申請によるものだけ**を返す(filterHistoryForScope)
+ * - `closing.execute` / `closing.unlock` による締め・解除: **テナント全体スコープが必要**。
  *
- * 判断点(締めのスコープ運用): 設計方針1「締めはテナント単位・月単位(全員まとめて確定)」により、
- * 締め/解除の実行そのものは常にテナント全体の is_active ユーザーを対象にする(department 単位の
- * 部分締めという概念が無い)。カタログが closing.execute/unlock に
- * department_and_descendants スコープを許容しているのは「その権限を持つ人物が、テナント全体を
- * 対象にした締め操作を実行してよい」という許可の意味であり、実際に締められる対象を actor の
- * 部署配下だけに絞り込むフィルタではない(apps/api/src/lib/scope.ts の
- * resolveAccessibleUserIds はここでは使わない — 使うと設計方針1に反する部分締めになってしまう)。
+ * 判断点(締めはテナント単位のまま、部署スコープでは締め・解除させない): 設計方針1「締めは
+ * テナント単位・月単位(全員まとめて確定)」により、closing_events は user_id も部署も持たず、
+ * 1回の締め/解除は常にテナント全体の is_active ユーザーを対象にする(部署単位の部分締めという
+ * データモデルが無い)。以前は「カタログが department_and_descendants を許すのは、テナント全体を
+ * 締めてよいという許可の意味」と解釈して、自部署+配下部署スコープの保持者にもテナント全体の
+ * 締め・解除を許していたが、それでは部署に絞って付与した権限が他部署の勤怠まで確定・再オープン
+ * できてしまう。部署単位の締めを新設するのではなく、締め・解除そのものをテナント全体スコープに
+ * 限る方を選んだ(部署単位の締めはデータモデル・スナップショット・締め済み判定のすべてを
+ * 部署別に持ち直す大きな変更になるため)。
+ * カタログの選択肢(自部署+配下部署)は残す: closing.unlock の自部署+配下部署は、締め済み月に
+ * 影響するスコープ内メンバーの申請を承認する(amend、lib/closing-guard.ts)ためにいまも意味を持ち、
+ * closing.execute の自部署+配下部署も含意される閲覧(締め状態・対象範囲の勤怠記録)を与える。
+ * 選択肢を消すと既存のプリセットを保存し直せなくなる。
  */
 
 import { Hono } from "hono";
 import {
   closePeriod,
+  getAutoBreakWaiverById,
   getClosingState,
+  getCorrectionRequest,
+  getLeaveRequest,
   listClosingStates,
   listTenantUsers,
   reopenPeriod,
@@ -34,6 +45,7 @@ import {
 import type { EngineOutput } from "@kizami/engine";
 import type { AppEnv } from "../auth/middleware.js";
 import { requirePermission } from "../authz.js";
+import { resolveAccessibleUserIds, type ScopeActor } from "../lib/scope.js";
 import { snapshotInputsFromEngineOutput } from "../lib/closing-snapshot.js";
 import { buildTenantMonthlyContext } from "../lib/closing-amend.js";
 import { nowMinutes, parseMonthParam } from "../lib/time.js";
@@ -90,6 +102,57 @@ function serializeState(state: ClosingState) {
   };
 }
 
+/** auto-break-waivers.ts が amend イベントの note に残す参照(closing_events に専用の列が無いため)。 */
+const AUTO_BREAK_WAIVER_NOTE_PREFIX = "auto_break_waiver:";
+
+/** amend イベントの由来となった申請の持ち主ユーザーID。由来が辿れなければ null。 */
+async function amendOwnerUserId(db: Database, tenantId: string, event: ClosingEvent): Promise<string | null> {
+  if (event.correctionRequestId !== null) {
+    const request = await getCorrectionRequest(db, event.correctionRequestId);
+    return request && request.tenantId === tenantId ? request.userId : null;
+  }
+  if (event.leaveRequestId !== null) {
+    const request = await getLeaveRequest(db, event.leaveRequestId);
+    return request && request.tenantId === tenantId ? request.userId : null;
+  }
+  if (event.note !== null && event.note.startsWith(AUTO_BREAK_WAIVER_NOTE_PREFIX)) {
+    const waiver = await getAutoBreakWaiverById(db, event.note.slice(AUTO_BREAK_WAIVER_NOTE_PREFIX.length));
+    return waiver && waiver.tenantId === tenantId ? waiver.userId : null;
+  }
+  return null;
+}
+
+/**
+ * closing.view がテナント全体スコープでなければ、amend の履歴をスコープ内メンバーの申請による
+ * ものだけにする(close / reopen はテナント単位の事実なのでそのまま)。status は全履歴から
+ * 導出済みの値を変えない。lastEvent は見せる履歴の末尾に合わせる。
+ */
+function createHistoryFilter(db: Database, actor: ScopeActor) {
+  let accessible: Promise<Set<string> | "all"> | null = null;
+  const ownerCache = new Map<string, Promise<string | null>>();
+  return async (state: ClosingState): Promise<ClosingState> => {
+    if (!state.history.some((e) => e.event === "amend")) return state;
+    accessible ??= resolveAccessibleUserIds(db, { actor, permission: VIEW_PERMISSION });
+    const userIds = await accessible;
+    if (userIds === "all") return state;
+    const history: ClosingEvent[] = [];
+    for (const event of state.history) {
+      if (event.event !== "amend") {
+        history.push(event);
+        continue;
+      }
+      let owner = ownerCache.get(event.id);
+      if (!owner) {
+        owner = amendOwnerUserId(db, actor.tenantId, event);
+        ownerCache.set(event.id, owner);
+      }
+      const ownerId = await owner;
+      if (ownerId !== null && userIds.has(ownerId)) history.push(event);
+    }
+    return { ...state, history, lastEvent: history.length > 0 ? (history[history.length - 1] as ClosingEvent) : null };
+  };
+}
+
 export function createClosingsRoutes(db: Database) {
   const app = new Hono<AppEnv>();
 
@@ -104,7 +167,10 @@ export function createClosingsRoutes(db: Database) {
     }
 
     const states = await listClosingStates(db, { tenantId: user.tenantId, from, to });
-    return c.json({ closings: states.map(serializeState) });
+    const filterHistory = createHistoryFilter(db, { id: user.id, tenantId: user.tenantId, permissions: c.get("permissions") });
+    const visible: ClosingState[] = [];
+    for (const state of states) visible.push(await filterHistory(state));
+    return c.json({ closings: visible.map(serializeState) });
   });
 
   app.get("/:period", async (c) => {
@@ -117,11 +183,12 @@ export function createClosingsRoutes(db: Database) {
     }
 
     const state = await getClosingState(db, { tenantId: user.tenantId, period });
-    return c.json({ closing: serializeState(state) });
+    const filterHistory = createHistoryFilter(db, { id: user.id, tenantId: user.tenantId, permissions: c.get("permissions") });
+    return c.json({ closing: serializeState(await filterHistory(state)) });
   });
 
   app.post("/:period/close", async (c) => {
-    requirePermission(c, EXECUTE_PERMISSION, "department_and_descendants");
+    requirePermission(c, EXECUTE_PERMISSION, "tenant");
     const user = c.get("user");
 
     const period = c.req.param("period");
@@ -227,7 +294,7 @@ export function createClosingsRoutes(db: Database) {
   });
 
   app.post("/:period/reopen", async (c) => {
-    requirePermission(c, UNLOCK_PERMISSION, "department_and_descendants");
+    requirePermission(c, UNLOCK_PERMISSION, "tenant");
     const user = c.get("user");
 
     const period = c.req.param("period");

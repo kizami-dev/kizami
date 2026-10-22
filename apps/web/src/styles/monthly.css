@@ -493,6 +493,11 @@
   gap: var(--space-3);
 }
 
+/* 締め・解除の権限(テナント全体スコープ)が無い閲覧者にはボタンが出ず空になる。余白だけ残さない */
+.closing-panel__actions:empty {
+  display: none;
+}
+
 .closing-history summary {
   cursor: pointer;
   font-size: var(--text-sm);

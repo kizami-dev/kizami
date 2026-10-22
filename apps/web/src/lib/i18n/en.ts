@@ -3098,6 +3098,7 @@ export const en = {
     title: "Audit log",
     tagline: "A record of operations such as punches, corrections, approvals, closing, and permission changes.",
     immutableNote: "The audit log is append-only: entries can never be modified or deleted after the fact (read-only).",
+    scopedNote: "Your audit log access is limited to your department scope. Only entries about members and departments in that scope are shown; tenant-wide settings and closing entries are hidden.",
     loadFailed: "Failed to load information. Please try again",
     forbidden: "You don't have permission to perform this action",
 
