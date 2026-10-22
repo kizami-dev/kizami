@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { auditLogs, users, type Database } from "@kizami/db";
 import { createApp } from "../src/app.js";
-import { grantPermission, loginAndGetCookie, setupSecondUser, setupTestDb } from "./support/setup.js";
+import { grantPermission, loginAndGetCookie, setupSecondUser, setupTestDb, loginAsHrEditor } from "./support/setup.js";
 
 const FIXED_NOW = new Date("2026-08-22T03:00:00.000Z"); // JST 2026-08-22 12:00
 
@@ -75,10 +75,11 @@ describe("leave grants API", () => {
     await grantPermission(db, { tenantId, userId, permission: "leave.grant.manage", scope: "tenant" });
     const app = createApp({ db });
     const cookie = await loginAndGetCookie(app, email, password);
+    const hrCookie = await loginAsHrEditor(app, db, { tenantId, fromUserId: userId });
 
     const res = await app.request("/leave/grants", {
       method: "POST",
-      headers: { "content-type": "application/json", cookie },
+      headers: { "content-type": "application/json", cookie: hrCookie },
       body: JSON.stringify({ userId, grantedOn: "2024-01-01", days: 5, note: "調整分" }),
     });
     expect(res.status).toBe(201);
@@ -95,10 +96,11 @@ describe("leave grants API", () => {
     await grantPermission(db, { tenantId, userId, permission: "leave.grant.manage", scope: "tenant" });
     const app = createApp({ db });
     const cookie = await loginAndGetCookie(app, email, password);
+    const hrCookie = await loginAsHrEditor(app, db, { tenantId, fromUserId: userId });
 
     const res = await app.request("/leave/grants/auto", {
       method: "POST",
-      headers: { "content-type": "application/json", cookie },
+      headers: { "content-type": "application/json", cookie: hrCookie },
       body: JSON.stringify({ userId }),
     });
     expect(res.status).toBe(400);
@@ -112,6 +114,7 @@ describe("leave grants API", () => {
 
     const app = createApp({ db });
     const cookie = await loginAndGetCookie(app, email, password);
+    const hrCookie = await loginAsHrEditor(app, db, { tenantId, fromUserId: userId });
 
     // テナントの有給設定を法定方式で保存
     const settingsRes = await app.request("/settings/leave", {
@@ -133,7 +136,7 @@ describe("leave grants API", () => {
     // 6ヶ月/1年6ヶ月/.../6年6ヶ月の7回分が付与されるはず。
     const firstRes = await app.request("/leave/grants/auto", {
       method: "POST",
-      headers: { "content-type": "application/json", cookie },
+      headers: { "content-type": "application/json", cookie: hrCookie },
       body: JSON.stringify({ userId }),
     });
     expect(firstRes.status).toBe(201);
@@ -144,7 +147,7 @@ describe("leave grants API", () => {
     // 再実行しても重複付与しない(冪等)
     const secondRes = await app.request("/leave/grants/auto", {
       method: "POST",
-      headers: { "content-type": "application/json", cookie },
+      headers: { "content-type": "application/json", cookie: hrCookie },
       body: JSON.stringify({ userId }),
     });
     expect(secondRes.status).toBe(201);
@@ -165,11 +168,12 @@ describe("leave grants API", () => {
 
     const app = createApp({ db });
     const cookie = await loginAndGetCookie(app, email, password);
+    const hrCookie = await loginAsHrEditor(app, db, { tenantId, fromUserId: userId });
     await configureStatutoryLeaveSettings(app, cookie);
 
     const res = await app.request("/leave/grants/auto", {
       method: "POST",
-      headers: { "content-type": "application/json", cookie },
+      headers: { "content-type": "application/json", cookie: hrCookie },
       body: JSON.stringify({ userId }),
     });
     expect(res.status).toBe(201);
@@ -196,11 +200,12 @@ describe("leave grants API", () => {
 
     const app = createApp({ db });
     const cookie = await loginAndGetCookie(app, email, password);
+    const hrCookie = await loginAsHrEditor(app, db, { tenantId, fromUserId: userId });
     await configureStatutoryLeaveSettings(app, cookie);
 
     const res = await app.request("/leave/grants/auto", {
       method: "POST",
-      headers: { "content-type": "application/json", cookie },
+      headers: { "content-type": "application/json", cookie: hrCookie },
       body: JSON.stringify({ userId }),
     });
     const body = (await res.json()) as { created: LeaveGrantJson[] };

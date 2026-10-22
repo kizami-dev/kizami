@@ -15,6 +15,7 @@ import {
   switchToFixedWorkPolicy,
 } from "./support/setup.js";
 import { setupOrgFixture } from "./support/org.js";
+import { requestPunch } from "./support/punch.js";
 
 const FIXED_NOW = new Date("2026-05-15T03:00:00.000Z"); // JST 2026-05-15 12:00
 
@@ -23,7 +24,7 @@ interface RequestLike {
 }
 
 async function postPunch(app: RequestLike, cookie: string, kind: string, occurredAt: number) {
-  const res = await app.request("/punches", {
+  const res = await requestPunch(app, {
     method: "POST",
     headers: { "content-type": "application/json", cookie },
     body: JSON.stringify({ kind, occurredAt }),

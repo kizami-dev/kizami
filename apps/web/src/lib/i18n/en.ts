@@ -599,6 +599,11 @@ export const en = {
     loadFailed: "Failed to load data. Please try again",
     network: "Could not connect to the server",
   },
+  punchErrors: {
+    occurred_at_too_old: "Punches can't be recorded for a past time. Submit a correction request instead",
+    occurred_at_in_future: "Punches can't be recorded for a future time. Check your device's clock",
+    default: "The punch failed. Please try again",
+  },
 
   loading: "Loading…",
 
@@ -2101,6 +2106,7 @@ export const en = {
   },
 
   members: {
+    ownHrAttributesLocked: "You can't change your own hire date, leave grant class, department or work policy. Ask another administrator if a change is needed.",
     title: "Member management",
     tagline: "Change members' department, assign permission presets, and review effective permissions (what they can do).",
     noPermission: "You don't have permission to use this page",
@@ -2331,6 +2337,7 @@ export const en = {
     effectiveDeniedBy: (names: string) => `Denied by "${names}", so this permission cannot be used`,
 
     errors: {
+      cannot_edit_own_hr_attributes: "You can't change your own HR attributes (hire date, leave grant class, department, work policy, leave grants). Ask another administrator",
       invalid_body: "Please check the entered content",
       invalid_email: "Please check the email address format",
       invalid_name: "Please enter a name between 1 and 200 characters",
@@ -2585,6 +2592,7 @@ export const en = {
 
   /** Annual paid leave policy settings (/settings/leave, v0.3). Covers GET/PUT /settings/leave and grant-management endpoints. */
   settingsLeave: {
+    targetUserSelfSuffix: " (you — another administrator must do this)",
     title: "Annual paid leave settings",
     tagline: "Configure the tenant-wide grant method, hourly leave, and stocked leave settings.",
     noPermission: "You don't have permission to change this setting",
@@ -2654,6 +2662,7 @@ export const en = {
     convertResultEmpty: "Nothing was eligible for conversion",
 
     errors: {
+      cannot_edit_own_hr_attributes: "You can't change your own HR attributes (hire date, leave grant class, department, work policy, leave grants). Ask another administrator",
       invalid_grant_method: "Please check the grant method",
       invalid_fixed_date_mm_dd: "Please enter the fixed date in MM-DD format",
       invalid_hourly_leave_enabled: "Please check the entered content",
@@ -2685,6 +2694,7 @@ export const en = {
    * (the 80% requirement of Article 39-1 of the Labor Standards Act) is shown only as a reference.
    */
   leaveGrantProposals: {
+    ownProposalNote: "Another administrator must decide on proposals for you",
     sectionTitle: "Grant proposals",
     sectionDesc:
       "Proposals created by the daily automatic calculation. A proposal alone grants nothing — it takes effect only once someone reviews and approves it. The attendance rate is a reference figure; the final call on the 80% requirement is yours.",
@@ -2732,6 +2742,7 @@ export const en = {
     },
 
     errors: {
+      cannot_edit_own_hr_attributes: "You can't change your own HR attributes (hire date, leave grant class, department, work policy, leave grants). Ask another administrator",
       not_found: "The proposal could not be found",
       not_proposed: "This proposal has already been decided. Please reload to see the latest state",
       grant_already_exists: "A grant already exists for the same grant date. Please check for a duplicate manual grant",

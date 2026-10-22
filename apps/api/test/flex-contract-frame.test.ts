@@ -16,7 +16,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { listAuditLogs } from "@kizami/db";
 import { listScheduledWorkDates } from "@kizami/engine";
 import { createApp } from "../src/app.js";
-import { grantPermission, jstMinutes, loginAndGetCookie, setupTestDb } from "./support/setup.js";
+import { grantPermission, jstMinutes, loginAndGetCookie, setupTestDb, loginAsHrEditor } from "./support/setup.js";
+import { requestPunch } from "./support/punch.js";
 
 /** 制度・割当を作る「今日」(JST 2026-07-01 00:30)。割当は過去日にできないため対象の最初の月の初日 */
 const SETUP_NOW = new Date("2026-06-30T15:30:00.000Z");
@@ -28,7 +29,8 @@ interface RequestLike {
 }
 
 async function postJson(app: RequestLike, cookie: string, path: string, body: unknown): Promise<Response> {
-  return app.request(path, { method: "POST", headers: { "content-type": "application/json", cookie }, body: JSON.stringify(body) });
+  const init: RequestInit = { method: "POST", headers: { "content-type": "application/json", cookie }, body: JSON.stringify(body) };
+  return path === "/punches" ? requestPunch(app, init) : app.request(path, init);
 }
 
 /** 既定のカレンダー(土日・祝日、法定休日は日曜)でのその月の所定労働日 */
@@ -110,7 +112,9 @@ async function setupShortHoursFlex(options: { carryOverShortfall: boolean } = { 
   const policy = ((await createRes.json()) as { policy: { id: string; effective: { totalHoursBasis: string; carryOverShortfall: boolean } } }).policy;
   expect(policy.effective).toMatchObject({ totalHoursBasis: "scheduled_days", carryOverShortfall: options.carryOverShortfall });
 
-  const assignRes = await postJson(app, cookie, `/members/${userId}/work-policy`, { workPolicyId: policy.id, effectiveFrom: "2026-07-01" });
+  // 自分の労働時間制は自分で割り当てられない(authz.ts の rejectOwnHrAttributeEdit)ので、別の管理者が割り当てる
+  const hrCookie = await loginAsHrEditor(app, db, { tenantId, fromUserId: userId });
+  const assignRes = await postJson(app, hrCookie, `/members/${userId}/work-policy`, { workPolicyId: policy.id, effectiveFrom: "2026-07-01" });
   expect(assignRes.status).toBe(201);
 
   vi.setSystemTime(CHECK_NOW);

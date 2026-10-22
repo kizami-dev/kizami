@@ -17,6 +17,7 @@ import {
 } from "../src/lib/error-report.js";
 import { loginAndGetCookie, setupTestDb } from "./support/setup.js";
 import type { Database } from "@kizami/db";
+import { requestPunch } from "./support/punch.js";
 
 const DSN = "https://publickey123@sentry.example.test/42";
 
@@ -240,7 +241,7 @@ describe("onError との統合", () => {
     const app = createApp({ db: failingInsertDb(db), errorReporter });
 
     const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
-    const res = await app.request("/punches", {
+    const res = await requestPunch(app, {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -274,7 +275,7 @@ describe("onError との統合", () => {
     const app = createApp({ db: failingInsertDb(db) });
 
     const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
-    const res = await app.request("/punches", {
+    const res = await requestPunch(app, {
       method: "POST",
       headers: { "content-type": "application/json", cookie },
       body: JSON.stringify({ kind: "clock_in", occurredAt: 100 }),

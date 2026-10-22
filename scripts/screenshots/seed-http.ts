@@ -6,6 +6,7 @@
  */
 import { ApiClient } from "./api-client.js";
 import { ADMIN_EMAIL, ADMIN_PASSWORD } from "./config.js";
+import { openBackdatedPunchWriter } from "./direct-db.js";
 import {
   addDays,
   addMonths,
@@ -28,6 +29,8 @@ export interface ExtraUser {
 
 export interface SeedHttpParams {
   apiBaseUrl: string;
+  /** API と同じ一時 DB の接続 URL。過去日の打刻はここへ直接書く(direct-db.ts)。 */
+  databaseUrl: string;
   extraUsers: ExtraUser[];
   departments: { hq: string; sales: string; dev: string };
 }
@@ -76,6 +79,17 @@ async function punchNormalDay(
 }
 
 export async function seedHttp(params: SeedHttpParams): Promise<SeedHttpResult> {
+  const writer = await openBackdatedPunchWriter(params.databaseUrl);
+  ApiClient.backdatedPunchWriter = writer.write;
+  try {
+    return await seedHttpInner(params);
+  } finally {
+    ApiClient.backdatedPunchWriter = null;
+    await writer.close();
+  }
+}
+
+async function seedHttpInner(params: SeedHttpParams): Promise<SeedHttpResult> {
   const client = new ApiClient(params.apiBaseUrl);
   const login = await client.login(ADMIN_EMAIL, ADMIN_PASSWORD);
   const adminId = login.user.id;
@@ -113,7 +127,17 @@ export async function seedHttp(params: SeedHttpParams): Promise<SeedHttpResult> 
   await client.updateMember(member2Id, { departmentId: params.departments.dev });
   await client.updateMember(member3Id, { departmentId: params.departments.sales });
 
-  await client.assignMemberPresets(managerId, [managerPreset.id]);
+  // 人事担当(2026-10): 人事属性(入社日・有給の付与)は本人には変えられない(apps/api/src/authz.ts の
+  // rejectOwnHrAttributeEdit)。管理者自身の入社日・有給の付与はマネージャーが人事担当として行う。
+  const hrPreset = await client.createPreset({
+    name: "人事担当",
+    description: "メンバーの入社日・有給の付与を管理できるカスタムプリセット(デモ用)",
+    grants: [
+      { key: "member.profile.edit", scope: "tenant" },
+      { key: "leave.grant.manage", scope: "tenant" },
+    ],
+  });
+  await client.assignMemberPresets(managerId, [managerPreset.id, hrPreset.preset.id]);
   await client.assignMemberPresets(member1Id, [memberPreset.id, accountingPreset.preset.id]);
   await client.assignMemberPresets(member2Id, [memberPreset.id]);
   await client.assignMemberPresets(member3Id, [memberPreset.id]);
@@ -127,7 +151,12 @@ export async function seedHttp(params: SeedHttpParams): Promise<SeedHttpResult> 
 
   // 入社日を設定(法定付与の自動計算に必要)。管理者は約7年前入社にして複数回ぶんの
   // 付与履歴(6ヶ月・1.5年・2.5年…)が一度に生成されるようにする(有給休暇画面を賑やかにする独自判断)。
-  await client.updateMember(adminId, { hireDate: "2019-04-01" });
+  // 自分の入社日は自分で変えられないので、人事担当のマネージャーが設定する。
+  const managerEmail = emailByKey.get("manager");
+  if (!managerEmail) throw new Error("manager demo user was not created (dev-screenshot-seed.ts)");
+  const hrClient = new ApiClient(params.apiBaseUrl);
+  await hrClient.login(managerEmail, ADMIN_PASSWORD);
+  await hrClient.updateMember(adminId, { hireDate: "2019-04-01" });
 
   // --- 有給休暇: テナント設定 → 法定付与(自動)→ 失効分の積立振替 -------------------------
   await client.updateLeaveSettings({
@@ -139,8 +168,9 @@ export async function seedHttp(params: SeedHttpParams): Promise<SeedHttpResult> 
     stockMaxDays: 40,
     stockExpiresMonths: null,
   });
-  await client.autoGrantLeave(adminId);
-  await client.convertExpiredLeave(adminId);
+  // 自分への付与・積立振替もできないので、同じく人事担当のマネージャーが行う。
+  await hrClient.autoGrantLeave(adminId);
+  await hrClient.convertExpiredLeave(adminId);
 
   const today = jstToday();
 

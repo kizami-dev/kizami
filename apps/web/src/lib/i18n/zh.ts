@@ -571,6 +571,11 @@ export const zh = {
     loadFailed: "数据获取失败,请重试",
     network: "无法连接到服务器",
   },
+  punchErrors: {
+    occurred_at_too_old: "不能以过去的时间打卡。请通过修正申请登记",
+    occurred_at_in_future: "不能以未来的时间打卡。请检查设备的时钟",
+    default: "打卡失败,请重试",
+  },
 
   loading: "加载中…",
 
@@ -2048,6 +2053,7 @@ export const zh = {
   },
 
   members: {
+    ownHrAttributesLocked: "不能自行修改自己的入职日期・年假授予类别・所属部门・工时制度。如需修改,请联系其他管理员。",
     title: "成员管理",
     tagline: "变更所属部门、分配权限预设、查看实际生效的权限(可执行的操作)。",
     noPermission: "没有权限使用此页面",
@@ -2273,6 +2279,7 @@ export const zh = {
     effectiveDeniedBy: (names: string) => `由于「${names}」的拒绝设置,此权限无法行使`,
 
     errors: {
+      cannot_edit_own_hr_attributes: "不能修改自己的人事属性(入职日期・年假授予类别・所属部门・工时制度・年假授予)。请联系其他管理员",
       invalid_body: "请确认输入内容",
       invalid_email: "请确认邮箱地址格式",
       invalid_name: "姓名请输入1〜200个字符",
@@ -2526,6 +2533,7 @@ export const zh = {
 
   /** 带薪年假的制度设置(/settings/leave)。 */
   settingsLeave: {
+    targetUserSelfSuffix: "(本人 — 由其他管理员操作)",
     title: "带薪年假设置",
     tagline: "设置授予方式、按小时计年假、结转休假等租户全局配置。",
     noPermission: "没有权限更改此设置",
@@ -2595,6 +2603,7 @@ export const zh = {
     convertResultEmpty: "没有可结转的对象",
 
     errors: {
+      cannot_edit_own_hr_attributes: "不能修改自己的人事属性(入职日期・年假授予类别・所属部门・工时制度・年假授予)。请联系其他管理员",
       invalid_grant_method: "请确认授予方式",
       invalid_fixed_date_mm_dd: "基准日请使用MM-DD格式输入",
       invalid_hourly_leave_enabled: "请确认输入内容",
@@ -2625,6 +2634,7 @@ export const zh = {
    * 出勤率(《劳动基准法》第39条第1款的八成要求)仅作为参考值呈现。
    */
   leaveGrantProposals: {
+    ownProposalNote: "针对本人的授予预告由其他管理员审批",
     sectionTitle: "授予预告",
     sectionDesc:
       "这是每日自动计算生成的授予「预告」。仅停留在预告状态不会实际授予,需要负责人确认内容并审批后才会生效。出勤率仅供参考,八成要求的最终判断请由人来做出。",
@@ -2672,6 +2682,7 @@ export const zh = {
     },
 
     errors: {
+      cannot_edit_own_hr_attributes: "不能修改自己的人事属性(入职日期・年假授予类别・所属部门・工时制度・年假授予)。请联系其他管理员",
       not_found: "未找到目标预告",
       not_proposed: "该预告已被审批,请刷新页面确认最新状态",
       grant_already_exists: "相同基准日的授予已存在,请确认是否与手动授予重复",

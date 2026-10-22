@@ -14,6 +14,7 @@ import { createApp } from "../src/app.js";
 import { buildPersonalChannels, buildTenantChannels } from "../src/lib/notification-channels.js";
 import { createTenantQuotas, MEMBER_TRIGGERED_SENDS_PER_DAY, NotificationQuotaExceededError, parseQuotaEnv, PERSONAL_TEST_SENDS_PER_DAY } from "../src/lib/tenant-quotas.js";
 import { createTestDatabase, grantPermission, jstMinutes, loginAndGetCookie, setupExtraUser, setupTestDb, testEncryptor } from "./support/setup.js";
+import { requestPunch } from "./support/punch.js";
 
 const NOW = Date.UTC(2026, 5, 15, 3, 0) / 60_000;
 
@@ -120,7 +121,7 @@ describe("API キー数の上限", () => {
     expect(await blocked.json()).toEqual({ error: "api_key_limit_reached", limit: 2 });
 
     // 上限に達していても、既存のキーでの打刻は通る(打刻は止めない)
-    const punch = await app.request("/punches", {
+    const punch = await requestPunch(app, {
       method: "POST",
       headers: { "content-type": "application/json", authorization: `Bearer ${a.apiKey.token}` },
       body: JSON.stringify({ kind: "clock_in", occurredAt: Math.floor(Date.now() / 60_000) - 5 }),

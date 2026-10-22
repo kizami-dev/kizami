@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "../src/app.js";
+import { requestPunch } from "./support/punch.js";
 import { loginAndGetCookie, setupTestDb } from "./support/setup.js";
 
 // JST 正午(日界・月境界から十分離れた安全な時刻)に固定して、テストを実行時刻から独立させる。
@@ -20,8 +21,9 @@ describe("punch flow", () => {
     const app = createApp({ db });
     const cookie = await loginAndGetCookie(app, email, password);
 
+    // 打刻は「いま押した」時刻しか受け付けないため、各打刻の時刻にシステム時刻を合わせて送る。
     const post = (kind: string, occurredAt: number) =>
-      app.request("/punches", {
+      requestPunch(app, {
         method: "POST",
         headers: { "content-type": "application/json", cookie },
         body: JSON.stringify({ kind, occurredAt }),
@@ -106,35 +108,43 @@ describe("punch validation", () => {
     expect(await res.json()).toEqual({ error: "invalid_kind" });
   });
 
-  it("rejects occurredAt more than 5 minutes in the future with 400", async () => {
+  const postAt = async (occurredAt: number) => {
     const { db, email, password } = await setupTestDb();
     const app = createApp({ db });
     const cookie = await loginAndGetCookie(app, email, password);
-
-    const now = Math.floor(FIXED_NOW.getTime() / 60_000);
-    const res = await app.request("/punches", {
+    return app.request("/punches", {
       method: "POST",
       headers: { "content-type": "application/json", cookie },
-      body: JSON.stringify({ kind: "clock_in", occurredAt: now + 6 }),
+      body: JSON.stringify({ kind: "clock_in", occurredAt }),
     });
+  };
+  const now = Math.floor(FIXED_NOW.getTime() / 60_000);
 
+  it("rejects occurredAt more than 1 minute in the future with 400", async () => {
+    const res = await postAt(now + 2);
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ error: "occurred_at_in_future" });
   });
 
-  it("accepts occurredAt exactly 5 minutes in the future", async () => {
-    const { db, email, password } = await setupTestDb();
-    const app = createApp({ db });
-    const cookie = await loginAndGetCookie(app, email, password);
+  it("accepts occurredAt exactly 1 minute in the future (clock skew)", async () => {
+    expect((await postAt(now + 1)).status).toBe(201);
+  });
 
-    const now = Math.floor(FIXED_NOW.getTime() / 60_000);
-    const res = await app.request("/punches", {
-      method: "POST",
-      headers: { "content-type": "application/json", cookie },
-      body: JSON.stringify({ kind: "clock_in", occurredAt: now + 5 }),
-    });
+  it("accepts occurredAt exactly 5 minutes in the past (send delay grace)", async () => {
+    expect((await postAt(now - 5)).status).toBe(201);
+  });
 
-    expect(res.status).toBe(201);
+  // セキュリティ診断 M6: 任意の過去時刻で打刻を作り、修正申請の承認を素通りできていた。
+  it("rejects occurredAt more than 5 minutes in the past with 400 occurred_at_too_old", async () => {
+    const res = await postAt(now - 6);
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "occurred_at_too_old" });
+  });
+
+  it("rejects a punch backdated by hours (would bypass the correction-request approval)", async () => {
+    const res = await postAt(now - 240);
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "occurred_at_too_old" });
   });
 
   it("rejects a non-integer occurredAt with 400", async () => {

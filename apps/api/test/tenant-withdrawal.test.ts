@@ -40,6 +40,7 @@ import { runLeaveGrantProposalScan } from "../src/leave-grant-proposals.js";
 import { listActiveUsers } from "../src/reminders.js";
 import { purgeWithdrawnTenant, runTenantWithdrawalScan } from "../src/tenant-purge.js";
 import { grantPermission, jstMinutes, loginAndGetCookie, setupSecondUser, setupTestDb } from "./support/setup.js";
+import { requestPunch } from "./support/punch.js";
 
 const FIXED_NOW = new Date("2026-06-15T03:00:00.000Z");
 const NOW_MINUTES = Math.floor(FIXED_NOW.getTime() / 60_000);
@@ -127,7 +128,7 @@ async function issueMemberApiKey(h: Harness, memberCookie: string): Promise<stri
 }
 
 function punchWithKey(h: Harness, token: string) {
-  return h.app.request("/punches", {
+  return requestPunch(h.app, {
     method: "POST",
     headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
     body: JSON.stringify({ kind: "clock_in" }),

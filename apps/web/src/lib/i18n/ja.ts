@@ -622,6 +622,15 @@ export const ja = {
     loadFailed: "データの取得に失敗しました。もう一度お試しください",
     network: "サーバーに接続できません",
   },
+  /**
+   * POST /punches のエラーコード(セキュリティ診断 M6、2026-10)。打刻は「いま押した」時刻しか
+   * 受け付けず、数分以上前の時刻は occurred_at_too_old になる(過去の打刻は修正申請で登録する)。
+   */
+  punchErrors: {
+    occurred_at_too_old: "過去の時刻の打刻はできません。修正申請から登録してください",
+    occurred_at_in_future: "未来の時刻は打刻できません。端末の時計を確認してください",
+    default: "打刻に失敗しました。もう一度お試しください",
+  },
 
   loading: "読み込み中…",
 
@@ -2133,6 +2142,8 @@ export const ja = {
   },
 
   members: {
+    /** 自分の行を開いたとき、人事属性の欄を無効にした理由(2026-10)。 */
+    ownHrAttributesLocked: "自分の入社日・有給付与の区分・所属部署・労働時間制は、自分では変更できません。変更が必要なときは別の管理者に依頼してください。",
     title: "メンバー管理",
     tagline: "所属部署の変更、権限プリセットの割当、実効権限(できること)の確認を行います。",
     noPermission: "この画面を利用する権限がありません",
@@ -2369,6 +2380,8 @@ export const ja = {
     effectiveDeniedBy: (names: string) => `「${names}」の拒否設定により、この権限は行使できません`,
 
     errors: {
+      /** 403。人事属性の自己編集の禁止(2026-10、apps/api/src/authz.ts の rejectOwnHrAttributeEdit)。 */
+      cannot_edit_own_hr_attributes: "自分の人事属性(入社日・有給付与の区分・所属部署・労働時間制・有給の付与)は変更できません。別の管理者に依頼してください",
       invalid_body: "入力内容を確認してください",
       invalid_email: "メールアドレスの形式を確認してください",
       invalid_name: "氏名を1〜200文字で入力してください",
@@ -2626,6 +2639,8 @@ export const ja = {
 
   /** 有給休暇の制度設定(/settings/leave、v0.3)。GET/PUT /settings/leave と付与管理系エンドポイントの文言をまとめる。 */
   settingsLeave: {
+    /** 対象者の選択肢で自分を選べなくしたときの補足(2026-10、人事属性の自己編集の禁止)。 */
+    targetUserSelfSuffix: "(自分 — 別の管理者が操作します)",
     title: "有給休暇の設定",
     tagline: "付与方式・時間単位年休・積立休暇のテナント全体の設定を行います。",
     noPermission: "この設定を変更する権限がありません",
@@ -2695,6 +2710,8 @@ export const ja = {
     convertResultEmpty: "振替対象はありませんでした",
 
     errors: {
+      /** 403。人事属性の自己編集の禁止(2026-10、apps/api/src/authz.ts の rejectOwnHrAttributeEdit)。 */
+      cannot_edit_own_hr_attributes: "自分の人事属性(入社日・有給付与の区分・所属部署・労働時間制・有給の付与)は変更できません。別の管理者に依頼してください",
       invalid_grant_method: "付与方式を確認してください",
       invalid_fixed_date_mm_dd: "基準日はMM-DD形式で入力してください",
       invalid_hourly_leave_enabled: "入力内容を確認してください",
@@ -2725,6 +2742,8 @@ export const ja = {
    * 出勤率(労基法39条1項の8割要件)はあくまで参考値として示すだけにする。
    */
   leaveGrantProposals: {
+    /** 自分宛ての予告の行で、承認・却下ボタンの代わりに出す文言(2026-10)。 */
+    ownProposalNote: "自分宛ての予告は別の管理者が決裁します",
     sectionTitle: "付与の予告",
     sectionDesc:
       "日次の自動計算が作成した付与の「予告」です。予告のままでは付与されません — 内容を確認し、担当者が承認して初めて確定します。出勤率は参考値であり、8割要件の最終判断は人が行ってください。",
@@ -2776,6 +2795,8 @@ export const ja = {
     },
 
     errors: {
+      /** 403。人事属性の自己編集の禁止(2026-10、apps/api/src/authz.ts の rejectOwnHrAttributeEdit)。 */
+      cannot_edit_own_hr_attributes: "自分の人事属性(入社日・有給付与の区分・所属部署・労働時間制・有給の付与)は変更できません。別の管理者に依頼してください",
       not_found: "対象の予告が見つかりません",
       not_proposed: "この予告は既に決裁済みです。画面を再読み込みして最新の状態をご確認ください",
       grant_already_exists: "同じ基準日の付与が既にあります。手動付与と重複していないか確認してください",

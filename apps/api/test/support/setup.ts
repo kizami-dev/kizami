@@ -24,7 +24,7 @@ import { migrateDb } from "@kizami/db/node";
 import { createEncryptor, type Encryptor } from "@kizami/crypto";
 import type { BreakRule } from "@kizami/engine";
 import { hashPassword } from "../../src/auth/password.js";
-import { seedTenant, type SeededTenant } from "./seed.js";
+import { loginAndGetCookie, seedTenant, type SeededTenant } from "./seed.js";
 
 // ランタイム非依存な中身は seed.ts 側にある(workerd スモークテストと共有するため)。
 // 既存テストの import 元を変えずに済むよう、ここから再エクスポートする
@@ -284,4 +284,31 @@ export async function denyPermission(
     presetId,
     createdAt: 0,
   });
+}
+
+/**
+ * テスト用: `fromUserId` と同じプリセット割当を持つ別の管理者を作ってログインし、Cookie を返す。
+ *
+ * 人事属性(入社日・付与区分・所属・労働時間制・有給の付与)は本人には変えられない
+ * (apps/api/src/authz.ts の rejectOwnHrAttributeEdit)。シードした1人目のユーザーの
+ * 人事属性を組み立てるテストは、この「別の管理者」の Cookie で変更を送る。
+ * 割当は呼んだ時点のものを写すので、grantPermission を済ませてから呼ぶこと。
+ */
+export async function loginAsHrEditor(
+  app: Parameters<typeof loginAndGetCookie>[0],
+  db: Database,
+  params: { tenantId: string; fromUserId: string },
+): Promise<string> {
+  const editor = await setupExtraUser(db, { tenantId: params.tenantId, email: "hr-editor@example.com", name: "HR Editor" });
+  const assignments = await db.select().from(presetAssignments).where(eq(presetAssignments.userId, params.fromUserId));
+  for (const a of assignments) {
+    await db.insert(presetAssignments).values({
+      id: uuidv7(),
+      tenantId: params.tenantId,
+      userId: editor.userId,
+      presetId: a.presetId,
+      createdAt: 0,
+    });
+  }
+  return loginAndGetCookie(app, editor.email, editor.password);
 }

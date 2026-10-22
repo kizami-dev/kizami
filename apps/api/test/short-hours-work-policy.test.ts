@@ -19,7 +19,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { insertLeaveGrant, type Database } from "@kizami/db";
 import { createApp } from "../src/app.js";
-import { grantPermission, jstMinutes, loginAndGetCookie, setupSecondUser, setupTestDb } from "./support/setup.js";
+import { grantPermission, jstMinutes, loginAndGetCookie, setupSecondUser, setupTestDb, loginAsHrEditor } from "./support/setup.js";
+import { requestPunch } from "./support/punch.js";
 
 /** 制度の作成・割当を行う「今日」。割当は過去日にできないため、対象月の初日にしておく。 */
 const SETUP_NOW = new Date("2026-03-31T15:30:00.000Z"); // JST 2026-04-01 00:30
@@ -31,7 +32,8 @@ interface RequestLike {
 }
 
 async function postJson(app: RequestLike, cookie: string, path: string, body: unknown): Promise<Response> {
-  return app.request(path, { method: "POST", headers: { "content-type": "application/json", cookie }, body: JSON.stringify(body) });
+  const init: RequestInit = { method: "POST", headers: { "content-type": "application/json", cookie }, body: JSON.stringify(body) };
+  return path === "/punches" ? requestPunch(app, init) : app.request(path, init);
 }
 
 async function work(app: RequestLike, cookie: string, day: number, from: [number, number], to: [number, number]) {
@@ -111,7 +113,9 @@ async function setupMixedTenant(): Promise<{
   expect(shortRes.status).toBe(201);
   const shortPolicyId = ((await shortRes.json()) as { policy: { id: string } }).policy.id;
 
-  const assignShort = await postJson(app, cookie, `/members/${userId}/work-policy`, { workPolicyId: shortPolicyId, effectiveFrom: "2026-04-01" });
+  // 自分の労働時間制は自分で割り当てられない(authz.ts の rejectOwnHrAttributeEdit)ので、別の管理者が割り当てる
+  const hrCookie = await loginAsHrEditor(app, db, { tenantId, fromUserId: userId });
+  const assignShort = await postJson(app, hrCookie, `/members/${userId}/work-policy`, { workPolicyId: shortPolicyId, effectiveFrom: "2026-04-01" });
   expect(assignShort.status).toBe(201);
   const assignFull = await postJson(app, cookie, `/members/${second.userId}/work-policy`, { workPolicyId: fullPolicyId, effectiveFrom: "2026-04-01" });
   expect(assignFull.status).toBe(201);

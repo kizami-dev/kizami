@@ -62,7 +62,9 @@ const ERROR_MESSAGES: Readonly<Record<string, string>> = {
     "対象の月は既に締め処理済みで、この変更の反映には締めの解除権限が必要です。管理者にご相談ください。",
   invalid_kind: "打刻の種類が不正です。clock_in / clock_out / break_start / break_end のいずれかを指定してください。",
   invalid_occurred_at: "打刻時刻の指定が不正です。",
-  occurred_at_in_future: "指定された打刻時刻が未来すぎます(サーバー時刻から数分以上先は指定できません)。",
+  occurred_at_in_future: "指定された打刻時刻が未来すぎます(サーバー時刻から1分より先は指定できません)。",
+  occurred_at_too_old:
+    "指定された打刻時刻が古すぎます(サーバー時刻から5分より前は打刻できません)。過去の打刻は KIZAMI の画面から修正申請を行ってください。",
   invalid_range: "参照期間の指定が不正です。",
   invalid_month: "月の指定が不正です。YYYY-MM 形式(例: 2026-08)で指定してください。",
   invalid_status: "ステータスの指定が不正です。",

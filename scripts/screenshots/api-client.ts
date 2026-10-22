@@ -7,8 +7,23 @@
  * 保持して毎回 Cookie ヘッダに付け直す。
  */
 
+import type { BackdatedPunchWriter } from "./direct-db.js";
+
+/**
+ * POST /punches が受け付ける「サーバー時刻より前」の幅(分)。apps/api/src/routes/punches.ts の
+ * PUNCH_PAST_GRACE_MINUTES と同じ値。これより古い打刻は HTTP では作れないので DB へ直接書く。
+ */
+const PUNCH_PAST_GRACE_MINUTES = 5;
+
 export class ApiClient {
   private cookie: string | null = null;
+  private userId: string | null = null;
+
+  /**
+   * 過去日の打刻を一時 DB へ直接書く関数(seed-http.ts が起動時に設定する。direct-db.ts)。
+   * 全クライアントで共有する(どのデモアカウントの打刻も同じ一時 DB に入る)。
+   */
+  static backdatedPunchWriter: BackdatedPunchWriter | null = null;
 
   constructor(private readonly baseUrl: string) {}
 
@@ -38,7 +53,9 @@ export class ApiClient {
 
   /** ログイン成功後の Cookie を、その後のすべてのリクエストへブラウザに代わって付与する。 */
   async login(email: string, password: string): Promise<{ user: { id: string; email: string; tenantId?: string } }> {
-    return this.request("POST", "/auth/login", { email, password });
+    const res = await this.request<{ user: { id: string; email: string; tenantId?: string } }>("POST", "/auth/login", { email, password });
+    this.userId = res.user.id;
+    return res;
   }
 
   /** Playwright のブラウザコンテキストへそのまま渡せる形でセッション Cookie を取り出す。 */
@@ -47,8 +64,19 @@ export class ApiClient {
     return this.cookie;
   }
 
-  punch(kind: string, occurredAt: number): Promise<{ punch: { id: string; kind: string; occurredAt: number } }> {
-    return this.request("POST", "/punches", { kind, occurredAt });
+  /**
+   * 打刻する。直近(サーバー時刻の5分前以降)なら本物と同じく POST /punches、それより古い
+   * デモの勤怠は API が受け付けないので、ログイン中の本人の打刻として DB へ直接書く。
+   */
+  async punch(kind: string, occurredAt: number): Promise<{ punch: { id: string; kind: string; occurredAt: number } }> {
+    const nowMinutes = Math.floor(Date.now() / 60_000);
+    if (occurredAt >= nowMinutes - PUNCH_PAST_GRACE_MINUTES + 1) {
+      return this.request("POST", "/punches", { kind, occurredAt });
+    }
+    const writer = ApiClient.backdatedPunchWriter;
+    if (!writer) throw new Error("backdated punches need ApiClient.backdatedPunchWriter (direct-db.ts)");
+    if (!this.userId) throw new Error("log in before punching");
+    return { punch: await writer({ userId: this.userId, kind, occurredAt }) };
   }
 
   listPunches(from: number, to: number): Promise<{ punches: Array<{ id: string; kind: string; occurredAt: number }> }> {

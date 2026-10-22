@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { insertLeaveGrant, type Database } from "@kizami/db";
 import { createApp } from "../src/app.js";
 import { grantPermission, loginAndGetCookie, setupTestDb } from "./support/setup.js";
+import { requestPunch } from "./support/punch.js";
 
 const FIXED_NOW = new Date("2026-04-15T03:00:00.000Z"); // JST 2026-04-15 12:00
 
@@ -132,12 +133,12 @@ describe("leave -> monthly flex integration (E2E)", () => {
     // 9:00-18:00 JST(休憩なし、9時間=540分)の勤務を1日分登録
     const clockInAt = Math.floor(Date.UTC(2026, 3, 1, 0, 0) / 60_000); // 2026-04-01 09:00 JST
     const clockOutAt = Math.floor(Date.UTC(2026, 3, 1, 9, 0) / 60_000); // 2026-04-01 18:00 JST
-    await app.request("/punches", {
+    await requestPunch(app, {
       method: "POST",
       headers: { "content-type": "application/json", cookie },
       body: JSON.stringify({ kind: "clock_in", occurredAt: clockInAt }),
     });
-    await app.request("/punches", {
+    await requestPunch(app, {
       method: "POST",
       headers: { "content-type": "application/json", cookie },
       body: JSON.stringify({ kind: "clock_out", occurredAt: clockOutAt }),

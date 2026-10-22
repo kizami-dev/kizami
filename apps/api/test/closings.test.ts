@@ -13,6 +13,7 @@ import { buildLawTimeline } from "@kizami/law";
 import { createApp } from "../src/app.js";
 import { grantPermission, jstMinutes, loginAndGetCookie, setupSecondUser, setupTestDb, switchToFixedWorkPolicy } from "./support/setup.js";
 import { setupOrgFixture } from "./support/org.js";
+import { requestPunch } from "./support/punch.js";
 
 const FIXED_NOW = new Date("2026-05-15T03:00:00.000Z"); // JST 2026-05-15 12:00
 
@@ -65,7 +66,7 @@ async function reopenPeriod(app: RequestLike, cookie: string, period: string, no
 }
 
 async function postPunch(app: RequestLike, cookie: string, kind: string, occurredAt: number) {
-  return app.request("/punches", {
+  return requestPunch(app, {
     method: "POST",
     headers: { "content-type": "application/json", cookie },
     body: JSON.stringify({ kind, occurredAt }),

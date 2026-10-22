@@ -21,7 +21,7 @@ import {
   type ShiftDayDto,
 } from "../lib/api";
 import { getCurrentPositionSafe } from "../lib/geolocation";
-import { messages } from "../lib/messages";
+import { mapPunchErrorMessage, messages } from "../lib/messages";
 import { notificationLinkFor } from "../lib/notifications";
 import {
   currentYearMonthJst,
@@ -254,7 +254,7 @@ export function DashboardView() {
         router.push("/login");
         return;
       }
-      setPunchError(err instanceof ApiError ? messages.errors.punchFailed : messages.errors.network);
+      setPunchError(err instanceof ApiError ? mapPunchErrorMessage(err.body) : messages.errors.network);
     } finally {
       setPending(false);
       setGpsLocating(false);

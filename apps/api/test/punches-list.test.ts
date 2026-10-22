@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "../src/app.js";
 import { jstMinutes, loginAndGetCookie, setupTestDb } from "./support/setup.js";
+import { requestPunch } from "./support/punch.js";
 
 // JST 正午(日界・月境界から十分離れた安全な時刻)に固定して、テストを実行時刻から独立させる。
 // 翌日分の打刻も「過去」として投入できるよう、対象日の翌日昼に固定する。
@@ -22,7 +23,7 @@ describe("GET /punches", () => {
     const cookie = await loginAndGetCookie(app, email, password);
 
     const post = (kind: string, occurredAt: number) =>
-      app.request("/punches", {
+      requestPunch(app, {
         method: "POST",
         headers: { "content-type": "application/json", cookie },
         body: JSON.stringify({ kind, occurredAt }),
@@ -54,7 +55,7 @@ describe("GET /punches", () => {
     const app = createApp({ db });
     const cookie = await loginAndGetCookie(app, email, password);
 
-    const missingBoth = await app.request("/punches", { headers: { cookie } });
+    const missingBoth = await requestPunch(app, { headers: { cookie } });
     expect(missingBoth.status).toBe(400);
     expect(await missingBoth.json()).toEqual({ error: "invalid_range" });
 

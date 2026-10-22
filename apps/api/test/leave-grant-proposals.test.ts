@@ -388,6 +388,25 @@ describe("有給付与予告 API", () => {
     expect(approveRes.status).toBe(403);
   });
 
+  // 人事属性の自己編集の禁止(2026-10): 自分宛ての予告は、付与の権限があっても自分では決裁できない。
+  it("自分宛ての予告は、テナント全体の付与権限があっても承認・却下できない(403 cannot_edit_own_hr_attributes)", async () => {
+    const { db, tenantId, app, member, proposalId } = await setupWithProposal();
+    await grantPermission(db, { tenantId, userId: member.userId, permission: GRANT_MANAGE_PERMISSION, scope: "tenant" });
+    const memberCookie = await loginAndGetCookie(app, member.email, member.password);
+
+    for (const action of ["approve", "reject"]) {
+      const res = await app.request(`/leave/grant-proposals/${proposalId}/${action}`, {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie: memberCookie },
+        body: JSON.stringify({}),
+      });
+      expect(res.status).toBe(403);
+      expect(await res.json()).toEqual({ error: "cannot_edit_own_hr_attributes" });
+    }
+    const proposals = await listLeaveGrantProposals(db, { tenantId });
+    expect(proposals.find((p) => p.id === proposalId)?.status).toBe("proposed");
+  });
+
   it("承認すると leave_grants(source=proposal)が作られ、本人へ通知される", async () => {
     const { db, tenantId, app, cookie, member, proposalId } = await setupWithProposal();
 

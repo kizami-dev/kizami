@@ -130,6 +130,7 @@ async function main(): Promise<void> {
     } =
       await seedHttp({
         apiBaseUrl: API_BASE_URL,
+        databaseUrl: `file:${dbPath}`,
         extraUsers: extra.users,
         departments: extra.departments,
       });

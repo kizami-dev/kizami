@@ -13,13 +13,14 @@
 import { describe, expect, it } from "vitest";
 import { createApp } from "../src/app.js";
 import { grantPermission, jstMinutes, loginAndGetCookie, setupTestDb } from "./support/setup.js";
+import { requestPunch } from "./support/punch.js";
 
 interface RequestLike {
   request: (path: string, init?: RequestInit) => Promise<Response> | Response;
 }
 
 async function postPunch(app: RequestLike, cookie: string, kind: string, occurredAt: number) {
-  const res = await app.request("/punches", {
+  const res = await requestPunch(app, {
     method: "POST",
     headers: { "content-type": "application/json", cookie },
     body: JSON.stringify({ kind, occurredAt }),

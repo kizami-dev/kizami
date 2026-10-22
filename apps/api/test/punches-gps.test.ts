@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getPunchEventById } from "@kizami/db";
 import { createApp } from "../src/app.js";
 import { grantPermission, loginAndGetCookie, setupTestDb } from "./support/setup.js";
+import { requestPunch } from "./support/punch.js";
 
 const CALENDAR_PERMISSION = "tenant_settings.calendar.manage";
 const GPS_PERMISSION = "tenant_settings.gps.manage";
@@ -54,7 +55,7 @@ describe("POST /punches with GPS coordinates", () => {
     const app = createApp({ db });
     const cookie = await loginAndGetCookie(app, email, password);
 
-    const res = await app.request("/punches", {
+    const res = await requestPunch(app, {
       method: "POST",
       headers: { "content-type": "application/json", cookie },
       body: JSON.stringify({ kind: "clock_in", gpsLat: 35.6812, gpsLng: 139.7671 }),
@@ -76,7 +77,7 @@ describe("POST /punches with GPS coordinates", () => {
 
     await enableTenantGps(app, cookie);
 
-    const res = await app.request("/punches", {
+    const res = await requestPunch(app, {
       method: "POST",
       headers: { "content-type": "application/json", cookie },
       body: JSON.stringify({ kind: "clock_in", gpsLat: 35.6812, gpsLng: 139.7671 }),
@@ -98,7 +99,7 @@ describe("POST /punches with GPS coordinates", () => {
 
     await enableTenantGps(app, cookie);
 
-    const res = await app.request("/punches", {
+    const res = await requestPunch(app, {
       method: "POST",
       headers: { "content-type": "application/json", cookie },
       body: JSON.stringify({ kind: "clock_in" }),
@@ -116,7 +117,7 @@ describe("POST /punches with GPS coordinates", () => {
     const app = createApp({ db });
     const cookie = await loginAndGetCookie(app, email, password);
 
-    const res = await app.request("/punches", {
+    const res = await requestPunch(app, {
       method: "POST",
       headers: { "content-type": "application/json", cookie },
       body: JSON.stringify({ kind: "clock_in", gpsLat: 200, gpsLng: 139.7671 }),
@@ -130,7 +131,7 @@ describe("POST /punches with GPS coordinates", () => {
     const app = createApp({ db });
     const cookie = await loginAndGetCookie(app, email, password);
 
-    const res = await app.request("/punches", {
+    const res = await requestPunch(app, {
       method: "POST",
       headers: { "content-type": "application/json", cookie },
       body: JSON.stringify({ kind: "clock_in", gpsLng: 139.7671 }),

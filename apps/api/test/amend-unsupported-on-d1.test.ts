@@ -24,17 +24,19 @@ import {
 } from "@kizami/db";
 import { createApp } from "../src/app.js";
 import { grantPermission, jstMinutes, loginAndGetCookie, setupTestDb } from "./support/setup.js";
+import { requestPunch } from "./support/punch.js";
 
 interface RequestLike {
   request: (path: string, init?: RequestInit) => Promise<Response> | Response;
 }
 
 async function post(app: RequestLike, cookie: string, path: string, body: unknown = {}) {
-  const res = await app.request(path, {
+  const init: RequestInit = {
     method: "POST",
     headers: { "content-type": "application/json", cookie },
     body: JSON.stringify(body),
-  });
+  };
+  const res = path === "/punches" ? await requestPunch(app, init) : await app.request(path, init);
   return { status: res.status, body: (await res.json()) as Record<string, unknown> };
 }
 

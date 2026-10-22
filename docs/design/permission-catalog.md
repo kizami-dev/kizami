@@ -190,6 +190,17 @@ grants は権限キー×スコープの組だが、**denies は権限キーだ�
 
 **セルフサービス権限**(自分の打刻・自分の申請の起票・自分の記録の閲覧)は拒否の対象外である。評価器は該当キーへの deny を黙って無視し(`packages/authz/src/self-service.ts` の `UNDENIABLE_PERMISSIONS`)、API も本カタログに存在しないキーの deny を 400 `invalid_denies` で弾く。自分の打刻ができないユーザーを作れてしまうと、そのユーザーは労働時間を記録する手段を失う(=使用者が労働時間把握義務を果たせない)。
 
+### 自分の人事属性は自分で変えられない
+
+入社日・有給付与の区分・所属部署(`PATCH /members/:id`)、労働時間制の割当(`POST /members/:id/work-policy`)、
+有給の付与(`POST /leave/grants`・`/leave/grants/auto`・`/leave/grants/convert-expired`)と付与の予告の決裁
+(`POST /leave/grant-proposals/:id/approve`・`/reject`)は、対象が操作者本人なら権限やスコープに関係なく
+403 `cannot_edit_own_hr_attributes` で拒否する(`apps/api/src/authz.ts` の `rejectOwnHrAttributeEdit`)。
+いずれも有給の日数・承認者・集計に直結し、監査ログに残るとはいえ編集権限さえあれば自分の有給を増やす・
+勤続年数を盛ることができたため(2026-10、セキュリティ診断)。テナント全体の管理者も別の管理者に依頼する。
+**管理者が1人しかいないテナントでは、その人の人事属性は誰も変えられない**(決定どおりの帰結。変更が要るときは
+同じ権限を持つ2人目を置く)。Web は自分の行の該当欄を無効にし、付与の対象者の選択肢で自分を選べなくする。
+
 ### 最後の権限管理保持者の保護
 
 拒否の導入により、**割当を一切触らずに**テナントから権限管理者を消せるようになった(プリセットに `permission.preset.manage` の deny を1つ足すだけでよい)。そこで固定原則「最後の権限管理保持者の保護」を割当変更(`PUT /members/:id/presets`)だけでなく**プリセット編集(`PATCH /presets/:id`)にも適用する**。保存前に、編集後の内容でテナント全ユーザーの実効権限を計算し直し、`permission.preset.manage` の保持者が0人になる編集は 409 `last_admin` で拒否する(grants を削る編集でも同様)。

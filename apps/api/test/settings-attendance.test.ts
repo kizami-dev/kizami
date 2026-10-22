@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { auditLogs } from "@kizami/db";
 import { createApp } from "../src/app.js";
 import { grantPermission, jstMinutes, loginAndGetCookie, setupTestDb } from "./support/setup.js";
+import { requestPunch } from "./support/punch.js";
 
 const CALENDAR_PERMISSION = "tenant_settings.calendar.manage";
 const GPS_PERMISSION = "tenant_settings.gps.manage";
@@ -249,7 +250,7 @@ describe("GET/POST /settings/attendance", () => {
       { kind: "clock_out", occurredAt: jstMinutes(2026, 4, 10, 23, 0) },
     ];
     for (const p of punches) {
-      const res = await app.request("/punches", {
+      const res = await requestPunch(app, {
         method: "POST",
         headers: { "content-type": "application/json", cookie },
         body: JSON.stringify(p),
