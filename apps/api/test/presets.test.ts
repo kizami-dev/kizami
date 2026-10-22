@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { PERMISSION_CATALOG } from "@kizami/authz";
-import { auditLogs, permissionPresets, uuidv7, type Database } from "@kizami/db";
+import { auditLogs, listAssignedPresetGrants, permissionPresets, uuidv7, type Database } from "@kizami/db";
 import { eq } from "drizzle-orm";
 import { createApp } from "../src/app.js";
 import { denyPermission, grantPermission, loginAndGetCookie, setupSecondUser, setupTestDb } from "./support/setup.js";
@@ -415,6 +415,8 @@ describe("presets API", () => {
       const { db, tenantId, userId, email, password } = await setupTestDb();
       await grantPermission(db, { tenantId, userId, permission: "permission.preset.manage", scope: "tenant" });
       await grantPermission(db, { tenantId, userId, permission: "permission.assignment.manage", scope: "tenant" });
+      // 自分が持たない権限は他人にも割り当てられない(H3)ので、割り当てる側も closing.view を持つ
+      await grantPermission(db, { tenantId, userId, permission: "closing.view", scope: "tenant" });
       const app = createApp({ db });
       const cookie = await loginAndGetCookie(app, email, password);
 
@@ -538,8 +540,13 @@ describe("presets API", () => {
         headers: { "content-type": "application/json", cookie: actorCookie },
         body: JSON.stringify({ presetIds: [] }),
       });
-      expect(res.status).toBe(409);
-      expect(await res.json()).toEqual({ error: "last_admin" });
+      // H3(2026-10-22)以後は、自分に無い permission.preset.manage を持つ人の割当はそもそも
+      // 変えられない(403)。他人の割当で last_admin に達するには操作者も preset.manage を持つ
+      // 必要があり、その時点で操作者が「他の保持者」になるため、ここは 403 で止まる
+      // (last_admin の判定はプリセット編集側と多重防御として残る)。
+      expect(res.status).toBe(403);
+      const assigned = await listAssignedPresetGrants(db, { tenantId, userId });
+      expect(assigned.length).toBe(1);
     });
 
     it("allows removing permission.preset.manage from a user when another holder remains in the tenant", async () => {

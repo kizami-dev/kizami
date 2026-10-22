@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { getUserById } from "@kizami/db";
 import { createApp } from "../src/app.js";
 import { extractCookie, grantPermission, loginAndGetCookie, setupTestDb } from "./support/setup.js";
 
@@ -146,9 +147,13 @@ describe("member deactivation / reactivation", () => {
     await grantPermission(db, { tenantId, userId: thirdActorId, permission: "member.deactivate", scope: "tenant" });
     const thirdActorCookie = await loginAndGetCookie(app, "third@example.com", "third actor horse battery");
 
+    // H3(2026-10-22)以後、自分より上の人(permission.preset.manage を持つ otherAdmin)は
+    // member.deactivate しか持たない第三者からは無効化できない(403)。otherAdmin を無効化できる
+    // のは permission.preset.manage を持つ人だけになり、その人自身が「他の保持者」に数えられる
+    // ため、他人による無効化で last_admin に達することは無くなった(判定は多重防御として残る)。
     const lastAdminAttempt = await app.request(`/members/${otherAdminId}/deactivate`, { method: "POST", headers: { cookie: thirdActorCookie } });
-    expect(lastAdminAttempt.status).toBe(409);
-    expect(await lastAdminAttempt.json()).toEqual({ error: "last_admin" });
+    expect(lastAdminAttempt.status).toBe(403);
+    expect((await getUserById(db, { tenantId, id: otherAdminId }))?.isActive).toBe(true);
   });
 
   it("deactivate: cannot deactivate oneself (409)", async () => {

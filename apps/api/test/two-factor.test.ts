@@ -610,6 +610,26 @@ describe("POST /members/:id/two-factor/reset(管理者によるリセット)", (
     expect(res.status).toBe(403);
   });
 
+  // セキュリティ(H3、2026-10-22): member.deactivate だけを持つ人が、自分に無い権限を持つ人
+  // (ここでは権限管理者)の 2FA を外せた。外したあとにパスワードを総当たり/リセットする踏み台になる。
+  it("自分より上の権限を持つ人の 2FA は外せない(403、2FA は残る)", async () => {
+    const { seeded, app, member, adminCookie } = await scenario();
+    await grantPermission(seeded.db, {
+      tenantId: seeded.tenantId,
+      userId: member.userId,
+      permission: "permission.preset.manage",
+      scope: "tenant",
+    });
+
+    const res = await app.request(`/members/${member.userId}/two-factor/reset`, {
+      method: "POST",
+      headers: { cookie: adminCookie },
+    });
+    expect(res.status).toBe(403);
+    // 対象は引き続きパスワードだけでは入れない
+    expect(await (await login(app, member.email, member.password)).json()).toEqual({ status: "totp_required" });
+  });
+
   it("テナントを越えたリセットはできない(A社の管理者は B社のメンバーを 404 として扱う)", async () => {
     const db = await createTestDatabase();
     const app = createApp({ db, encryptor: testEncryptor() });
