@@ -2,6 +2,7 @@ import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { migrateDb } from "@kizami/db/node";
 import { createApp } from "./app.js";
+import { apiSecurityHeaders } from "./lib/security-headers.js";
 import { buildEncryptorFromEnv } from "./lib/encryption.js";
 import { buildErrorReporterFromEnv } from "./lib/error-report.js";
 import { authPostAllowedOrigins } from "./lib/json-post-guard.js";
@@ -110,6 +111,8 @@ const { db } = await withStartupRetry(() => migrateDb({ url: databaseUrl }));
 const app = createApp({
   db,
   secureCookies,
+  // HSTS を経路によらず付けるかの判断に使う(lib/security-headers.ts)
+  ...(appBaseUrl !== undefined ? { appBaseUrl } : {}),
   corsOrigin,
   // ログイン等の未認証 POST の Origin 検証。許可するのは**明示された** APP_BASE_URL / CORS_ORIGIN だけ
   // (corsOrigin の開発用既定値は含めない。lib/json-post-guard.ts)。どちらも未設定なら、届いた Host と corsOrigin を許可する代わりのガードになる(app.ts)。
@@ -157,6 +160,8 @@ const app = createApp({
 // リバースプロキシ/トンネルのパス振り分け(kizami.example.com/api/* → ここ)を
 // パス書き換えなしで受けられるよう、/api プレフィクス付きでも同じアプリを提供する
 const root = new Hono();
+// どのルートにも当たらない 404 にもセキュリティヘッダを付ける(app 側にも同じものが掛かっている)
+root.use("*", apiSecurityHeaders(appBaseUrl !== undefined ? { appBaseUrl } : {}));
 root.route("/api", app);
 root.route("/", app);
 

@@ -31,6 +31,15 @@ spec:
       containers:
         - name: api
           image: ghcr.io/kizami-dev/kizami-api:latest
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            runAsUser: 1001
+            runAsGroup: 1001
+            capabilities:
+              drop: [ALL]
+            seccompProfile:
+              type: RuntimeDefault
           ports:
             - name: api-http
               containerPort: 3001
@@ -113,6 +122,15 @@ spec:
               memory: 512Mi
         - name: web
           image: ghcr.io/kizami-dev/kizami-web:latest
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            runAsUser: 1001
+            runAsGroup: 1001
+            capabilities:
+              drop: [ALL]
+            seccompProfile:
+              type: RuntimeDefault
           ports:
             - name: web-http
               containerPort: 3000
@@ -132,6 +150,15 @@ spec:
           # api と同じイメージ(tsx でソースを直接実行する構成は api と共通、
           # docker/api.Dockerfile 参照)。エントリポイントだけ worker.ts に差し替える。
           image: ghcr.io/kizami-dev/kizami-api:latest
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            runAsUser: 1001
+            runAsGroup: 1001
+            capabilities:
+              drop: [ALL]
+            seccompProfile:
+              type: RuntimeDefault
           command: ["node_modules/.bin/tsx", "src/worker.ts"]
           env:
             # api コンテナと同じ PVC 上の SQLite ファイルを見る(打刻忘れ検知は
@@ -206,6 +233,10 @@ spec:
         # repeatable job が貼り直され、通知の重複は notifications の UNIQUE が防ぐ)
         - name: valkey
           image: valkey/valkey:8-alpine
+          securityContext:
+            allowPrivilegeEscalation: false
+            seccompProfile:
+              type: RuntimeDefault
           args: ["--save", "", "--appendonly", "no"]
           ports:
             - name: valkey

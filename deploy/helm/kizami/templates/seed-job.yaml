@@ -17,6 +17,7 @@ spec:
       containers:
         - name: seed
           image: "{{ .Values.image.api.repository }}:{{ .Values.image.api.tag }}"
+          securityContext: {allowPrivilegeEscalation: false, runAsNonRoot: true, runAsUser: 1001, runAsGroup: 1001, capabilities: {drop: [ALL]}, seccompProfile: {type: RuntimeDefault}}
           command: ["node_modules/.bin/tsx", "src/seed.ts"]
           env:
             - {name: DATABASE_URL, value: "file:/data/kizami.db"}
