@@ -10,13 +10,13 @@ import { Hono } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import {
   authCredentials,
+  claimUserTotpCounter,
   consumeRecoveryCode,
   getTenantById,
   getUserById,
   getUserTotp,
   insertAuditLog,
   sessions,
-  updateUserTotpLastUsedCounter,
   users,
   type Database,
 } from "@kizami/db";
@@ -453,7 +453,11 @@ export function createAuthRoutes(db: Database, options: AuthRoutesOptions) {
         minCounterExclusive: row.lastUsedCounter,
       });
       if (!verified) return failCode();
-      await updateUserTotpLastUsedCounter(db, { userId: tx.userId, lastUsedCounter: verified.counter });
+      // 上の minCounterExclusive は読んだ時点の値での判定にすぎない。同じコードの同時送信や、
+      // 無効化・再生成の確認で使われた直後のコードを止めるため、条件付き UPDATE で奪い取れたときだけ通す。
+      if (!(await claimUserTotpCounter(db, { tenantId: tx.tenantId, userId: tx.userId, counter: verified.counter }))) {
+        return failCode();
+      }
       method = "totp";
     } else {
       const consumed = await consumeRecoveryCode(db, {
