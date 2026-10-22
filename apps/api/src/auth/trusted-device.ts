@@ -4,7 +4,7 @@
  * ログインの失敗回数はメール単位の共有バケツ(lib/rate-limit.ts の `loginFailuresPerAccount`)で
  * 数えるため、攻撃者が IP を回して失敗を送り続けると、本人も正しいパスワードで入れなくなる。
  * そこで「この端末(ブラウザ)は以前このアカウントで最後までログインできた」ことを暗号化 Cookie に残し、
- * それを持つリクエストだけは共有バケツではなく**端末ごとのバケツ**で数える。
+ * それを持つリクエストだけは共有バケツではなく**信頼済み端末のバケツ**(ユーザー単位)で数える。
  *
  * - 発行するのはログインが**最後まで**通ったとき(2FA が有効なら第2段階の後)だけ。パスワードだけでは出さない
  * - 中身は Encryptor(AES-256-GCM)で封をする。読むときは `decryptSealed` だけを使い、平文は受け付けない
@@ -12,9 +12,11 @@
  * - Cookie はアカウントの実在について何も教えない: 持っていない相手の挙動は従来どおり(共有バケツ)
  * - この Cookie はセッションではない(認証ミドルウェアは見ない)。ログアウトしても消さない — 端末の信頼は
  *   ログイン状態とは別で、ログアウト中に締め出しを受けたときこそ要る
- * - 盗まれた Cookie で総当たりされないよう、端末ごとのバケツにも上限がある(`loginFailuresPerTrustedDevice`)。
- *   キーに issuedAt を含むので、ログインし直すたびに別のバケツになるが、発行には正しいパスワード
- *   (と第2要素)が要るので、攻撃者がバケツを増やすことはできない
+ * - 盗まれた Cookie で総当たりされないよう、信頼済み端末のバケツにも上限がある(`loginFailuresPerTrustedDevice`)。
+ *   キーはユーザー単位(`trusted|tenantId|userId`)で、Cookie を何枚持っていても枠は共有される
+ * - この経路で照合するのは **Cookie のアカウント1件だけ**(同じメールの別テナントのアカウントは照合しない)。
+ *   照合先を絞らないと、自分のテナントで同じメールの Cookie を得た攻撃者が、共有バケツを使わずに
+ *   別テナントの被害者を総当たりできてしまう
  *
  * SSO(OIDC)のログインでは発行しない: SSO の利用者はパスワードのバケツに締め出される経路を使わない。
  */
@@ -28,7 +30,11 @@ export const TRUSTED_DEVICE_COOKIE_NAME = "kizami_trusted_device";
 /** 有効期間(分)。セッションと同じ 30 日。最後まで通ったログインのたびに発行し直す。 */
 export const TRUSTED_DEVICE_TTL_MINUTES = 30 * 24 * 60;
 
+/** 封をした Cookie の用途の印(auth/totp.ts の TOTP_TX_PURPOSE の判断点)。 */
+export const TRUSTED_DEVICE_PURPOSE = "trusted_device";
+
 export interface TrustedDevice {
+  purpose: typeof TRUSTED_DEVICE_PURPOSE;
   tenantId: string;
   userId: string;
   /** ログインに使ったメール(小文字化)。違うメールでのログインには効かせない。 */
@@ -41,6 +47,7 @@ function isTrustedDevice(value: unknown): value is TrustedDevice {
   if (typeof value !== "object" || value === null) return false;
   const v = value as Record<string, unknown>;
   return (
+    v.purpose === TRUSTED_DEVICE_PURPOSE &&
     typeof v.tenantId === "string" &&
     typeof v.userId === "string" &&
     typeof v.emailLower === "string" &&

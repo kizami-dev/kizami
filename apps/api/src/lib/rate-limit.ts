@@ -272,7 +272,7 @@ export const AUTH_WINDOW_MS = 15 * 60_000;
  *     恒久ロック(管理者解除が必要な方式)は採らず、窓が空けば自然に戻る方式にして DoS の影響を抑える。
  * - `loginFailuresPerTrustedDevice`: 上の締め出しの緩和(auth/trusted-device.ts)。以前このメールで最後まで
  *   ログインできた端末の封をした Cookie(`kizami_trusted_device`)を持つリクエストは、共有のメール単位のバケツの
- *   代わりに端末ごと(`trusted|tenantId|userId|issuedAt`)に数える。攻撃者がメール単位のバケツを埋めても、本人は
+ *   代わりにユーザー単位(`trusted|tenantId|userId`、Cookie を取り直しても枠は増えない)に数える。照合は Cookie のアカウントだけ。攻撃者がメール単位のバケツを埋めても、本人は
  *   いつもの端末から入れる。1つのブラウザの打ち間違いには IP+メールと同じ 10回/15分で十分で、盗まれた Cookie で
  *   総当たりされても 15分 10回に抑えられる。指数的に待たせる(バックオフ)はしない — 締め出しを長引かせるだけなので。
  * - `totpFailuresPerTx`: ログイン第2段階(POST /auth/login/totp)の**1つの中間状態(tx Cookie)あたり**の

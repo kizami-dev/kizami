@@ -167,9 +167,14 @@ TOTP のコードは 30 秒間有効なので、肩越しに見られた/中間�
 `kizami_trusted_device` Cookie(30 日、HttpOnly、SameSite=Lax、Secure はセッション Cookie と同じ)を発行する。
 
 - `POST /auth/login` は、この Cookie が `decryptSealed` で開け(平文は受け付けない)、期限内(未来の issuedAt も拒否)で、
-  `emailLower` が要求のメールと一致し、ユーザーが有効なときだけ、メール単位のバケツの代わりに端末ごとのバケツ
-  (`trusted|tenantId|userId|issuedAt`、`RATE_LIMITS.loginFailuresPerTrustedDevice` = 10 回/15 分)で数える。
-  IP+メール・IP のみの上限はそのまま掛かる
+  `emailLower` が要求のメールと一致し、ユーザーが有効なときだけ、メール単位のバケツの代わりに信頼済み端末のバケツ
+  (ユーザー単位の `trusted|tenantId|userId`、`RATE_LIMITS.loginFailuresPerTrustedDevice` = 10 回/15 分。Cookie を
+  取り直しても枠は増えない)で数える。IP+メール・IP のみの上限はそのまま掛かる
+- この経路で照合するのは **Cookie のアカウント1件だけ**。同じメールの別テナントのアカウントまで照合すると、自分の
+  テナントで Cookie を得た攻撃者が共有バケツを使わずに他テナントの被害者を総当たりできてしまう。別のテナントへ
+  入るときは tenantId を付ける(Cookie と違うテナントなら通常の経路になる)
+- 封をした Cookie(信頼済み端末・TOTP の tx・OIDC の状態)は同じ Encryptor を使うので、中身に用途の印
+  (`purpose`: `trusted_device` / `totp_tx` / `oidc_tx`)を入れ、読む側で必ず確かめる(値の貼り替えを防ぐ)
 - Cookie の無い相手の挙動は変わらない(実在を漏らさない)。ユーザーが消えた・無効化された Cookie は消して通常の経路に戻す
 - ログアウトしても消さない(締め出しを受けるのはログアウト中)。SSO(OIDC)のログインでは発行しない
 - 指数的なバックオフは入れない(締め出しを長引かせるだけ)

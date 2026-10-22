@@ -66,7 +66,11 @@ const OIDC_TX_COOKIE_NAME = "kizami_oidc_tx";
 /** 認可リクエストの有効期間(秒)。IdP でのログイン操作に必要な時間だけ持たせる。 */
 const OIDC_TX_TTL_SECONDS = 600;
 
+/** 封をした Cookie の用途の印(auth/totp.ts の TOTP_TX_PURPOSE の判断点)。 */
+const OIDC_TX_PURPOSE = "oidc_tx";
+
 interface OidcTransaction {
+  purpose: typeof OIDC_TX_PURPOSE;
   tenantId: string;
   state: string;
   nonce: string;
@@ -239,7 +243,7 @@ export function createOidcRoutes(db: Database, options: OidcRoutesOptions) {
       throw err;
     }
 
-    const tx: OidcTransaction = { tenantId, state, nonce, codeVerifier: pkce.verifier, issuedAt: nowMinutes() };
+    const tx: OidcTransaction = { purpose: OIDC_TX_PURPOSE, tenantId, state, nonce, codeVerifier: pkce.verifier, issuedAt: nowMinutes() };
     setCookie(c, OIDC_TX_COOKIE_NAME, await encryptor.encrypt(JSON.stringify(tx)), {
       httpOnly: true,
       // Lax: IdP からのコールバックはトップレベルの GET 遷移なので Lax で届く。
@@ -283,6 +287,9 @@ export function createOidcRoutes(db: Database, options: OidcRoutesOptions) {
       return failRedirect(c, "sso_state_mismatch");
     }
     if (
+      typeof tx !== "object" ||
+      tx === null ||
+      tx.purpose !== OIDC_TX_PURPOSE ||
       typeof tx.tenantId !== "string" ||
       typeof tx.state !== "string" ||
       typeof tx.nonce !== "string" ||

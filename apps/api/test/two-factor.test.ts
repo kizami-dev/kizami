@@ -324,7 +324,7 @@ describe("POST /auth/login → /auth/login/totp(2段階ログイン)", () => {
   it("平文の tx Cookie は受け付けない(パスワード無しで第2段階に進めない)", async () => {
     const { seeded, app, secret } = await scenario();
     advanceSeconds(TOTP_STEP_SECONDS);
-    const forged = JSON.stringify({ tenantId: seeded.tenantId, userId: seeded.userId, issuedAt: Math.floor(currentMs / 60_000) });
+    const forged = JSON.stringify({ purpose: "totp_tx", tenantId: seeded.tenantId, userId: seeded.userId, issuedAt: Math.floor(currentMs / 60_000) });
     const res = await app.request(
       "/auth/login/totp",
       jsonInit({ code: await generateTotp(secret, nowSeconds()) }, `kizami_totp_tx=${encodeURIComponent(forged)}`),
@@ -338,7 +338,12 @@ describe("POST /auth/login → /auth/login/totp(2段階ログイン)", () => {
     const { seeded, app, secret } = await scenario();
     advanceSeconds(TOTP_STEP_SECONDS);
     const future = await testEncryptor().encrypt(
-      JSON.stringify({ tenantId: seeded.tenantId, userId: seeded.userId, issuedAt: Math.floor(currentMs / 60_000) + 60 * 24 * 365 }),
+      JSON.stringify({
+        purpose: "totp_tx",
+        tenantId: seeded.tenantId,
+        userId: seeded.userId,
+        issuedAt: Math.floor(currentMs / 60_000) + 60 * 24 * 365,
+      }),
     );
     const res = await app.request(
       "/auth/login/totp",
@@ -846,5 +851,55 @@ describe("信頼済み端末の Cookie(2FA 有効時)", () => {
     const ok = await app.request("/auth/login/totp", jsonInit({ code: await generateTotp(secret, nowSeconds()) }, tx));
     expect(ok.status).toBe(200);
     expect(cookieNamed(ok, "kizami_trusted_device")).not.toBeNull();
+  });
+});
+
+describe("封をした Cookie の用途の取り違え(purpose)", () => {
+  it("信頼済み端末の Cookie の値を tx Cookie に貼っても第2段階には進めない", async () => {
+    const seeded = await setupTestDb();
+    const app = createApp({ db: seeded.db, encryptor: testEncryptor() });
+    const cookie = await loginAndGetCookie(app, seeded.email, seeded.password);
+    const { secret } = await enableTotp(app, cookie);
+
+    // 最後までログインして信頼済み端末の Cookie を得る
+    const tx = cookieNamed(await login(app, seeded.email, seeded.password), "kizami_totp_tx") as string;
+    advanceSeconds(TOTP_STEP_SECONDS);
+    const ok = await app.request("/auth/login/totp", jsonInit({ code: await generateTotp(secret, nowSeconds()) }, tx));
+    const trusted = cookieNamed(ok, "kizami_trusted_device") as string;
+    expect(trusted).not.toBeNull();
+
+    // その値(tenantId / userId / issuedAt を持つ)を tx Cookie として送る — パスワード無しで第2段階に進む試み
+    const value = trusted.slice("kizami_trusted_device=".length);
+    advanceSeconds(TOTP_STEP_SECONDS);
+    const res = await app.request(
+      "/auth/login/totp",
+      jsonInit({ code: await generateTotp(secret, nowSeconds()) }, `kizami_totp_tx=${value}`),
+    );
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: "totp_expired" });
+    expect(cookieNamed(res, "kizami_session")).toBeNull();
+  });
+
+  it("tx Cookie の値を信頼済み端末の Cookie に貼っても、共有バケツの締め出しは解けない", async () => {
+    const seeded = await setupTestDb();
+    const app = createApp({ db: seeded.db, encryptor: testEncryptor() });
+    const cookie = await loginAndGetCookie(app, seeded.email, seeded.password);
+    await enableTotp(app, cookie);
+    const tx = cookieNamed(await login(app, seeded.email, seeded.password), "kizami_totp_tx") as string;
+    const value = tx.slice("kizami_totp_tx=".length);
+
+    for (let i = 0; i < 20; i++) {
+      await app.request("/auth/login", {
+        method: "POST",
+        headers: { "content-type": "application/json", "cf-connecting-ip": `198.51.100.${i + 1}` },
+        body: JSON.stringify({ email: seeded.email, password: "wrong-password" }),
+      });
+    }
+    const res = await app.request("/auth/login", {
+      method: "POST",
+      headers: { "content-type": "application/json", "cf-connecting-ip": "192.0.2.50", cookie: `kizami_trusted_device=${value}` },
+      body: JSON.stringify({ email: seeded.email, password: seeded.password }),
+    });
+    expect(res.status).toBe(429);
   });
 });

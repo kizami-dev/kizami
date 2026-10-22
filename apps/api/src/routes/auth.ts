@@ -34,6 +34,7 @@ import {
   isTotpTransaction,
   normalizeTotpCode,
   TOTP_TX_COOKIE_NAME,
+  TOTP_TX_PURPOSE,
   TOTP_TX_TTL_MINUTES,
   TOTP_TX_TTL_SECONDS,
   type TotpTransaction,
@@ -42,6 +43,7 @@ import {
   clearTrustedDeviceCookie,
   readTrustedDevice,
   setTrustedDeviceCookie,
+  TRUSTED_DEVICE_PURPOSE,
   type TrustedDevice,
 } from "../auth/trusted-device.js";
 import { getClientIp } from "../lib/client-ip.js";
@@ -95,7 +97,7 @@ export interface AuthRoutesOptions {
     failuresPerAccount?: FailureLimiter;
     /**
      * 信頼済み端末の Cookie(auth/trusted-device.ts)を持つリクエストの失敗を、共有のメール単位のバケツの
-     * 代わりに数える端末ごとの上限(RATE_LIMITS.loginFailuresPerTrustedDevice)。無ければ信頼済み端末の経路は使わない。
+     * 代わりに数える信頼済み端末の上限(ユーザー単位、RATE_LIMITS.loginFailuresPerTrustedDevice)。無ければ信頼済み端末の経路は使わない。
      */
     failuresPerTrustedDevice?: FailureLimiter;
     /** ログイン第2段階の失敗を tx(Cookie)単位で数える。上限に達した tx は無効(RATE_LIMITS.totpFailuresPerTx)。 */
@@ -165,7 +167,7 @@ export function createAuthRoutes(db: Database, options: AuthRoutesOptions) {
     // アカウントの実在を問わず同じキー・同じ応答にする(実在の判定材料にしない)。
     //
     // 締め出しの緩和(信頼済み端末、auth/trusted-device.ts): 以前このメールで最後までログインできた端末の
-    // 封をした Cookie を持つリクエストは、共有バケツではなく端末ごとのバケツで数える。攻撃者が共有バケツを
+    // 封をした Cookie を持つリクエストは、共有バケツではなく信頼済み端末のバケツ(ユーザー単位)で数える。攻撃者が共有バケツを
     // 埋めても、本人はいつもの端末から入れる。Cookie の無い相手の挙動は変わらない(実在を漏らさない)。
     const emailLower = email.toLowerCase();
     let accountReservation: FailureReservation | undefined;
@@ -184,7 +186,8 @@ export function createAuthRoutes(db: Database, options: AuthRoutesOptions) {
       }
     }
     if (trusted && trustedLimiter) {
-      accountReservation = trustedLimiter.reserve(`trusted|${trusted.tenantId}|${trusted.userId}|${trusted.issuedAt}`);
+      // ユーザー単位のキー(Cookie を取り直しても枠は増えない)。
+      accountReservation = trustedLimiter.reserve(`trusted|${trusted.tenantId}|${trusted.userId}`);
     } else {
       accountReservation = options.rateLimit?.failuresPerAccount?.reserve(emailLower);
     }
@@ -197,9 +200,18 @@ export function createAuthRoutes(db: Database, options: AuthRoutesOptions) {
     // LIMIT 1 で最初の1行を拾っており、複数テナント同居時にどこへログインするかが
     // 行の並び順まかせ(未定義)だった(2026-08-23 修正)。email に一致する全アカウントを
     // 照合し、パスワード一致が複数あればテナント選択を求める(409 multiple_tenants)。
-    const userRows = tenantId
-      ? await db.select().from(users).where(and(eq(users.email, email), eq(users.tenantId, tenantId)))
-      : await db.select().from(users).where(eq(users.email, email));
+    //
+    // 信頼済み端末の経路では、照合先を Cookie のアカウント1件に絞る。共有バケツを使わない以上、
+    // 同じメールの別テナントのアカウントまで照合すると、自分のテナントの Cookie で他テナントの被害者を
+    // 総当たりできてしまう。別テナントに入りたい場合は tenantId を付ければ通常の経路になる(上の判定)。
+    const userRows = trusted
+      ? await db
+          .select()
+          .from(users)
+          .where(and(eq(users.email, email), eq(users.tenantId, trusted.tenantId), eq(users.id, trusted.userId)))
+      : tenantId
+        ? await db.select().from(users).where(and(eq(users.email, email), eq(users.tenantId, tenantId)))
+        : await db.select().from(users).where(eq(users.email, email));
     const candidates = userRows.filter((u) => u.isActive);
 
     // 候補それぞれのパスワードを検証する(早期打ち切りせず全件)。候補0件でも必ず1回
@@ -265,7 +277,12 @@ export function createAuthRoutes(db: Database, options: AuthRoutesOptions) {
         console.error(`login: user ${activeUser.id} has 2FA enabled but no encryption key is configured`);
         return c.json({ error: "encryption_unavailable" }, 503);
       }
-      const tx: TotpTransaction = { tenantId: activeUser.tenantId, userId: activeUser.id, issuedAt: nowMinutes() };
+      const tx: TotpTransaction = {
+        purpose: TOTP_TX_PURPOSE,
+        tenantId: activeUser.tenantId,
+        userId: activeUser.id,
+        issuedAt: nowMinutes(),
+      };
       setCookie(c, TOTP_TX_COOKIE_NAME, await encryptor.encrypt(JSON.stringify(tx)), {
         httpOnly: true,
         sameSite: "Lax",
@@ -289,7 +306,11 @@ export function createAuthRoutes(db: Database, options: AuthRoutesOptions) {
       await setTrustedDeviceCookie(
         c,
         options.encryptor,
-        { tenantId: activeUser.tenantId, userId: activeUser.id, emailLower: activeUser.email.toLowerCase(), issuedAt: nowMinutes() },
+        {
+          purpose: TRUSTED_DEVICE_PURPOSE,
+          tenantId: activeUser.tenantId,
+          userId: activeUser.id,
+          emailLower: activeUser.email.toLowerCase(), issuedAt: nowMinutes() },
         { secure: options.secureCookies },
       );
     }
@@ -456,7 +477,13 @@ export function createAuthRoutes(db: Database, options: AuthRoutesOptions) {
     await setTrustedDeviceCookie(
       c,
       encryptor,
-      { tenantId: tx.tenantId, userId: tx.userId, emailLower: user.email.toLowerCase(), issuedAt: now },
+      {
+        purpose: TRUSTED_DEVICE_PURPOSE,
+        tenantId: tx.tenantId,
+        userId: tx.userId,
+        emailLower: user.email.toLowerCase(),
+        issuedAt: now,
+      },
       { secure: options.secureCookies },
     );
 
