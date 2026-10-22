@@ -376,15 +376,18 @@ describe("OIDC SSO ログイン", () => {
   });
 
   describe("GET /auth/oidc/available", () => {
-    it("SSO が有効なテナントに在籍していればそのテナントを返す", async () => {
+    it("SSO が有効なテナントに在籍していれば available: true だけを返す(社名も tenantId も出さない)", async () => {
       const { seeded, app } = await scenario();
       const res = await app.request(`/auth/oidc/available?email=${encodeURIComponent(seeded.email)}`);
       expect(res.status).toBe(200);
-      const body = (await res.json()) as { tenants: { id: string; name: string | null; ssoEnabled: boolean }[] };
-      expect(body.tenants).toEqual([{ id: seeded.tenantId, name: "Test Tenant", ssoEnabled: true }]);
+      const body = await res.json();
+      expect(body).toEqual({ available: true });
+      // 未認証の相手に在籍先の会社を教えない(セキュリティレビュー Low)
+      expect(JSON.stringify(body)).not.toContain("Test Tenant");
+      expect(JSON.stringify(body)).not.toContain(seeded.tenantId);
     });
 
-    it("SSO が無効なテナントは一切載せない(在籍の有無を漏らさない)", async () => {
+    it("SSO が無効なテナントは数えない(在籍の有無を漏らさない)", async () => {
       const seeded = await setupTestDb();
       const issuer = nextIssuer();
       const idp = await createMockIdp({ issuer, clientId: CLIENT_ID, clientSecret: CLIENT_SECRET, email: seeded.email });
@@ -393,19 +396,69 @@ describe("OIDC SSO ログイン", () => {
 
       const res = await app.request(`/auth/oidc/available?email=${encodeURIComponent(seeded.email)}`);
       expect(res.status).toBe(200);
-      expect(await res.json()).toEqual({ tenants: [] });
+      expect(await res.json()).toEqual({ available: false });
     });
 
-    it("存在しないメールアドレスでも 200 と空配列を返す(該当なしと同じ応答)", async () => {
+    it("存在しないメールアドレスでも 200 と available: false を返す(該当なしと同じ応答)", async () => {
       const { app } = await scenario();
       const res = await app.request(`/auth/oidc/available?email=${encodeURIComponent("nobody@example.com")}`);
       expect(res.status).toBe(200);
-      expect(await res.json()).toEqual({ tenants: [] });
+      expect(await res.json()).toEqual({ available: false });
     });
 
     it("email が無ければ 400", async () => {
       const { app } = await scenario();
       const res = await app.request("/auth/oidc/available");
+      expect(res.status).toBe(400);
+    });
+  });
+
+  describe("POST /auth/oidc/start に email を渡す(ログイン画面の SSO ボタン)", () => {
+    function startByEmail(app: RequestLike, email: string) {
+      return Promise.resolve(
+        app.request("/auth/oidc/start", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ email }),
+        }),
+      );
+    }
+
+    it("在籍する SSO テナントをサーバー側で決めて認可 URL を返す(大文字小文字は問わない)", async () => {
+      const { seeded, app } = await scenario();
+      const res = await startByEmail(app, seeded.email.toUpperCase());
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { redirectUrl: string };
+      expect(new URL(body.redirectUrl).searchParams.get("client_id")).toBe(CLIENT_ID);
+    });
+
+    it("SSO の使える在籍先が無ければ 400 sso_not_enabled", async () => {
+      const { app } = await scenario();
+      const res = await startByEmail(app, "nobody@example.com");
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error: "sso_not_enabled" });
+    });
+
+    it("SSO の使える在籍先が複数あれば推測で選ばず 409 sso_multiple_tenants(社名は出さない)", async () => {
+      const { seeded, app } = await scenario();
+      const otherTenantId = uuidv7();
+      await seeded.db.insert(tenants).values({ id: otherTenantId, name: "Other Tenant", createdAt: 0 });
+      const otherUserId = uuidv7();
+      await seeded.db.insert(users).values({ id: otherUserId, tenantId: otherTenantId, email: seeded.email, name: "Other", isActive: true, createdAt: 0 });
+      await configureSso(seeded.db, { tenantId: otherTenantId, userId: otherUserId, issuer: nextIssuer(), enabled: true });
+
+      const res = await startByEmail(app, seeded.email);
+      expect(res.status).toBe(409);
+      expect(await res.json()).toEqual({ error: "sso_multiple_tenants" });
+    });
+
+    it("email と tenantId を両方渡すと 400(曖昧な挙動を作らない)", async () => {
+      const { seeded, app } = await scenario();
+      const res = await app.request("/auth/oidc/start", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: seeded.email, tenantId: seeded.tenantId }),
+      });
       expect(res.status).toBe(400);
     });
   });

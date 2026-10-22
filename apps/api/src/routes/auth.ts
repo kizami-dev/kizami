@@ -13,6 +13,7 @@ import {
   claimUserTotpCounter,
   consumeRecoveryCode,
   getTenantById,
+  getTenantOidcSettings,
   getUserById,
   getUserTotp,
   insertAuditLog,
@@ -249,11 +250,14 @@ export function createAuthRoutes(db: Database, options: AuthRoutesOptions) {
     }
     if (usable.length > 1) {
       // パスワード検証を通過した相手にだけテナントの一覧(id と社名)を開示する。
-      // 未認証の相手にテナント名が漏れることはない。
+      // 未認証の相手にテナント名が漏れることはない。`ssoEnabled` は選択画面で会社ごとに SSO を
+      // 選べるようにするため(2026-10-22 から GET /auth/oidc/available は社名も id も返さないので、ここで渡す)。
       const tenants = await Promise.all(
         usable.map(async (m) => {
           const tenant = await getTenantById(db, m.tenantId);
-          return { id: m.tenantId, name: tenant?.name ?? null };
+          const oidc = await getTenantOidcSettings(db, m.tenantId);
+          const ssoEnabled = Boolean(oidc?.enabled && oidc.issuer && oidc.clientId && oidc.clientSecret);
+          return { id: m.tenantId, name: tenant?.name ?? null, ssoEnabled };
         }),
       );
       return c.json({ error: "multiple_tenants", tenants }, 409);

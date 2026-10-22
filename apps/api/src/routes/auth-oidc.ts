@@ -36,7 +36,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import type { Context } from "hono";
-import { getTenantById, getTenantOidcSettings, insertAuditLog, users, type Database } from "@kizami/db";
+import { getTenantOidcSettings, insertAuditLog, users, type Database } from "@kizami/db";
 import { createSession, setSessionCookie } from "../auth/session.js";
 import { decryptSealed, decryptSecret, type Encryptor } from "../lib/encryption.js";
 import {
@@ -160,42 +160,40 @@ export function createOidcRoutes(db: Database, options: OidcRoutesOptions) {
     };
   }
 
+  /**
+   * そのメールアドレスの(有効な)ユーザーが在籍し、SSO が使える状態のテナントの ID 一覧。
+   * /available と、メールアドレスを渡された /start が使う。
+   */
+  async function ssoTenantIdsForEmail(email: string): Promise<string[]> {
+    const rows = await db
+      .select()
+      .from(users)
+      .where(sql`lower(${users.email}) = ${normalizeEmail(email)}`);
+    const tenantIds = [...new Set(rows.filter((u) => u.isActive).map((u) => u.tenantId))];
+    const result: string[] = [];
+    for (const tenantId of tenantIds) {
+      if ((await loadUsableConfig(tenantId)).ok) result.push(tenantId);
+    }
+    return result;
+  }
+
   // ---- GET /auth/oidc/available?email= --------------------------------------
   //
-  // ログイン画面が「SSO でログイン」ボタンを出すかどうかを決めるための照会。
+  // ログイン画面が「SSO でログイン」ボタンを出すかどうかを決めるための照会。応答は `{ available: boolean }` だけ。
   //
-  // 情報開示の判断点(完了報告・設計文書にも記載): この経路は未認証で叩けるため、
-  // 素朴に実装すると「そのメールアドレスがどの会社に存在するか」を漏らす。既存の
-  // パスワードログインは、テナント名の開示をパスワード検証の通過後に限っている
-  // (routes/auth.ts の multiple_tenants)。ここでは開示範囲を次の2点で絞る:
-  //   1. **SSO が有効なテナントしか返さない**。SSO を使っていない会社の存在は一切漏れない
-  //      (= 既存のパスワードログインの開示面を広げない)。
-  //   2. 「該当なし」と「メールアドレス自体が存在しない」を区別しない(どちらも空配列・200)。
-  // そのうえで IP レート制限(20回/15分、app.ts)を掛け、総当たりでの名簿作成を割に合わなくする。
-  // 完全な秘匿は SSO ボタンの出し分けという要件と両立しないため、この線で妥協している。
+  // 情報開示の判断点(2026-10-22、セキュリティレビュー Low で見直し。docs/design/sso-oidc.md §5):
+  // 以前は該当テナントの id と**社名**の一覧を返しており、未認証の相手に「この人はどの会社に居るか」を
+  // 教えていた(パスワードログインが社名を出すのはパスワード検証の通過後だけ — routes/auth.ts の
+  // multiple_tenants — なのに、こちらでは素通しだった)。いまは「SSO でログインできるか」の真偽だけを返し、
+  // どの会社かは一切出さない。開始は POST /start に同じメールアドレスを渡し、サーバー側でテナントを決める。
+  // 真偽そのもの(この人は SSO が使えるどこかに居る)は、メールを先に打つ SSO の画面では消せないので残る。
+  // 「該当なし」と「メールアドレス自体が存在しない」は区別しない。IP レート制限(20回/15分、app.ts)も従来どおり。
   app.get("/available", async (c) => {
     const email = c.req.query("email");
     if (typeof email !== "string" || email.trim() === "") {
       return c.json({ error: "invalid_query" }, 400);
     }
-
-    const rows = await db
-      .select()
-      .from(users)
-      .where(sql`lower(${users.email}) = ${normalizeEmail(email)}`);
-
-    const tenantIds = [...new Set(rows.filter((u) => u.isActive).map((u) => u.tenantId))];
-    const result: { id: string; name: string | null; ssoEnabled: true }[] = [];
-    for (const tenantId of tenantIds) {
-      const config = await loadUsableConfig(tenantId);
-      if (!config.ok) continue;
-      const tenant = await getTenantById(db, tenantId);
-      result.push({ id: tenantId, name: tenant?.name ?? null, ssoEnabled: true });
-    }
-
-    // `ssoEnabled` は常に true になる(上のとおり有効なテナントしか載せない)。
-    // レスポンス形状を将来変えずに済ませるためフィールド自体は残してある。
-    return c.json({ tenants: result });
+    return c.json({ available: (await ssoTenantIdsForEmail(email)).length > 0 });
   });
 
   // ---- POST /auth/oidc/start ------------------------------------------------
@@ -207,8 +205,23 @@ export function createOidcRoutes(db: Database, options: OidcRoutesOptions) {
       return c.json({ error: "invalid_body" }, 400);
     }
     if (typeof body !== "object" || body === null) return c.json({ error: "invalid_body" }, 400);
-    const { tenantId } = body as { tenantId?: unknown };
-    if (typeof tenantId !== "string" || tenantId === "") return c.json({ error: "invalid_body" }, 400);
+    // `email`(ログイン画面の SSO ボタン)か `tenantId`(パスワード検証後のテナント選択画面。社名は
+    // その時点で本人に開示済み)のどちらか一方。email のときはサーバー側で在籍テナントを決め、
+    // どの会社かは応答に出さない(GET /available の判断点)。
+    const { tenantId: requestedTenantId, email } = body as { tenantId?: unknown; email?: unknown };
+    let tenantId: string;
+    if (typeof requestedTenantId === "string" && requestedTenantId !== "" && email === undefined) {
+      tenantId = requestedTenantId;
+    } else if (typeof email === "string" && email.trim() !== "" && requestedTenantId === undefined) {
+      const candidates = await ssoTenantIdsForEmail(email);
+      if (candidates.length === 0) return c.json({ error: "sso_not_enabled" }, 400);
+      // 同じメールで SSO の使える会社が複数ある(顧問社労士等)。どれかを推測で選ばず、パスワードで
+      // ログインしてテナント選択画面から選んでもらう(そこでは会社ごとに SSO を選べる)。
+      if (candidates.length > 1) return c.json({ error: "sso_multiple_tenants" }, 409);
+      tenantId = candidates[0] as string;
+    } else {
+      return c.json({ error: "invalid_body" }, 400);
+    }
 
     const encryptor = options.encryptor;
     if (!encryptor) {

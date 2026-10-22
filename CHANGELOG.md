@@ -91,6 +91,10 @@ API・DB スキーマの互換方針とアップグレード手順は
   招待受諾・パスワード再設定の使用に、リクエストの Host(と X-Forwarded-Host・CORS を許したオリジン)と一致しない Origin・
   `Sec-Fetch-Site: cross-site` を 403、JSON 以外を 415 で弾くガードを掛ける。**API を Host を書き換えるプロキシの
   後ろで別ホスト名から公開している配備は `APP_BASE_URL` を設定すること**
+- **SSO の照会(`GET /auth/oidc/available`)が、未認証の相手にメールアドレスの在籍先の社名を返していた問題を修正**。
+  応答を `{ available: boolean }` だけにし、ログイン画面の SSO ボタンは `POST /auth/oidc/start { email }` で在籍先を
+  サーバー側で決める。SSO の使える在籍先が複数ある人は 409 `sso_multiple_tenants` になり、パスワードでログインした後の
+  会社選択画面(`multiple_tenants` の各行に `ssoEnabled` を追加)から SSO を選ぶ。**API の応答形が変わる**(Web は同梱で対応済み)
 - **公開デモ(demo.kizami.dev)に SSRF 対策を入れた**。認証情報が公開の管理者が、テナントの SMTP ホストや Webhook URL を
   内部アドレスに向け、テスト送信のエラーでクラスタ内をポートスキャンできた。api / worker に `OUTBOUND_BLOCK_PRIVATE=true` とノードのグローバル IP を拒否する `OUTBOUND_DENY_CIDRS` を
   設定し、NetworkPolicy で Pod の出口を DNS と公開インターネットだけに絞った。あわせてデモの `KIZAMI_ENCRYPTION_KEY` が
