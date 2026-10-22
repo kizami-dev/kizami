@@ -95,6 +95,11 @@ API・DB スキーマの互換方針とアップグレード手順は
   応答を `{ available: boolean }` だけにし、ログイン画面の SSO ボタンは `POST /auth/oidc/start { email }` で在籍先を
   サーバー側で決める。SSO の使える在籍先が複数ある人は 409 `sso_multiple_tenants` になり、パスワードでログインした後の
   会社選択画面(`multiple_tenants` の各行に `ssoEnabled` を追加)から SSO を選ぶ。**API の応答形が変わる**(Web は同梱で対応済み)
+- **Slack 連携で、他のテナントがワークスペース ID(team_id)を先に入力して持ち主の連携を妨げられた問題を修正**。
+  入力しただけの team_id は「未確認」で何社が入れても衝突せず、そのワークスペースからの署名付き `/punch` を
+  そのテナントの Signing Secret で検証できた時点で確認済みにし、以後はそのテナントだけが使う
+  (マイグレーション: `tenant_slack_settings.team_id_verified_at` を追加し、team_id の UNIQUE を確認済みの行だけの部分 UNIQUE に変更。
+  既存の連携は次の `/punch` で自動的に確認済みになる)。`GET /settings/slack` に `teamIdVerified` を追加
 - **公開デモ(demo.kizami.dev)に SSRF 対策を入れた**。認証情報が公開の管理者が、テナントの SMTP ホストや Webhook URL を
   内部アドレスに向け、テスト送信のエラーでクラスタ内をポートスキャンできた。api / worker に `OUTBOUND_BLOCK_PRIVATE=true` とノードのグローバル IP を拒否する `OUTBOUND_DENY_CIDRS` を
   設定し、NetworkPolicy で Pod の出口を DNS と公開インターネットだけに絞った。あわせてデモの `KIZAMI_ENCRYPTION_KEY` が

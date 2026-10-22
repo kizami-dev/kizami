@@ -10,7 +10,9 @@
  *   (Hono の `c.req.parseBody()` は既にデコード済みの値を返すため、生ボディの再構築が必要になり
  *   URLエンコードの正規化差異で署名が合わなくなるリスクがある。生文字列をそのまま署名検証に使う)
  * - テナントの特定は `team_id`(Slack ワークスペースID)から `tenant_slack_settings` を逆引きする
- *   唯一の経路(「1テナント=1ワークスペース」前提。依頼どおり複数テナント共有は想定しない)
+ *   唯一の経路(「1テナント=1ワークスペース」前提。依頼どおり複数テナント共有は想定しない)。
+ *   管理画面で入力しただけの team_id は「未確認」で、そのワークスペースからの署名付きリクエストを
+ *   そのテナントの Signing Secret で検証できたときに確認済みにする(先取り対策。packages/db/src/schema/slack.ts)
  * - 打刻の実装は routes/punches.ts の POST ハンドラを**HTTPで叩き直さず**、同じ下位関数
  *   (resolveAttendanceDate・assertMonthOpen・insertPunchEvent)を直接呼ぶ
  * - 応答は必ず `response_type: "ephemeral"`。打刻の事実が他のメンバーに流れないようにするため
@@ -32,11 +34,12 @@
 import { Hono } from "hono";
 import {
   getSlackUserLinkBySlackUserId,
-  getTenantSlackSettingsByTeamId,
+  findTenantSlackSettingsByTeamId,
   getUserById,
   insertPunchEvent,
   insertSlackLinkToken,
   listValidPunches,
+  markTenantSlackTeamVerified,
   uuidv7,
   type Database,
 } from "@kizami/db";
@@ -165,21 +168,43 @@ export function createSlackRoutes(db: Database, deps: SlackRoutesDeps = {}) {
       return c.json(ephemeral("リクエストの形式が不正です。"), 400);
     }
 
-    const settings = await getTenantSlackSettingsByTeamId(db, teamId);
-    if (!settings || !settings.enabled) {
-      // 未設定/無効化されたテナントの区別はしない(存在有無を漏らさないため同一メッセージ)。
-      return c.json(ephemeral("このワークスペースではSlack打刻が設定されていません。管理者に設定を依頼してください。"));
-    }
+    const candidates = await findTenantSlackSettingsByTeamId(db, teamId);
+    const verifyWith = async (row: { signingSecret: string | null }): Promise<boolean> =>
+      verifySlackSignature({
+        signingSecret: row.signingSecret ? await decryptSecret(deps.encryptor, row.signingSecret) : null,
+        signatureHeader: c.req.header("x-slack-signature") ?? null,
+        timestampHeader: c.req.header("x-slack-request-timestamp") ?? null,
+        rawBody,
+      });
 
-    const signingSecretPlain = settings.signingSecret ? await decryptSecret(deps.encryptor, settings.signingSecret) : null;
-    const verified = await verifySlackSignature({
-      signingSecret: signingSecretPlain,
-      signatureHeader: c.req.header("x-slack-signature") ?? null,
-      timestampHeader: c.req.header("x-slack-request-timestamp") ?? null,
-      rawBody,
-    });
-    if (!verified) {
-      return c.json({ error: "invalid_signature" }, 401);
+    let settings: NonNullable<typeof candidates.verified>;
+    if (candidates.verified) {
+      if (!candidates.verified.enabled) {
+        // 未設定/無効化されたテナントの区別はしない(存在有無を漏らさないため同一メッセージ)。
+        return c.json(ephemeral("このワークスペースではSlack打刻が設定されていません。管理者に設定を依頼してください。"));
+      }
+      if (!(await verifyWith(candidates.verified))) return c.json({ error: "invalid_signature" }, 401);
+      settings = candidates.verified;
+    } else {
+      // まだ誰もこの team_id を確認していない。同じ team_id を入力した(有効な)テナントのうち、
+      // Signing Secret でこのリクエストの署名を検証できた行が本物の持ち主(先取り対策、2026-10-22)。
+      // 入力しただけの他テナントの行は、そのワークスペースから正しく署名されたリクエストを作れないので選ばれない。
+      if (candidates.pending.length === 0) {
+        return c.json(ephemeral("このワークスペースではSlack打刻が設定されていません。管理者に設定を依頼してください。"));
+      }
+      let matched: (typeof candidates.pending)[number] | null = null;
+      for (const row of candidates.pending) {
+        if (await verifyWith(row)) {
+          matched = row;
+          break;
+        }
+      }
+      if (!matched) return c.json({ error: "invalid_signature" }, 401);
+      // 同時に別の行が確認済みになっていたら(部分 UNIQUE で false)、そちらを正としてこの要求は断る。
+      if (!(await markTenantSlackTeamVerified(db, { tenantId: matched.tenantId, teamId, verifiedAt: nowMinutes() }))) {
+        return c.json({ error: "invalid_signature" }, 401);
+      }
+      settings = matched;
     }
 
     const tenantId = settings.tenantId;

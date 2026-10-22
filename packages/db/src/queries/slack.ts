@@ -13,6 +13,7 @@ import { and, eq, gt, isNull, or } from "drizzle-orm";
 import { AtomicPlan, runAtomic } from "../atomic.js";
 import type { Database } from "../types.js";
 import { slackLinkTokens, slackUserLinks, tenantSlackSettings } from "../schema/index.js";
+import { isUniqueConstraintError } from "../errors.js";
 import { uuidv7 } from "../uuid.js";
 
 export type TenantSlackSettings = typeof tenantSlackSettings.$inferSelect;
@@ -26,15 +27,54 @@ export async function getTenantSlackSettings(db: Database, tenantId: string): Pr
 /**
  * Slack ワークスペースID(team_id)からテナントのSlack連携設定を逆引きする。
  * POST /slack/commands がテナントを特定する唯一の経路(「1テナント=1ワークスペース」前提)。
+ *
+ * - `verified`: その team_id を確認済みの行(部分 UNIQUE により高々1行)。あればそれだけを使う
+ * - `pending`: 確認済みの行が無いときの、有効(enabled)かつ未確認の候補。呼び出し側が Signing Secret で
+ *   署名を検証できた行を `markTenantSlackTeamVerified` で確認済みにする(schema/slack.ts 冒頭の判断点)
  */
-export async function getTenantSlackSettingsByTeamId(db: Database, teamId: string): Promise<TenantSlackSettings | null> {
-  const rows = await db.select().from(tenantSlackSettings).where(eq(tenantSlackSettings.teamId, teamId)).limit(1);
-  return rows[0] ?? null;
+export async function findTenantSlackSettingsByTeamId(
+  db: Database,
+  teamId: string,
+): Promise<{ verified: TenantSlackSettings | null; pending: TenantSlackSettings[] }> {
+  const rows = await db.select().from(tenantSlackSettings).where(eq(tenantSlackSettings.teamId, teamId));
+  const verified = rows.find((row) => row.teamIdVerifiedAt !== null) ?? null;
+  if (verified) return { verified, pending: [] };
+  return { verified: null, pending: rows.filter((row) => row.enabled) };
+}
+
+/**
+ * 未確認の team_id を確認済みにする。同じ team_id が既に他の行で確認済みなら(部分 UNIQUE 違反)、
+ * またはこの行の team_id が書き換わっていれば false。同じ team_id の確認が同時に2つ走っても、
+ * 部分 UNIQUE が片方だけを通す(SQLite / PostgreSQL / D1 のどれでも)。
+ */
+export async function markTenantSlackTeamVerified(
+  db: Database,
+  params: { tenantId: string; teamId: string; verifiedAt: number },
+): Promise<boolean> {
+  try {
+    const updated = await db
+      .update(tenantSlackSettings)
+      .set({ teamIdVerifiedAt: params.verifiedAt })
+      .where(
+        and(
+          eq(tenantSlackSettings.tenantId, params.tenantId),
+          eq(tenantSlackSettings.teamId, params.teamId),
+          isNull(tenantSlackSettings.teamIdVerifiedAt),
+        ),
+      )
+      .returning({ tenantId: tenantSlackSettings.tenantId });
+    return updated.length > 0;
+  } catch (err) {
+    if (isUniqueConstraintError(err)) return false;
+    throw err;
+  }
 }
 
 export interface UpsertTenantSlackSettingsInput {
   tenantId: string;
   teamId: string | null;
+  /** team_id の確認時刻。team_id を変えたときは null(未確認)を渡す。省略 = null */
+  teamIdVerifiedAt?: number | null;
   signingSecret: string | null;
   enabled: boolean;
   updatedAt: number;
@@ -49,6 +89,7 @@ export async function upsertTenantSlackSettings(
   const values = {
     tenantId: input.tenantId,
     teamId: input.teamId,
+    teamIdVerifiedAt: input.teamId === null ? null : (input.teamIdVerifiedAt ?? null),
     signingSecret: input.signingSecret,
     enabled: input.enabled,
     updatedAt: input.updatedAt,

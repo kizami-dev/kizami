@@ -1152,6 +1152,7 @@ export const zhHant = {
     teamIdLabel: "Slack 工作區ID(Team ID)",
     teamIdPlaceholder: "T0123456",
     teamIdHint: "可在Slack的「Basic Information」頁面等處檢視。每個租用戶只能設定一個工作區。",
+    teamIdUnverifiedHint: "此工作區尚未驗證。在 Slack 中執行一次 /punch,即會以 Signing Secret 完成驗證並開始使用。",
 
     signingSecretLabel: "Signing Secret",
     signingSecretConfigured: "已設定",

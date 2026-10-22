@@ -5,14 +5,22 @@
  *   他の秘密情報(tenant_notification_settings.webhookUrl 等)と同じ "enc:v1:..." 形式で
  *   暗号化して保存する(apps/api/src/lib/encryption.ts)。DB 層は暗号文/平文を区別しない。
  * - `team_id`(Slack ワークスペースID)は「1テナント=1ワークスペース」の前提
- *   (依頼どおり、複数テナントが同じワークスペースを使うことは想定しない)で UNIQUE にする。
- *   POST /slack/commands はこのカラムから逆引きしてテナントを特定する。
+ *   (依頼どおり、複数テナントが同じワークスペースを使うことは想定しない)。POST /slack/commands は
+ *   このカラムから逆引きしてテナントを特定する。
+ *   **UNIQUE は「確認済み」(`team_id_verified_at` あり)の行にだけ掛ける**(2026-10-22、セキュリティレビュー Low)。
+ *   以前は入力しただけの team_id に UNIQUE を掛けていたため、別のテナントが他社のワークスペース ID を先に
+ *   入力すると、本来の持ち主が連携を保存できなかった(先取り)。いまは入力しただけの team_id は「未確認」で、
+ *   何社が同じ値を入れても衝突しない。そのワークスペースから届いた Slack の署名付きリクエストが
+ *   そのテナントの Signing Secret で検証できた時点で初めて確認済みになり、以後はそのテナントだけが使う
+ *   (Signing Secret を持つ = そのワークスペースに入れた Slack アプリの持ち主、という証明。
+ *   team_id はリクエスト本文の一部として Slack が署名するので、他のワークスペースからは偽れない)。
  * - `slack_user_links`: Slackユーザーとkizamiユーザーの明示連携(ワンタイムトークン経由)。
  *   1人のkizamiユーザーが複数のSlackアカウントを紐付けないよう UNIQUE(tenant_id, user_id) も張る。
  * - `slack_link_tokens`: `/punch link` が発行するワンタイムトークン。api_keys と同じ方式
  *   (クライアントには平文のみ渡し、DBにはSHA-256(hex)のみ保存する)。短命(15分)。
  */
 
+import { sql } from "drizzle-orm";
 import { index, integer, primaryKey, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 import { tenants } from "./tenants.js";
 import { users } from "./users.js";
@@ -23,8 +31,13 @@ export const tenantSlackSettings = sqliteTable(
     tenantId: text("tenant_id")
       .primaryKey()
       .references(() => tenants.id),
-    /** Slack ワークスペースID(例 "T0123456")。1テナント=1ワークスペース前提でUNIQUE。未設定はnull */
+    /** Slack ワークスペースID(例 "T0123456")。確認済みの行の中でだけ UNIQUE(冒頭コメント)。未設定はnull */
     teamId: text("team_id"),
+    /**
+     * team_id を確認した時刻(UTC エポック分)。そのワークスペースからの署名付きリクエストを、この行の
+     * Signing Secret で検証できたときに立てる。null = 未確認(team_id を入力しただけ)。team_id を変えると null に戻る
+     */
+    teamIdVerifiedAt: integer("team_id_verified_at"),
     /** Signing Secret。"enc:v1:..." で暗号化して保存(apps/api/src/lib/encryption.ts)。未設定はnull */
     signingSecret: text("signing_secret"),
     enabled: integer("enabled", { mode: "boolean" }).notNull().default(false),
@@ -34,7 +47,12 @@ export const tenantSlackSettings = sqliteTable(
       .notNull()
       .references(() => users.id),
   },
-  (table) => [uniqueIndex("tenant_slack_settings_team_id_idx").on(table.teamId)],
+  (table) => [
+    index("tenant_slack_settings_team_id_idx").on(table.teamId),
+    uniqueIndex("tenant_slack_settings_verified_team_id_idx")
+      .on(table.teamId)
+      .where(sql`${table.teamIdVerifiedAt} is not null`),
+  ],
 );
 
 /** Slackユーザー(slack_user_id)とkizamiユーザーの明示連携。 */

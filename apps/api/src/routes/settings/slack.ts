@@ -28,6 +28,9 @@ export function registerSlackRoutes(app: Hono<AppEnv>, db: Database, deps: Setti
     const settings = await getTenantSlackSettings(db, user.tenantId);
     return c.json({
       teamId: settings?.teamId ?? null,
+      // team_id の持ち主の確認が済んだか(そのワークスペースから署名付きのコマンドが1回届けば true になる。
+      // 2026-10-22、先取り対策。packages/db/src/schema/slack.ts)
+      teamIdVerified: settings?.teamIdVerifiedAt != null,
       enabled: settings?.enabled ?? false,
       signingSecretSet: settings?.signingSecret !== null && settings?.signingSecret !== undefined,
       updatedAt: settings?.updatedAt ?? null,
@@ -74,6 +77,8 @@ export function registerSlackRoutes(app: Hono<AppEnv>, db: Database, deps: Setti
     const updated = await upsertTenantSlackSettings(db, {
       tenantId: user.tenantId,
       teamId,
+      // team_id を変えなければ確認済みのまま(Signing Secret の入れ替えでは外さない)。変えたら未確認に戻す。
+      teamIdVerifiedAt: existing && existing.teamId === teamId ? existing.teamIdVerifiedAt : null,
       signingSecret: signingSecretToStore,
       enabled: body.enabled,
       updatedAt: now,
@@ -93,6 +98,7 @@ export function registerSlackRoutes(app: Hono<AppEnv>, db: Database, deps: Setti
 
     return c.json({
       teamId: updated.teamId,
+      teamIdVerified: updated.teamIdVerifiedAt != null,
       enabled: updated.enabled,
       signingSecretSet: updated.signingSecret !== null,
       updatedAt: updated.updatedAt,

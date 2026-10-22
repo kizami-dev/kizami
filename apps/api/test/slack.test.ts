@@ -5,7 +5,7 @@
 
 import { and, eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { punchEvents, upsertTenantSlackSettings, type Database } from "@kizami/db";
+import { punchEvents, tenants, upsertTenantSlackSettings, users, uuidv7, type Database } from "@kizami/db";
 import { createApp } from "../src/app.js";
 import { grantPermission, loginAndGetCookie, setupTestDb, testEncryptor } from "./support/setup.js";
 
@@ -128,7 +128,7 @@ describe("Slack slash command punching", () => {
 
       const res = await app.request("/settings/slack", { headers: { cookie } });
       expect(res.status).toBe(200);
-      expect(await res.json()).toEqual({ teamId: null, enabled: false, signingSecretSet: false, updatedAt: null, updatedBy: null });
+      expect(await res.json()).toEqual({ teamId: null, teamIdVerified: false, enabled: false, signingSecretSet: false, updatedAt: null, updatedBy: null });
     });
 
     it("PUT rejects enabling without both teamId and signingSecret set", async () => {
@@ -174,12 +174,13 @@ describe("Slack slash command punching", () => {
       });
       expect(putRes.status).toBe(200);
       const putBody = (await putRes.json()) as Record<string, unknown>;
-      expect(putBody).toEqual({ teamId: "T12345", enabled: true, signingSecretSet: true, updatedAt: expect.any(Number), updatedBy: userId });
+      expect(putBody).toEqual({ teamId: "T12345", teamIdVerified: false, enabled: true, signingSecretSet: true, updatedAt: expect.any(Number), updatedBy: userId });
       expect(JSON.stringify(putBody)).not.toContain("shhh-secret");
 
       const getRes = await app.request("/settings/slack", { headers: { cookie } });
       expect(await getRes.json()).toEqual({
         teamId: "T12345",
+        teamIdVerified: false,
         enabled: true,
         signingSecretSet: true,
         updatedAt: expect.any(Number),
@@ -209,6 +210,46 @@ describe("Slack slash command punching", () => {
 
       return { ...seeded, app, cookie };
     }
+
+    it("別テナントが同じ team_id を先に入力していても(先取り)、持ち主は保存でき、署名の通った側だけが確認済みになる", async () => {
+      const seeded = await setupTestDb();
+      const { db, tenantId, userId } = seeded;
+      // 攻撃者のテナントが、他社のワークスペース ID を自分の Signing Secret と一緒に先に入れておく
+      const squatterTenantId = uuidv7();
+      const squatterUserId = uuidv7();
+      const squatterSecret = "squatter-secret";
+      await db.insert(tenants).values({ id: squatterTenantId, name: "Squatter", createdAt: 0 });
+      await db.insert(users).values({ id: squatterUserId, tenantId: squatterTenantId, email: "sq@example.com", name: "Sq", createdAt: 0 });
+      await upsertTenantSlackSettings(db, {
+        tenantId: squatterTenantId,
+        teamId,
+        signingSecret: await testEncryptor().encrypt(squatterSecret),
+        enabled: true,
+        updatedAt: 0,
+        updatedBy: squatterUserId,
+      });
+
+      await grantPermission(db, { tenantId, userId, permission: "notification.settings.manage", scope: "tenant" });
+      const app = createApp({ db, encryptor: testEncryptor() });
+      const cookie = await loginAndGetCookie(app, seeded.email, seeded.password);
+      const putRes = await app.request("/settings/slack", {
+        method: "PUT",
+        headers: { "content-type": "application/json", cookie },
+        body: JSON.stringify({ enabled: true, teamId, signingSecret }),
+      });
+      expect(putRes.status).toBe(200);
+      expect(((await putRes.json()) as { teamIdVerified: boolean }).teamIdVerified).toBe(false);
+
+      // そのワークスペースの Slack アプリ(= 持ち主の Signing Secret)からのコマンドで確認済みになる
+      const first = await postSlackCommand(app, signingSecret, { teamId, slackUserId, text: "" });
+      expect(first.status).toBe(200);
+      const after = await app.request("/settings/slack", { headers: { cookie } });
+      expect(((await after.json()) as { teamIdVerified: boolean }).teamIdVerified).toBe(true);
+
+      // 先取りした側の Signing Secret で署名しても、もう通らない
+      const squatter = await postSlackCommand(app, squatterSecret, { teamId, slackUserId, text: "" });
+      expect(squatter.status).toBe(401);
+    });
 
     it("/punch (no args) shows usage without requiring a link", async () => {
       const { app } = await setup();

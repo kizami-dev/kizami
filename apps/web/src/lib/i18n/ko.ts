@@ -1165,6 +1165,7 @@ export const ko = {
     teamIdLabel: "Slack 워크스페이스 ID(Team ID)",
     teamIdPlaceholder: "T0123456",
     teamIdHint: "Slack의 「Basic Information」 페이지 등에서 확인할 수 있습니다. 테넌트 하나당 워크스페이스 하나만 설정할 수 있습니다.",
+    teamIdUnverifiedHint: "이 워크스페이스는 아직 확인되지 않았습니다. Slack에서 /punch를 한 번 실행하면 Signing Secret으로 확인되어 사용할 수 있게 됩니다.",
 
     signingSecretLabel: "Signing Secret",
     signingSecretConfigured: "설정됨",
