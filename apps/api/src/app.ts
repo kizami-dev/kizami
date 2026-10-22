@@ -41,6 +41,7 @@ import { createFailureLimiter, createRateLimiter, ipRateLimitMiddleware, RATE_LI
 import { noopErrorReporter, type ErrorReporter } from "./lib/error-report.js";
 import { createHttpMetrics } from "./lib/metrics.js";
 import { jsonPostGuard } from "./lib/json-post-guard.js";
+import { apiSecurityHeaders } from "./lib/security-headers.js";
 import type { TenantQuotas } from "./lib/tenant-quotas.js";
 
 export interface CreateAppDeps {
@@ -62,6 +63,11 @@ export interface CreateAppDeps {
    * **省略 / 空 = 掛けない**(開発・テスト・オリジンを宣言していない配備は従来どおり)。
    */
   authPostOrigins?: string[];
+  /**
+   * 配備者が宣言した Web のベース URL(`APP_BASE_URL`、無ければ `CORS_ORIGIN`)。https なら
+   * リクエストの経路によらず HSTS を付ける(lib/security-headers.ts の isHttpsRequest)。省略可。
+   */
+  appBaseUrl?: string;
   /**
    * テナントごとの利用上限(メンバー数・API キー数・外向きの通知・招待/再設定メールの1日の送信数。
    * lib/tenant-quotas.ts、docs/design/tenant-quotas.md)。**省略 = 無制限**(セルフホストの既定)。
@@ -171,6 +177,7 @@ export function createApp(deps: CreateAppDeps) {
     secureCookies = false,
     corsOrigin,
     authPostOrigins = [],
+    appBaseUrl,
     quotas,
     notify: notifyBase,
     encryptor,
@@ -191,6 +198,10 @@ export function createApp(deps: CreateAppDeps) {
   const notify = quotas ? { ...(notifyBase ?? {}), quotas } : notifyBase;
   // 承認ルート(corrections / auto-break-waivers / leave)へ渡す amend の可否(省略時は各ルートが db から判定)
   const amendCapability = interactiveTransactions !== undefined ? { interactiveTransactions } : {};
+
+  // セキュリティヘッダ(2026-10-22、セキュリティレビュー M4。lib/security-headers.ts)。
+  // 最初に登録して、404・429・onError の 500 を含むすべての応答に付ける。
+  app.use("*", apiSecurityHeaders(appBaseUrl !== undefined ? { appBaseUrl } : {}));
 
   if (corsOrigin) {
     app.use("*", cors({ origin: corsOrigin, credentials: true }));

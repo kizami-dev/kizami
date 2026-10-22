@@ -83,6 +83,16 @@ API・DB スキーマの互換方針とアップグレード手順は
 
 ### Security
 
+- **Web と API の応答にセキュリティヘッダを付けた**。これまで本番・クラウド・デモのどれにも CSP・クリックジャッキング対策・
+  `nosniff`・HSTS・Referrer-Policy が無かった。配備の形(Caddy / Cloudflare Tunnel / k8s / Workers)によらず効くよう、
+  リバースプロキシではなくアプリで付ける。API は `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'`・
+  `X-Frame-Options: DENY`・`X-Content-Type-Options: nosniff`・`Referrer-Policy: no-referrer` ほか(Hono の secureHeaders)。
+  Web は `script-src` に `'unsafe-inline'` を使わず、HTML の応答ごとにインラインスクリプト(テーマの初期化・RSC のペイロード)の
+  SHA-256 を並べる CSP に、`frame-ancestors 'none'`・`base-uri 'self'`・`form-action 'self'`・`object-src 'none'`、
+  `Permissions-Policy`(カメラ・マイク無効、位置情報は自オリジンのみ)、`Referrer-Policy: strict-origin-when-cross-origin`。
+  外部は Google Fonts と Cloudflare Turnstile だけを許可する。HSTS(`max-age=31536000`、includeSubDomains なし)は
+  HTTPS で届いたとき(`X-Forwarded-Proto` / `CF-Visitor`、API は `APP_BASE_URL` が https のときも)だけ付ける。
+  Web を別オリジンの API(`WAKU_PUBLIC_API_URL` に絶対 URL)でビルドした場合は、そのオリジンを `connect-src` に自動で足す
 - **公開デモ(demo.kizami.dev)に SSRF 対策を入れた**。認証情報が公開の管理者が、テナントの SMTP ホストや Webhook URL を
   内部アドレスに向け、テスト送信のエラーでクラスタ内をポートスキャンできた。api / worker に `OUTBOUND_BLOCK_PRIVATE=true` とノードのグローバル IP を拒否する `OUTBOUND_DENY_CIDRS` を
   設定し、NetworkPolicy で Pod の出口を DNS と公開インターネットだけに絞った。あわせてデモの `KIZAMI_ENCRYPTION_KEY` が

@@ -10,9 +10,8 @@ import { useEffect, useRef } from "react";
  * 1回しか使えないので、送信に失敗したら親が `resetKey` を進めてウィジェットを作り直させる)。
  * 失効・エラー時は `onToken(null)` で親のトークンを空に戻す。
  *
- * CSP: このリポジトリの配信設定(Caddy / Waku)に Content-Security-Policy は設定されていないため
- * 許可の追加は不要。もし配備側で CSP を入れる場合は、`script-src` / `frame-src` に
- * `https://challenges.cloudflare.com` を許可すること(docs/design/saas.md の環境変数の節)。
+ * CSP: Web の CSP(lib/security-headers.ts、2026-10-22)は `script-src` / `frame-src` / `connect-src` に
+ * `https://challenges.cloudflare.com` を許可している(サイトキーは実行時に API から届くので常に許可)。
  */
 
 const SCRIPT_ID = "cf-turnstile-script";
