@@ -25,6 +25,7 @@
  */
 
 import { createLocalJWKSet, jwtVerify, type JSONWebKeySet, type JWTPayload } from "jose";
+import { logValue } from "./log-safe.js";
 
 /** ディスカバリ文書・JWKS のキャッシュ TTL(ミリ秒)。10分。 */
 export const OIDC_CACHE_TTL_MS = 10 * 60_000;
@@ -322,9 +323,12 @@ export async function exchangeCode(params: ExchangeCodeParams, deps?: OidcNetwor
     throw new OidcError("sso_token_failed", `token request failed: ${String(cause)}`);
   }
   if (!res.ok) {
-    // IdP のエラー本文はサーバーログにのみ残す(利用者には汎用コードしか返さない)。
+    // IdP のエラーはサーバーログにのみ残す(利用者には汎用コードしか返さない)。
+    // 本文をそのまま載せない(2026-10-22、セキュリティレビュー Low): 改行を含めば偽のログ行を作れ、
+    // 想定外の応答ならトークン等が混ざりうる。RFC 6749 §5.2 の `error` / `error_description` だけを
+    // エスケープして残す(JSON でなければ「読めなかった」とだけ書く)。
     const text = await res.text().catch(() => "");
-    throw new OidcError("sso_token_failed", `token endpoint returned ${res.status}: ${text.slice(0, 500)}`);
+    throw new OidcError("sso_token_failed", `token endpoint returned ${res.status}: ${describeOAuthError(text)}`);
   }
 
   let payload: Record<string, unknown>;
@@ -338,6 +342,21 @@ export async function exchangeCode(params: ExchangeCodeParams, deps?: OidcNetwor
     throw new OidcError("sso_token_failed", "token response has no id_token");
   }
   return idToken;
+}
+
+/** トークンエンドポイントのエラー応答から、ログに残してよい `error` / `error_description` だけを取り出す。 */
+function describeOAuthError(body: string): string {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(body);
+  } catch {
+    return `(non-JSON body, ${body.length} chars)`;
+  }
+  if (typeof parsed !== "object" || parsed === null) return "(unexpected body)";
+  const { error, error_description: description } = parsed as Record<string, unknown>;
+  const parts = [`error=${logValue(error ?? null)}`];
+  if (description !== undefined) parts.push(`error_description=${logValue(description)}`);
+  return parts.join(" ");
 }
 
 // ---- ID トークン検証 -------------------------------------------------------

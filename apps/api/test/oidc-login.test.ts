@@ -7,7 +7,7 @@
  */
 
 import { and, eq } from "drizzle-orm";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { auditLogs, tenants, upsertTenantOidcSettings, users, userTotp, uuidv7, type Database } from "@kizami/db";
 import { createApp } from "../src/app.js";
 import { clearOidcCaches } from "../src/lib/oidc.js";
@@ -328,6 +328,44 @@ describe("OIDC SSO ログイン", () => {
     idp.overrides.tokenEndpointStatus = 400;
     const res = await callback(app, { code: "auth-code-1", state, cookie: txCookie });
     expect(errorCodeFromRedirect(res)).toBe("sso_token_failed");
+  });
+
+  it("IdP の応答をログにそのまま載せない(改行で偽のログ行を作れない・トークンを残さない)", async () => {
+    const { seeded, idp, app } = await scenario();
+    const errors: string[] = [];
+    const spy = vi.spyOn(console, "error").mockImplementation((...args: unknown[]) => {
+      errors.push(args.map(String).join(" "));
+    });
+    try {
+      // トークンエンドポイントの失敗応答に、改行で偽の行と、混ざってはいけない値を仕込む
+      const { txCookie, state } = await startSso(app, idp, seeded.tenantId);
+      idp.overrides.tokenEndpointStatus = 400;
+      idp.overrides.tokenEndpointBody = JSON.stringify({
+        error: "invalid_grant\n[kizami] login ok user=admin",
+        error_description: "bad\r\nforged",
+        access_token: "leaked-access-token",
+      });
+      const res = await callback(app, { code: "auth-code-1", state, cookie: txCookie });
+      expect(errorCodeFromRedirect(res)).toBe("sso_token_failed");
+
+      // JSON でない本文は中身を一切載せない
+      const second = await startSso(app, idp, seeded.tenantId);
+      idp.overrides.tokenEndpointBody = "line1\n[kizami] forged id_token=eyJsecret";
+      await callback(app, { code: "auth-code-1", state: second.state, cookie: second.txCookie });
+
+      // コールバックのクエリ(誰でも作れる)の error も同じ
+      await app.request(`/auth/oidc/callback?error=${encodeURIComponent("denied\n[kizami] forged")}`);
+    } finally {
+      spy.mockRestore();
+    }
+    const logged = errors.join("\n---\n");
+    expect(errors.length).toBeGreaterThanOrEqual(3);
+    for (const line of errors) {
+      expect(line).not.toMatch(/[\r\n]/);
+    }
+    expect(logged).not.toContain("leaked-access-token");
+    expect(logged).not.toContain("eyJsecret");
+    expect(logged).toContain("invalid_grant");
   });
 
   it("SSO が無効なテナントでは start が 400 sso_not_enabled を返す", async () => {

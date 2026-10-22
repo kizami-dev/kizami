@@ -100,6 +100,10 @@ API・DB スキーマの互換方針とアップグレード手順は
   そのテナントの Signing Secret で検証できた時点で確認済みにし、以後はそのテナントだけが使う
   (マイグレーション: `tenant_slack_settings.team_id_verified_at` を追加し、team_id の UNIQUE を確認済みの行だけの部分 UNIQUE に変更。
   既存の連携は次の `/punch` で自動的に確認済みになる)。`GET /settings/slack` に `teamIdVerified` を追加
+- **ログに資格情報と外部の値をそのまま出していた問題を修正**。通知ワーカーの起動ログが `REDIS_URL` を丸ごと出しており、
+  パスワード入りの接続文字列がログに残った(ユーザー名・パスワードを `***` に伏せる)。SSO のトークンエンドポイントの
+  失敗応答とコールバックの `error` を生のまま載せており、改行で偽のログ行を作れ、想定外の応答ならトークンも残りえた
+  (`error` / `error_description` だけをエスケープして載せる)
 - **公開デモ(demo.kizami.dev)に SSRF 対策を入れた**。認証情報が公開の管理者が、テナントの SMTP ホストや Webhook URL を
   内部アドレスに向け、テスト送信のエラーでクラスタ内をポートスキャンできた。api / worker に `OUTBOUND_BLOCK_PRIVATE=true` とノードのグローバル IP を拒否する `OUTBOUND_DENY_CIDRS` を
   設定し、NetworkPolicy で Pod の出口を DNS と公開インターネットだけに絞った。あわせてデモの `KIZAMI_ENCRYPTION_KEY` が

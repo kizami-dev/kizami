@@ -52,6 +52,7 @@ import {
   type OidcErrorCode,
   type OidcNetworkDeps,
 } from "../lib/oidc.js";
+import { logValue } from "../lib/log-safe.js";
 import { nowMinutes } from "../lib/time.js";
 import { isLoginBlockedByWithdrawal, TENANT_WITHDRAWING_ERROR } from "../lib/tenant-withdrawal.js";
 
@@ -278,7 +279,8 @@ export function createOidcRoutes(db: Database, options: OidcRoutesOptions) {
     // IdP がエラーを返した場合(利用者が同意を拒否した等)。
     const idpError = c.req.query("error");
     if (typeof idpError === "string" && idpError !== "") {
-      console.error(`oidc callback: idp returned error=${idpError}`);
+      // クエリ文字列は誰でも作れる。改行で偽のログ行を作らせないようエスケープする(lib/log-safe.ts)。
+      console.error(`oidc callback: idp returned error=${logValue(idpError)}`);
       return failRedirect(c, "sso_failed");
     }
 
