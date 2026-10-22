@@ -31,8 +31,17 @@ export const TOTP_TX_COOKIE_NAME = "kizami_totp_tx";
  */
 export const TOTP_TX_TTL_SECONDS = 300;
 
+/**
+ * 封をした Cookie の用途の印(2026-10-22)。信頼済み端末・TOTP の tx・OIDC の状態は同じ Encryptor で封をし、
+ * 中身の形も似ている(tenantId / userId / issuedAt)。印が無いと、ある Cookie の値を別の Cookie に貼り替えて
+ * 通せてしまう(例: 30 日もつ信頼済み端末の値を tx Cookie に置き、パスワード無しで第2段階に進む)。
+ * 読む側は必ず自分の印を確かめる。
+ */
+export const TOTP_TX_PURPOSE = "totp_tx";
+
 /** `kizami_totp_tx` の中身(暗号化して Cookie に載せる)。 */
 export interface TotpTransaction {
+  purpose: typeof TOTP_TX_PURPOSE;
   tenantId: string;
   userId: string;
   /** 発行時刻(UTC エポック分)。Cookie の Max-Age とは別に、サーバー側でも期限を確認する。 */
@@ -46,7 +55,12 @@ export const TOTP_TX_TTL_MINUTES = TOTP_TX_TTL_SECONDS / 60;
 export function isTotpTransaction(value: unknown): value is TotpTransaction {
   if (typeof value !== "object" || value === null) return false;
   const tx = value as Record<string, unknown>;
-  return typeof tx.tenantId === "string" && typeof tx.userId === "string" && typeof tx.issuedAt === "number";
+  return (
+    tx.purpose === TOTP_TX_PURPOSE &&
+    typeof tx.tenantId === "string" &&
+    typeof tx.userId === "string" &&
+    typeof tx.issuedAt === "number"
+  );
 }
 
 /** 発行するリカバリコードの本数。 */

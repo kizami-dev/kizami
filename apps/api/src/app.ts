@@ -37,7 +37,7 @@ import { createTenantWithdrawalRoutes, type TenantWithdrawalMailDeps } from "./r
 import { createSlackRoutes } from "./routes/slack.js";
 import { createLeaveRoutes } from "./routes/leave.js";
 import { createMetricsRoutes } from "./routes/metrics.js";
-import { createRateLimiter, ipRateLimitMiddleware, RATE_LIMITS } from "./lib/rate-limit.js";
+import { createFailureLimiter, createRateLimiter, ipRateLimitMiddleware, RATE_LIMITS } from "./lib/rate-limit.js";
 import { noopErrorReporter, type ErrorReporter } from "./lib/error-report.js";
 import { createHttpMetrics } from "./lib/metrics.js";
 import { jsonPostGuard } from "./lib/json-post-guard.js";
@@ -210,6 +210,11 @@ export function createApp(deps: CreateAppDeps) {
     signupPerIp: createRateLimiter({ ...RATE_LIMITS.signupPerIp, now }),
     passwordChangePerIpUser: createRateLimiter({ ...RATE_LIMITS.passwordChangePerIpUser, now }),
     passwordResetRequestPerIp: createRateLimiter({ ...RATE_LIMITS.passwordResetRequestPerIp, now }),
+    // 失敗だけを数える、IP を含まないキーの上限(2026-10-22、セキュリティレビュー M3)。
+    loginFailuresPerAccount: createFailureLimiter({ ...RATE_LIMITS.loginFailuresPerAccount, now }),
+    loginFailuresPerTrustedDevice: createFailureLimiter({ ...RATE_LIMITS.loginFailuresPerTrustedDevice, now }),
+    totpFailuresPerTx: createFailureLimiter({ ...RATE_LIMITS.totpFailuresPerTx, now }),
+    totpFailuresPerUser: createFailureLimiter({ ...RATE_LIMITS.totpFailuresPerUser, now }),
   };
 
   // HTTP メトリクスの計測(docs/design/observability.md)。**最初に登録する** —
@@ -295,6 +300,10 @@ export function createApp(deps: CreateAppDeps) {
         // 2FA のコード検証はセルフサービス側(/auth/totp/*)と同じカウンタを共有する
         // (経路を変えても総当たりの回数が増えないように。lib/rate-limit.ts の RATE_LIMITS)。
         perIpUser: rateLimiters.totpPerIpUser,
+        failuresPerAccount: rateLimiters.loginFailuresPerAccount,
+        failuresPerTrustedDevice: rateLimiters.loginFailuresPerTrustedDevice,
+        totpFailuresPerTx: rateLimiters.totpFailuresPerTx,
+        totpFailuresPerUser: rateLimiters.totpFailuresPerUser,
         trustProxy,
       },
       encryptor: encryptor ?? null,

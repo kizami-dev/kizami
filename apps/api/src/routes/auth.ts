@@ -34,13 +34,21 @@ import {
   isTotpTransaction,
   normalizeTotpCode,
   TOTP_TX_COOKIE_NAME,
+  TOTP_TX_PURPOSE,
   TOTP_TX_TTL_MINUTES,
   TOTP_TX_TTL_SECONDS,
   type TotpTransaction,
 } from "../auth/totp.js";
+import {
+  clearTrustedDeviceCookie,
+  readTrustedDevice,
+  setTrustedDeviceCookie,
+  TRUSTED_DEVICE_PURPOSE,
+  type TrustedDevice,
+} from "../auth/trusted-device.js";
 import { getClientIp } from "../lib/client-ip.js";
 import { decryptSealed, decryptSecret, type Encryptor } from "../lib/encryption.js";
-import { rateLimitedResponse, type RateLimiter } from "../lib/rate-limit.js";
+import { rateLimitedResponse, type FailureLimiter, type FailureReservation, type RateLimiter } from "../lib/rate-limit.js";
 import { isLoginBlockedByWithdrawal, TENANT_WITHDRAWING_ERROR } from "../lib/tenant-withdrawal.js";
 import { nowMinutes } from "../lib/time.js";
 
@@ -82,6 +90,20 @@ export interface AuthRoutesOptions {
      * **同じインスタンス**を共有する(経路を変えても回数が増えないように)。
      */
     perIpUser?: RateLimiter;
+    /**
+     * パスワードログインの**失敗**をメール単位(IP を問わない)で数える(2026-10-22、セキュリティレビュー M3)。
+     * IP を回しながらの総当たりを止める。キーと上限の判断は lib/rate-limit.ts の RATE_LIMITS.loginFailuresPerAccount。
+     */
+    failuresPerAccount?: FailureLimiter;
+    /**
+     * 信頼済み端末の Cookie(auth/trusted-device.ts)を持つリクエストの失敗を、共有のメール単位のバケツの
+     * 代わりに数える信頼済み端末の上限(ユーザー単位、RATE_LIMITS.loginFailuresPerTrustedDevice)。無ければ信頼済み端末の経路は使わない。
+     */
+    failuresPerTrustedDevice?: FailureLimiter;
+    /** ログイン第2段階の失敗を tx(Cookie)単位で数える。上限に達した tx は無効(RATE_LIMITS.totpFailuresPerTx)。 */
+    totpFailuresPerTx?: FailureLimiter;
+    /** ログイン第2段階の失敗をユーザー単位(IP を問わない)で数える(RATE_LIMITS.totpFailuresPerUser)。 */
+    totpFailuresPerUser?: FailureLimiter;
     /** 前段プロキシ(Cloudflare Tunnel)のヘッダを信頼するか。lib/client-ip.ts 参照。 */
     trustProxy: boolean;
   };
@@ -136,14 +158,60 @@ export function createAuthRoutes(db: Database, options: AuthRoutesOptions) {
       if (!emailResult.allowed) return rateLimitedResponse(c, emailResult.retryAfterSeconds);
     }
 
+    // アカウント単位(メール単位、IP を問わない)の失敗回数の上限(2026-10-22、セキュリティレビュー M3)。
+    // 上の2つは IP をキーに含むので、IP を回されると効かない。ここで頭を押さえる。
+    // パスワード検証より**前に1回ぶんを予約**し、パスワードが通ったらその予約だけを返す(成功は数えない)。
+    // 先に予約するのは、同時に投げられた試行が遅い検証(PBKDF2)の間に揃って判定をすり抜けないため
+    // (lib/rate-limit.ts の FailureLimiter の判断点)。過去の失敗は成功しても消さない — メールは複数テナントで
+    // 共有されうるので、攻撃者が自分のテナントの同じメールでログインに成功して被害者の失敗を消せてしまう。
+    // アカウントの実在を問わず同じキー・同じ応答にする(実在の判定材料にしない)。
+    //
+    // 締め出しの緩和(信頼済み端末、auth/trusted-device.ts): 以前このメールで最後までログインできた端末の
+    // 封をした Cookie を持つリクエストは、共有バケツではなく信頼済み端末のバケツ(ユーザー単位)で数える。攻撃者が共有バケツを
+    // 埋めても、本人はいつもの端末から入れる。Cookie の無い相手の挙動は変わらない(実在を漏らさない)。
+    const emailLower = email.toLowerCase();
+    let accountReservation: FailureReservation | undefined;
+    const trustedLimiter = options.rateLimit?.failuresPerTrustedDevice;
+    let trusted: TrustedDevice | null = null;
+    if (trustedLimiter && options.encryptor) {
+      trusted = await readTrustedDevice(c, options.encryptor, { emailLower, nowMinutes: nowMinutes() });
+      if (trusted && tenantId && trusted.tenantId !== tenantId) trusted = null;
+      if (trusted) {
+        const owner = await getUserById(db, { tenantId: trusted.tenantId, id: trusted.userId });
+        if (!owner || !owner.isActive) {
+          // 退職処理などで使えなくなったアカウントの Cookie。消して通常の経路に戻す。
+          clearTrustedDeviceCookie(c);
+          trusted = null;
+        }
+      }
+    }
+    if (trusted && trustedLimiter) {
+      // ユーザー単位のキー(Cookie を取り直しても枠は増えない)。
+      accountReservation = trustedLimiter.reserve(`trusted|${trusted.tenantId}|${trusted.userId}`);
+    } else {
+      accountReservation = options.rateLimit?.failuresPerAccount?.reserve(emailLower);
+    }
+    if (accountReservation && !accountReservation.allowed) {
+      return rateLimitedResponse(c, accountReservation.retryAfterSeconds);
+    }
+
     // email のユニーク制約は (tenant_id, email) であり、同じメールアドレスが複数テナントに
     // 存在しうる(顧問社労士が複数社に登録される等、意図的に許容している)。以前は
     // LIMIT 1 で最初の1行を拾っており、複数テナント同居時にどこへログインするかが
     // 行の並び順まかせ(未定義)だった(2026-08-23 修正)。email に一致する全アカウントを
     // 照合し、パスワード一致が複数あればテナント選択を求める(409 multiple_tenants)。
-    const userRows = tenantId
-      ? await db.select().from(users).where(and(eq(users.email, email), eq(users.tenantId, tenantId)))
-      : await db.select().from(users).where(eq(users.email, email));
+    //
+    // 信頼済み端末の経路では、照合先を Cookie のアカウント1件に絞る。共有バケツを使わない以上、
+    // 同じメールの別テナントのアカウントまで照合すると、自分のテナントの Cookie で他テナントの被害者を
+    // 総当たりできてしまう。別テナントに入りたい場合は tenantId を付ければ通常の経路になる(上の判定)。
+    const userRows = trusted
+      ? await db
+          .select()
+          .from(users)
+          .where(and(eq(users.email, email), eq(users.tenantId, trusted.tenantId), eq(users.id, trusted.userId)))
+      : tenantId
+        ? await db.select().from(users).where(and(eq(users.email, email), eq(users.tenantId, tenantId)))
+        : await db.select().from(users).where(eq(users.email, email));
     const candidates = userRows.filter((u) => u.isActive);
 
     // 候補それぞれのパスワードを検証する(早期打ち切りせず全件)。候補0件でも必ず1回
@@ -163,8 +231,11 @@ export function createAuthRoutes(db: Database, options: AuthRoutesOptions) {
     }
 
     if (matches.length === 0) {
+      // 予約はそのまま失敗1回として残す。
       return c.json({ error: "invalid_credentials" }, 401);
     }
+    // パスワードが通った。この試行の予約だけを返す(過去の失敗は消さない — 上のコメント)。
+    accountReservation?.release();
 
     // 退会手続き中のテナント(docs/design/tenant-withdrawal.md)では、tenant.withdraw を持つ人しか
     // ログインできない。パスワードが合った後で判定するので、理由を伝えても列挙の材料にはならない。
@@ -206,7 +277,12 @@ export function createAuthRoutes(db: Database, options: AuthRoutesOptions) {
         console.error(`login: user ${activeUser.id} has 2FA enabled but no encryption key is configured`);
         return c.json({ error: "encryption_unavailable" }, 503);
       }
-      const tx: TotpTransaction = { tenantId: activeUser.tenantId, userId: activeUser.id, issuedAt: nowMinutes() };
+      const tx: TotpTransaction = {
+        purpose: TOTP_TX_PURPOSE,
+        tenantId: activeUser.tenantId,
+        userId: activeUser.id,
+        issuedAt: nowMinutes(),
+      };
       setCookie(c, TOTP_TX_COOKIE_NAME, await encryptor.encrypt(JSON.stringify(tx)), {
         httpOnly: true,
         sameSite: "Lax",
@@ -226,6 +302,18 @@ export function createAuthRoutes(db: Database, options: AuthRoutesOptions) {
       nowMinutes: nowMinutes(),
     });
     setSessionCookie(c, session.token, { secure: options.secureCookies });
+    if (options.encryptor) {
+      await setTrustedDeviceCookie(
+        c,
+        options.encryptor,
+        {
+          purpose: TRUSTED_DEVICE_PURPOSE,
+          tenantId: activeUser.tenantId,
+          userId: activeUser.id,
+          emailLower: activeUser.email.toLowerCase(), issuedAt: nowMinutes() },
+        { secure: options.secureCookies },
+      );
+    }
 
     return c.json({ user: { id: activeUser.id, email: activeUser.email, displayName: activeUser.name } }, 200);
   });
@@ -236,8 +324,10 @@ export function createAuthRoutes(db: Database, options: AuthRoutesOptions) {
    * 認証アプリのコード `{ code }` またはリカバリコード `{ recoveryCode }` を受け取り、
    * 通ればセッションを発行する。
    *
-   * 失敗しても tx Cookie は消さない(打ち間違いのたびにパスワードからやり直させるのは
-   * 過剰。総当たりはレート制限=10回/15分で止める)。期限切れ・改竄時のみ消す。
+   * 失敗しても tx Cookie はすぐには消さない(打ち間違いのたびにパスワードからやり直させるのは
+   * 過剰)。ただし1つの tx で5回失敗したらその tx は無効にして、パスワードからやり直させる
+   * (RATE_LIMITS.totpFailuresPerTx、2026-10-22)。加えてユーザー単位・IP+ユーザー単位の上限がある。
+   * 期限切れ・改竄時も消す。
    */
   app.post("/login/totp", async (c) => {
     const encryptor = options.encryptor;
@@ -311,6 +401,40 @@ export function createAuthRoutes(db: Database, options: AuthRoutesOptions) {
       return c.json({ error: "totp_expired" }, 401);
     }
 
+    // 失敗回数の上限(2026-10-22、セキュリティレビュー M3)。tx Cookie は暗号化されたステートレスな
+    // 値で、失敗回数を書き込めない(書き換えても攻撃者は古い Cookie を送り直せる)。そこでサーバー側に
+    // tx 単位(tenantId|userId|issuedAt)とユーザー単位(tenantId|userId)の失敗カウンタを持つ。
+    // 上の perIpUser は IP を含むので、IP を回しながら同じ tx で6桁を総当たりされると効かない。
+    //
+    // コードの検証より**前に1回ぶんを予約**し、通ったら戻す(同時に投げられた試行が検証の間に揃って
+    // 判定をすり抜けないため。lib/rate-limit.ts の FailureLimiter の判断点)。
+    const userKey = `${tx.tenantId}|${tx.userId}`;
+    const txKey = `${userKey}|${tx.issuedAt}`;
+    const txReservation = options.rateLimit?.totpFailuresPerTx?.reserve(txKey);
+    if (txReservation && !txReservation.allowed) {
+      // この tx は使い切った。パスワードからやり直してもらう(Web は totp_expired で1段目へ戻る)。
+      deleteCookie(c, TOTP_TX_COOKIE_NAME, { path: "/" });
+      return c.json({ error: "totp_expired" }, 401);
+    }
+    const userReservation = options.rateLimit?.totpFailuresPerUser?.reserve(userKey);
+    if (userReservation && !userReservation.allowed) {
+      txReservation?.release();
+      return rateLimitedResponse(c, userReservation.retryAfterSeconds);
+    }
+    /** 検証に至らなかった(サーバー側の都合)ときに予約を返す。 */
+    const releaseReservations = (): void => {
+      txReservation?.release();
+      userReservation?.release();
+    };
+    /** コード/リカバリコードの失敗。予約はそのまま残す。この失敗で tx を使い切ったら Cookie も消す。 */
+    const failCode = (): Response => {
+      if (txReservation?.reachedLimit) {
+        deleteCookie(c, TOTP_TX_COOKIE_NAME, { path: "/" });
+        return c.json({ error: "totp_expired" }, 401);
+      }
+      return c.json({ error: "invalid_code" }, 401);
+    };
+
     const now = nowMinutes();
     let method: "totp" | "recovery_code";
 
@@ -318,6 +442,7 @@ export function createAuthRoutes(db: Database, options: AuthRoutesOptions) {
       const secret = await decryptSecret(encryptor, row.secretEncrypted);
       if (secret === null) {
         console.error(`login/totp: cannot decrypt secret for user ${tx.userId} (encryption key missing or mismatched)`);
+        releaseReservations();
         return c.json({ error: "encryption_unavailable" }, 503);
       }
       const verified = await verifyTotp({
@@ -327,7 +452,7 @@ export function createAuthRoutes(db: Database, options: AuthRoutesOptions) {
         // リプレイ防止: 既に受理済みのカウンタ(およびそれ以前)は拒否する。
         minCounterExclusive: row.lastUsedCounter,
       });
-      if (!verified) return c.json({ error: "invalid_code" }, 401);
+      if (!verified) return failCode();
       await updateUserTotpLastUsedCounter(db, { userId: tx.userId, lastUsedCounter: verified.counter });
       method = "totp";
     } else {
@@ -337,13 +462,30 @@ export function createAuthRoutes(db: Database, options: AuthRoutesOptions) {
         codeHash: await hashRecoveryCode(recoveryCode as string),
         consumedAt: now,
       });
-      if (!consumed) return c.json({ error: "invalid_code" }, 401);
+      if (!consumed) return failCode();
       method = "recovery_code";
     }
+
+    // 第2要素が通った。どちらのキーもこの本人だけのものなので、記録ごと消してよい。
+    options.rateLimit?.totpFailuresPerUser?.reset(userKey);
+    options.rateLimit?.totpFailuresPerTx?.reset(txKey);
 
     const session = await createSession(db, { tenantId: tx.tenantId, userId: tx.userId, nowMinutes: now });
     setSessionCookie(c, session.token, { secure: options.secureCookies });
     deleteCookie(c, TOTP_TX_COOKIE_NAME, { path: "/" });
+    // 第2要素まで通ったので、この端末を信頼済みにする(auth/trusted-device.ts)。
+    await setTrustedDeviceCookie(
+      c,
+      encryptor,
+      {
+        purpose: TRUSTED_DEVICE_PURPOSE,
+        tenantId: tx.tenantId,
+        userId: tx.userId,
+        emailLower: user.email.toLowerCase(),
+        issuedAt: now,
+      },
+      { secure: options.secureCookies },
+    );
 
     // 監査ログ: SSO(routes/auth-oidc.ts)と同じ `auth.login` + detail.method。
     // 素のパスワードログインは従来どおり記録しないが、**2FA を通った/リカバリコードを

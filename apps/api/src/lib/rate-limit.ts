@@ -113,6 +113,111 @@ export function createRateLimiter(options: RateLimiterOptions): RateLimiter {
   };
 }
 
+/**
+ * 「失敗だけを数える」レート制限(2026-10-22 追加、セキュリティレビュー M3)。
+ *
+ * `RateLimiter` は**試行そのもの**を数える(成功も1回に数える)。アカウント単位の上限で
+ * それをやると、本人の正しいログインまで枠を食い、攻撃者がいない時でも締め出しが起きうる。
+ * こちらは「失敗しうる試行」を受け付けた時点で1回ぶんを**予約**し(`reserve`)、成功したら
+ * その予約だけを返す(`release`)。失敗ならそのまま残り、失敗1回として数えられる。
+ *
+ * 判断点(先に予約する理由): 「判定(記録しない)→ 遅い検証(PBKDF2 / TOTP)→ 失敗なら記録」の順だと、
+ * 同時に投げられた N 本のリクエストが記録より前に全部判定を通り、上限を超えて試せてしまう(TOCTOU)。
+ * `reserve` は判定と記録を同期的に一度に行う(JS の単一スレッド上で割り込まれない)ので、
+ * 検証中の試行も上限の内側で数えられる。
+ *
+ * `reset` はキーの記録を丸ごと消す。**キーを共有しうる相手の成功で消してはいけない**
+ * (例: メール単位のキーは複数テナントの同じメールで共有される — 攻撃者が自分のテナントで
+ * 同じメールのアカウントを作ってログインに成功し、被害者側の失敗を消せてしまう)。そういうキーでは
+ * `release`(自分の予約だけ返す)を使う。
+ *
+ * 置き場所・アルゴリズムは `createRateLimiter` と同じ(プロセス/アイソレート内メモリの
+ * スライディングウィンドウ。冒頭の判断点がそのまま当てはまる — Workers ではアイソレートごとの
+ * カウンタになり、実効の上限は緩くなる)。差し替え先も同じく Durable Object / Valkey を想定し、
+ * 呼び出し側はこのインタフェースにだけ依存する(Valkey なら INCR を予約、DECR を返却にできる)。
+ */
+export interface FailureReservation extends RateLimitResult {
+  /**
+   * この予約を含めて窓内の失敗(予約)が上限に達したか。`allowed: true` のときだけ意味がある
+   * (失敗が確定したら、この試行で使い切ったことになる — 呼び出し側の後始末用)。
+   */
+  reachedLimit: boolean;
+  /** 予約を取り消す(成功時)。2回目以降の呼び出し・拒否された予約では何もしない。 */
+  release(): void;
+}
+
+export interface FailureLimiter {
+  /**
+   * 窓内の失敗(予約中を含む)が上限未満なら1回ぶんを予約して `allowed: true` を返す。
+   * 上限に達していれば何も記録せず `allowed: false`(拒否した試行は数えない — 窓が永久に空かなくならないように)。
+   */
+  reserve(key: string): FailureReservation;
+  /** そのキーの記録を丸ごと消す。キーがその本人だけのものである場合に限って使う(上の判断点)。 */
+  reset(key: string): void;
+}
+
+export function createFailureLimiter(options: RateLimiterOptions): FailureLimiter {
+  const { windowMs, max } = options;
+  const now = options.now ?? (() => Date.now());
+  /** key -> 窓内の失敗(予約)の時刻(ミリ秒)。古い順に並ぶ。 */
+  const failures = new Map<string, number[]>();
+  let lastSweepAt = now();
+
+  /** createRateLimiter の sweep と同じ遅延掃除。 */
+  function sweep(currentMs: number): void {
+    if (currentMs - lastSweepAt < windowMs) return;
+    lastSweepAt = currentMs;
+    const threshold = currentMs - windowMs;
+    for (const [key, timestamps] of failures) {
+      const alive = timestamps.filter((t) => t > threshold);
+      if (alive.length === 0) failures.delete(key);
+      else failures.set(key, alive);
+    }
+  }
+
+  const noop = () => {};
+
+  return {
+    reserve(key: string): FailureReservation {
+      const currentMs = now();
+      sweep(currentMs);
+      const threshold = currentMs - windowMs;
+      const timestamps = (failures.get(key) ?? []).filter((t) => t > threshold);
+
+      if (timestamps.length >= max) {
+        failures.set(key, timestamps);
+        // 上限を割り込むには、古い方から (length - max + 1) 件が窓を出る必要がある。
+        const pivot = timestamps[timestamps.length - max];
+        const waitMs = pivot === undefined ? windowMs : pivot + windowMs - currentMs;
+        return { allowed: false, retryAfterSeconds: Math.max(1, Math.ceil(waitMs / 1000)), reachedLimit: true, release: noop };
+      }
+
+      timestamps.push(currentMs);
+      failures.set(key, timestamps);
+      let released = false;
+      return {
+        allowed: true,
+        retryAfterSeconds: 0,
+        reachedLimit: timestamps.length >= max,
+        release(): void {
+          if (released) return;
+          released = true;
+          const list = failures.get(key);
+          if (!list) return;
+          // 自分の予約(同じ時刻の1件)だけを外す。同時刻の別の予約と区別は付かないが、どれを外しても件数は同じ。
+          const index = list.lastIndexOf(currentMs);
+          if (index === -1) return;
+          list.splice(index, 1);
+          if (list.length === 0) failures.delete(key);
+        },
+      };
+    },
+    reset(key: string): void {
+      failures.delete(key);
+    },
+  };
+}
+
 /** 15分。ログイン・トークン系エンドポイントの窓の既定値。 */
 export const AUTH_WINDOW_MS = 15 * 60_000;
 
@@ -148,6 +253,37 @@ export const AUTH_WINDOW_MS = 15 * 60_000;
  *   サインアップの登録(`signupPerIp`)と同じ 5回/15分。メール単位の 5 分スロットルはこれとは別
  *   (db の password_reset_requests、IP を変えても効く)。受諾画面のリンク(GET/POST /password-resets/:token/*)は
  *   従来どおり `tokenPerIp`。
+ *
+ * 以下3つは「失敗だけを数える」`FailureLimiter` 用(2026-10-22 追加、セキュリティレビュー M3。
+ * IP を変えながらの総当たりに IP 単位の上限が効かない問題への対策)。いずれも IP をキーに含めない。
+ *
+ * - `loginFailuresPerAccount`: パスワードログインの**失敗**を、正規化したメール(小文字化)単位で数える。
+ *   20回/15分を超えたら、IP を問わずそのメールへのログインを 429 にする(正しいパスワードでも)。
+ *   - キーはメールのみで、リクエストの tenantId は**含めない**(tenantId はクライアントが自由に付け外し
+ *     できる値なので、含めるとバケツを増やして上限を倍化できてしまう)。
+ *   - アカウントの実在に関係なく同じように数え、同じ 429 を返す(実在の判定材料にしない)。
+ *   - 上限を IP+メール(10回)より大きい 20回にしてあるのは、**1つの IP だけではアカウントを
+ *     ロックできない**ようにするため(社内 NAT の向こうで誰かが打ち間違いを続けても、他の場所からの
+ *     本人のログインは止まらない)。IP を回す攻撃者には 15分あたり 20回(1日 1,920回)が上限になる。
+ *   - 試行を受け付けた時点で1回ぶんを予約し、パスワードが一致したらその予約だけを返す(成功は数えない)。
+ *     **過去の失敗は成功しても消さない** — メールは複数テナントで共有されうるので、攻撃者が自分のテナントに
+ *     同じメールのアカウントを作ってログインに成功し、被害者の失敗を消すことができてしまうため。
+ *   - 判断点(締め出し): 攻撃者が意図的に失敗を送り続ければ、被害者は最長 15分ずつ締め出されうる。
+ *     恒久ロック(管理者解除が必要な方式)は採らず、窓が空けば自然に戻る方式にして DoS の影響を抑える。
+ * - `loginFailuresPerTrustedDevice`: 上の締め出しの緩和(auth/trusted-device.ts)。以前このメールで最後まで
+ *   ログインできた端末の封をした Cookie(`kizami_trusted_device`)を持つリクエストは、共有のメール単位のバケツの
+ *   代わりにユーザー単位(`trusted|tenantId|userId`、Cookie を取り直しても枠は増えない)に数える。照合は Cookie のアカウントだけ。攻撃者がメール単位のバケツを埋めても、本人は
+ *   いつもの端末から入れる。1つのブラウザの打ち間違いには IP+メールと同じ 10回/15分で十分で、盗まれた Cookie で
+ *   総当たりされても 15分 10回に抑えられる。指数的に待たせる(バックオフ)はしない — 締め出しを長引かせるだけなので。
+ * - `totpFailuresPerTx`: ログイン第2段階(POST /auth/login/totp)の**1つの中間状態(tx Cookie)あたり**の
+ *   コード/リカバリコードの失敗回数。5回失敗したらその tx は無効になり、パスワードからやり直し
+ *   (401 totp_expired)。Cookie は暗号化されたステートレスな値で書き換えられないため、
+ *   `tenantId|userId|issuedAt` をキーにサーバー側で数える。窓は tx の寿命(5分)より長い 10分。
+ *   issuedAt は分単位なので、同じ分に発行された tx 同士は枠を共有する(厳しい側に倒れるだけ)。
+ * - `totpFailuresPerUser`: 同じく第2段階の失敗をユーザー単位(`tenantId|userId`、IP を問わない)で数える。
+ *   10回/15分で 429。パスワードを知る攻撃者が tx を取り直し・IP を回しても、6桁の試行は
+ *   15分あたり 10回に抑えられる。キーはそのユーザーだけのものなので、第2要素が通ったら reset する。
+ * - 2つの TOTP 用も、検証の前に予約する(同時に投げて上限を超えさせない。FailureLimiter の判断点)。
  */
 export const RATE_LIMITS = {
   loginPerIpEmail: { windowMs: AUTH_WINDOW_MS, max: 10 },
@@ -159,6 +295,10 @@ export const RATE_LIMITS = {
   signupPerIp: { windowMs: AUTH_WINDOW_MS, max: 5 },
   passwordChangePerIpUser: { windowMs: AUTH_WINDOW_MS, max: 10 },
   passwordResetRequestPerIp: { windowMs: AUTH_WINDOW_MS, max: 5 },
+  loginFailuresPerAccount: { windowMs: AUTH_WINDOW_MS, max: 20 },
+  loginFailuresPerTrustedDevice: { windowMs: AUTH_WINDOW_MS, max: 10 },
+  totpFailuresPerTx: { windowMs: 10 * 60_000, max: 5 },
+  totpFailuresPerUser: { windowMs: AUTH_WINDOW_MS, max: 10 },
 } as const;
 
 /**
