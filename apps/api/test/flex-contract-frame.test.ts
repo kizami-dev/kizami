@@ -17,6 +17,7 @@ import { listAuditLogs } from "@kizami/db";
 import { listScheduledWorkDates } from "@kizami/engine";
 import { createApp } from "../src/app.js";
 import { grantPermission, jstMinutes, loginAndGetCookie, setupTestDb } from "./support/setup.js";
+import { requestPunch } from "./support/punch.js";
 
 /** 制度・割当を作る「今日」(JST 2026-07-01 00:30)。割当は過去日にできないため対象の最初の月の初日 */
 const SETUP_NOW = new Date("2026-06-30T15:30:00.000Z");
@@ -28,7 +29,8 @@ interface RequestLike {
 }
 
 async function postJson(app: RequestLike, cookie: string, path: string, body: unknown): Promise<Response> {
-  return app.request(path, { method: "POST", headers: { "content-type": "application/json", cookie }, body: JSON.stringify(body) });
+  const init: RequestInit = { method: "POST", headers: { "content-type": "application/json", cookie }, body: JSON.stringify(body) };
+  return path === "/punches" ? requestPunch(app, init) : app.request(path, init);
 }
 
 /** 既定のカレンダー(土日・祝日、法定休日は日曜)でのその月の所定労働日 */

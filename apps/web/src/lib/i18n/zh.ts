@@ -571,6 +571,11 @@ export const zh = {
     loadFailed: "数据获取失败,请重试",
     network: "无法连接到服务器",
   },
+  punchErrors: {
+    occurred_at_too_old: "不能以过去的时间打卡。请通过修正申请登记",
+    occurred_at_in_future: "不能以未来的时间打卡。请检查设备的时钟",
+    default: "打卡失败,请重试",
+  },
 
   loading: "加载中…",
 

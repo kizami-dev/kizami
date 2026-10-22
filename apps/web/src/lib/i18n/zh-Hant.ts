@@ -571,6 +571,11 @@ export const zhHant = {
     loadFailed: "資料取得失敗,請重試",
     network: "無法連線到伺服器",
   },
+  punchErrors: {
+    occurred_at_too_old: "不能以過去的時間打卡。請透過修正申請登記",
+    occurred_at_in_future: "不能以未來的時間打卡。請檢查裝置的時鐘",
+    default: "打卡失敗,請重試",
+  },
 
   loading: "載入中…",
 

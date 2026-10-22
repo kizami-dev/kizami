@@ -45,6 +45,7 @@ import { createApp, type App } from "../src/app.js";
 import { hashPassword } from "../src/auth/password.js";
 import { bootstrapTenant } from "../src/lib/tenant-bootstrap.js";
 import { createTestDatabase, extractCookie, jstMinutes, loginAndGetCookie } from "./support/setup.js";
+import { requestPunch } from "./support/punch.js";
 
 /** JST 2026-04-15 12:00(テスト内の「今日」)。 */
 const FIXED_NOW = new Date("2026-04-15T03:00:00.000Z");
@@ -622,7 +623,7 @@ describe("テナント間分離(テナントAの認証情報でテナントBのI
     expect(issued.status).toBe(201);
     const token = ((await issued.json()) as { apiKey: { token: string } }).apiKey.token;
 
-    const punch = await app.request("/punches", {
+    const punch = await requestPunch(app, {
       method: "POST",
       headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
       body: JSON.stringify({ kind: "clock_in" }),
@@ -687,7 +688,7 @@ describe("テナント間分離(テナントAの認証情報でテナントBのI
     expect(closingsA.filter((s) => s.status === "closed")).toEqual([]);
 
     // A で同じ月に打刻できる(B の締めが A をロックしていない)
-    const punch = await app.request("/punches", {
+    const punch = await requestPunch(app, {
       method: "POST",
       headers: { "content-type": "application/json", cookie: adminACookie },
       body: JSON.stringify({ kind: "clock_in", occurredAt: jstMinutes(2026, 3, 10, 9, 0) }),

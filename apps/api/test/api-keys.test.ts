@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "../src/app.js";
 import { grantPermission, loginAndGetCookie, setupSecondUser, setupTestDb } from "./support/setup.js";
+import { requestPunch } from "./support/punch.js";
 
 // JST 正午(日界・月境界から十分離れた安全な時刻)に固定して、テストを実行時刻から独立させる。
 const FIXED_NOW = new Date("2026-06-15T03:00:00.000Z");
@@ -46,7 +47,7 @@ describe("public punch API (API keys)", () => {
     // レスポンスの apiKey オブジェクト自体には token 以外に平文相当の情報は無い(id 等のみ)。
     expect(issued.json.apiKey.id).toEqual(expect.any(String));
 
-    const punchRes = await app.request("/punches", {
+    const punchRes = await requestPunch(app, {
       method: "POST",
       headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
       body: JSON.stringify({ kind: "clock_in" }),
@@ -64,7 +65,7 @@ describe("public punch API (API keys)", () => {
     const { db } = await setupTestDb();
     const app = createApp({ db });
 
-    const res = await app.request("/punches", {
+    const res = await requestPunch(app, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ kind: "clock_in" }),
@@ -77,7 +78,7 @@ describe("public punch API (API keys)", () => {
     const { db } = await setupTestDb();
     const app = createApp({ db });
 
-    const res = await app.request("/punches", {
+    const res = await requestPunch(app, {
       method: "POST",
       headers: { "content-type": "application/json", authorization: "Bearer not-a-real-key" },
       body: JSON.stringify({ kind: "clock_in" }),
@@ -89,7 +90,7 @@ describe("public punch API (API keys)", () => {
     const { db } = await setupTestDb();
     const app = createApp({ db });
 
-    const res = await app.request("/punches", {
+    const res = await requestPunch(app, {
       method: "POST",
       headers: { "content-type": "application/json", authorization: "Bearer kzm_00000000000000000000000000000000000000000" },
       body: JSON.stringify({ kind: "clock_in" }),
@@ -115,7 +116,7 @@ describe("API key scope enforcement", () => {
     const issued = await issueApiKey(app, cookie, { name: "read only", scopes: ["read"] });
     const token = issued.json.apiKey.token;
 
-    const res = await app.request("/punches", {
+    const res = await requestPunch(app, {
       method: "POST",
       headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
       body: JSON.stringify({ kind: "clock_in" }),
@@ -205,7 +206,7 @@ describe("API key scope enforcement", () => {
 
     expect(
       (
-        await app.request("/punches", {
+        await requestPunch(app, {
           method: "POST",
           headers: { "content-type": "application/json", ...auth },
           body: JSON.stringify({ kind: "clock_in" }),
@@ -237,7 +238,7 @@ describe("revocation and expiry", () => {
     // 失効前は使える
     expect(
       (
-        await app.request("/punches", {
+        await requestPunch(app, {
           method: "POST",
           headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
           body: JSON.stringify({ kind: "clock_in" }),
@@ -248,7 +249,7 @@ describe("revocation and expiry", () => {
     const revokeRes = await app.request(`/api-keys/${id}`, { method: "DELETE", headers: { cookie } });
     expect(revokeRes.status).toBe(200);
 
-    const afterRevoke = await app.request("/punches", {
+    const afterRevoke = await requestPunch(app, {
       method: "POST",
       headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
       body: JSON.stringify({ kind: "clock_out" }),
@@ -279,7 +280,7 @@ describe("revocation and expiry", () => {
     // 期限内はOK
     expect(
       (
-        await app.request("/punches", {
+        await requestPunch(app, {
           method: "POST",
           headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
           body: JSON.stringify({ kind: "clock_in" }),
@@ -289,7 +290,7 @@ describe("revocation and expiry", () => {
 
     // 期限ちょうどはNG(findApiKeyByHash は gt なので expires_at と同時刻は失効扱い)
     vi.setSystemTime(new Date(FIXED_NOW.getTime() + 10 * 60_000));
-    const atExpiry = await app.request("/punches", {
+    const atExpiry = await requestPunch(app, {
       method: "POST",
       headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
       body: JSON.stringify({ kind: "clock_out" }),

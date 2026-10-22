@@ -182,3 +182,10 @@ export function mapShiftPlanCreateErrorMessage(body: unknown): string {
 
 /** テナントの退会(POST /tenant/withdrawal・/cancel、2026-10-05)のエラーマッピング。 */
 export const mapTenantWithdrawalErrorMessage = makeErrorMapper(() => messages.settingsWithdrawal.errors);
+
+/**
+ * 打刻(POST /punches)のエラーマッピング(セキュリティ診断 M6、2026-10)。
+ * 数分以上前の時刻(occurred_at_too_old)は「修正申請から」へ誘導する。それ以外は従来どおり
+ * 「打刻に失敗しました」に落とす。
+ */
+export const mapPunchErrorMessage = makeErrorMapper(() => messages.punchErrors);

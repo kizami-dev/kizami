@@ -9,6 +9,7 @@ import {
   setVariablePeriodStartDay,
   switchToMonthlyVariableWorkPolicy,
 } from "./support/setup.js";
+import { requestPunch } from "./support/punch.js";
 
 const SHIFT_MANAGE_PERMISSION = "shift.manage";
 
@@ -311,12 +312,12 @@ describe("shift-patterns / shifts", () => {
       });
 
       // シフトの所定(9:00-18:00, 休憩60分=8h)を超える実労働にする(9:00-20:00)。
-      await app.request("/punches", {
+      await requestPunch(app, {
         method: "POST",
         headers: { "content-type": "application/json", cookie },
         body: JSON.stringify({ kind: "clock_in", occurredAt: jstMinutes(2026, 4, 1, 9, 0) }),
       });
-      await app.request("/punches", {
+      await requestPunch(app, {
         method: "POST",
         headers: { "content-type": "application/json", cookie },
         body: JSON.stringify({ kind: "clock_out", occurredAt: jstMinutes(2026, 4, 1, 20, 0) }),

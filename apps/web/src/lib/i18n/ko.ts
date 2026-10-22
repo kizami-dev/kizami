@@ -580,6 +580,11 @@ export const ko = {
     loadFailed: "데이터를 가져오지 못했습니다. 다시 시도해 주세요",
     network: "서버에 연결할 수 없습니다",
   },
+  punchErrors: {
+    occurred_at_too_old: "과거 시각으로는 기록할 수 없습니다. 수정 신청으로 등록해 주세요",
+    occurred_at_in_future: "미래 시각으로는 기록할 수 없습니다. 기기의 시계를 확인해 주세요",
+    default: "출퇴근 기록에 실패했습니다. 다시 시도해 주세요",
+  },
 
   loading: "불러오는 중…",
 

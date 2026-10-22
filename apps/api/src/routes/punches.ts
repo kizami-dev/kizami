@@ -14,8 +14,35 @@ import { nowMinutes } from "../lib/time.js";
 /** 打刻として受け付ける kind。'void'(取消)はシステム内部専用のため申請者は直接指定できない。 */
 export const VALID_PUNCH_KINDS: readonly PunchKind[] = ["clock_in", "clock_out", "break_start", "break_end"];
 
-/** サーバー現在時刻を超えて何分先までを許容するか。修正申請の proposedOccurredAt にも流用する。 */
+/**
+ * 修正申請の proposedOccurredAt がサーバー現在時刻を超えて何分先までを許容するか
+ * (apps/api/src/routes/corrections.ts)。修正申請は承認を経るため、打刻本体より緩くてよい。
+ */
 export const FUTURE_TOLERANCE_MINUTES = 5;
+
+/**
+ * 打刻(POST /punches)でクライアントが occurredAt を指定したとき、サーバー現在時刻から
+ * 何分前までを受け付けるか(セキュリティ診断 M6、2026-10)。
+ *
+ * 判断点: 以前は過去方向に上限がなく、メンバーが任意の過去時刻の打刻を作れたため、
+ * 「過去の打刻は修正申請(承認あり)で直す」という統制を素通りできた。打刻は「いま押した」
+ * 記録であるべきなので、受け付けるのは送信の遅延(回線の再送・ICカードリーダー等の
+ * 外部クライアントの送信待ち)を吸収できる最小限の幅に絞る。5分は、分単位に丸めた時刻の
+ * 境界ずれ(最大1分)とモバイル回線の再送を十分に吸収しつつ、休憩や退勤の時刻を
+ * 実質的に書き換えられない幅として選んだ。これより古い打刻は修正申請で登録する。
+ *
+ * Web / PWA はオフライン時に打刻をキューイングしない(apps/web/src/lib/useOnlineStatus.ts、
+ * オフライン中は打刻ボタン自体を無効化)ため、後から元の時刻で再送される経路は無い。
+ * Slack・MCP もサーバー受信時刻で打刻する。過去時刻を指定しうるのは公開打刻API
+ * (APIキー)だけで、ここに同じ上限がかかる。
+ */
+export const PUNCH_PAST_GRACE_MINUTES = 5;
+
+/**
+ * 打刻でクライアント指定の occurredAt がサーバー現在時刻より何分先までを許容するか。
+ * 端末の時計ずれと分単位への丸めの差だけを吸収する(未来の時刻を「予約」させない)。
+ */
+export const PUNCH_FUTURE_SKEW_MINUTES = 1;
 
 interface PunchBody {
   kind?: unknown;
@@ -109,8 +136,13 @@ export function createPunchesRoutes(db: Database) {
       return c.json({ error: "invalid_occurred_at" }, 400);
     }
 
-    if (occurredAtMinutes > now + FUTURE_TOLERANCE_MINUTES) {
+    if (occurredAtMinutes > now + PUNCH_FUTURE_SKEW_MINUTES) {
       return c.json({ error: "occurred_at_in_future" }, 400);
+    }
+    // 猶予を超えた過去時刻の打刻は受け付けない(修正申請 POST /corrections で承認を経て登録する)。
+    // 管理者による打刻の訂正は修正申請の承認経路(corrections.ts)で行われ、ここは通らない。
+    if (occurredAtMinutes < now - PUNCH_PAST_GRACE_MINUTES) {
+      return c.json({ error: "occurred_at_too_old" }, 400);
     }
 
     // 締め済み月への打刻は全経路で拒否する(docs/requirements.md §6・依頼の禁止事項)。

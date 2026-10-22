@@ -21,6 +21,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { migrateDb, resolveDialect } from "@kizami/db/node";
 import { createApp } from "../src/app.js";
 import { loginAndGetCookie, setupTestDb } from "./support/setup.js";
+import { requestPunch } from "./support/punch.js";
 
 const pgUrl = process.env.TEST_PG_URL;
 const FIXED_NOW = new Date("2026-06-15T03:00:00.000Z"); // JST 正午
@@ -72,7 +73,7 @@ describe.skipIf(pgUrl === undefined)("apps/api boots against PostgreSQL", () => 
       const app = createApp({ db });
       const cookie = await loginAndGetCookie(app, email, password);
 
-      const clockIn = await app.request("/punches", {
+      const clockIn = await requestPunch(app, {
         method: "POST",
         headers: { "content-type": "application/json", cookie },
         body: JSON.stringify({ kind: "clock_in", occurredAt: Math.floor(FIXED_NOW.getTime() / 60_000) - 60 }),

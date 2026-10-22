@@ -15,7 +15,7 @@ import {
 } from "../lib/api";
 import { getCurrentPositionSafe } from "../lib/geolocation";
 import { INTL_LOCALE, getLocale } from "../lib/i18n";
-import { messages } from "../lib/messages";
+import { mapPunchErrorMessage, messages } from "../lib/messages";
 import { formatTimeJst, jstTodayWindow, nowMinutes } from "../lib/time";
 import { useAuthGuard } from "../lib/useAuthGuard";
 import { useOnlineStatus } from "../lib/useOnlineStatus";
@@ -163,7 +163,7 @@ export function PunchHome() {
         router.push("/login");
         return;
       }
-      setPunchError(err instanceof ApiError ? messages.errors.punchFailed : messages.errors.network);
+      setPunchError(err instanceof ApiError ? mapPunchErrorMessage(err.body) : messages.errors.network);
     } finally {
       setPending(false);
       setGpsLocating(false);

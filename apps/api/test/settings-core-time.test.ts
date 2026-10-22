@@ -12,6 +12,7 @@ import { uuidv7, workPolicies, workPolicyVersions, type Database } from "@kizami
 import { buildSettingsTimeline } from "../src/lib/settings.js";
 import { createApp } from "../src/app.js";
 import { grantPermission, jstMinutes, loginAndGetCookie, setupTestDb } from "./support/setup.js";
+import { requestPunch } from "./support/punch.js";
 
 const PERMISSION = "tenant_settings.flex.manage";
 
@@ -227,7 +228,7 @@ describe("コアタイム: GET /attendance/monthly の警告シリアライズ",
     const cookie = await loginAndGetCookie(app, email, password);
 
     const punch = async (kind: string, occurredAt: number) => {
-      const r = await app.request("/punches", {
+      const r = await requestPunch(app, {
         method: "POST",
         headers: { "content-type": "application/json", cookie },
         body: JSON.stringify({ kind, occurredAt }),

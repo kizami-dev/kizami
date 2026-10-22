@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDepartment, upsertMembership, uuidv7 } from "@kizami/db";
 import { createApp } from "../src/app.js";
 import { grantPermission, jstMinutes, loginAndGetCookie, setupSecondUser, setupTestDb } from "./support/setup.js";
+import { requestPunch } from "./support/punch.js";
 
 /** このファイルの承認系テストは軒並み自己承認を行うため、共通ヘルパーにまとめる
  * (2026-08-23: 承認は attendance.correction.approve 権限ベースに統一された —
@@ -46,7 +47,7 @@ describe("correction request flow", () => {
 
     // clock_in のみ(退勤打刻忘れ)
     const clockInAt = jstMinutes(2026, 4, 1, 9, 0);
-    const clockInRes = await app.request("/punches", {
+    const clockInRes = await requestPunch(app, {
       method: "POST",
       headers: { "content-type": "application/json", cookie },
       body: JSON.stringify({ kind: "clock_in", occurredAt: clockInAt }),
@@ -96,13 +97,13 @@ describe("correction request flow", () => {
     const cookie = await loginAndGetCookie(app, email, password);
 
     const clockInAt = jstMinutes(2026, 4, 1, 9, 0);
-    await app.request("/punches", {
+    await requestPunch(app, {
       method: "POST",
       headers: { "content-type": "application/json", cookie },
       body: JSON.stringify({ kind: "clock_in", occurredAt: clockInAt }),
     });
     const wrongClockOutAt = jstMinutes(2026, 4, 1, 17, 0);
-    const wrongClockOutRes = await app.request("/punches", {
+    const wrongClockOutRes = await requestPunch(app, {
       method: "POST",
       headers: { "content-type": "application/json", cookie },
       body: JSON.stringify({ kind: "clock_out", occurredAt: wrongClockOutAt }),
@@ -146,13 +147,13 @@ describe("correction request flow", () => {
     const cookie = await loginAndGetCookie(app, email, password);
 
     const clockInAt = jstMinutes(2026, 4, 1, 9, 0);
-    await app.request("/punches", {
+    await requestPunch(app, {
       method: "POST",
       headers: { "content-type": "application/json", cookie },
       body: JSON.stringify({ kind: "clock_in", occurredAt: clockInAt }),
     });
     const mistakenBreakStartAt = jstMinutes(2026, 4, 1, 12, 0);
-    const breakStartRes = await app.request("/punches", {
+    const breakStartRes = await requestPunch(app, {
       method: "POST",
       headers: { "content-type": "application/json", cookie },
       body: JSON.stringify({ kind: "break_start", occurredAt: mistakenBreakStartAt }),
@@ -192,7 +193,7 @@ describe("correction request flow", () => {
     const cookie = await loginAndGetCookie(app, email, password);
 
     const clockOutAt = jstMinutes(2026, 4, 1, 18, 0);
-    const clockOutRes = await app.request("/punches", {
+    const clockOutRes = await requestPunch(app, {
       method: "POST",
       headers: { "content-type": "application/json", cookie },
       body: JSON.stringify({ kind: "clock_out", occurredAt: clockOutAt }),
@@ -270,7 +271,7 @@ describe("correction request flow", () => {
       // 2人目の同一テナント内ユーザーを作り、その打刻を作る
       const other = await setupSecondUser(db, tenantId);
 
-      const otherClockInRes = await app.request("/punches", {
+      const otherClockInRes = await requestPunch(app, {
         method: "POST",
         headers: { "content-type": "application/json", cookie: await loginAndGetCookie(app, other.email, other.password) },
         body: JSON.stringify({ kind: "clock_in", occurredAt: jstMinutes(2026, 4, 1, 9, 0) }),

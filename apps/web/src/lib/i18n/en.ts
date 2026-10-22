@@ -599,6 +599,11 @@ export const en = {
     loadFailed: "Failed to load data. Please try again",
     network: "Could not connect to the server",
   },
+  punchErrors: {
+    occurred_at_too_old: "Punches can't be recorded for a past time. Submit a correction request instead",
+    occurred_at_in_future: "Punches can't be recorded for a future time. Check your device's clock",
+    default: "The punch failed. Please try again",
+  },
 
   loading: "Loading…",
 

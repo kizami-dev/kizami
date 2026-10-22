@@ -4,6 +4,7 @@ import type { NotificationChannel, NotificationMessage } from "@kizami/notify";
 import { createApp } from "../src/app.js";
 import { runReminderScan } from "../src/reminders.js";
 import { grantPermission, jstMinutes, loginAndGetCookie, setupSecondUser, setupTestDb } from "./support/setup.js";
+import { requestPunch } from "./support/punch.js";
 
 // 修正申請の approve フロー(corrections.test.ts と同じ固定時刻: JST 2026-04-15 12:00)。
 const FIXED_NOW = new Date("2026-04-15T03:00:00.000Z");
@@ -98,7 +99,7 @@ describe("runReminderScan", () => {
     const cookie = await loginAndGetCookie(app, email, password);
 
     const clockInAt = jstMinutes(2026, 4, 1, 9, 0);
-    const clockInRes = await app.request("/punches", {
+    const clockInRes = await requestPunch(app, {
       method: "POST",
       headers: { "content-type": "application/json", cookie },
       body: JSON.stringify({ kind: "clock_in", occurredAt: clockInAt }),

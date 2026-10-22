@@ -11,6 +11,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "../src/app.js";
 import { grantPermission, jstMinutes, loginAndGetCookie, setBreakRule, setupSecondUser, setupTestDb } from "./support/setup.js";
+import { requestPunch } from "./support/punch.js";
 
 // テスト対象期間(2026-04)の内側、日界・月境界から十分離れた安全な時刻に固定する(corrections.test.ts と同じ流儀)。
 const FIXED_NOW = new Date("2026-04-15T03:00:00.000Z"); // JST 2026-04-15 12:00
@@ -40,7 +41,7 @@ interface MonthlyJson {
 }
 
 async function postPunch(app: RequestLike, cookie: string, kind: string, occurredAt: number) {
-  const res = await app.request("/punches", {
+  const res = await requestPunch(app, {
     method: "POST",
     headers: { "content-type": "application/json", cookie },
     body: JSON.stringify({ kind, occurredAt }),

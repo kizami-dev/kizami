@@ -3,6 +3,7 @@ import { calculate, type CalcSettings, type EngineInput, type LawTimelineSpan, t
 import { buildLawTimeline } from "@kizami/law";
 import { createApp } from "../src/app.js";
 import { jstMinutes, loginAndGetCookie, setupTestDb, switchToFixedWorkPolicy } from "./support/setup.js";
+import { requestPunch } from "./support/punch.js";
 
 // setupTestDb() が作るテナントの法令プロファイル既定値(中小企業・特例措置対象外)と同じもので
 // 2026-04 の lawTimeline を組み立てる(apps/api/src/routes/attendance.ts が実際に使う
@@ -56,7 +57,7 @@ describe("GET /attendance/monthly", () => {
     ];
 
     for (const p of punches) {
-      const res = await app.request("/punches", {
+      const res = await requestPunch(app, {
         method: "POST",
         headers: { "content-type": "application/json", cookie },
         body: JSON.stringify({ kind: p.kind, occurredAt: p.occurredAt }),
@@ -111,13 +112,13 @@ describe("GET /attendance/monthly", () => {
     const cookie = await loginAndGetCookie(app, email, password);
 
     // 4/1: 09:00-19:30(10.5h、休憩なし)→ 日次法定時間外(8h超) = 2.5h = 150分
-    const res1 = await app.request("/punches", {
+    const res1 = await requestPunch(app, {
       method: "POST",
       headers: { "content-type": "application/json", cookie },
       body: JSON.stringify({ kind: "clock_in", occurredAt: jstMinutes(2026, 4, 1, 9, 0) }),
     });
     expect(res1.status).toBe(201);
-    const res2 = await app.request("/punches", {
+    const res2 = await requestPunch(app, {
       method: "POST",
       headers: { "content-type": "application/json", cookie },
       body: JSON.stringify({ kind: "clock_out", occurredAt: jstMinutes(2026, 4, 1, 19, 30) }),

@@ -83,6 +83,11 @@ API・DB スキーマの互換方針とアップグレード手順は
 
 ### Security
 
+- **打刻で任意の過去時刻を指定でき、修正申請の承認を通さずに勤怠を作れた問題を修正**(M6)。`POST /punches` の
+  `occurredAt` はサーバー時刻の 5 分前〜1 分先だけを受け付け、それより前は 400 `occurred_at_too_old`(Web は
+  「過去の時刻の打刻はできません。修正申請から登録してください」と表示)。未来方向の許容は 5 分から 1 分に縮めた。
+  Web/PWA・Slack・MCP は打刻時刻を送らない(サーバー時刻で打刻する)ので影響しない。**公開打刻 API で時刻を指定して
+  いるクライアント(IC カードリーダー等)は、通信できない間にためた打刻を後から送れなくなる**(修正申請で登録する)
 - **公開デモ(demo.kizami.dev)に SSRF 対策を入れた**。認証情報が公開の管理者が、テナントの SMTP ホストや Webhook URL を
   内部アドレスに向け、テスト送信のエラーでクラスタ内をポートスキャンできた。api / worker に `OUTBOUND_BLOCK_PRIVATE=true` とノードのグローバル IP を拒否する `OUTBOUND_DENY_CIDRS` を
   設定し、NetworkPolicy で Pod の出口を DNS と公開インターネットだけに絞った。あわせてデモの `KIZAMI_ENCRYPTION_KEY` が
