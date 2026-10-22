@@ -7,11 +7,12 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
-import { auditLogs, tenantSettingVersions, uuidv7, type Database } from "@kizami/db";
+import { appendClosingEvent, auditLogs, correctionRequests, tenantSettingVersions, upsertMembership, uuidv7, type Database } from "@kizami/db";
 import { calculate, type EngineInput, type LawTimelineSpan } from "@kizami/engine";
 import { buildLawTimeline } from "@kizami/law";
 import { createApp } from "../src/app.js";
 import { grantPermission, jstMinutes, loginAndGetCookie, setupSecondUser, setupTestDb, switchToFixedWorkPolicy } from "./support/setup.js";
+import { setupOrgFixture } from "./support/org.js";
 import { requestPunch } from "./support/punch.js";
 
 const FIXED_NOW = new Date("2026-05-15T03:00:00.000Z"); // JST 2026-05-15 12:00
@@ -28,7 +29,7 @@ interface RequestLike {
 
 interface ClosingEventJson {
   id: string;
-  event: "close" | "reopen";
+  event: "close" | "reopen" | "amend";
   actorId: string;
   note: string | null;
   occurredAt: number;
@@ -376,3 +377,115 @@ describe("closings API", () => {
     expect(afterClose.body.figures.totals).toEqual(beforeClose.body.figures.totals);
   });
 });
+
+/**
+ * セキュリティ指摘 M7(2026-10-22): 締めはテナント単位(closing_events は部署を持たない)なので、
+ * 自部署+配下部署スコープの closing.execute / closing.unlock ではテナント全体の締め・解除を
+ * させない。閲覧(closing.view)は部署スコープでも状態と締め・解除の履歴を見られるが、
+ * 締め後修正(amend)の履歴はスコープ内メンバーの申請によるものだけになる。
+ */
+describe("closings API department scope (M7)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(FIXED_NOW);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("POST close is 403 for a department_and_descendants closing.execute grant and nothing is closed", async () => {
+    const { db, tenantId, userId, email, password } = await setupTestDb();
+    await grantPermission(db, { tenantId, userId, permission: "closing.execute", scope: "department_and_descendants" });
+    const app = createApp({ db });
+    const cookie = await loginAndGetCookie(app, email, password);
+
+    expect((await closePeriod(app, cookie, "2026-04")).status).toBe(403);
+    const state = await getClosing(app, cookie, "2026-04");
+    expect(state.body.closing?.status).toBe("open");
+    expect(state.body.closing?.history).toEqual([]);
+  });
+
+  it("POST reopen is 403 for a department_and_descendants closing.unlock grant and the month stays closed", async () => {
+    const { db, tenantId, userId, email, password } = await setupTestDb();
+    const admin = await setupSecondUser(db, tenantId);
+    await grantPermission(db, { tenantId, userId: admin.userId, permission: "closing.execute", scope: "tenant" });
+    await grantPermission(db, { tenantId, userId, permission: "closing.unlock", scope: "department_and_descendants" });
+    const app = createApp({ db });
+    const adminCookie = await loginAndGetCookie(app, admin.email, admin.password);
+    expect((await closePeriod(app, adminCookie, "2026-04")).status).toBe(200);
+
+    const cookie = await loginAndGetCookie(app, email, password);
+    expect((await reopenPeriod(app, cookie, "2026-04")).status).toBe(403);
+    expect((await getClosing(app, cookie, "2026-04")).body.closing?.status).toBe("closed");
+  });
+
+  it("tenant-scoped closing.execute / closing.unlock still close and reopen", async () => {
+    const { db, tenantId, userId, email, password } = await setupTestDb();
+    await grantPermission(db, { tenantId, userId, permission: "closing.execute", scope: "tenant" });
+    await grantPermission(db, { tenantId, userId, permission: "closing.unlock", scope: "tenant" });
+    const app = createApp({ db });
+    const cookie = await loginAndGetCookie(app, email, password);
+
+    expect((await closePeriod(app, cookie, "2026-04")).status).toBe(200);
+    vi.setSystemTime(new Date(FIXED_NOW.getTime() + 60_000));
+    expect((await reopenPeriod(app, cookie, "2026-04")).status).toBe(200);
+  });
+
+  async function setupAmendHistory(viewScope: "department" | "tenant") {
+    const seeded = await setupTestDb();
+    const { db, tenantId, userId } = seeded;
+    const org = await setupOrgFixture(db, tenantId);
+    await upsertMembership(db, { tenantId, userId, departmentId: org.deptA.id, createdAt: 0 });
+    await grantPermission(db, { tenantId, userId, permission: "closing.view", scope: viewScope });
+
+    const requestFor = async (ownerId: string) => {
+      const id = uuidv7();
+      await db.insert(correctionRequests).values({
+        id,
+        tenantId,
+        userId: ownerId,
+        requestedBy: ownerId,
+        status: "approved",
+        proposedKind: "clock_in",
+        proposedOccurredAt: 0,
+        reason: "test",
+        createdAt: 0,
+      });
+      return id;
+    };
+    const base = { tenantId, period: "2026-04", actorId: org.memberBUserId };
+    await appendClosingEvent(db, { ...base, event: "close", note: "締め", occurredAt: 100 });
+    const amendA = await appendClosingEvent(db, { ...base, event: "amend", correctionRequestId: await requestFor(org.memberAUserId), occurredAt: 101 });
+    const amendB = await appendClosingEvent(db, { ...base, event: "amend", correctionRequestId: await requestFor(org.memberBUserId), occurredAt: 102 });
+    return { ...seeded, org, amendA, amendB };
+  }
+
+  it("department-scoped closing.view sees status and close/reopen history, but only amends for in-scope members", async () => {
+    const { db, email, password, amendA } = await setupAmendHistory("department");
+    const app = createApp({ db });
+    const cookie = await loginAndGetCookie(app, email, password);
+
+    const single = await getClosing(app, cookie, "2026-04");
+    expect(single.status).toBe(200);
+    expect(single.body.closing?.status).toBe("closed");
+    expect(single.body.closing?.history.map((e) => e.id)).toEqual([expect.any(String), amendA.id]);
+    expect(single.body.closing?.history.map((e) => e.event)).toEqual(["close", "amend"]);
+    expect(single.body.closing?.lastEvent?.id).toBe(amendA.id);
+
+    const res = await app.request("/closings?from=2026-04&to=2026-04", { headers: { cookie } });
+    const list = (await res.json()) as { closings: ClosingStateJson[] };
+    expect(list.closings[0]?.history.map((e) => e.id)).toEqual(single.body.closing?.history.map((e) => e.id));
+  });
+
+  it("tenant-scoped closing.view sees every amend", async () => {
+    const { db, email, password, amendA, amendB } = await setupAmendHistory("tenant");
+    const app = createApp({ db });
+    const cookie = await loginAndGetCookie(app, email, password);
+
+    const single = await getClosing(app, cookie, "2026-04");
+    expect(single.body.closing?.history.map((e) => e.id).slice(1)).toEqual([amendA.id, amendB.id]);
+    expect(single.body.closing?.lastEvent?.id).toBe(amendB.id);
+  });
+});
+

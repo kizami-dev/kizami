@@ -162,6 +162,8 @@ describe("POST /auth/login: 同一メールが複数テナントに存在する�
     expect(body.error).toBe("multiple_tenants");
     expect(body.tenants.map((t) => t.id).sort()).toEqual([seeded.tenantId, second.tenantId].sort());
     expect(body.tenants.map((t) => t.name).sort()).toEqual(["Second Tenant", "Test Tenant"]);
+    // 選択画面で会社ごとに SSO を出し分けるための印(どちらも SSO 未設定)
+    expect(body.tenants.map((t) => (t as { ssoEnabled?: unknown }).ssoEnabled)).toEqual([false, false]);
   });
 
   it("tenantId を指定して再ログインすると、そのテナントのセッションになる", async () => {

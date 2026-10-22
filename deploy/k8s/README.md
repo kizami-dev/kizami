@@ -216,6 +216,7 @@ kubectl -n kizami rollout restart deployment/kizami
 - `30094` は `kizami-api` Service の NodePort、`30093` は `kizami-web` Service の NodePort(このクラスタは 30088/30090/30091/30092 を既に使用しているため、それらと衝突しない番号を採番した)。
 - `apps/api/src/node.ts` は `/api` プレフィクス付きリクエストもプレフィクス無しと同じアプリで受けられる実装になっているため、トンネル側でパスを書き換える(strip prefix する)設定は不要。
 - `apps/web` の本番ビルドは `WAKU_PUBLIC_API_URL=/api` を焼き込んでいる(`docker/web.Dockerfile` 参照)ため、ブラウザからは常に同一オリジンの `/api/*` を叩く。API を別オリジンで公開する場合はこの前提が崩れるので web イメージの再ビルドが必要。
+- セキュリティヘッダ(CSP・HSTS 等)は web / api のアプリ自身が付ける(`apps/web/src/lib/security-headers.ts`・`apps/api/src/lib/security-headers.ts`)。トンネルや Cloudflare のルールで `Content-Security-Policy` を上書きしないこと(web の CSP はページごとのインラインスクリプトのハッシュを含む)。HSTS は cloudflared が付ける `X-Forwarded-Proto: https` / `CF-Visitor` を見て付く。
 - `localhost:3009x` は cloudflared が動く samurai-watch ホストから見た宛先である想定(NodePort はクラスタの全ノードで待受けるため、samurai-watch がクラスタのいずれかのノードに到達できればよい。到達できない場合は cloudflared 側のトンネル先ホスト/IP を該当ノードの IP に置き換えること)。
 
 ## 認証系のレート制限(TRUST_PROXY)

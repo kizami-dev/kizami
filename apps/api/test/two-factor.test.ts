@@ -84,6 +84,19 @@ async function enableTotp(app: RequestLike, cookie: string): Promise<{ secret: s
   return { secret, recoveryCodes };
 }
 
+/** 2FA 有効ユーザーとして2段階ログインを通し、セッション Cookie を返す(時計を1ステップ進めて新しいコードを使う)。 */
+async function loginAndGetCookieWithTotp(
+  app: RequestLike,
+  seeded: { email: string; password: string },
+  secret: string,
+): Promise<string> {
+  advanceSeconds(TOTP_STEP_SECONDS);
+  const tx = cookieNamed(await login(app, seeded.email, seeded.password), "kizami_totp_tx") as string;
+  const res = await app.request("/auth/login/totp", jsonInit({ code: await generateTotp(secret, nowSeconds()) }, tx));
+  expect(res.status).toBe(200);
+  return cookieNamed(res, "kizami_session") as string;
+}
+
 /** パスワードログインの第1段階。2FA が有効なら totp_required が返る。 */
 function login(app: RequestLike, email: string, password: string): Promise<Response> {
   return Promise.resolve(app.request("/auth/login", jsonInit({ email, password })));
@@ -276,6 +289,49 @@ describe("POST /auth/login → /auth/login/totp(2段階ログイン)", () => {
     const replay = await app.request("/auth/login/totp", jsonInit({ code }, tx2));
     expect(replay.status).toBe(401);
     expect(await replay.json()).toEqual({ error: "invalid_code" });
+  });
+
+  it("同じコードを同時に2回送っても、通るのは1回だけ(使用済みの記録は条件付きで奪い取る)", async () => {
+    const { seeded, app, secret } = await scenario();
+    advanceSeconds(TOTP_STEP_SECONDS);
+    const code = await generateTotp(secret, nowSeconds());
+
+    const tx1 = cookieNamed(await login(app, seeded.email, seeded.password), "kizami_totp_tx") as string;
+    const tx2 = cookieNamed(await login(app, seeded.email, seeded.password), "kizami_totp_tx") as string;
+    const results = await Promise.all([
+      app.request("/auth/login/totp", jsonInit({ code }, tx1)),
+      app.request("/auth/login/totp", jsonInit({ code }, tx2)),
+    ]);
+    expect(results.map((r) => r.status).sort()).toEqual([200, 401]);
+    expect(results.filter((r) => cookieNamed(r, "kizami_session") !== null)).toHaveLength(1);
+  });
+
+  it("リカバリコード再生成の確認に使ったコードは、ログインの第2段階に使い回せない", async () => {
+    const { seeded, app, secret } = await scenario();
+    const cookie = await loginAndGetCookieWithTotp(app, seeded, secret);
+    advanceSeconds(TOTP_STEP_SECONDS);
+    const code = await generateTotp(secret, nowSeconds());
+
+    const regen = await app.request("/auth/totp/recovery-codes", jsonInit({ password: seeded.password, code }, cookie));
+    expect(regen.status).toBe(200);
+
+    const tx = cookieNamed(await login(app, seeded.email, seeded.password), "kizami_totp_tx") as string;
+    const reuse = await app.request("/auth/login/totp", jsonInit({ code }, tx));
+    expect(reuse.status).toBe(401);
+    expect(await reuse.json()).toEqual({ error: "invalid_code" });
+  });
+
+  it("リカバリコード再生成に同じコードを同時に送っても、通るのは1回だけ", async () => {
+    const { seeded, app, secret } = await scenario();
+    const cookie = await loginAndGetCookieWithTotp(app, seeded, secret);
+    advanceSeconds(TOTP_STEP_SECONDS);
+    const code = await generateTotp(secret, nowSeconds());
+
+    const results = await Promise.all([
+      app.request("/auth/totp/recovery-codes", jsonInit({ password: seeded.password, code }, cookie)),
+      app.request("/auth/totp/recovery-codes", jsonInit({ password: seeded.password, code }, cookie)),
+    ]);
+    expect(results.map((r) => r.status).sort()).toEqual([200, 400]);
   });
 
   it("±1ステップのずれは許容し、2ステップ離れたコードは拒否する", async () => {

@@ -297,6 +297,7 @@ export const ko = {
     /** SSO(OIDC) 로그인 실패 사유(2026-08-24 추가). 코드는 apps/api/src/lib/oidc.ts 의
      * OidcErrorCode 와 1:1 로 대응한다(콜백은 /login?error=<code> 로 302 리다이렉트). */
       sso_not_enabled: "이 회사에서는 SSO 로그인이 활성화되어 있지 않습니다",
+      sso_multiple_tenants: "이 이메일 주소로 SSO를 사용할 수 있는 회사가 여러 곳 있습니다. 비밀번호로 로그인하여 회사를 선택한 후 SSO를 선택해 주세요",
       sso_config_incomplete: "SSO 설정이 완료되지 않았습니다. 관리자에게 문의해 주세요",
       sso_discovery_failed: "IdP(SSO 인증 기반)에 연결하지 못했습니다. 관리자에게 문의해 주세요",
       sso_token_failed: "SSO 인증에 실패했습니다. 다시 시도해 주세요",
@@ -324,7 +325,6 @@ export const ko = {
      * 비밀번호 로그인은 계속 사용할 수 있다. */
     ssoDivider: "또는",
     ssoButton: "SSO로 로그인",
-    ssoButtonForTenant: (tenantName: string) => `${tenantName}에 SSO로 로그인`,
     ssoStarting: "SSO로 이동 중…",
 
     totpTitle: "확인 코드를 입력해 주세요",
@@ -3062,6 +3062,7 @@ export const ko = {
     title: "감사 로그",
     tagline: "출퇴근·수정·승인·마감·권한 변경 등 조작 기록입니다.",
     immutableNote: "감사 로그는 추가 전용 기록으로, 이후에 변경·삭제되지 않습니다(읽기 전용).",
+    scopedNote: "감사 로그 열람 권한이 부서 범위로 제한되어 있습니다. 범위 내 구성원·부서에 관한 기록만 표시되며, 테넌트 전체 설정과 마감 기록은 표시되지 않습니다.",
     loadFailed: "정보를 가져오지 못했습니다. 다시 시도해 주세요",
     forbidden: "이 작업을 수행할 권한이 없습니다",
 

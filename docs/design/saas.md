@@ -202,7 +202,7 @@ pnpm --filter @kizami/api operator tenant sync-presets
 - ~~既存の `POST /auth/login` 等には Origin 検証が無い~~ — **対応済み(2026-10-05)**。セッション Cookie を発行する未認証の POST
   (`POST /auth/login`・`/auth/login/totp`・`/auth/oidc/start`・`/invitations/:token/accept`・`/password-resets/:token/use`)にも
   同じ Origin 検証 + JSON 必須化を掛けた(`app.ts` の `authPostOrigins`)。許可オリジンは**明示された** `APP_BASE_URL` と
-  `CORS_ORIGIN`(どちらも未設定の配備は従来どおり検証しない)。Bearer(API キー)の経路・OIDC の callback(IdP からの GET)・
+  `CORS_ORIGIN`(どちらも未設定の配備は、2026-10-22 からリクエストの Host と CORS を許したオリジンを許可オリジンとして扱う `sameOriginPostGuard`)。Bearer(API キー)の経路・OIDC の callback(IdP からの GET)・
   Slack の署名検証の経路・認証済みの POST には掛けない。**`APP_BASE_URL` を設定した配備では、ユーザーがアクセスする
   オリジンと一致させること**(別名のホストでアクセスすると 403 になる)
 

@@ -31,6 +31,7 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 import {
   authCredentials,
+  claimUserTotpCounter,
   countUnusedRecoveryCodes,
   enableUserTotpWithRecoveryCodes,
   getTenantById,
@@ -228,6 +229,10 @@ export function createTotpRoutes(db: Database, options: TotpRoutesOptions) {
       minCounterExclusive: row.lastUsedCounter,
     });
     if (!verified) return c.json({ error: "invalid_code" }, 400);
+    // 確認に使ったコードを使用済みにする(同時の再送や、同じコードでのログイン第2段階を通さない)。
+    if (!(await claimUserTotpCounter(db, { tenantId: user.tenantId, userId: user.id, counter: verified.counter }))) {
+      return c.json({ error: "invalid_code" }, 400);
+    }
 
     const now = nowMinutes();
     await removeUserTotp(db, {
@@ -290,6 +295,10 @@ export function createTotpRoutes(db: Database, options: TotpRoutesOptions) {
       minCounterExclusive: row.lastUsedCounter,
     });
     if (!verified) return c.json({ error: "invalid_code" }, 400);
+    // 確認に使ったコードを使用済みにする(同時の再送や、同じコードでのログイン第2段階を通さない)。
+    if (!(await claimUserTotpCounter(db, { tenantId: user.tenantId, userId: user.id, counter: verified.counter }))) {
+      return c.json({ error: "invalid_code" }, 400);
+    }
 
     const now = nowMinutes();
     const recovery = await generateRecoveryCodes();

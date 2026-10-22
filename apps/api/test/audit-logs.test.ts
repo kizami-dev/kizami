@@ -9,9 +9,10 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { insertAuditLog, tenants, users, uuidv7, type Database } from "@kizami/db";
+import { correctionRequests, insertAuditLog, tenants, upsertMembership, users, uuidv7, type Database } from "@kizami/db";
 import { createApp } from "../src/app.js";
 import { grantPermission, loginAndGetCookie, setupTestDb } from "./support/setup.js";
+import { setupOrgFixture } from "./support/org.js";
 
 interface RequestLike {
   request: (path: string, init?: RequestInit) => Promise<Response> | Response;
@@ -170,14 +171,156 @@ describe("GET /audit-logs", () => {
     expect(body.logs?.[0]?.action).toBe("member.invite");
   });
 
-  it("department scope is enough to pass the coarse gate (audit_log.view is not further scoped per-record, like closing.view)", async () => {
+  it("department scope passes the gate and still sees rows about the viewer themself", async () => {
     const { db, tenantId, userId, email, password } = await setupTestDb();
     await grantPermission(db, { tenantId, userId, permission: "audit_log.view", scope: "department" });
     await seed(db, { tenantId, actorId: userId, action: "member.invite", targetType: "user", targetId: "u1", occurredAt: 100 });
 
     const app = createApp({ db });
     const cookie = await loginAndGetCookie(app, email, password);
-    const { status } = await getAuditLogs(app, cookie);
+    const { status, body } = await getAuditLogs(app, cookie);
     expect(status).toBe(200);
+    expect(body.logs?.map((l) => l.action)).toEqual(["member.invite"]);
+  });
+});
+
+/**
+ * セキュリティ指摘 M7(2026-10-22): audit_log.view を部署スコープで持つ人には、スコープ内の
+ * ユーザー・部署に帰属する行だけを見せる(以前はテナント内の全件が見えていた)。
+ * 組織: 部署A(viewer と memberA)- 部署A1(memberA1)、部署B(memberB)。
+ */
+describe("GET /audit-logs department scope (M7)", () => {
+  async function setupScoped(scope: "department" | "department_and_descendants" | "tenant") {
+    const seeded = await setupTestDb();
+    const { db, tenantId, userId } = seeded;
+    const org = await setupOrgFixture(db, tenantId);
+    await upsertMembership(db, { tenantId, userId, departmentId: org.deptA.id, createdAt: 0 });
+    await grantPermission(db, { tenantId, userId, permission: "audit_log.view", scope });
+    return { ...seeded, org };
+  }
+
+  async function insertCorrectionRequest(db: Database, tenantId: string, ownerId: string): Promise<string> {
+    const id = uuidv7();
+    await db.insert(correctionRequests).values({
+      id,
+      tenantId,
+      userId: ownerId,
+      requestedBy: ownerId,
+      status: "pending",
+      proposedKind: "clock_in",
+      proposedOccurredAt: 0,
+      reason: "test",
+      createdAt: 0,
+    });
+    return id;
+  }
+
+  /** 見える/見えないが分かれる行を一通り入れ、action に識別名を入れて返す。 */
+  async function seedMixed(db: Database, tenantId: string, viewerId: string, org: Awaited<ReturnType<typeof setupScoped>>["org"]) {
+    let t = 100;
+    const s = (actorId: string, action: string, targetType: string, targetId: string) =>
+      seed(db, { tenantId, actorId, action, targetType, targetId, occurredAt: t++ });
+    await s(org.memberBUserId, "b-on-b", "user", org.memberBUserId);
+    await s(org.memberAUserId, "a-on-a", "user", org.memberAUserId);
+    await s(org.memberBUserId, "b-on-a", "users", org.memberAUserId);
+    await s(org.memberAUserId, "a-on-b", "user", org.memberBUserId);
+    await s(viewerId, "self-tenant-settings", "tenant", tenantId);
+    await s(org.memberBUserId, "b-tenant-settings", "tenant", tenantId);
+    await s(org.memberBUserId, "b-on-dept-a", "department", org.deptA.id);
+    await s(org.memberBUserId, "b-on-dept-b", "department", org.deptB.id);
+    await s(org.memberBUserId, "b-closing", "closing", "2026-04");
+    await s(org.memberBUserId, "b-on-a-request", "correction_request", await insertCorrectionRequest(db, tenantId, org.memberAUserId));
+    await s(org.memberBUserId, "b-on-b-request", "correction_request", await insertCorrectionRequest(db, tenantId, org.memberBUserId));
+    await s(org.memberA1UserId, "a1-on-a1", "user", org.memberA1UserId);
+    await s(org.memberBUserId, "b-on-dept-a1", "department", org.deptA1.id);
+  }
+
+  it("department scope: only rows about (or by, on a user/department target) users and departments in scope", async () => {
+    const { db, tenantId, userId, email, password, org } = await setupScoped("department");
+    await seedMixed(db, tenantId, userId, org);
+    const app = createApp({ db });
+    const cookie = await loginAndGetCookie(app, email, password);
+
+    const { status, body } = await getAuditLogs(app, cookie);
+    expect(status).toBe(200);
+    expect(body.logs?.map((l) => l.action).sort()).toEqual(["a-on-a", "a-on-b", "b-on-a", "b-on-a-request", "b-on-dept-a"].sort());
+  });
+
+  it("department_and_descendants scope also covers the child department (A1)", async () => {
+    const { db, tenantId, userId, email, password, org } = await setupScoped("department_and_descendants");
+    await seedMixed(db, tenantId, userId, org);
+    const app = createApp({ db });
+    const cookie = await loginAndGetCookie(app, email, password);
+
+    const { body } = await getAuditLogs(app, cookie);
+    expect(body.logs?.map((l) => l.action).sort()).toEqual(
+      ["a-on-a", "a-on-b", "b-on-a", "b-on-a-request", "b-on-dept-a", "a1-on-a1", "b-on-dept-a1"].sort(),
+    );
+  });
+
+  it("tenant scope still sees every row, including tenant-level ones", async () => {
+    const { db, tenantId, userId, email, password, org } = await setupScoped("tenant");
+    await seedMixed(db, tenantId, userId, org);
+    const app = createApp({ db });
+    const cookie = await loginAndGetCookie(app, email, password);
+
+    const { body } = await getAuditLogs(app, cookie);
+    expect(body.logs).toHaveLength(13);
+  });
+
+  it("a filter (e.g. actorId) cannot widen the department scope", async () => {
+    const { db, tenantId, userId, email, password, org } = await setupScoped("department");
+    await seedMixed(db, tenantId, userId, org);
+    const app = createApp({ db });
+    const cookie = await loginAndGetCookie(app, email, password);
+
+    const { body } = await getAuditLogs(app, cookie, `?actorId=${org.memberBUserId}`);
+    expect(body.logs?.map((l) => l.action).sort()).toEqual(["b-on-a", "b-on-a-request", "b-on-dept-a"].sort());
+  });
+
+  it("pagination stays exact when hidden rows are interleaved", async () => {
+    const { db, tenantId, userId, email, password, org } = await setupScoped("department");
+    for (let i = 0; i < 6; i++) {
+      await seed(db, { tenantId, actorId: org.memberAUserId, action: `visible-${i}`, targetType: "user", targetId: org.memberAUserId, occurredAt: 100 + i * 2 });
+      await seed(db, { tenantId, actorId: org.memberBUserId, action: `hidden-${i}`, targetType: "user", targetId: org.memberBUserId, occurredAt: 101 + i * 2 });
+    }
+    const app = createApp({ db });
+    const cookie = await loginAndGetCookie(app, email, password);
+
+    const seen: string[] = [];
+    let cursor: string | null | undefined;
+    for (let page = 0; page < 5; page++) {
+      const { body } = await getAuditLogs(app, cookie, `?limit=4${cursor ? `&cursor=${cursor}` : ""}`);
+      seen.push(...(body.logs ?? []).map((l) => l.action));
+      cursor = body.nextCursor;
+      if (!cursor) break;
+    }
+    expect(seen).toEqual(["visible-5", "visible-4", "visible-3", "visible-2", "visible-1", "visible-0"]);
+    expect(cursor).toBeNull();
+  });
+
+  it("a department larger than one query's chunk of user IDs still returns every in-scope row, newest first", async () => {
+    const { db, tenantId, email, password, org } = await setupScoped("department");
+    const extra: string[] = [];
+    for (let i = 0; i < 95; i++) {
+      const id = uuidv7();
+      await db.insert(users).values({ id, tenantId, email: `bulk-${i}@example.com`, name: `Bulk ${i}`, isActive: true, createdAt: 0 });
+      await upsertMembership(db, { tenantId, userId: id, departmentId: org.deptA.id, createdAt: 0 });
+      extra.push(id);
+    }
+    // 新しい順に並べたとき、どのチャンクのユーザーの行かが入り混じるように書く
+    for (let i = 0; i < extra.length; i++) {
+      const id = extra[(i * 37) % extra.length] as string;
+      await seed(db, { tenantId, actorId: id, action: `bulk-${i}`, targetType: "user", targetId: id, occurredAt: 1000 + i });
+      await seed(db, { tenantId, actorId: org.memberBUserId, action: `hidden-${i}`, targetType: "user", targetId: org.memberBUserId, occurredAt: 1000 + i });
+    }
+    const app = createApp({ db });
+    const cookie = await loginAndGetCookie(app, email, password);
+
+    const page1 = await getAuditLogs(app, cookie, "?limit=60");
+    expect(page1.body.logs?.map((l) => l.action)).toEqual(Array.from({ length: 60 }, (_, i) => `bulk-${94 - i}`));
+    const page2 = await getAuditLogs(app, cookie, `?limit=60&cursor=${page1.body.nextCursor}`);
+    expect(page2.body.logs?.map((l) => l.action)).toEqual(Array.from({ length: 35 }, (_, i) => `bulk-${34 - i}`));
+    expect(page2.body.nextCursor).toBeNull();
   });
 });

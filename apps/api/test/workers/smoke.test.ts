@@ -65,6 +65,15 @@ describe("apps/api boots on workerd + D1", () => {
     expect(res.status).toBe(200);
   });
 
+  it("セキュリティヘッダが付く(HTTPS なので HSTS も。src/lib/security-headers.ts)", async () => {
+    const res = await SELF.fetch(`${ORIGIN}/api/healthz`);
+    expect(res.headers.get("content-security-policy")).toBe("default-src 'none'; frame-ancestors 'none'");
+    expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(res.headers.get("x-frame-options")).toBe("DENY");
+    expect(res.headers.get("referrer-policy")).toBe("no-referrer");
+    expect(res.headers.get("strict-transport-security")).toBe("max-age=31536000");
+  });
+
   it("未認証のリクエストは 401 で弾かれる(セッション判定が workerd でも効く)", async () => {
     const res = await SELF.fetch(`${ORIGIN}/attendance/status`);
     expect(res.status).toBe(401);

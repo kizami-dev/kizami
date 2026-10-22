@@ -4,8 +4,10 @@ import { useEffect, useState } from "react";
 import { useRouter } from "waku";
 import { api, ApiError, UnauthorizedError, type AuditLogDto, type ListAuditLogsParams } from "../lib/api";
 import { messages } from "../lib/messages";
+import { hasEffectivePermission } from "../lib/permissions";
 import { dateWindowJst, formatDateTimeJst } from "../lib/time";
 import { useAuthGuard } from "../lib/useAuthGuard";
+import { useEffectivePermissions } from "../lib/useEffectivePermissions";
 import { AppHeader } from "./AppHeader";
 import { SettingsNav } from "./SettingsNav";
 import { StateView } from "./ui/StateView";
@@ -146,6 +148,10 @@ function formatDetail(detail: string): string {
 export function AuditLogsView() {
   const router = useRouter();
   const guard = useAuthGuard();
+  // 部署スコープの閲覧者には API がスコープ内の行だけを返す(apps/api/src/routes/audit-logs.ts)。
+  // 「全部ではない」ことが分かるよう注記を出す(権限の読み込み中は出さない)。
+  const { loading: permissionsLoading, permissions } = useEffectivePermissions();
+  const scoped = !permissionsLoading && !hasEffectivePermission(permissions, "audit_log.view", "tenant");
 
   const [logs, setLogs] = useState<AuditLogDto[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
@@ -242,6 +248,7 @@ export function AuditLogsView() {
         <SettingsNav active="auditLogs" />
         <PageHeader title={messages.settingsAuditLogs.title} lead={messages.settingsAuditLogs.tagline} />
         <p className="notice notice--info">{messages.settingsAuditLogs.immutableNote}</p>
+        {scoped ? <p className="notice notice--info">{messages.settingsAuditLogs.scopedNote}</p> : null}
 
         {forbidden ? (
           <p className="notice notice--danger" role="alert">

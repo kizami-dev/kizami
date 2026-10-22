@@ -24,12 +24,15 @@ export async function getTenantSlackSettings(db: Database, tenantId: string): Pr
 }
 
 /**
- * Slack ワークスペースID(team_id)からテナントのSlack連携設定を逆引きする。
- * POST /slack/commands がテナントを特定する唯一の経路(「1テナント=1ワークスペース」前提)。
+ * Slack ワークスペースID(team_id)を持つ、有効な(enabled)Slack連携設定をすべて返す。
+ * team_id は UNIQUE ではない(schema/slack.ts 冒頭の判断点)。POST /slack/commands は、この中から
+ * Signing Secret でリクエストの署名を検証できた行を選ぶ。
  */
-export async function getTenantSlackSettingsByTeamId(db: Database, teamId: string): Promise<TenantSlackSettings | null> {
-  const rows = await db.select().from(tenantSlackSettings).where(eq(tenantSlackSettings.teamId, teamId)).limit(1);
-  return rows[0] ?? null;
+export async function listEnabledTenantSlackSettingsByTeamId(db: Database, teamId: string): Promise<TenantSlackSettings[]> {
+  return db
+    .select()
+    .from(tenantSlackSettings)
+    .where(and(eq(tenantSlackSettings.teamId, teamId), eq(tenantSlackSettings.enabled, true)));
 }
 
 export interface UpsertTenantSlackSettingsInput {

@@ -313,6 +313,7 @@ export const en = {
     /** SSO (OIDC) login failure reasons (added 2026-08-24). The codes map 1:1 to OidcErrorCode
      * in apps/api/src/lib/oidc.ts (the callback redirects to /login?error=<code>). */
       sso_not_enabled: "SSO login is not enabled for this company",
+      sso_multiple_tenants: "This email address can use SSO at more than one company. Log in with your password, choose the company, then choose SSO",
       sso_config_incomplete: "SSO is not fully configured. Please contact your administrator",
       sso_discovery_failed: "Could not reach the identity provider. Please contact your administrator",
       sso_token_failed: "SSO sign-in failed. Please try again",
@@ -340,7 +341,6 @@ export const en = {
      * button is shown for any match. Password login remains available alongside it. */
     ssoDivider: "or",
     ssoButton: "Log in with SSO",
-    ssoButtonForTenant: (tenantName: string) => `Log in to ${tenantName} with SSO`,
     ssoStarting: "Redirecting to SSO…",
 
     totpTitle: "Enter your verification code",
@@ -3109,6 +3109,7 @@ export const en = {
     title: "Audit log",
     tagline: "A record of operations such as punches, corrections, approvals, closing, and permission changes.",
     immutableNote: "The audit log is append-only: entries can never be modified or deleted after the fact (read-only).",
+    scopedNote: "Your audit log access is limited to your department scope. Only entries about members and departments in that scope are shown; tenant-wide settings and closing entries are hidden.",
     loadFailed: "Failed to load information. Please try again",
     forbidden: "You don't have permission to perform this action",
 
