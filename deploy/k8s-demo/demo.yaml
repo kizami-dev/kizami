@@ -36,6 +36,7 @@ spec:
       initContainers:
         - name: seed
           image: ghcr.io/kizami-dev/kizami-api:latest
+          securityContext: {allowPrivilegeEscalation: false, runAsNonRoot: true, runAsUser: 1001, runAsGroup: 1001, capabilities: {drop: [ALL]}, seccompProfile: {type: RuntimeDefault}}
           imagePullPolicy: Always
           command: ["/bin/sh", "-c"]
           args:
@@ -52,6 +53,7 @@ spec:
       containers:
         - name: api
           image: ghcr.io/kizami-dev/kizami-api:latest
+          securityContext: {allowPrivilegeEscalation: false, runAsNonRoot: true, runAsUser: 1001, runAsGroup: 1001, capabilities: {drop: [ALL]}, seccompProfile: {type: RuntimeDefault}}
           imagePullPolicy: Always
           ports: [{containerPort: 3001}]
           env:
@@ -75,6 +77,7 @@ spec:
           volumeMounts: [{name: data, mountPath: /data}]
         - name: web
           image: ghcr.io/kizami-dev/kizami-web:latest
+          securityContext: {allowPrivilegeEscalation: false, runAsNonRoot: true, runAsUser: 1001, runAsGroup: 1001, capabilities: {drop: [ALL]}, seccompProfile: {type: RuntimeDefault}}
           imagePullPolicy: Always
           ports: [{containerPort: 3000}]
           resources:
@@ -82,6 +85,7 @@ spec:
             limits: {memory: 256Mi}
         - name: worker
           image: ghcr.io/kizami-dev/kizami-api:latest
+          securityContext: {allowPrivilegeEscalation: false, runAsNonRoot: true, runAsUser: 1001, runAsGroup: 1001, capabilities: {drop: [ALL]}, seccompProfile: {type: RuntimeDefault}}
           imagePullPolicy: Always
           command: ["node_modules/.bin/tsx", "src/worker.ts"]
           env:
@@ -101,6 +105,7 @@ spec:
           volumeMounts: [{name: data, mountPath: /data}]
         - name: valkey
           image: valkey/valkey:8-alpine
+          securityContext: {allowPrivilegeEscalation: false, seccompProfile: {type: RuntimeDefault}}
           args: ["--save", "", "--appendonly", "no"]
           resources:
             requests: {cpu: 10m, memory: 32Mi}
@@ -144,6 +149,8 @@ metadata:
 rules:
   - apiGroups: ["apps"]
     resources: ["deployments"]
+    # rollout restart は対象 Deployment の get と patch だけでよい。名前で絞って他を触らせない
+    resourceNames: ["kizami-demo"]
     verbs: ["get", "patch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -178,11 +185,13 @@ spec:
           initContainers:
             - name: wait-network
               image: busybox:1.37
+              securityContext: {allowPrivilegeEscalation: false, runAsNonRoot: true, runAsUser: 65534, runAsGroup: 65534, capabilities: {drop: [ALL]}, seccompProfile: {type: RuntimeDefault}}
               command: ["sleep", "5"]
           containers:
             - name: restart
               # クラスタ(k3s v1.35.5)と版をそろえて固定する。entrypoint が kubectl なので args だけ渡す
               image: rancher/kubectl:v1.35.5
+              securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}, seccompProfile: {type: RuntimeDefault}}
               args: ["-n", "kizami-demo", "rollout", "restart", "deployment/kizami-demo"]
 ---
 # ---------------------------------------------------------------- ネットワーク分離(NetworkPolicy)

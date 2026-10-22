@@ -18,6 +18,7 @@ spec:
       containers:
         - name: api
           image: "{{ .Values.image.api.repository }}:{{ .Values.image.api.tag }}"
+          securityContext: {allowPrivilegeEscalation: false, runAsNonRoot: true, runAsUser: 1001, runAsGroup: 1001, capabilities: {drop: [ALL]}, seccompProfile: {type: RuntimeDefault}}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports: [{name: api-http, containerPort: 3001}]
           env:
@@ -69,6 +70,7 @@ spec:
           volumeMounts: [{name: data, mountPath: /data}]
         - name: web
           image: "{{ .Values.image.web.repository }}:{{ .Values.image.web.tag }}"
+          securityContext: {allowPrivilegeEscalation: false, runAsNonRoot: true, runAsUser: 1001, runAsGroup: 1001, capabilities: {drop: [ALL]}, seccompProfile: {type: RuntimeDefault}}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports: [{name: web-http, containerPort: 3000}]
           readinessProbe:
@@ -78,6 +80,7 @@ spec:
           resources: {{- toYaml .Values.resources.web | nindent 12 }}
         - name: worker
           image: "{{ .Values.image.api.repository }}:{{ .Values.image.api.tag }}"
+          securityContext: {allowPrivilegeEscalation: false, runAsNonRoot: true, runAsUser: 1001, runAsGroup: 1001, capabilities: {drop: [ALL]}, seccompProfile: {type: RuntimeDefault}}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           command: ["node_modules/.bin/tsx", "src/worker.ts"]
           env:
@@ -128,6 +131,7 @@ spec:
           volumeMounts: [{name: data, mountPath: /data}]
         - name: valkey
           image: "{{ .Values.image.valkey.repository }}:{{ .Values.image.valkey.tag }}"
+          securityContext: {allowPrivilegeEscalation: false, seccompProfile: {type: RuntimeDefault}}
           args: ["--save", "", "--appendonly", "no"]
           ports: [{name: valkey, containerPort: 6379}]
           resources: {{- toYaml .Values.resources.valkey | nindent 12 }}
