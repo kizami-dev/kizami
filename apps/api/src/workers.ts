@@ -28,6 +28,7 @@ import { Hono } from "hono";
 import { createD1Database, type D1DatabaseBinding } from "@kizami/db";
 import type { SmtpSendFn } from "@kizami/notify";
 import { createApp } from "./app.js";
+import { apiSecurityHeaders } from "./lib/security-headers.js";
 import { buildEncryptorFromEnv } from "./lib/encryption.js";
 import { buildErrorReporterFromEnv } from "./lib/error-report.js";
 import { authPostAllowedOrigins } from "./lib/json-post-guard.js";
@@ -175,8 +176,10 @@ export function createWorkerApp(env: WorkerEnv, options: { d1TransactionsSupport
   const release = env.KIZAMI_RELEASE ?? "unknown";
   const flatEnv = env as unknown as Record<string, string | undefined>;
 
+  const securityBaseUrl = env.APP_BASE_URL || env.CORS_ORIGIN || undefined;
   const app = createApp({
     db,
+    ...(securityBaseUrl !== undefined ? { appBaseUrl: securityBaseUrl } : {}),
     // Workers は常に HTTPS 終端の後ろなので Secure Cookie は既定 ON のままでよい
     secureCookies: env.COOKIE_SECURE !== "false",
     ...(env.CORS_ORIGIN !== undefined ? { corsOrigin: env.CORS_ORIGIN } : {}),
@@ -226,6 +229,8 @@ export function createWorkerApp(env: WorkerEnv, options: { d1TransactionsSupport
   });
 
   const root = new Hono();
+  // どのルートにも当たらない 404 にもセキュリティヘッダを付ける(app 側にも同じものが掛かっている)
+  root.use("*", apiSecurityHeaders(securityBaseUrl !== undefined ? { appBaseUrl: securityBaseUrl } : {}));
   root.route("/api", app);
   root.route("/", app);
   return root;
