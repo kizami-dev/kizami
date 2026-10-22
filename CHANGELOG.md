@@ -127,6 +127,10 @@ API・DB スキーマの互換方針とアップグレード手順は
   メール単位の上限ではなく信頼済み端末の上限(ユーザー単位で 15 分 10 回、照合はその Cookie のアカウントだけ)で
   数える。攻撃者がメール単位の上限を埋めても、本人はいつもの端末から入れる。封をした Cookie(信頼済み端末・
   2段階認証の一時 Cookie・SSO の状態)には用途の印を入れ、別の Cookie の値の貼り替えを受け付けない
+- **GitHub Actions のサードパーティアクションをコミット SHA で固定した**(`# vX.Y.Z` の注記付き)。タグの付け替えによるサプライチェーン攻撃を防ぐ。`ci.yml` にもトップレベルの `permissions: contents: read` を付けた
+- **k8s マニフェストのコンテナに `securityContext` を付けた**(`allowPrivilegeEscalation: false`・`capabilities.drop: [ALL]`・`seccompProfile: RuntimeDefault`、api / web / worker はさらに `runAsNonRoot`・uid/gid 1001)。valkey・postgres は起動時に root で chown するためユーザー指定と capabilities の drop は見送った。イメージの `USER` は元から非 root(1001)で、`fsGroup: 1001` も設定済みのため、データの書き込み権限は変わらない。手動で再適用すること。デモのリセット用 Role も `resourceNames: [kizami-demo]` で対象の Deployment だけに絞った
+- **Service Worker**: 通知クリックで開く URL を同一オリジンのものに限った(それ以外は `/`)。再設定・招待・サインアップ確認などトークン付きの URL と認証・API のパス、`no-store` / `private` のレスポンスはキャッシュしない(旧キャッシュは `kizami-shell-v2` への更新で一掃)
+- **MCP サーバー**: `KIZAMI_API_URL` は https のみ許可(localhost / 127.0.0.1 / [::1] だけ http 可)。API キーが平文で送られるのを防ぐ。修正申請の理由・決定メモはユーザー入力の信頼できないデータとして、引用符付きの JSON 文字列とラベルで渡す(プロンプトインジェクション対策)
 
 ## [0.9.0] - 2026-10-06
 

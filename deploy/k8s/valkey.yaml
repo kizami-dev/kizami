@@ -34,6 +34,10 @@ spec:
       containers:
         - name: valkey
           image: valkey/valkey:8-alpine
+          securityContext:
+            allowPrivilegeEscalation: false
+            seccompProfile:
+              type: RuntimeDefault
           ports:
             - name: valkey
               containerPort: 6379

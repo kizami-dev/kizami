@@ -44,7 +44,7 @@ Claude Desktop / Claude Code のようなAIアシスタントから、KIZAMI の
 
 | 環境変数 | 内容 |
 |---|---|
-| `KIZAMI_API_URL` | KIZAMI API のベースURL(例: `http://localhost:3001`) |
+| `KIZAMI_API_URL` | KIZAMI API のベースURL(例: `https://kizami.example`)。APIキーを送るため **https のみ**(localhost / 127.0.0.1 / [::1] に限り `http://localhost:3001` のような http も可) |
 | `KIZAMI_API_KEY` | 発行した公開打刻APIキー(`kzm_...`) |
 
 ### Claude Code

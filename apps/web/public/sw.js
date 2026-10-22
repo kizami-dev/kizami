@@ -20,7 +20,12 @@
  *   (開発時のポート違い・本番のリバースプロキシ配下 /api どちらでも安全に素通しできる)。
  */
 
-const CACHE_VERSION = "kizami-shell-v1";
+// v2: トークン付き URL を過去にキャッシュしていた可能性があるため、旧キャッシュを activate で一掃する
+const CACHE_VERSION = "kizami-shell-v2";
+
+// 判定ロジックは副作用なしの純関数として sw-lib.js に分けてある(テスト可能にするため)
+importScripts("/sw-lib.js");
+const { safeNotificationUrl, isCacheableUrl, isCacheableResponse } = self.KizamiSwLib;
 const HANDLED_DESTINATIONS = new Set(["", "document"]);
 const STATIC_DESTINATIONS = new Set(["script", "style", "image", "font", "manifest"]);
 
@@ -60,14 +65,16 @@ self.addEventListener("fetch", (event) => {
 /** ナビゲーション: オンラインなら常に最新のHTMLを取得し、キャッシュに保存する。オフラインならキャッシュから返す。 */
 async function networkFirstForNavigation(request) {
   const cache = await caches.open(CACHE_VERSION);
+  // トークン付き(再設定・招待など)や認証系の URL はキャッシュに書かない・読まない
+  const cacheable = isCacheableUrl(request.url, self.location.origin);
   try {
     const response = await fetch(request);
-    if (response && response.ok) {
+    if (cacheable && isCacheableResponse(response)) {
       cache.put(request, response.clone());
     }
     return response;
   } catch {
-    const cached = await cache.match(request);
+    const cached = cacheable ? await cache.match(request) : undefined;
     if (cached) return cached;
     // 訪れたことのないページをオフラインで開いた場合の最終フォールバック。
     const shell = await cache.match("/");
@@ -83,12 +90,14 @@ async function networkFirstForNavigation(request) {
 async function staleWhileRevalidate(event) {
   const { request } = event;
   const cache = await caches.open(CACHE_VERSION);
-  const cached = await cache.match(request);
+  const cacheable = isCacheableUrl(request.url, self.location.origin);
+  const cached = cacheable ? await cache.match(request) : undefined;
 
   const networkFetch = fetch(request)
     .then((response) => {
-      // クロスオリジン(Google Fonts等)の opaque レスポンスも含め、取得できたものはキャッシュする。
-      if (response && (response.ok || response.type === "opaque")) {
+      // クロスオリジン(Google Fonts等)の opaque レスポンスも含め、取得できたものはキャッシュする
+      // (ただしトークン付き URL・no-store/private 指定のレスポンスは除く)。
+      if (cacheable && isCacheableResponse(response)) {
         cache.put(request, response.clone());
       }
       return response;
@@ -150,7 +159,8 @@ self.addEventListener("push", (event) => {
  */
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const url = event.notification.data && typeof event.notification.data.url === "string" ? event.notification.data.url : "/";
+  // ペイロードの url は外部から来た値として扱い、同一オリジン以外(別サイトへの誘導)は "/" に落とす
+  const url = safeNotificationUrl(event.notification.data && event.notification.data.url, self.location.origin);
 
   event.waitUntil(
     (async () => {
