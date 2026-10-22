@@ -120,14 +120,14 @@ export const PERMISSION_CATALOG: readonly PermissionCatalogEntry[] = [
   entry(
     "closing.execute",
     "月次締めを実行できる",
-    "対象月の勤怠を確定させ、以後の直接的な変更をロックする",
+    "対象月の勤怠を確定させ、以後の直接的な変更をロックする。締めはテナント全員を一度に確定する操作のため、実行にはテナント全体のスコープが要る(自部署+配下部署では締め状態と範囲内の勤怠の閲覧だけになる)",
     DEPT_AND_DESCENDANTS_UP,
     true,
   ),
   entry(
     "closing.unlock",
     "締めを解除できる",
-    "確定済みの月次締めを再オープンし、遡及修正を可能にする",
+    "確定済みの月次締めを再オープンし、遡及修正を可能にする。再オープンにはテナント全体のスコープが要る(自部署+配下部署では、締め済み月に影響する範囲内メンバーの申請の承認〔締め後修正〕だけができる)",
     DEPT_AND_DESCENDANTS_UP,
     true,
   ),
@@ -282,7 +282,7 @@ export const PERMISSION_CATALOG: readonly PermissionCatalogEntry[] = [
   ),
 
   // 1.13 監査ログ
-  entry("audit_log.view", "監査ログを閲覧できる", "打刻・修正・承認・締め・権限変更などの不可変監査ログを閲覧できる", DEPT_SCOPES, true),
+  entry("audit_log.view", "監査ログを閲覧できる", "打刻・修正・承認・締め・権限変更などの不可変監査ログを閲覧できる。部署のスコープでは範囲内のメンバー・部署に関する記録だけが見え、テナント全体の設定・締めなどの記録はテナント全体のスコープでだけ見える", DEPT_SCOPES, true),
 
   // 1.14 APIキー/MCP接続管理
   entry(

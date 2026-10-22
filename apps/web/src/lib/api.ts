@@ -2183,7 +2183,7 @@ export const api = {
     return request(`/closings/${encodeURIComponent(period)}`);
   },
 
-  /** POST /closings/:period/close(closing.execute)。note は任意(500文字以内)。 */
+  /** POST /closings/:period/close(closing.execute、テナント全体スコープ)。note は任意(500文字以内)。 */
   async closeMonth(period: string, note?: string): Promise<{ closing: ClosingStateDto }> {
     return request(`/closings/${encodeURIComponent(period)}/close`, {
       method: "POST",
@@ -2191,7 +2191,7 @@ export const api = {
     });
   },
 
-  /** POST /closings/:period/reopen(closing.unlock)。note は任意(500文字以内)。 */
+  /** POST /closings/:period/reopen(closing.unlock、テナント全体スコープ)。note は任意(500文字以内)。 */
   async reopenMonth(period: string, note?: string): Promise<{ closing: ClosingStateDto }> {
     return request(`/closings/${encodeURIComponent(period)}/reopen`, {
       method: "POST",
@@ -2495,6 +2495,7 @@ export const api = {
 
   /**
    * GET /audit-logs(audit_log.view、department スコープ以上、Tier 1 新設)。読み取り専用。
+   * テナント全体スコープでなければ、スコープ内のメンバー・部署に関する行だけが返る(2026-10-22、M7)。
    * カーソルページング: nextCursor が null でなければ、それを次呼び出しの params.cursor に渡すと続きを取れる。
    */
   async listAuditLogs(params: ListAuditLogsParams = {}): Promise<{ logs: AuditLogDto[]; nextCursor: string | null }> {

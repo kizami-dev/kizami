@@ -8,16 +8,17 @@
  * (docs/design/v01-data-model.md §audit_logs)であり、更新・削除APIは絶対に作らない
  * (依頼どおり)。
  *
- * 判断点(スコープの粒度): カタログ上 `audit_log.view` は department スコープを持つが、
- * audit_logs の各行(action/target)は「特定ユーザーの記録」に必ずしも対応しない
- * (例: テナント設定変更・締め操作・部署の作成 は特定の対象ユーザーを持たない)。
- * apps/api/src/lib/scope.ts の resolveAccessibleUserIds は「対象ユーザーの集合」を返す
- * 設計であり、対象ユーザーを持たない行にはそもそも適用できない。よって routes/closings.ts が
- * closing(これも「特定ユーザーの記録」ではない)を resolveAccessibleUserIds で絞り込まず
- * `requirePermission(c, ..., "department")` によるテナント内一律のゲートのみで扱っている
- * (closings.ts 冒頭コメント「使うと設計方針1に反する部分締めになってしまう」参照)のと同じ
- * 判断を踏襲し、`audit_log.view` を保持していれば(department スコープ以上)テナント内の
- * 監査ログ全件を対象にする。department 単位の行絞り込みは行わない。
+ * スコープ(2026-10-22、セキュリティ指摘 M7 で変更): 以前は「監査ログの行は特定ユーザーの
+ * 記録に必ずしも対応しない」ことを理由に、department スコープでもテナント内の全件を返していた。
+ * それでは部署スコープで付与した意味が無く、他部署のメンバーの記録やテナント設定の変更履歴まで
+ * 読めてしまう。いまはスコープに従って絞り込む:
+ * - tenant: テナント内の全件(従来どおり)
+ * - department / department_and_descendants: 対象がスコープ内のユーザー・部署に帰属する行、
+ *   または対象がユーザー・部署に帰属し操作者がスコープ内のユーザーである行だけ。
+ *   テナント設定・締め・APIキーなどテナント単位の行は見せない
+ *   (規則の詳細と、対象の種類ごとの帰属先は packages/db/src/queries/audit.ts の
+ *   AuditLogScopeFilter / AUDIT_TARGET_OWNERS)
+ * 絞り込みは SQL で行うので、ページング(limit・cursor)は絞り込み後の行に対してそのまま正しい。
  *
  * ページング: `id`(UUIDv7、時系列ソート可能)によるカーソル方式。`cursor` に前ページ最後の
  * `id` を渡すと、それより新しい行から返す(packages/db/src/queries/audit.ts 参照)。
@@ -25,9 +26,10 @@
  */
 
 import { Hono } from "hono";
-import { listAuditLogs, type Database } from "@kizami/db";
+import { listAuditLogs, type AuditLogScopeFilter, type Database } from "@kizami/db";
 import type { AppEnv } from "../auth/middleware.js";
 import { requirePermission } from "../authz.js";
+import { resolveAccessibleDepartmentIds, resolveAccessibleUserIds, type ScopeActor } from "../lib/scope.js";
 
 const VIEW_PERMISSION = "audit_log.view";
 
@@ -69,6 +71,14 @@ function splitTarget(target: string): { targetType: string; targetId: string } {
   return { targetType: target.slice(0, i), targetId: target.slice(i + 1) };
 }
 
+/** テナント全体スコープなら undefined(絞り込みなし)。それ以外は見せてよいユーザー・部署。 */
+async function resolveAuditScope(db: Database, actor: ScopeActor): Promise<AuditLogScopeFilter | undefined> {
+  const userIds = await resolveAccessibleUserIds(db, { actor, permission: VIEW_PERMISSION });
+  if (userIds === "all") return undefined;
+  const departmentIds = await resolveAccessibleDepartmentIds(db, { actor, permission: VIEW_PERMISSION });
+  return { userIds: [...userIds], departmentIds: departmentIds === "all" ? [] : [...departmentIds] };
+}
+
 export function createAuditLogsRoutes(db: Database) {
   const app = new Hono<AppEnv>();
 
@@ -96,6 +106,8 @@ export function createAuditLogsRoutes(db: Database) {
       return c.json({ error: "invalid_limit" }, 400);
     }
 
+    const scope = await resolveAuditScope(db, { id: user.id, tenantId: user.tenantId, permissions: c.get("permissions") });
+
     // limit+1 件取ってページの続きがあるかを判定する(既存の cursor 方式は本リポジトリ初導入。
     // hasMore を返すことでクライアントは「次の cursor を送るべきか」を毎回自力で推測せずに済む)。
     const rows = await listAuditLogs(db, {
@@ -107,6 +119,7 @@ export function createAuditLogsRoutes(db: Database) {
       ...(fromMinutes !== undefined ? { fromMinutes } : {}),
       ...(toMinutes !== undefined ? { toMinutes } : {}),
       ...(cursor !== undefined ? { cursor } : {}),
+      ...(scope !== undefined ? { scope } : {}),
       limit: limit + 1,
     });
 
