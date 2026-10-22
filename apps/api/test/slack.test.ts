@@ -5,7 +5,7 @@
 
 import { and, eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { punchEvents, upsertTenantSlackSettings, type Database } from "@kizami/db";
+import { punchEvents, tenants, upsertTenantSlackSettings, users, uuidv7, type Database } from "@kizami/db";
 import { createApp } from "../src/app.js";
 import { grantPermission, loginAndGetCookie, setupTestDb, testEncryptor } from "./support/setup.js";
 
@@ -193,8 +193,8 @@ describe("Slack slash command punching", () => {
     const signingSecret = "shhh-secret";
     const slackUserId = "U0000001";
 
-    async function setup() {
-      const seeded = await setupTestDb();
+    async function setup(existing?: Awaited<ReturnType<typeof setupTestDb>>) {
+      const seeded = existing ?? (await setupTestDb());
       const { db, tenantId, userId } = seeded;
       await grantPermission(db, { tenantId, userId, permission: "notification.settings.manage", scope: "tenant" });
       const app = createApp({ db, encryptor: testEncryptor() });
@@ -209,6 +209,67 @@ describe("Slack slash command punching", () => {
 
       return { ...seeded, app, cookie };
     }
+
+    /** 攻撃者のテナントが、他社のワークスペース ID を自分の Signing Secret と一緒に登録しておく。 */
+    async function addSquatter(db: Database, secret: string): Promise<string> {
+      const squatterTenantId = uuidv7();
+      const squatterUserId = uuidv7();
+      await db.insert(tenants).values({ id: squatterTenantId, name: "Squatter", createdAt: 0 });
+      await db.insert(users).values({ id: squatterUserId, tenantId: squatterTenantId, email: "sq@example.com", name: "Sq", createdAt: 0 });
+      await upsertTenantSlackSettings(db, {
+        tenantId: squatterTenantId,
+        teamId,
+        signingSecret: await testEncryptor().encrypt(secret),
+        enabled: true,
+        updatedAt: 0,
+        updatedBy: squatterUserId,
+      });
+      return squatterTenantId;
+    }
+
+    it("別テナントが同じ team_id を先に登録し偽のリクエストを自分で署名して送っても、持ち主の保存も受信も妨げられない(先取り)", async () => {
+      const seeded = await setupTestDb();
+      const squatterSecret = "squatter-secret";
+      await addSquatter(seeded.db, squatterSecret);
+
+      // 持ち主はあとから同じ team_id を保存できる(以前は UNIQUE 違反で保存できなかった)
+      const { app, cookie } = await setup(seeded);
+
+      // 攻撃者は Slack を通さず、team_id=持ち主 の本文を自分の Signing Secret で署名して送れる。
+      // これは攻撃者自身のテナントへ振り分けられる(攻撃者のテナントの中の操作にしかならない)
+      const forged = await postSlackCommand(app, squatterSecret, { teamId, slackUserId, text: "link" });
+      expect(forged.status).toBe(200);
+      const forgedToken = /(kzsl_[A-Za-z0-9_-]+)/.exec(String(forged.body.text))?.[1];
+      expect(forgedToken).toBeDefined();
+      // 攻撃者のテナントで発行されたトークンは、持ち主のテナントのユーザーには使えない
+      const redeemForged = await app.request("/settings/slack-link", {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie },
+        body: JSON.stringify({ token: forgedToken }),
+      });
+      expect(redeemForged.status).toBe(400);
+
+      // 持ち主の Slack アプリ(= 持ち主の Signing Secret)からの正規のリクエストは、その後も持ち主へ届く
+      const real = await postSlackCommand(app, signingSecret, { teamId, slackUserId, text: "link" });
+      expect(real.status).toBe(200);
+      const realToken = /(kzsl_[A-Za-z0-9_-]+)/.exec(String(real.body.text))?.[1];
+      const redeemReal = await app.request("/settings/slack-link", {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie },
+        body: JSON.stringify({ token: realToken }),
+      });
+      expect(redeemReal.status).toBe(200);
+    });
+
+    it("同じ team_id と同じ Signing Secret のテナントが複数あれば、どちらへも振り分けず 401", async () => {
+      const seeded = await setupTestDb();
+      await addSquatter(seeded.db, signingSecret);
+      const { app } = await setup(seeded);
+      const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+      const res = await postSlackCommand(app, signingSecret, { teamId, slackUserId, text: "" });
+      spy.mockRestore();
+      expect(res.status).toBe(401);
+    });
 
     it("/punch (no args) shows usage without requiring a link", async () => {
       const { app } = await setup();

@@ -34,6 +34,8 @@ export interface MockIdpOverrides {
   expiresInSeconds?: number;
   /** token エンドポイントを HTTP エラーにする。 */
   tokenEndpointStatus?: number;
+  /** tokenEndpointStatus のときに返す本文(生の文字列)。省略時は {"error":"invalid_grant"}。 */
+  tokenEndpointBody?: string;
   /** ディスカバリ文書の issuer を実際の issuer と食い違わせる。 */
   discoveryIssuer?: string;
 }
@@ -120,6 +122,9 @@ export async function createMockIdp(options: MockIdpOptions): Promise<MockIdp> {
       idp.tokenAuthHeaders.push(headers?.authorization ?? null);
 
       if (idp.overrides.tokenEndpointStatus !== undefined) {
+        if (idp.overrides.tokenEndpointBody !== undefined) {
+          return new Response(idp.overrides.tokenEndpointBody, { status: idp.overrides.tokenEndpointStatus });
+        }
         return json({ error: "invalid_grant" }, idp.overrides.tokenEndpointStatus);
       }
       // client_secret_post を既定にしているので、シークレット不一致はここで弾く

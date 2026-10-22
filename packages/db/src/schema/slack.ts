@@ -4,9 +4,15 @@
  * - `tenant_slack_settings`: テナント単位のSlack連携設定(1テナント1行)。Signing Secret は
  *   他の秘密情報(tenant_notification_settings.webhookUrl 等)と同じ "enc:v1:..." 形式で
  *   暗号化して保存する(apps/api/src/lib/encryption.ts)。DB 層は暗号文/平文を区別しない。
- * - `team_id`(Slack ワークスペースID)は「1テナント=1ワークスペース」の前提
- *   (依頼どおり、複数テナントが同じワークスペースを使うことは想定しない)で UNIQUE にする。
- *   POST /slack/commands はこのカラムから逆引きしてテナントを特定する。
+ * - `team_id`(Slack ワークスペースID)は**検索の手掛かりにすぎず、UNIQUE にしない**(2026-10-22、
+ *   セキュリティレビュー Low)。以前は UNIQUE だったため、別のテナントが他社のワークスペース ID を先に
+ *   入力すると、本来の持ち主が連携を保存できなかった(先取り)。team_id は管理者が入力する値で、
+ *   入力したこと自体は何の証明にもならない(KIZAMI は Slack の API を呼ばず、Bot Token も OAuth も持たない)。
+ *   そこで POST /slack/commands は、同じ team_id を持つ有効な行の **Signing Secret でリクエストの署名を
+ *   検証できた行**へ振り分ける。Slack の正規のリクエストは、そのワークスペースに入れたアプリの Signing Secret で
+ *   署名されており、それを知っているのは持ち主のテナントだけ。他人が同じ team_id を入れても、受け取れるのは
+ *   自分の Signing Secret で自分が署名したリクエストだけ(= 自分のテナントの中の操作)で、持ち主の連携を
+ *   妨げることも、持ち主宛てのリクエストを横取りすることもできない。
  * - `slack_user_links`: Slackユーザーとkizamiユーザーの明示連携(ワンタイムトークン経由)。
  *   1人のkizamiユーザーが複数のSlackアカウントを紐付けないよう UNIQUE(tenant_id, user_id) も張る。
  * - `slack_link_tokens`: `/punch link` が発行するワンタイムトークン。api_keys と同じ方式
@@ -23,7 +29,7 @@ export const tenantSlackSettings = sqliteTable(
     tenantId: text("tenant_id")
       .primaryKey()
       .references(() => tenants.id),
-    /** Slack ワークスペースID(例 "T0123456")。1テナント=1ワークスペース前提でUNIQUE。未設定はnull */
+    /** Slack ワークスペースID(例 "T0123456")。UNIQUE にしない(冒頭コメント)。未設定はnull */
     teamId: text("team_id"),
     /** Signing Secret。"enc:v1:..." で暗号化して保存(apps/api/src/lib/encryption.ts)。未設定はnull */
     signingSecret: text("signing_secret"),
@@ -34,7 +40,7 @@ export const tenantSlackSettings = sqliteTable(
       .notNull()
       .references(() => users.id),
   },
-  (table) => [uniqueIndex("tenant_slack_settings_team_id_idx").on(table.teamId)],
+  (table) => [index("tenant_slack_settings_team_id_idx").on(table.teamId)],
 );
 
 /** Slackユーザー(slack_user_id)とkizamiユーザーの明示連携。 */
