@@ -112,7 +112,7 @@ const app = createApp({
   secureCookies,
   corsOrigin,
   // ログイン等の未認証 POST の Origin 検証。許可するのは**明示された** APP_BASE_URL / CORS_ORIGIN だけ
-  // (corsOrigin の開発用既定値は含めない。lib/json-post-guard.ts)。どちらも未設定なら検証しない。
+  // (corsOrigin の開発用既定値は含めない。lib/json-post-guard.ts)。どちらも未設定なら、届いた Host と corsOrigin を許可する代わりのガードになる(app.ts)。
   authPostOrigins: authPostAllowedOrigins([process.env.APP_BASE_URL, process.env.CORS_ORIGIN]),
   notify: buildNotifyOutboundDeps(outboundGuard, nodemailerSendFn),
   quotas,

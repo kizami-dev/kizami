@@ -2,7 +2,7 @@
  * セッション Cookie を発行する未認証の POST への Origin 検証 + JSON 必須化(2026-10-05、ログイン CSRF 対策)。
  *
  * app.ts の `authPostOrigins`(node.ts / workers.ts が APP_BASE_URL と CORS_ORIGIN から作る)で有効になる。
- * 空のとき(開発・テスト)は従来どおり何も検証しない。
+ * 空のとき(APP_BASE_URL / CORS_ORIGIN 未設定)は、リクエストの Host と CORS を許したオリジンだけを通す代わりのガード(2026-10-22)。
  */
 
 import { describe, expect, it } from "vitest";
@@ -91,16 +91,54 @@ describe("未認証の POST の Origin 検証(authPostOrigins あり)", () => {
   });
 });
 
-describe("authPostOrigins なし(開発・テスト・オリジン未宣言の配備)", () => {
-  it("別のオリジンでも JSON 以外でも従来どおり(ガードしない)", async () => {
+describe("authPostOrigins なし(APP_BASE_URL / CORS_ORIGIN 未設定の配備): 自分自身の Host を許可オリジンにする", () => {
+  for (const path of GUARDED_PATHS) {
+    it(`${path}: 別サイトの Origin・cross-site・JSON 以外は弾く`, async () => {
+      const { db } = await setupTestDb();
+      const app = createApp({ db });
+
+      const wrongOrigin = await post(app, path, { "content-type": "application/json", origin: "https://evil.example.net" });
+      expect(wrongOrigin.status).toBe(403);
+      expect(await wrongOrigin.json()).toEqual({ error: "forbidden_origin" });
+
+      // ホストが同じでもポートが違えば別オリジン
+      const otherPort = await post(app, path, { "content-type": "application/json", origin: "http://localhost:4444" });
+      expect(otherPort.status).toBe(403);
+
+      const crossSite = await post(app, path, { "content-type": "application/json", "sec-fetch-site": "cross-site" });
+      expect(crossSite.status).toBe(403);
+
+      const form = await post(app, path, { "content-type": "text/plain", origin: "http://localhost" }, "{}");
+      expect(form.status).toBe(415);
+    });
+  }
+
+  it("他サイトのフォーム(text/plain)からのログインではセッションが張られない(ログイン CSRF)", async () => {
     const { db, email, password } = await setupTestDb();
     const app = createApp({ db });
     const res = await post(
       app,
       "/auth/login",
-      { "content-type": "text/plain", origin: "https://evil.example.net" },
+      { "content-type": "text/plain", origin: "https://evil.example.net", "sec-fetch-site": "cross-site" },
       JSON.stringify({ email, password }),
     );
-    expect([403, 415]).not.toContain(res.status);
+    expect(res.status).toBe(403);
+    expect(res.headers.getSetCookie().some((line) => line.startsWith("kizami_session="))).toBe(false);
+  });
+
+  it("同じ Host の Origin・X-Forwarded-Host と一致する Origin・CORS を許したオリジン・Origin なし(curl 等)は通る", async () => {
+    const { db, email, password } = await setupTestDb();
+    const app = createApp({ db, corsOrigin: "http://localhost:3000" });
+    const body = JSON.stringify({ email, password });
+    const cases: Record<string, string>[] = [
+      { "content-type": "application/json", origin: "http://localhost", "sec-fetch-site": "same-origin" },
+      { "content-type": "application/json", origin: "https://kizami.example.com", "x-forwarded-host": "kizami.example.com" },
+      { "content-type": "application/json", origin: "http://localhost:3000", "sec-fetch-site": "same-site" },
+      { "content-type": "application/json" },
+    ];
+    for (const headers of cases) {
+      const res = await post(app, "/auth/login", headers, body);
+      expect(res.status).toBe(200);
+    }
   });
 });
