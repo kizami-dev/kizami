@@ -84,7 +84,7 @@ API・DB スキーマの互換方針とアップグレード手順は
 ### Security
 
 - **公開デモ(demo.kizami.dev)に SSRF 対策を入れた**。認証情報が公開の管理者が、テナントの SMTP ホストや Webhook URL を
-  内部アドレスに向け、テスト送信のエラーでクラスタ内をポートスキャンできた。api / worker に `OUTBOUND_BLOCK_PRIVATE=true` を
+  内部アドレスに向け、テスト送信のエラーでクラスタ内をポートスキャンできた。api / worker に `OUTBOUND_BLOCK_PRIVATE=true` とノードのグローバル IP を拒否する `OUTBOUND_DENY_CIDRS` を
   設定し、NetworkPolicy で Pod の出口を DNS と公開インターネットだけに絞った。あわせてデモの `KIZAMI_ENCRYPTION_KEY` が
   34 バイトで無効だった(2FA・Webhook・SSO が動かなかった)ので 32 バイトの使い捨て鍵に直した(`deploy/k8s-demo/demo.yaml`。手動で再適用すること)
 - 一般メンバーの申請(修正・休暇・自動休憩の打ち消し)が起こす承認依頼の Webhook/メールを、申請者本人ごとの

@@ -8,7 +8,7 @@
 # 通知系は WEBHOOK_URL 未設定なので外部送信は発生しない。
 #
 # 保護(認証情報が公開なので、管理者権限を持つ第三者がいる前提):
-#  - SSRF: api / worker に OUTBOUND_BLOCK_PRIVATE=true(プライベート宛ての接続をアプリ側で拒否)
+#  - SSRF: api / worker に OUTBOUND_BLOCK_PRIVATE=true と OUTBOUND_DENY_CIDRS(ノードのグローバル IP)を設定し、アプリ側で拒否
 #  - NetworkPolicy(下): kizami-demo の Pod の出口は DNS と公開インターネットのみ。クラスタ内・LAN は塞ぐ
 #  - KIZAMI_ENCRYPTION_KEY は 32 バイトの使い捨て鍵(2FA・Webhook・SSO を有効にするため)
 # 適用は手動: kubectl apply -f deploy/k8s-demo/demo.yaml(Pod が再起動し、デモデータはリセットされる)
@@ -63,6 +63,9 @@ spec:
             # テスト送信のエラーでクラスタ内をポートスキャンするのを防ぐ。名前解決した IP を検査し、
             # ループバック・プライベート・リンクローカル・CGNAT 等へは接続しない(下の NetworkPolicy と二重で防ぐ)
             - {name: OUTBOUND_BLOCK_PRIVATE, value: "true"}
+            # ノード(samurai-matrix / samurai-watch / 133.242 のホスト)のグローバル IP。NetworkPolicy では
+            # ノード自身のポートを塞げないのでアプリ側で拒否する(cloud.yaml と同じ値。ノードが増えたら両方を直す)
+            - {name: OUTBOUND_DENY_CIDRS, value: "161.33.2.65/32,161.33.46.89/32,133.242.209.71/32"}
           readinessProbe:
             httpGet: {path: /healthz, port: 3001}
             initialDelaySeconds: 3
@@ -89,6 +92,9 @@ spec:
             # テスト送信のエラーでクラスタ内をポートスキャンするのを防ぐ。名前解決した IP を検査し、
             # ループバック・プライベート・リンクローカル・CGNAT 等へは接続しない(下の NetworkPolicy と二重で防ぐ)
             - {name: OUTBOUND_BLOCK_PRIVATE, value: "true"}
+            # ノード(samurai-matrix / samurai-watch / 133.242 のホスト)のグローバル IP。NetworkPolicy では
+            # ノード自身のポートを塞げないのでアプリ側で拒否する(cloud.yaml と同じ値。ノードが増えたら両方を直す)
+            - {name: OUTBOUND_DENY_CIDRS, value: "161.33.2.65/32,161.33.46.89/32,133.242.209.71/32"}
           resources:
             requests: {cpu: 25m, memory: 128Mi}
             limits: {memory: 384Mi}
@@ -186,7 +192,7 @@ spec:
 # 塞ぎ、テナント設定の SMTP / Webhook を踏み台にしたクラスタ内部への到達(SSRF・ポートスキャン)を防ぐ。
 # 入口は制限しない(NodePort 30095/30096 経由で Cloudflare Tunnel 等から届く現行の経路を変えない。
 # 公開デモなので到達元の制限は意味が薄い)。valkey は同じ Pod 内の 127.0.0.1 なので NetworkPolicy の対象外。
-# NetworkPolicy だけではノード自身のグローバル IP は塞げないため、アプリ側の OUTBOUND_BLOCK_PRIVATE も併用している。
+# NetworkPolicy だけではノード自身のグローバル IP は塞げないため、アプリ側の OUTBOUND_BLOCK_PRIVATE / OUTBOUND_DENY_CIDRS も併用している。
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -217,3 +223,7 @@ spec:
               - 169.254.0.0/16
               - 100.64.0.0/10
               - 127.0.0.0/8
+              # ノードのグローバル IP(CNI が効く経路では二重に塞ぐ)
+              - 161.33.2.65/32
+              - 161.33.46.89/32
+              - 133.242.209.71/32
