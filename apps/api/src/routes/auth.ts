@@ -38,9 +38,15 @@ import {
   TOTP_TX_TTL_SECONDS,
   type TotpTransaction,
 } from "../auth/totp.js";
+import {
+  clearTrustedDeviceCookie,
+  readTrustedDevice,
+  setTrustedDeviceCookie,
+  type TrustedDevice,
+} from "../auth/trusted-device.js";
 import { getClientIp } from "../lib/client-ip.js";
 import { decryptSealed, decryptSecret, type Encryptor } from "../lib/encryption.js";
-import { rateLimitedResponse, type FailureLimiter, type RateLimiter } from "../lib/rate-limit.js";
+import { rateLimitedResponse, type FailureLimiter, type FailureReservation, type RateLimiter } from "../lib/rate-limit.js";
 import { isLoginBlockedByWithdrawal, TENANT_WITHDRAWING_ERROR } from "../lib/tenant-withdrawal.js";
 import { nowMinutes } from "../lib/time.js";
 
@@ -87,6 +93,11 @@ export interface AuthRoutesOptions {
      * IP を回しながらの総当たりを止める。キーと上限の判断は lib/rate-limit.ts の RATE_LIMITS.loginFailuresPerAccount。
      */
     failuresPerAccount?: FailureLimiter;
+    /**
+     * 信頼済み端末の Cookie(auth/trusted-device.ts)を持つリクエストの失敗を、共有のメール単位のバケツの
+     * 代わりに数える端末ごとの上限(RATE_LIMITS.loginFailuresPerTrustedDevice)。無ければ信頼済み端末の経路は使わない。
+     */
+    failuresPerTrustedDevice?: FailureLimiter;
     /** ログイン第2段階の失敗を tx(Cookie)単位で数える。上限に達した tx は無効(RATE_LIMITS.totpFailuresPerTx)。 */
     totpFailuresPerTx?: FailureLimiter;
     /** ログイン第2段階の失敗をユーザー単位(IP を問わない)で数える(RATE_LIMITS.totpFailuresPerUser)。 */
@@ -152,8 +163,31 @@ export function createAuthRoutes(db: Database, options: AuthRoutesOptions) {
     // (lib/rate-limit.ts の FailureLimiter の判断点)。過去の失敗は成功しても消さない — メールは複数テナントで
     // 共有されうるので、攻撃者が自分のテナントの同じメールでログインに成功して被害者の失敗を消せてしまう。
     // アカウントの実在を問わず同じキー・同じ応答にする(実在の判定材料にしない)。
-    const accountKey = email.toLowerCase();
-    const accountReservation = options.rateLimit?.failuresPerAccount?.reserve(accountKey);
+    //
+    // 締め出しの緩和(信頼済み端末、auth/trusted-device.ts): 以前このメールで最後までログインできた端末の
+    // 封をした Cookie を持つリクエストは、共有バケツではなく端末ごとのバケツで数える。攻撃者が共有バケツを
+    // 埋めても、本人はいつもの端末から入れる。Cookie の無い相手の挙動は変わらない(実在を漏らさない)。
+    const emailLower = email.toLowerCase();
+    let accountReservation: FailureReservation | undefined;
+    const trustedLimiter = options.rateLimit?.failuresPerTrustedDevice;
+    let trusted: TrustedDevice | null = null;
+    if (trustedLimiter && options.encryptor) {
+      trusted = await readTrustedDevice(c, options.encryptor, { emailLower, nowMinutes: nowMinutes() });
+      if (trusted && tenantId && trusted.tenantId !== tenantId) trusted = null;
+      if (trusted) {
+        const owner = await getUserById(db, { tenantId: trusted.tenantId, id: trusted.userId });
+        if (!owner || !owner.isActive) {
+          // 退職処理などで使えなくなったアカウントの Cookie。消して通常の経路に戻す。
+          clearTrustedDeviceCookie(c);
+          trusted = null;
+        }
+      }
+    }
+    if (trusted && trustedLimiter) {
+      accountReservation = trustedLimiter.reserve(`trusted|${trusted.tenantId}|${trusted.userId}|${trusted.issuedAt}`);
+    } else {
+      accountReservation = options.rateLimit?.failuresPerAccount?.reserve(emailLower);
+    }
     if (accountReservation && !accountReservation.allowed) {
       return rateLimitedResponse(c, accountReservation.retryAfterSeconds);
     }
@@ -251,6 +285,14 @@ export function createAuthRoutes(db: Database, options: AuthRoutesOptions) {
       nowMinutes: nowMinutes(),
     });
     setSessionCookie(c, session.token, { secure: options.secureCookies });
+    if (options.encryptor) {
+      await setTrustedDeviceCookie(
+        c,
+        options.encryptor,
+        { tenantId: activeUser.tenantId, userId: activeUser.id, emailLower: activeUser.email.toLowerCase(), issuedAt: nowMinutes() },
+        { secure: options.secureCookies },
+      );
+    }
 
     return c.json({ user: { id: activeUser.id, email: activeUser.email, displayName: activeUser.name } }, 200);
   });
@@ -410,6 +452,13 @@ export function createAuthRoutes(db: Database, options: AuthRoutesOptions) {
     const session = await createSession(db, { tenantId: tx.tenantId, userId: tx.userId, nowMinutes: now });
     setSessionCookie(c, session.token, { secure: options.secureCookies });
     deleteCookie(c, TOTP_TX_COOKIE_NAME, { path: "/" });
+    // 第2要素まで通ったので、この端末を信頼済みにする(auth/trusted-device.ts)。
+    await setTrustedDeviceCookie(
+      c,
+      encryptor,
+      { tenantId: tx.tenantId, userId: tx.userId, emailLower: user.email.toLowerCase(), issuedAt: now },
+      { secure: options.secureCookies },
+    );
 
     // 監査ログ: SSO(routes/auth-oidc.ts)と同じ `auth.login` + detail.method。
     // 素のパスワードログインは従来どおり記録しないが、**2FA を通った/リカバリコードを

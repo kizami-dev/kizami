@@ -828,3 +828,23 @@ describe("失敗回数の上限(IP を回しながらの総当たり対策、M3)
     expect((await app.request("/auth/login/totp", fromNewIp({ code: await generateTotp(secret, nowSeconds()) }, tx))).status).toBe(200);
   });
 });
+
+describe("信頼済み端末の Cookie(2FA 有効時)", () => {
+  it("パスワードだけでは発行せず、第2段階が通ったときに発行する", async () => {
+    const seeded = await setupTestDb();
+    const app = createApp({ db: seeded.db, encryptor: testEncryptor() });
+    const cookie = await loginAndGetCookie(app, seeded.email, seeded.password);
+    const { secret } = await enableTotp(app, cookie);
+
+    const first = await login(app, seeded.email, seeded.password);
+    expect(cookieNamed(first, "kizami_trusted_device")).toBeNull();
+    const tx = cookieNamed(first, "kizami_totp_tx") as string;
+
+    advanceSeconds(TOTP_STEP_SECONDS);
+    const bad = await app.request("/auth/login/totp", jsonInit({ code: "000000" }, tx));
+    expect(cookieNamed(bad, "kizami_trusted_device")).toBeNull();
+    const ok = await app.request("/auth/login/totp", jsonInit({ code: await generateTotp(secret, nowSeconds()) }, tx));
+    expect(ok.status).toBe(200);
+    expect(cookieNamed(ok, "kizami_trusted_device")).not.toBeNull();
+  });
+});

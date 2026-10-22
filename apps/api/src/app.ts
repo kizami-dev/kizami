@@ -212,6 +212,7 @@ export function createApp(deps: CreateAppDeps) {
     passwordResetRequestPerIp: createRateLimiter({ ...RATE_LIMITS.passwordResetRequestPerIp, now }),
     // 失敗だけを数える、IP を含まないキーの上限(2026-10-22、セキュリティレビュー M3)。
     loginFailuresPerAccount: createFailureLimiter({ ...RATE_LIMITS.loginFailuresPerAccount, now }),
+    loginFailuresPerTrustedDevice: createFailureLimiter({ ...RATE_LIMITS.loginFailuresPerTrustedDevice, now }),
     totpFailuresPerTx: createFailureLimiter({ ...RATE_LIMITS.totpFailuresPerTx, now }),
     totpFailuresPerUser: createFailureLimiter({ ...RATE_LIMITS.totpFailuresPerUser, now }),
   };
@@ -300,6 +301,7 @@ export function createApp(deps: CreateAppDeps) {
         // (経路を変えても総当たりの回数が増えないように。lib/rate-limit.ts の RATE_LIMITS)。
         perIpUser: rateLimiters.totpPerIpUser,
         failuresPerAccount: rateLimiters.loginFailuresPerAccount,
+        failuresPerTrustedDevice: rateLimiters.loginFailuresPerTrustedDevice,
         totpFailuresPerTx: rateLimiters.totpFailuresPerTx,
         totpFailuresPerUser: rateLimiters.totpFailuresPerUser,
         trustProxy,

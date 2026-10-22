@@ -13,7 +13,8 @@ import { createApp } from "../src/app.js";
 import { RATE_LIMITS } from "../src/lib/rate-limit.js";
 import { authCredentials, tenants, users, uuidv7 } from "@kizami/db";
 import { hashPassword } from "../src/auth/password.js";
-import { setupTestDb } from "./support/setup.js";
+import { eq } from "drizzle-orm";
+import { setupTestDb, testEncryptor } from "./support/setup.js";
 
 /** 手で進められる時計。createApp に rateLimitNow として渡す。 */
 function fakeClock(): { clock: { at: number }; now: () => number } {
@@ -270,6 +271,85 @@ describe("POST /auth/login のアカウント単位の失敗上限(IP を回す�
 
     clock.at += RATE_LIMITS.loginFailuresPerAccount.windowMs + 1;
     expect((await loginRequest(app, "192.0.2.206", email, password)).status).toBe(200);
+  });
+});
+
+describe("信頼済み端末(kizami_trusted_device)による締め出しの緩和", () => {
+  const MAX = RATE_LIMITS.loginFailuresPerAccount.max;
+  const DEVICE_MAX = RATE_LIMITS.loginFailuresPerTrustedDevice.max;
+  const rotatingIp = (i: number) => `198.51.100.${(i % 250) + 1}`;
+
+  function login(app: ReturnType<typeof createApp>, ip: string, email: string, password: string, cookie?: string) {
+    return app.request("/auth/login", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "cf-connecting-ip": ip,
+        ...(cookie ? { cookie } : {}),
+      },
+      body: JSON.stringify({ email, password }),
+    });
+  }
+
+  function trustedCookieOf(res: Response): string | null {
+    for (const line of res.headers.getSetCookie()) {
+      if (line.startsWith("kizami_trusted_device=")) return line.split(";")[0] as string;
+    }
+    return null;
+  }
+
+  /** 本人がいつもの端末で一度ログインして Cookie を得る → 攻撃者が IP を回して共有バケツを埋める。 */
+  async function lockedOutScenario() {
+    const seeded = await setupTestDb();
+    const app = createApp({ db: seeded.db, encryptor: testEncryptor() });
+    const first = await login(app, "192.0.2.10", seeded.email, seeded.password);
+    expect(first.status).toBe(200);
+    const trusted = trustedCookieOf(first);
+    expect(trusted).not.toBeNull();
+    expect(first.headers.getSetCookie().find((l) => l.startsWith("kizami_trusted_device="))).toMatch(/HttpOnly/i);
+
+    for (let i = 0; i < MAX; i += 1) await login(app, rotatingIp(i), seeded.email, "wrong-password");
+    expect((await login(app, "192.0.2.11", seeded.email, seeded.password)).status).toBe(429);
+    return { ...seeded, app, trusted: trusted as string };
+  }
+
+  it("共有バケツが埋められても、信頼済み端末の Cookie を持つ本人は正しいパスワードで入れる", async () => {
+    const { app, email, password, trusted } = await lockedOutScenario();
+    const res = await login(app, "192.0.2.10", email, password, trusted);
+    expect(res.status).toBe(200);
+    // ログインのたびに発行し直す
+    expect(trustedCookieOf(res)).not.toBeNull();
+  });
+
+  it("平文で中身を偽造した Cookie は無視する(共有バケツのまま 429)", async () => {
+    const { app, email, password, tenantId, userId } = await lockedOutScenario();
+    const forged = JSON.stringify({ tenantId, userId, emailLower: email.toLowerCase(), issuedAt: Math.floor(Date.now() / 60_000) });
+    const res = await login(app, "192.0.2.12", email, password, `kizami_trusted_device=${encodeURIComponent(forged)}`);
+    expect(res.status).toBe(429);
+  });
+
+  it("別のメールアドレスへのログインには効かない", async () => {
+    const { app, trusted } = await lockedOutScenario();
+    // 他人(ここでは不在のメール)の共有バケツを埋める
+    for (let i = 0; i < MAX; i += 1) await login(app, rotatingIp(i), "victim2@example.com", "wrong-password");
+    const res = await login(app, "192.0.2.13", "victim2@example.com", "wrong-password", trusted);
+    expect(res.status).toBe(429);
+  });
+
+  it(`信頼済み端末のバケツにも上限がある(Cookie を盗まれても ${DEVICE_MAX}回/15分)`, async () => {
+    const { app, email, password, trusted } = await lockedOutScenario();
+    for (let i = 0; i < DEVICE_MAX; i += 1) {
+      expect((await login(app, rotatingIp(i + 100), email, "wrong-password", trusted)).status).toBe(401);
+    }
+    expect((await login(app, "192.0.2.14", email, password, trusted)).status).toBe(429);
+  });
+
+  it("無効化されたユーザーの Cookie は消して、通常の経路に戻す", async () => {
+    const { app, db, email, userId, trusted } = await lockedOutScenario();
+    await db.update(users).set({ isActive: false }).where(eq(users.id, userId));
+    const res = await login(app, "192.0.2.15", email, "wrong-password", trusted);
+    expect(res.status).toBe(429);
+    expect(res.headers.getSetCookie().some((l) => l.startsWith("kizami_trusted_device=;"))).toBe(true);
   });
 });
 
