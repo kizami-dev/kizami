@@ -104,6 +104,13 @@ API・DB スキーマの互換方針とアップグレード手順は
 - **Node.js を 26.12.1 に更新**(2026-10-20〜21 の Node.js セキュリティリリース、HIGH)。コンテナのベースイメージを
   `node:26.12.1-slim` に固定し(ビルドキャッシュで古いベースが再利用されないよう、浮動タグ `node:26-slim` をやめる)、
   `engines.node` を `>=26.12.1`、mise と CI の Node も 26.12.1 にした。セルフホストの配備はイメージを取り直すこと
+- **脆弱性のある依存を更新**(`pnpm audit` の指摘 73 件 → 本番依存は 0 件、開発用を含めても 9 件)。nodemailer 9.0.5 → 10.2.0
+  (テナントごとの SMTP の TLS `servername` が transport 間で使い回され、別テナントの接続先へ認証情報が渡りうる問題、
+  アドレス解析の DoS ほか)、hono 4.13.3 → 4.13.13(`parseBody()` のメモリ枯渇・`serveStatic` の二重デコードほか)、
+  `@modelcontextprotocol/sdk` 1.30.0 → 1.32.1(OAuth の認証情報送信先・セッション分離・メモリ枯渇)。推移的な依存
+  (proxy-addr・undici・fast-uri・sharp・qs・ip-address・markdown-it・vue・vite 8 系など)は `pnpm-workspace.yaml` の
+  `overrides` で修正版へ上げた。残るのは vitepress が内包する vite 5 / esbuild 0.21(ドキュメントの開発サーバーのみ)。
+  nodemailer 10 は Node.js 20 以上が必須(本プロジェクトは 26 のため影響なし)で、コードの変更は不要
 
 ## [0.9.0] - 2026-10-06
 

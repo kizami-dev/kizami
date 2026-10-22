@@ -8,3 +8,21 @@ packages:
 onlyBuiltDependencies:
   - esbuild
   - workerd
+
+# 推移的依存の脆弱性対策(2026-10 の pnpm audit)。親パッケージが固定している古い版を、修正版以上へ上げる。
+# 親側が追従したら外してよい。修正版が無い・メジャー更新が必要なもの(vitepress が内包する vite 5 系・esbuild 0.21 系)は開発用のみのため据え置き。
+overrides:
+  "proxy-addr": "^2.0.8"
+  "qs": "^6.16.1"
+  "ip-address": "^10.7.4"
+  "fast-uri": "^3.1.8"
+  "undici@7": "^7.29.1"
+  "sharp": "^0.35.5"
+  "markdown-it": "^14.3.3"
+  "source-map-js": "^1.2.2"
+  "brace-expansion@2": "^2.1.7"
+  "brace-expansion@5": "^5.0.12"
+  "vue": "^3.5.42"
+  "@vue/server-renderer": "^3.5.42"
+  "vite@8": "^8.3.5"
+  "uuid@9": "^11.1.1"
