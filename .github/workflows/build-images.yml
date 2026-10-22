@@ -1,0 +1,147 @@
+name: Build Images (reusable)
+
+# KIZAMI のコンテナイメージ(ghcr.io/kizami-dev/kizami-api / kizami-web)を
+# linux/amd64 + linux/arm64 で作り、マルチアーキのタグとして push する。
+# images.yml(main への push)と release.yml(版タグ)から呼ぶ。
+#
+# arch ごとにそのアーキのランナー(ubuntu-24.04 / ubuntu-24.04-arm)で直接ビルドし、
+# 最後に digest をまとめて1つのタグにする。以前は amd64 のランナー上で arm64 を
+# QEMU でエミュレーションしていたが、ビルドキャッシュが効かないとき(ベースイメージの
+# 更新など)に arm64 の vite build が1時間以上進まなくなった(2026-10-22、Node 26.12.1 への更新時)。
+#
+# Dockerfile の詳細は docker/api.Dockerfile と docker/web.Dockerfile を参照。
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: "版タグ(例: 0.10.0)。空なら付けない"
+        type: string
+        default: ""
+      sha-tag:
+        description: "sha-<短いコミットID> のタグも付けるか"
+        type: boolean
+        default: false
+
+env:
+  REGISTRY: ghcr.io
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [kizami-api, kizami-web]
+        arch: [amd64, arm64]
+        include:
+          - image: kizami-api
+            dockerfile: docker/api.Dockerfile
+          - image: kizami-web
+            dockerfile: docker/web.Dockerfile
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # タグは付けずに digest だけで push し、merge ジョブで arch をまとめてタグにする。
+      # キャッシュは image×arch ごと(main の push と版タグの release で共有する)。
+      - name: Build and push ${{ matrix.image }} (linux/${{ matrix.arch }})
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          platforms: linux/${{ matrix.arch }}
+          outputs: type=image,name=${{ env.REGISTRY }}/kizami-dev/${{ matrix.image }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=${{ matrix.image }}-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}-${{ matrix.arch }}
+
+      - name: Export digest
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          mkdir -p "${RUNNER_TEMP}/digests"
+          touch "${RUNNER_TEMP}/digests/${DIGEST#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ matrix.image }}-${{ matrix.arch }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+
+    strategy:
+      matrix:
+        image: [kizami-api, kizami-web]
+
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          path: ${{ runner.temp }}/digests
+          pattern: digests-${{ matrix.image }}-*
+          merge-multiple: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # 入力は run 本文へ直接展開せず env 経由で受ける。
+      - name: Create multi-arch tags
+        env:
+          IMAGE_REF: ${{ env.REGISTRY }}/kizami-dev/${{ matrix.image }}
+          VERSION: ${{ inputs.version }}
+          SHA_TAG: ${{ inputs.sha-tag }}
+        run: |
+          tags=(-t "${IMAGE_REF}:latest")
+          if [ -n "${VERSION}" ]; then tags+=(-t "${IMAGE_REF}:${VERSION}"); fi
+          if [ "${SHA_TAG}" = "true" ]; then tags+=(-t "${IMAGE_REF}:sha-${GITHUB_SHA::7}"); fi
+          cd "${RUNNER_TEMP}/digests"
+          sources=()
+          for digest in *; do sources+=("${IMAGE_REF}@sha256:${digest}"); done
+          if [ "${#sources[@]}" -ne 2 ]; then
+            echo "::error::digest が ${#sources[@]} 個(amd64 と arm64 の2個のはず)"
+            exit 1
+          fi
+          docker buildx imagetools create "${tags[@]}" "${sources[@]}"
+
+      - name: Inspect
+        env:
+          IMAGE_REF: ${{ env.REGISTRY }}/kizami-dev/${{ matrix.image }}
+        run: docker buildx imagetools inspect "${IMAGE_REF}:latest"

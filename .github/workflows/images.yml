@@ -3,65 +3,22 @@ name: Container Images
 # Builds & pushes the multi-arch (linux/amd64 + linux/arm64) KIZAMI images
 # to GHCR: ghcr.io/kizami-dev/kizami-api and ghcr.io/kizami-dev/kizami-web.
 #
-# See docker/api.Dockerfile and docker/web.Dockerfile for build details.
+# The build itself lives in build-images.yml (shared with release.yml): each arch is
+# built natively on its own runner and the digests are merged into one tag.
 
 on:
   push:
     branches: [main]
   workflow_dispatch:
 
-env:
-  REGISTRY: ghcr.io
-
 permissions:
   contents: read
 
 jobs:
   build-push:
-    runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
-
-    strategy:
-      matrix:
-        include:
-          - image: kizami-api
-            dockerfile: docker/api.Dockerfile
-          - image: kizami-web
-            dockerfile: docker/web.Dockerfile
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Compute image metadata
-        id: meta
-        run: |
-          echo "sha_short=sha-$(git rev-parse --short "${GITHUB_SHA}")" >> "$GITHUB_OUTPUT"
-
-      - name: Build and push ${{ matrix.image }}
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ${{ matrix.dockerfile }}
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: |
-            ${{ env.REGISTRY }}/kizami-dev/${{ matrix.image }}:latest
-            ${{ env.REGISTRY }}/kizami-dev/${{ matrix.image }}:${{ steps.meta.outputs.sha_short }}
-          cache-from: type=gha,scope=${{ matrix.image }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+    uses: ./.github/workflows/build-images.yml
+    with:
+      sha-tag: true
