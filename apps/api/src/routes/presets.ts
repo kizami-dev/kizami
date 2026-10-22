@@ -10,6 +10,12 @@
  * 固定原則(docs/requirements.md §4 / 依頼の実装指示):
  * - 自己昇格の禁止: 自分自身への割当変更で、現在持っていない権限(未保持キー、または
  *   より狭いスコープしか持っていなかったキー)を得る場合は 409 self_escalation
+ * - 他人への昇格の禁止(H3、2026-10-22): 他人への割当変更でも、割当後の対象の権限は操作者の
+ *   権限に収まらなければならない(操作者に無い権限・より広いスコープは与えられない)。また、
+ *   操作者を上回る権限を今持っている人の割当は変えられない。どちらも 403。自己昇格の禁止は
+ *   この判定の「対象 = 自分」の場合にあたり、判定そのもの(authz.ts の findPermissionExceeding)を
+ *   共有する。以前は自分への割当だけを見ていたため、部署スコープの割当権限で部下に「管理者」を
+ *   付けられた
  * - 自己降格の禁止: 自分自身への割当変更で `permission.preset.manage` /
  *   `permission.assignment.manage` のいずれかを失う場合は 409 self_demotion
  * - 最後の権限管理保持者の保護: テナント内で `permission.preset.manage` を持つ最後の1人から
@@ -45,10 +51,10 @@ import {
   type RawPermissionGrant,
   type RawPresetPermissions,
 } from "@kizami/db";
-import { PERMISSION_CATALOG, scopeRank } from "@kizami/authz";
-import type { Scope } from "@kizami/authz";
+import { PERMISSION_CATALOG } from "@kizami/authz";
+import type { PermissionKey, Scope } from "@kizami/authz";
 import type { AppEnv } from "../auth/middleware.js";
-import { effectivePermissionsFromPresets, requirePermission } from "../authz.js";
+import { effectivePermissionsFromPresets, findPermissionExceeding, ForbiddenError, requirePermission } from "../authz.js";
 import { nowMinutes } from "../lib/time.js";
 
 export const PRESET_MANAGE_PERMISSION = "permission.preset.manage";
@@ -397,6 +403,8 @@ async function insertAuditLogForPreset(
 export interface AssignPresetsParams {
   db: Database;
   actor: { id: string; tenantId: string };
+  /** 操作者の実効権限(c.get("permissions"))。割当後の対象の権限がこれに収まるかを見る。 */
+  actorPermissions: ReadonlyMap<PermissionKey, Scope>;
   targetUserId: string;
   presetIds: string[];
 }
@@ -406,11 +414,41 @@ export type AssignPresetsResult =
   | { ok: false; status: 400 | 409; error: string };
 
 /**
- * あるユーザーへのプリセット割当を丸ごと置き換える。固定原則(自己昇格・自己降格・
- * 最後の権限管理保持者保護)をここで検証してから DB へ反映する。
+ * presetIds のプリセットをまとめて割り当てたときの権限が、操作者の権限に収まっているかを
+ * DB へ何も書かずに確かめる(収まらなければ ForbiddenError)。未知の id はここでは無視する
+ * (400 invalid_preset_id は assignPresetsToMember が返す)。
+ *
+ * 招待と同時のプリセット割当(POST /members の presetIds)が、メンバーを作る**前**に呼ぶ。
+ * assignPresetsToMember の判定は作成後に走るため、それだけだと「メンバーと招待はできたが
+ * 403」という半端な状態が残る。招待トークンは操作者に返るので、ここを通すと自分で受諾して
+ * 上位の権限を持つアカウントを得られてしまう(H3)。
+ */
+export async function requirePresetsWithinActor(params: {
+  db: Database;
+  tenantId: string;
+  actorPermissions: ReadonlyMap<PermissionKey, Scope>;
+  presetIds: readonly string[];
+}): Promise<void> {
+  const raw: RawPresetPermissions[] = [];
+  for (const presetId of new Set(params.presetIds)) {
+    const preset = await getPresetById(params.db, { tenantId: params.tenantId, id: presetId });
+    if (preset) raw.push(presetPermissionsOf(preset));
+  }
+  const exceeding = findPermissionExceeding(effectivePermissionsFromPresets(raw), params.actorPermissions);
+  if (exceeding !== null) {
+    throw new ForbiddenError(`assigning ${exceeding} exceeds actor's permissions`);
+  }
+}
+
+/**
+ * あるユーザーへのプリセット割当を丸ごと置き換える。固定原則(自己昇格・他人への昇格・
+ * 自己降格・最後の権限管理保持者保護)をここで検証してから DB へ反映する。
+ *
+ * 他人への昇格は ForbiddenError(→ 403)を投げる。自己昇格は従来どおり 409 self_escalation を返す
+ * (Web の画面がこのエラー名で文言を出し分けているため)。
  */
 export async function assignPresetsToMember(params: AssignPresetsParams): Promise<AssignPresetsResult> {
-  const { db, actor, targetUserId, presetIds: rawPresetIds } = params;
+  const { db, actor, actorPermissions, targetUserId, presetIds: rawPresetIds } = params;
   const presetIds = Array.from(new Set(rawPresetIds));
 
   const presets: PermissionPreset[] = [];
@@ -428,16 +466,25 @@ export async function assignPresetsToMember(params: AssignPresetsParams): Promis
 
   const isSelf = targetUserId === actor.id;
 
-  if (isSelf) {
-    // 固定原則: 自己昇格の禁止 — 割当変更後に、変更前は持っていなかった権限
-    // (未保持キー、またはより狭いスコープしか持っていなかったキー)を得る操作は不可
-    for (const [key, afterScope] of afterEffective) {
-      const beforeScope = beforeEffective.get(key);
-      if (beforeScope === undefined || scopeRank(afterScope) > scopeRank(beforeScope)) {
-        return { ok: false, status: 409, error: "self_escalation" };
-      }
+  if (!isSelf) {
+    // 固定原則: 自分より上の人の割当は変えられない — 操作者に無い権限・より広いスコープを今持って
+    // いる人の割当を変えられると、部署スコープの割当権限で管理者の権限を剥がせてしまう(H3)。
+    const exceedingBefore = findPermissionExceeding(beforeEffective, actorPermissions);
+    if (exceedingBefore !== null) {
+      throw new ForbiddenError(`target user ${targetUserId} holds ${exceedingBefore} beyond actor's permissions`);
     }
+  }
 
+  // 固定原則: 昇格の禁止 — 割当変更後の対象の権限は、操作者の権限に収まらなければならない
+  // (未保持キー、またはより狭いスコープしか持っていないキーは与えられない)。対象が自分なら
+  // 操作者の権限 = 変更前の自分の権限なので、これが自己昇格の禁止になる。
+  const exceedingAfter = findPermissionExceeding(afterEffective, actorPermissions);
+  if (exceedingAfter !== null) {
+    if (isSelf) return { ok: false, status: 409, error: "self_escalation" };
+    throw new ForbiddenError(`assigning ${exceedingAfter} to ${targetUserId} exceeds actor's permissions`);
+  }
+
+  if (isSelf) {
     // 固定原則: 自己降格の禁止 — permission.preset.manage / permission.assignment.manage の
     // いずれかを、割当変更によって自分自身から失う操作は不可
     for (const key of [PRESET_MANAGE_PERMISSION, ASSIGNMENT_MANAGE_PERMISSION]) {

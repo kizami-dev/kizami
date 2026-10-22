@@ -110,7 +110,12 @@ import { isLeaveGrantClass, type LeaveGrantClass } from "@kizami/leave";
 import type { AppEnv } from "../auth/middleware.js";
 import { generateInvitationToken, INVITATION_TTL_MINUTES } from "../auth/invitation-token.js";
 import { generatePasswordResetToken, PASSWORD_RESET_TTL_MINUTES } from "../auth/password-reset-token.js";
-import { effectivePermissionsFromPresets, ForbiddenError, requirePermission } from "../authz.js";
+import {
+  effectivePermissionsFromPresets,
+  ForbiddenError,
+  requireActorDominatesTarget,
+  requirePermission,
+} from "../authz.js";
 import {
   DEFAULT_RETENTION_YEARS,
   evaluateRetention,
@@ -121,7 +126,12 @@ import { resolveAccessibleDepartmentIds, resolveAccessibleUserIds } from "../lib
 import { nowMinutes, todayLocalDate } from "../lib/time.js";
 import { TZ_OFFSET_MINUTES_JST } from "../lib/settings.js";
 import type { TenantQuotas } from "../lib/tenant-quotas.js";
-import { ASSIGNMENT_MANAGE_PERMISSION, assignPresetsToMember, PRESET_MANAGE_PERMISSION } from "./presets.js";
+import {
+  ASSIGNMENT_MANAGE_PERMISSION,
+  assignPresetsToMember,
+  PRESET_MANAGE_PERMISSION,
+  requirePresetsWithinActor,
+} from "./presets.js";
 import { WORK_POLICY_PERMISSION } from "./settings/permissions.js";
 import {
   FIXED_SETTLEMENT_PERIOD_PLACEHOLDER,
@@ -481,6 +491,13 @@ export function createMembersRoutes(db: Database, deps: { quotas?: TenantQuotas 
       // /members/:id/presets と同じ権限で保護する)。ユーザー作成前に検証し、権限が無ければ
       // ここで打ち切る(招待済みだが presetIds は無視、のような中途半端な状態を作らないため)。
       requirePermission(c, ASSIGNMENT_MANAGE_PERMISSION, "department");
+      // 自分の権限を超えるプリセット(部署スコープの担当者が「管理者」を付ける等)も作成前に断る(H3)。
+      await requirePresetsWithinActor({
+        db,
+        tenantId: actor.tenantId,
+        actorPermissions: c.get("permissions"),
+        presetIds,
+      });
       presetIdList = presetIds;
     }
 
@@ -565,6 +582,7 @@ export function createMembersRoutes(db: Database, deps: { quotas?: TenantQuotas 
       const result = await assignPresetsToMember({
         db,
         actor: { id: actor.id, tenantId: actor.tenantId },
+        actorPermissions: c.get("permissions"),
         targetUserId: target.id,
         presetIds: presetIdList,
       });
@@ -608,6 +626,9 @@ export function createMembersRoutes(db: Database, deps: { quotas?: TenantQuotas 
     if (accessibleUserIds !== "all" && !accessibleUserIds.has(id)) {
       throw new ForbiddenError(`target user ${id} is outside actor's scope`);
     }
+    // 自分より上の人(操作者に無い権限・より広いスコープを持つ人)のアカウントには触らせない
+    // (H3。authz.ts の requireActorDominatesTarget)。
+    await requireActorDominatesTarget(c, db, id);
 
     // 退職処理(無効化)済みのメンバーへの招待再発行は不可(依頼の判断点: 退職者にログイン手段を
     // 与え直す操作は、再有効化(POST /:id/reactivate)を経由すべきであり、この経路からは通さない)。
@@ -708,6 +729,9 @@ export function createMembersRoutes(db: Database, deps: { quotas?: TenantQuotas 
     if (accessibleUserIds !== "all" && !accessibleUserIds.has(id)) {
       throw new ForbiddenError(`target user ${id} is outside actor's scope`);
     }
+    // 自分より上の人(操作者に無い権限・より広いスコープを持つ人)のアカウントには触らせない
+    // (H3。authz.ts の requireActorDominatesTarget)。
+    await requireActorDominatesTarget(c, db, id);
 
     // 退職処理(無効化)済みのメンバーへのリセット発行は不可(依頼の判断点、招待再発行と同じ扱い)。
     // 「not_active」(未受諾)とは別のエラー名にして、UI 側が原因を出し分けられるようにする。
@@ -819,6 +843,9 @@ export function createMembersRoutes(db: Database, deps: { quotas?: TenantQuotas 
     if (accessibleUserIds !== "all" && !accessibleUserIds.has(id)) {
       throw new ForbiddenError(`target user ${id} is outside actor's scope`);
     }
+    // 自分より上の人(操作者に無い権限・より広いスコープを持つ人)のアカウントには触らせない
+    // (H3。authz.ts の requireActorDominatesTarget)。
+    await requireActorDominatesTarget(c, db, id);
 
     if (!target.isActive) {
       return c.json({ error: "already_inactive" }, 409);
@@ -897,6 +924,9 @@ export function createMembersRoutes(db: Database, deps: { quotas?: TenantQuotas 
     if (accessibleUserIds !== "all" && !accessibleUserIds.has(id)) {
       throw new ForbiddenError(`target user ${id} is outside actor's scope`);
     }
+    // 自分より上の人(操作者に無い権限・より広いスコープを持つ人)のアカウントには触らせない
+    // (H3。authz.ts の requireActorDominatesTarget)。
+    await requireActorDominatesTarget(c, db, id);
 
     const existing = await getUserTotp(db, { tenantId: actor.tenantId, userId: id });
     if (!existing) return c.json({ error: "not_enabled" }, 409);
@@ -948,6 +978,9 @@ export function createMembersRoutes(db: Database, deps: { quotas?: TenantQuotas 
     if (accessibleUserIds !== "all" && !accessibleUserIds.has(id)) {
       throw new ForbiddenError(`target user ${id} is outside actor's scope`);
     }
+    // 自分より上の人(操作者に無い権限・より広いスコープを持つ人)のアカウントには触らせない
+    // (H3。authz.ts の requireActorDominatesTarget)。
+    await requireActorDominatesTarget(c, db, id);
 
     if (target.isActive) {
       return c.json({ error: "already_active" }, 409);
@@ -1490,6 +1523,7 @@ export function createMembersRoutes(db: Database, deps: { quotas?: TenantQuotas 
     const result = await assignPresetsToMember({
       db,
       actor: { id: actor.id, tenantId: actor.tenantId },
+      actorPermissions: c.get("permissions"),
       targetUserId: target.id,
       presetIds: body.presetIds,
     });

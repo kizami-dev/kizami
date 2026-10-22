@@ -17,7 +17,7 @@
 
 import type { Context } from "hono";
 import { listAssignedPresetGrants, type Database, type RawPresetPermissions } from "@kizami/db";
-import { hasPermission as evaluatePermission, resolveEffectivePermissions } from "@kizami/authz";
+import { hasPermission as evaluatePermission, resolveEffectivePermissions, scopeRank } from "@kizami/authz";
 import type { PermissionKey, PresetPermissions, Scope } from "@kizami/authz";
 import type { AppEnv, AuthUser } from "./auth/middleware.js";
 
@@ -84,5 +84,50 @@ export function requirePermission(c: Context<AppEnv>, key: PermissionKey, requir
   const permissions = c.get("permissions");
   if (!evaluatePermission(permissions, key, requiredScope)) {
     throw new ForbiddenError(`missing permission: ${key} (requires scope >= ${requiredScope})`);
+  }
+}
+
+/**
+ * `subject` の実効権限が `holder` の実効権限に収まっているか(どのキーも holder が同じか
+ * より広いスコープで持っているか)を調べ、収まっていない最初のキーを返す(全て収まれば null)。
+ *
+ * 「自分より上の人を操作させない」判定(H3、2026-10-22)の共通部品。用途は2つ:
+ * - 他人のアカウント・資格情報に対する操作(リセット発行・2FA 解除・無効化など)で、
+ *   対象の権限が操作者を上回っていないこと(requireActorDominatesTarget)
+ * - プリセット割当(routes/presets.ts の assignPresetsToMember)で、割当後の対象の権限が
+ *   操作者の権限に収まること(自己昇格の禁止は、この判定の「対象 = 自分」の場合にあたる)
+ *
+ * セルフサービス権限(scope: self)は全員が常に持つので、ここで差が出ることはない。
+ */
+export function findPermissionExceeding(
+  subject: ReadonlyMap<PermissionKey, Scope>,
+  holder: ReadonlyMap<PermissionKey, Scope>,
+): PermissionKey | null {
+  for (const [key, subjectScope] of subject) {
+    const holderScope = holder.get(key);
+    if (holderScope === undefined || scopeRank(subjectScope) > scopeRank(holderScope)) return key;
+  }
+  return null;
+}
+
+/**
+ * 他人のアカウント・資格情報に対する操作(パスワードリセットの発行・招待の再発行・2FA の解除・
+ * 無効化・再有効化)の前に呼ぶ。対象の実効権限が操作者(キャッシュ済みの c.get("permissions"))を
+ * 上回る — 操作者に無い権限を持つ、または同じ権限をより広いスコープで持つ — なら ForbiddenError。
+ *
+ * 部署スコープの判定(lib/scope.ts)だけでは「自部署に所属する管理者」も操作対象に入ってしまい、
+ * `member.invite` だけを持つ部署担当者が管理者のリセットトークンを発行して乗っ取れた(H3)。
+ * テナント全体の全権限を持つ管理者は誰に対しても上回られないので、従来どおり全員を操作できる。
+ */
+export async function requireActorDominatesTarget(
+  c: Context<AppEnv>,
+  db: Database,
+  targetUserId: string,
+): Promise<void> {
+  const actor = c.get("user");
+  const targetPermissions = await loadEffectivePermissions(db, { id: targetUserId, tenantId: actor.tenantId });
+  const exceeding = findPermissionExceeding(targetPermissions, c.get("permissions"));
+  if (exceeding !== null) {
+    throw new ForbiddenError(`target user ${targetUserId} holds ${exceeding} beyond actor's permissions`);
   }
 }

@@ -1,9 +1,21 @@
 import { describe, expect, it } from "vitest";
-import { auditLogs, tenants, upsertMembership, users, uuidv7, type Database } from "@kizami/db";
+import {
+  auditLogs,
+  getUserById,
+  listAssignedPresetGrants,
+  permissionPresets,
+  presetAssignments,
+  tenants,
+  upsertMembership,
+  users,
+  uuidv7,
+  type Database,
+} from "@kizami/db";
 import { eq } from "drizzle-orm";
 import { createApp } from "../src/app.js";
 import { grantPermission, loginAndGetCookie, setupExtraUser, setupSecondUser, setupTestDb } from "./support/setup.js";
 import { buildSettingsTimeline } from "../src/lib/settings.js";
+import { ADMIN_GRANTS } from "../src/lib/tenant-bootstrap.js";
 
 async function auditActionsFor(db: Database, tenantId: string): Promise<string[]> {
   const rows = await db.select().from(auditLogs).where(eq(auditLogs.tenantId, tenantId));
@@ -727,5 +739,165 @@ describe("POST /members: 労働時間制の自動割当(2026-08-23)", () => {
     });
     expect(timeline.length).toBeGreaterThan(0);
     expect(timeline[0]?.settings.workSystem.kind).toBe("flex");
+  });
+});
+
+// セキュリティ(H3、2026-10-22): 部署スコープの管理権限で、同じ部署にいる自分より上の人
+// (管理者)を操作できた。リセットトークンを発行して管理者アカウントを乗っ取る、2FA を外して
+// 無効化する、部下に「管理者」プリセットを付けて昇格させる、などが通っていた。
+describe("members API — 自分より上の人は操作できない(H3)", () => {
+  /** 同梱の「管理者」プリセット(全権限・テナント全体)を作り、指定ユーザーへ割り当てる。 */
+  async function createAdminPreset(db: Database, tenantId: string): Promise<string> {
+    const presetId = uuidv7();
+    await db.insert(permissionPresets).values({
+      id: presetId,
+      tenantId,
+      name: "管理者",
+      grants: JSON.stringify(ADMIN_GRANTS),
+      isSystem: true,
+      createdAt: 0,
+    });
+    return presetId;
+  }
+  async function assignPreset(db: Database, params: { tenantId: string; userId: string; presetId: string }) {
+    await db.insert(presetAssignments).values({ id: uuidv7(), ...params, createdAt: 0 });
+  }
+
+  /**
+   * テナント管理者(seeded のユーザー)・営業部の担当者(部署スコープの招待・無効化・割当権限)・
+   * 同じ営業部に所属する別の管理者・同じ営業部の一般メンバーを用意する。
+   */
+  async function scenario() {
+    const seeded = await setupTestDb();
+    const { db, tenantId } = seeded;
+    const adminPresetId = await createAdminPreset(db, tenantId);
+    await assignPreset(db, { tenantId, userId: seeded.userId, presetId: adminPresetId });
+    const app = createApp({ db });
+    const adminCookie = await loginAndGetCookie(app, seeded.email, seeded.password);
+    const sales = await createDepartment(app, adminCookie, "営業部");
+
+    const manager = await setupSecondUser(db, tenantId);
+    await upsertMembership(db, { tenantId, userId: manager.userId, departmentId: sales.id, createdAt: 0 });
+    for (const permission of ["member.invite", "member.deactivate", "permission.assignment.manage"]) {
+      await grantPermission(db, { tenantId, userId: manager.userId, permission, scope: "department" });
+    }
+
+    const salesAdmin = await setupExtraUser(db, { tenantId, email: "sales-admin@example.com", name: "営業部の管理者" });
+    await upsertMembership(db, { tenantId, userId: salesAdmin.userId, departmentId: sales.id, createdAt: 0 });
+    await assignPreset(db, { tenantId, userId: salesAdmin.userId, presetId: adminPresetId });
+
+    const report = await setupExtraUser(db, { tenantId, email: "report@example.com", name: "部下" });
+    await upsertMembership(db, { tenantId, userId: report.userId, departmentId: sales.id, createdAt: 0 });
+
+    const managerCookie = await loginAndGetCookie(app, manager.email, manager.password);
+    return { ...seeded, app, adminCookie, adminPresetId, sales, manager, managerCookie, salesAdmin, report };
+  }
+
+  const post = (app: RequestLike, path: string, cookie: string) =>
+    app.request(path, { method: "POST", headers: { cookie } });
+
+  it("部署スコープの担当者は、同じ部署の管理者へのリセット発行・無効化ができない(403)", async () => {
+    const { db, tenantId, app, managerCookie, salesAdmin } = await scenario();
+
+    // 以前は 201 で平文トークンが返り、管理者アカウントを乗っ取れた
+    expect((await post(app, `/members/${salesAdmin.userId}/password-resets`, managerCookie)).status).toBe(403);
+    expect((await post(app, `/members/${salesAdmin.userId}/two-factor/reset`, managerCookie)).status).toBe(403);
+    expect((await post(app, `/members/${salesAdmin.userId}/deactivate`, managerCookie)).status).toBe(403);
+    expect((await getUserById(db, { tenantId, id: salesAdmin.userId }))?.isActive).toBe(true);
+    expect(await auditActionsFor(db, tenantId)).not.toContain("member.password_reset.issue");
+  });
+
+  it("部署スコープの担当者も、自分の権限を超えない同じ部署のメンバーは従来どおり操作できる", async () => {
+    const { app, managerCookie, report } = await scenario();
+
+    expect((await post(app, `/members/${report.userId}/password-resets`, managerCookie)).status).toBe(201);
+    expect((await post(app, `/members/${report.userId}/deactivate`, managerCookie)).status).toBe(200);
+    expect((await post(app, `/members/${report.userId}/reactivate`, managerCookie)).status).toBe(200);
+  });
+
+  it("同じ権限でも、操作者より広いスコープで持つ人は操作できない", async () => {
+    const { db, tenantId, app, managerCookie, report } = await scenario();
+    // 部下が member.invite をテナント全体で持つ(操作者は部署スコープ)
+    await grantPermission(db, { tenantId, userId: report.userId, permission: "member.invite", scope: "tenant" });
+
+    expect((await post(app, `/members/${report.userId}/password-resets`, managerCookie)).status).toBe(403);
+  });
+
+  it("テナント全体の管理者は、別の管理者にも従来どおりリセット発行・無効化ができる", async () => {
+    const { app, adminCookie, salesAdmin } = await scenario();
+
+    expect((await post(app, `/members/${salesAdmin.userId}/password-resets`, adminCookie)).status).toBe(201);
+    expect((await post(app, `/members/${salesAdmin.userId}/deactivate`, adminCookie)).status).toBe(200);
+    expect((await post(app, `/members/${salesAdmin.userId}/reactivate`, adminCookie)).status).toBe(200);
+  });
+
+  it("部署スコープの割当権限で、部下に「管理者」プリセットを付けられない(403)", async () => {
+    const { db, tenantId, app, managerCookie, adminPresetId, report } = await scenario();
+
+    const res = await app.request(`/members/${report.userId}/presets`, {
+      method: "PUT",
+      headers: { "content-type": "application/json", cookie: managerCookie },
+      body: JSON.stringify({ presetIds: [adminPresetId] }),
+    });
+    // 以前は 200 で、自己昇格の判定は「対象 = 自分」のときしか走らなかった
+    expect(res.status).toBe(403);
+    expect(await listAssignedPresetGrants(db, { tenantId, userId: report.userId })).toEqual([]);
+  });
+
+  it("自分の権限に収まるプリセットなら、部下に割り当てられる", async () => {
+    const { db, tenantId, app, managerCookie, report } = await scenario();
+    const presetId = uuidv7();
+    await db.insert(permissionPresets).values({
+      id: presetId,
+      tenantId,
+      name: "招待担当",
+      grants: JSON.stringify([{ key: "member.invite", scope: "department" }]),
+      isSystem: false,
+      createdAt: 0,
+    });
+
+    const res = await app.request(`/members/${report.userId}/presets`, {
+      method: "PUT",
+      headers: { "content-type": "application/json", cookie: managerCookie },
+      body: JSON.stringify({ presetIds: [presetId] }),
+    });
+    expect(res.status).toBe(200);
+  });
+
+  it("部署スコープの担当者は、管理者の割当を外せない(403)", async () => {
+    const { db, tenantId, app, managerCookie, salesAdmin } = await scenario();
+
+    const res = await app.request(`/members/${salesAdmin.userId}/presets`, {
+      method: "PUT",
+      headers: { "content-type": "application/json", cookie: managerCookie },
+      body: JSON.stringify({ presetIds: [] }),
+    });
+    expect(res.status).toBe(403);
+    expect(await listAssignedPresetGrants(db, { tenantId, userId: salesAdmin.userId })).toHaveLength(1);
+  });
+
+  it("招待と同時に「管理者」プリセットを付けることもできず、メンバーも作られない(403)", async () => {
+    const { db, tenantId, app, managerCookie, adminPresetId, sales } = await scenario();
+
+    const res = await app.request("/members", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: managerCookie },
+      body: JSON.stringify({ email: "new-admin@example.com", name: "新しい管理者", departmentId: sales.id, presetIds: [adminPresetId] }),
+    });
+    // 以前は 201 で招待トークンが返り、自分で受諾すれば管理者アカウントを得られた
+    expect(res.status).toBe(403);
+    const created = await db.select().from(users).where(eq(users.email, "new-admin@example.com"));
+    expect(created).toEqual([]);
+  });
+
+  it("テナント全体の管理者は、従来どおり他人に「管理者」プリセットを割り当てられる", async () => {
+    const { app, adminCookie, adminPresetId, report } = await scenario();
+
+    const res = await app.request(`/members/${report.userId}/presets`, {
+      method: "PUT",
+      headers: { "content-type": "application/json", cookie: adminCookie },
+      body: JSON.stringify({ presetIds: [adminPresetId] }),
+    });
+    expect(res.status).toBe(200);
   });
 });
