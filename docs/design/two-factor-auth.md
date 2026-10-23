@@ -66,7 +66,7 @@ QR は将来、UI の体験改善として別途検討する。
 | --- | --- |
 | `user_id` (PK) | 対象ユーザー |
 | `tenant_id` | テナント |
-| `secret_encrypted` | 共有鍵(base32)を `enc:v1:...` で暗号化した値 |
+| `secret_encrypted` | 共有鍵(base32)を `enc:v2:...`(テナント ID・ユーザー ID に束縛)で暗号化した値 |
 | `enabled_at` | **null = セットアップ中**(まだコードで確認していない)。非 null = 有効 |
 | `last_used_counter` | 最後に受理した TOTP カウンタ(リプレイ防止、§4) |
 | `created_at` | 作成時刻 |

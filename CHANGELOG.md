@@ -83,6 +83,7 @@ API・DB スキーマの互換方針とアップグレード手順は
 
 ### Security
 
+- **暗号化鍵を用途別に分け、暗号文を行・テナント・用途に束縛した**。`KIZAMI_ENCRYPTION_KEY` から HKDF-SHA256 で「保存時の秘密情報用」「封印 Cookie 用」のサブ鍵を導出し、AES-GCM の AAD に `<テーブル>.<列>:<tenantId>[:<userId>]`(Cookie は Cookie 名)を束ねる新形式 `enc:v2:` で書くようにした。DB への書き込み権限を持つ者が別テナント・別ユーザーの暗号文(Webhook URL・SMTP パスワード・Slack Signing Secret・SSO の client secret・2FA の共有鍵)を移植しても復号できず、Cookie 用の鍵で DB の値を開くこともできない。既存の `enc:v1:` の値と発行済みの Cookie は引き続き読める(次に保存し直したときに v2 になる)。鍵の設定やデータ移行は不要
 - **自分の人事属性を自分で変えられた問題を修正**。入社日・有給付与の区分・所属部署(`PATCH /members/:id`)、労働時間制の
   割当(`POST /members/:id/work-policy`)、有給の付与(`POST /leave/grants`・`/grants/auto`・`/grants/convert-expired`)と
   付与の予告の承認・却下は、対象が自分なら 403 `cannot_edit_own_hr_attributes` で断る。**テナント全体の管理者も例外ではなく、

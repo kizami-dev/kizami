@@ -13,6 +13,7 @@ import { createApp } from "../src/app.js";
 import { clearOidcCaches } from "../src/lib/oidc.js";
 import { createMockIdp, type MockIdp } from "./support/mock-idp.js";
 import { setupTestDb, testEncryptor } from "./support/setup.js";
+import { secretContext, cookieContext } from "../src/lib/encryption.js";
 
 const CLIENT_ID = "kizami-test-client";
 const CLIENT_SECRET = "kizami-test-client-secret";
@@ -36,7 +37,7 @@ async function configureSso(
     tenantId: params.tenantId,
     issuer: params.issuer,
     clientId: CLIENT_ID,
-    clientSecret: await testEncryptor().encrypt(CLIENT_SECRET),
+    clientSecret: await testEncryptor().encrypt(CLIENT_SECRET, secretContext.oidcClientSecret(params.tenantId)),
     enabled: params.enabled ?? true,
     allowUnverifiedEmail: params.allowUnverifiedEmail ?? false,
     updatedAt: 0,
@@ -178,7 +179,7 @@ describe("OIDC SSO ログイン", () => {
     await seeded.db.insert(userTotp).values({
       userId: seeded.userId,
       tenantId: seeded.tenantId,
-      secretEncrypted: await testEncryptor().encrypt("GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"),
+      secretEncrypted: await testEncryptor().encrypt("GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ", secretContext.totpSecret(seeded.tenantId, seeded.userId)),
       enabledAt: 0,
       lastUsedCounter: null,
       createdAt: 0,
@@ -280,7 +281,7 @@ describe("OIDC SSO ログイン", () => {
 
     const { txCookie, state } = await startSso(app, idp, seeded.tenantId);
     const sealed = decodeURIComponent(txCookie.slice("kizami_oidc_tx=".length));
-    const plain = (await testEncryptor().decrypt(sealed)) as string;
+    const plain = (await testEncryptor().decrypt(sealed, cookieContext("kizami_oidc_tx"))) as string;
     const res = await callback(app, { code: "auth-code-1", state, cookie: `kizami_oidc_tx=${encodeURIComponent(plain)}` });
     expect(errorCodeFromRedirect(res)).toBe("sso_state_mismatch");
   });

@@ -38,7 +38,7 @@ import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import type { Context } from "hono";
 import { getTenantOidcSettings, insertAuditLog, users, type Database } from "@kizami/db";
 import { createSession, setSessionCookie } from "../auth/session.js";
-import { decryptSealed, decryptSecret, type Encryptor } from "../lib/encryption.js";
+import { cookieContext, decryptSealed, decryptSecret, secretContext, type Encryptor } from "../lib/encryption.js";
 import {
   buildAuthorizationUrl,
   createPkce,
@@ -145,7 +145,7 @@ export function createOidcRoutes(db: Database, options: OidcRoutesOptions) {
     if (!settings.issuer || !settings.clientId || !settings.clientSecret) {
       return { ok: false, code: "sso_config_incomplete" };
     }
-    const clientSecret = await decryptSecret(options.encryptor, settings.clientSecret);
+    const clientSecret = await decryptSecret(options.encryptor, settings.clientSecret, secretContext.oidcClientSecret(settings.tenantId));
     if (clientSecret === null) {
       // 鍵未設定・鍵不一致・破損。設定は存在するが使えない状態なので、利用者には
       // 「SSO が使えない」ことだけを伝え、原因はサーバーログに残す。
@@ -258,7 +258,7 @@ export function createOidcRoutes(db: Database, options: OidcRoutesOptions) {
     }
 
     const tx: OidcTransaction = { purpose: OIDC_TX_PURPOSE, tenantId, state, nonce, codeVerifier: pkce.verifier, issuedAt: nowMinutes() };
-    setCookie(c, OIDC_TX_COOKIE_NAME, await encryptor.encrypt(JSON.stringify(tx)), {
+    setCookie(c, OIDC_TX_COOKIE_NAME, await encryptor.encrypt(JSON.stringify(tx), cookieContext(OIDC_TX_COOKIE_NAME)), {
       httpOnly: true,
       // Lax: IdP からのコールバックはトップレベルの GET 遷移なので Lax で届く。
       // None にすると同 Cookie が任意のクロスサイト POST にも乗るため、必要のない緩和はしない。
@@ -292,7 +292,7 @@ export function createOidcRoutes(db: Database, options: OidcRoutesOptions) {
 
     const cookieValue = getCookie(c, OIDC_TX_COOKIE_NAME);
     if (!cookieValue) return failRedirect(c, "sso_state_mismatch");
-    const decrypted = await decryptSealed(encryptor, cookieValue);
+    const decrypted = await decryptSealed(encryptor, cookieValue, cookieContext(OIDC_TX_COOKIE_NAME));
     if (decrypted === null) return failRedirect(c, "sso_state_mismatch");
 
     let tx: OidcTransaction;

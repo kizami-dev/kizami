@@ -18,7 +18,7 @@
  * ブラウザプッシュ(Web Push、2026-08-24 追加 — `*_push` 列)。
  * - email_address: null ならテナントの users.email を使う(API 層で解決)
  * - webhook_url: 個人の Webhook URL。tenant_notification_settings と同様に暗号化して保存する
- *   (apps/api/src/lib/encryption.ts、"enc:v1:" プレフィクス)
+ *   (apps/api/src/lib/encryption.ts、"enc:v2:" プレフィクス)
  * - `*_push`(docs/design/web-push.md): `*_email` と完全に同じ粒度・同じ既定値(false)。
  *   宛先(どのブラウザへ送るか)はこのテーブルではなく push_subscriptions テーブルが持つ
  *   (1ユーザーが複数ブラウザを購読しうるため)。VAPID 鍵が未設定の配備では API が

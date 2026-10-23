@@ -13,6 +13,7 @@ import { clearOidcCaches, discover, OidcError } from "../src/lib/oidc.js";
 import { createOutboundGuard } from "../src/lib/outbound-guard.js";
 import { createOutboundPolicy } from "../src/lib/outbound-policy.js";
 import { grantPermission, loginAndGetCookie, setupTestDb, testEncryptor } from "./support/setup.js";
+import { secretContext } from "../src/lib/encryption.js";
 
 /** "internal.example" だけが 10.0.0.5(プライベート)に解決される偽のリゾルバ。 */
 function guardForTests() {
@@ -130,7 +131,7 @@ describe("PUT /settings/notifications(テナントの Webhook・SMTP)", () => {
     await upsertNotificationSettings(seeded.db, {
       tenantId: seeded.tenantId,
       webhookEnabled: true,
-      webhookUrl: await encryptor.encrypt("http://internal.example/hook"),
+      webhookUrl: await encryptor.encrypt("http://internal.example/hook", secretContext.tenantWebhookUrl(seeded.tenantId)),
       smtpEnabled: false,
       smtpHost: null,
       smtpPort: null,

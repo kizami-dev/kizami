@@ -12,6 +12,7 @@ import { buildPersonalChannels, buildTenantChannels } from "../src/lib/notificat
 import { runReminderScan } from "../src/reminders.js";
 import { jstMinutes, setupSecondUser, setupTestDb, testEncryptor } from "./support/setup.js";
 import { insertPunchEvent } from "@kizami/db";
+import { secretContext } from "../src/lib/encryption.js";
 
 const TENANT_WEBHOOK_URL = "https://tenant-shared.example/webhook";
 const PERSONAL_WEBHOOK_URL_1 = "https://personal-1.example/webhook";
@@ -326,10 +327,10 @@ describe("buildPersonalChannels — 本人宛のチャネルはテナント共�
     expect(hits).toEqual([TENANT_WEBHOOK_URL]);
   });
 
-  it("webhookUrl is stored encrypted (enc:v1: prefix) and decrypts back to the original value", async () => {
+  it("webhookUrl is stored encrypted (enc:v2: prefix) and decrypts back to the original value", async () => {
     const { db, tenantId, userId } = await setupTestDb();
     const encryptor = testEncryptor();
-    const encrypted = await encryptor.encrypt(PERSONAL_WEBHOOK_URL_1);
+    const encrypted = await encryptor.encrypt(PERSONAL_WEBHOOK_URL_1, secretContext.userWebhookUrl(tenantId, userId));
 
     await upsertUserNotificationSettings(db, {
       tenantId,
@@ -358,9 +359,9 @@ describe("buildPersonalChannels — 本人宛のチャネルはテナント共�
     });
 
     const stored = await getUserNotificationSettings(db, { tenantId, userId });
-    expect(stored?.webhookUrl?.startsWith("enc:v1:")).toBe(true);
+    expect(stored?.webhookUrl?.startsWith("enc:v2:")).toBe(true);
     expect(stored?.webhookUrl).not.toContain("personal-1.example");
-    await expect(encryptor.decrypt(stored!.webhookUrl!)).resolves.toBe(PERSONAL_WEBHOOK_URL_1);
+    await expect(encryptor.decrypt(stored!.webhookUrl!, secretContext.userWebhookUrl(tenantId, userId))).resolves.toBe(PERSONAL_WEBHOOK_URL_1);
 
     // 復号できて初めてチャネルが組み立てられる(鍵を渡した場合)。
     const channels = await buildPersonalChannels(

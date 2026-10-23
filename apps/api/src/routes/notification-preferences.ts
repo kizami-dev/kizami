@@ -41,7 +41,7 @@ import {
 } from "@kizami/db";
 import { dispatch, webhookChannel, type SmtpSendFn, type VapidKeys } from "@kizami/notify";
 import type { AppEnv } from "../auth/middleware.js";
-import { decryptSecret, type Encryptor } from "../lib/encryption.js";
+import { decryptSecret, secretContext, type Encryptor } from "../lib/encryption.js";
 import { isValidHttpUrl, resolveStringField, webhookPreview } from "../lib/field-validation.js";
 import {
   NOTIFICATION_CATEGORIES,
@@ -96,7 +96,7 @@ async function serialize(
 
   let webhookPreviewValue: string | null = null;
   if (row?.webhookUrl) {
-    const decrypted = await decryptSecret(encryptor, row.webhookUrl);
+    const decrypted = await decryptSecret(encryptor, row.webhookUrl, secretContext.userWebhookUrl(row.tenantId, row.userId));
     webhookPreviewValue = decrypted ? webhookPreview(decrypted) : null;
   }
 
@@ -218,7 +218,7 @@ export function createNotificationPreferencesRoutes(db: Database, deps: Notifica
       return c.json({ error: "encryption_unavailable" }, 503);
     }
     const webhookUrlToStore = webhookUrlNeedsEncryption
-      ? await (deps.encryptor as Encryptor).encrypt(rawWebhookUrl as string)
+      ? await (deps.encryptor as Encryptor).encrypt(rawWebhookUrl as string, secretContext.userWebhookUrl(user.tenantId, user.id))
       : webhookUrlResult.value;
 
     const now = nowMinutes();
@@ -261,7 +261,7 @@ export function createNotificationPreferencesRoutes(db: Database, deps: Notifica
       return c.json({ error: "not_configured" }, 400);
     }
 
-    const url = await decryptSecret(deps.encryptor, existing.webhookUrl);
+    const url = await decryptSecret(deps.encryptor, existing.webhookUrl, secretContext.userWebhookUrl(existing.tenantId, existing.userId));
     if (!url) {
       return c.json({ error: "decryption_failed" }, 503);
     }

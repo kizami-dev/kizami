@@ -18,7 +18,7 @@ Only the latest release (main branch) receives security fixes.
 
 ## 設計上の注意 / Notes for self-hosters
 
-- `KIZAMI_ENCRYPTION_KEY` は保存時暗号化(Webhook URL・SSO の client secret・二要素認証の共有鍵)の鍵です。漏えい時はローテーションし、保存済みの秘密を再登録してください。**鍵を失うと二要素認証を有効にしている利用者はログインできなくなります**(管理者による 2FA リセットで復旧します)
+- `KIZAMI_ENCRYPTION_KEY` は保存時暗号化(Webhook URL・SSO の client secret・二要素認証の共有鍵)の鍵です。用途別のサブ鍵(HKDF)に分けて使い、暗号文は行・テナント・用途に束縛されます(`enc:v2:`)。漏えい時はローテーションし、保存済みの秘密を再登録してください。**鍵を失うと二要素認証を有効にしている利用者はログインできなくなります**(管理者による 2FA リセットで復旧します)
 - 二要素認証(TOTP)は利用者が個人で有効化できます。人事データを扱う性質上、少なくとも権限の強いアカウントでの利用を推奨します
 - 勤怠データには個人情報が含まれます。公開インスタンスにする場合はリバースプロキシでの TLS 終端と、ログイン試行の制限(fail2ban 等)を推奨します
 - セキュリティヘッダ(CSP・`X-Frame-Options`・`X-Content-Type-Options`・`Referrer-Policy`・`Permissions-Policy`、HTTPS のときは HSTS)は Web / API のアプリ自身が付けます。リバースプロキシで同じヘッダを重ねて付ける必要はありません。特に Web の CSP はページごとのインラインスクリプトのハッシュを含むため、**プロキシ側で `Content-Security-Policy` を上書きしないでください**(ページが動かなくなります)。HSTS は `X-Forwarded-Proto: https` か `CF-Visitor` で HTTPS と判定するので、TLS を終端するプロキシはこのどちらかを渡してください / Security headers (CSP, X-Frame-Options, nosniff, Referrer-Policy, Permissions-Policy, and HSTS over HTTPS) are set by the apps themselves. Do not override `Content-Security-Policy` at the proxy: the web CSP carries per-page hashes of inline scripts. Pass `X-Forwarded-Proto: https` from your TLS-terminating proxy so HSTS is emitted

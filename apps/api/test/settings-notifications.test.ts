@@ -5,6 +5,7 @@ import { createEncryptor, type Encryptor } from "@kizami/crypto";
 import type { SmtpChannelConfig, SmtpSendFn } from "@kizami/notify";
 import { createApp } from "../src/app.js";
 import { grantPermission, loginAndGetCookie, setupTestDb } from "./support/setup.js";
+import { secretContext } from "../src/lib/encryption.js";
 
 async function auditActionsFor(db: Database, tenantId: string): Promise<string[]> {
   const rows = await db.select().from(auditLogs).where(eq(auditLogs.tenantId, tenantId));
@@ -94,18 +95,18 @@ describe("GET/PUT /settings/notifications", () => {
     expect(JSON.stringify(body)).not.toContain("super-secret");
     expect(JSON.stringify(body)).not.toContain("T000/B000/xxxxxxxx");
 
-    // DB には暗号化(enc:v1:<iv>:<ciphertext>)された状態で保存されている(平文はどこにも残らない)。
+    // DB には暗号化(enc:v2:<iv>:<ciphertext>)された状態で保存されている(平文はどこにも残らない)。
     // DB を直接読んで確認する。
     const stored = await getNotificationSettings(db, tenantId);
-    expect(stored?.webhookUrl?.startsWith("enc:v1:")).toBe(true);
-    expect(stored?.smtpPassword?.startsWith("enc:v1:")).toBe(true);
+    expect(stored?.webhookUrl?.startsWith("enc:v2:")).toBe(true);
+    expect(stored?.smtpPassword?.startsWith("enc:v2:")).toBe(true);
     expect(stored?.webhookUrl).not.toContain("T000/B000/xxxxxxxx");
     expect(stored?.smtpPassword).not.toBe("super-secret");
     // 保存されている暗号文は同じ鍵で復号すれば元の値に戻る
-    await expect(encryptor.decrypt(stored!.webhookUrl!)).resolves.toBe(
+    await expect(encryptor.decrypt(stored!.webhookUrl!, secretContext.tenantWebhookUrl(tenantId))).resolves.toBe(
       "https://hooks.slack.com/services/T000/B000/xxxxxxxx",
     );
-    await expect(encryptor.decrypt(stored!.smtpPassword!)).resolves.toBe("super-secret");
+    await expect(encryptor.decrypt(stored!.smtpPassword!, secretContext.tenantSmtpPassword(tenantId))).resolves.toBe("super-secret");
 
     expect(await auditActionsFor(db, tenantId)).toEqual(["notification_settings.update"]);
   });
@@ -210,8 +211,8 @@ describe("GET/PUT /settings/notifications", () => {
     expect(putRes.status).toBe(200);
 
     const stored = await getNotificationSettings(db, tenantId);
-    expect(stored?.webhookUrl?.startsWith("enc:v1:")).toBe(true);
-    await expect(encryptor.decrypt(stored!.webhookUrl!)).resolves.toBe("https://hooks.slack.com/services/legacy-plaintext");
+    expect(stored?.webhookUrl?.startsWith("enc:v2:")).toBe(true);
+    await expect(encryptor.decrypt(stored!.webhookUrl!, secretContext.tenantWebhookUrl(tenantId))).resolves.toBe("https://hooks.slack.com/services/legacy-plaintext");
   });
 
   it("an omitted smtpPassword on a later PUT keeps the existing password", async () => {
@@ -249,8 +250,8 @@ describe("GET/PUT /settings/notifications", () => {
     expect(((await second.json()) as { smtpPasswordSet: boolean }).smtpPasswordSet).toBe(true);
 
     const stored = await getNotificationSettings(db, tenantId);
-    expect(stored?.smtpPassword?.startsWith("enc:v1:")).toBe(true);
-    await expect(encryptor.decrypt(stored!.smtpPassword!)).resolves.toBe("keep-me");
+    expect(stored?.smtpPassword?.startsWith("enc:v2:")).toBe(true);
+    await expect(encryptor.decrypt(stored!.smtpPassword!, secretContext.tenantSmtpPassword(tenantId))).resolves.toBe("keep-me");
     expect(stored?.smtpPort).toBe(2525);
   });
 

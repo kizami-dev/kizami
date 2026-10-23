@@ -10,6 +10,7 @@ import { describe, expect, it } from "vitest";
 import { getUserNotificationSettings } from "@kizami/db";
 import { createApp } from "../src/app.js";
 import { loginAndGetCookie, setupSecondUser, setupTestDb, testEncryptor } from "./support/setup.js";
+import { secretContext } from "../src/lib/encryption.js";
 
 describe("GET/PUT /settings/notifications/me", () => {
   it("GET succeeds with authentication only (no permission grant needed)", async () => {
@@ -109,7 +110,7 @@ describe("GET/PUT /settings/notifications/me", () => {
     expect(res.status).toBe(400);
   });
 
-  it("PUT saves and masks the personal webhook URL, and stores it encrypted (enc:v1:) in the DB", async () => {
+  it("PUT saves and masks the personal webhook URL, and stores it encrypted (enc:v2:) in the DB", async () => {
     const { db, tenantId, userId, email, password } = await setupTestDb();
     const encryptor = testEncryptor();
     const app = createApp({ db, encryptor });
@@ -129,9 +130,9 @@ describe("GET/PUT /settings/notifications/me", () => {
     expect(JSON.stringify(body)).not.toContain("yyyyyyyy");
 
     const stored = await getUserNotificationSettings(db, { tenantId, userId });
-    expect(stored?.webhookUrl?.startsWith("enc:v1:")).toBe(true);
+    expect(stored?.webhookUrl?.startsWith("enc:v2:")).toBe(true);
     expect(stored?.webhookUrl).not.toContain("yyyyyyyy");
-    await expect(encryptor.decrypt(stored!.webhookUrl!)).resolves.toBe(
+    await expect(encryptor.decrypt(stored!.webhookUrl!, secretContext.userWebhookUrl(tenantId, userId))).resolves.toBe(
       "https://hooks.slack.com/services/T111/B111/yyyyyyyy",
     );
   });
