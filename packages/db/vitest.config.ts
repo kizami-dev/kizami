@@ -30,6 +30,8 @@ export default defineConfig({
           name: "sqlite",
           include: ["test/**/*.test.ts"],
           env: { KIZAMI_TEST_DIALECT: "sqlite" },
+          // 一時 DB を実行ごとのディレクトリに作り、終わったら消す(test/support/tmp-global-setup.ts)
+          globalSetup: ["./test/support/tmp-global-setup.ts"],
         },
       },
       ...(pgUrl !== undefined
@@ -39,7 +41,7 @@ export default defineConfig({
                 name: "postgres",
                 include: ["test/**/*.test.ts"],
                 env: { KIZAMI_TEST_DIALECT: "postgres", TEST_PG_URL: pgUrl },
-                globalSetup: ["./test/support/pg-global-setup.ts"],
+                globalSetup: ["./test/support/tmp-global-setup.ts", "./test/support/pg-global-setup.ts"],
               },
             },
           ]
