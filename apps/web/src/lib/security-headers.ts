@@ -22,6 +22,8 @@
  * - Google Fonts(pages/_layout.tsx): スタイルシート fonts.googleapis.com・フォント fonts.gstatic.com
  * - Cloudflare Turnstile(components/TurnstileWidget.tsx。サイトキーは実行時に API から届くので常に許可):
  *   スクリプトと iframe の challenges.cloudflare.com
+ * - Cloudflare Web Analytics: Cloudflare 経由で配信すると、エッジが HTML に beacon のスクリプト
+ *   (static.cloudflareinsights.com)を差し込む。送信先は自オリジンの /cdn-cgi/rum か cloudflareinsights.com
  * - API(lib/api.ts の WAKU_PUBLIC_API_URL): 同一オリジンの `/api`(既定の配備)なら `'self'` で足りる。
  *   別オリジンの URL でビルドしたときはそのオリジンを connect-src に足す(apiOrigin)
  *
@@ -36,6 +38,8 @@ export const HSTS_VALUE = "max-age=31536000";
 export const GOOGLE_FONTS_STYLES = "https://fonts.googleapis.com";
 export const GOOGLE_FONTS_FILES = "https://fonts.gstatic.com";
 export const TURNSTILE_ORIGIN = "https://challenges.cloudflare.com";
+export const CF_INSIGHTS_SCRIPT = "https://static.cloudflareinsights.com";
+export const CF_INSIGHTS_BEACON = "https://cloudflareinsights.com";
 
 /** 打刻の位置情報(lib/geolocation.ts)だけは自オリジンで使う。カメラ・マイク等は使わない。 */
 export const PERMISSIONS_POLICY = "camera=(), microphone=(), geolocation=(self), payment=(), usb=()";
@@ -61,10 +65,10 @@ export function buildWebCsp(options: { scriptHashes?: string[]; apiOrigin?: stri
   const scriptHashes = options.scriptHashes ?? [];
   const connect = ["'self'"];
   if (options.apiOrigin) connect.push(options.apiOrigin);
-  connect.push(GOOGLE_FONTS_STYLES, GOOGLE_FONTS_FILES, TURNSTILE_ORIGIN);
+  connect.push(GOOGLE_FONTS_STYLES, GOOGLE_FONTS_FILES, TURNSTILE_ORIGIN, CF_INSIGHTS_BEACON);
   const directives: [string, string[]][] = [
     ["default-src", ["'self'"]],
-    ["script-src", ["'self'", ...scriptHashes, TURNSTILE_ORIGIN]],
+    ["script-src", ["'self'", ...scriptHashes, TURNSTILE_ORIGIN, CF_INSIGHTS_SCRIPT]],
     ["style-src", ["'self'", GOOGLE_FONTS_STYLES]],
     ["font-src", ["'self'", GOOGLE_FONTS_FILES]],
     ["img-src", ["'self'", "data:", "blob:"]],

@@ -29,7 +29,12 @@ describe("buildWebCsp", () => {
   it("unsafe-inline / unsafe-eval を含まず、埋め込み・base・form・object を絞る", () => {
     const csp = buildWebCsp({ scriptHashes: ["'sha256-x'"] });
     expect(csp).not.toMatch(/unsafe-inline|unsafe-eval/);
-    expect(directive(csp, "script-src")).toEqual(["'self'", "'sha256-x'", "https://challenges.cloudflare.com"]);
+    expect(directive(csp, "script-src")).toEqual([
+      "'self'",
+      "'sha256-x'",
+      "https://challenges.cloudflare.com",
+      "https://static.cloudflareinsights.com",
+    ]);
     expect(directive(csp, "frame-ancestors")).toEqual(["'none'"]);
     expect(directive(csp, "base-uri")).toEqual(["'self'"]);
     expect(directive(csp, "form-action")).toEqual(["'self'"]);
