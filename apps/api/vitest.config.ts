@@ -17,5 +17,7 @@ export default defineConfig({
     testTimeout: 30_000,
     hookTimeout: 30_000,
     exclude: [...configDefaults.exclude, "test/workers/**"],
+    // 一時 DB を実行ごとのディレクトリに作り、終わったら消す(test/support/tmp-global-setup.ts)
+    globalSetup: ["./test/support/tmp-global-setup.ts"],
   },
 });
