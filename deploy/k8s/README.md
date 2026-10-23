@@ -27,7 +27,7 @@ kubectl apply -f deploy/k8s/service.yaml
 ## 秘密情報の暗号化鍵(KIZAMI_ENCRYPTION_KEY)
 
 テナント通知設定の SMTP パスワードと Webhook URL は、DB には平文ではなく AES-256-GCM で
-暗号化して保存する(`packages/crypto`、保存形式 `enc:v1:<iv>:<ciphertext>`)。鍵は
+暗号化して保存する(`packages/crypto`、保存形式 `enc:v2:<iv>:<ciphertext>`)。鍵は
 32バイトを base64 で表現した文字列を環境変数 `KIZAMI_ENCRYPTION_KEY` として `api` / `worker`
 両コンテナに渡す(**鍵は必須運用** — 未設定のまま Pod を起動することはできない。上記の通り
 Secret 参照は `optional: false`)。
@@ -52,22 +52,72 @@ kubectl -n kizami create secret generic kizami-encryption \
   --from-literal=key='<openssl rand -base64 32 の出力>'
 ```
 
-鍵を後から作成/変更(ローテーション)した場合は `api` / `worker` 両コンテナの再起動が必要:
+鍵を後から作成/変更した場合は `api` / `worker` 両コンテナの再起動が必要:
 
 ```sh
 kubectl -n kizami rollout restart deployment/kizami
 ```
 
-鍵をローテーションすると、**それまでに暗号化済みだった webhookUrl / smtpPassword は旧鍵でしか
-復号できなくなる**(新鍵では「復号できない値」として扱われ、該当の通知チャネルが自動的に
-無効化される。エラーにはならず、アプリ内通知など他の機能は動き続ける)。ローテーション後に
-テナント側で通知設定画面から webhookUrl / smtpPassword を一度保存し直せば新鍵で再暗号化される。
+### 鍵のローテーション
+
+保存形式に鍵 ID は無い。`KIZAMI_ENCRYPTION_KEY`(現行鍵)で書き込み、読むときは現行鍵 → 旧鍵
+(`KIZAMI_ENCRYPTION_KEYS_PREVIOUS`、カンマ区切り・復号専用)の順に試す(AES-GCM の認証タグで
+鍵の取り違えは検出される)。旧鍵を渡しておけば、鍵を替えても保存済みの値・発行済みの Cookie は
+そのまま読め、`reencrypt-secrets` で新しい鍵に書き直せる。**旧鍵を渡さずに `key` だけを替えると
+保存済みの秘密情報が読めなくなる**(通知チャネル・SSO は無効化され、2FA 利用者はログインできなくなる)ので、
+必ず下の順で行う。
+
+1. 新しい鍵を作り、**旧鍵を `previous` に、新鍵を `key` に**入れる(鍵の値はコマンドに直書きしない。
+   旧鍵が複数あれば `previous` はカンマ区切り):
+
+   ```sh
+   OLD="$(kubectl -n kizami get secret kizami-encryption -o jsonpath='{.data.key}' | base64 -d)"
+   kubectl -n kizami create secret generic kizami-encryption \
+     --from-literal=key="$(openssl rand -base64 32)" \
+     --from-literal=previous="$OLD" \
+     --dry-run=client -o yaml | kubectl -n kizami apply -f -
+   unset OLD
+   ```
+
+   新しい鍵と旧鍵はクラスタ外にも控えを残すこと(途中で戻せるように)。
+2. `api` / `worker` を再起動して反映する: `kubectl -n kizami rollout restart deployment/kizami`
+3. 再暗号化の **dry-run**(既定。何も書かない)。出力はカラムごとの件数だけで、値や ID は出ない:
+
+   ```sh
+   kubectl -n kizami exec deploy/kizami -c api -- sh -c "cd /app/apps/api && node_modules/.bin/tsx src/reencrypt-secrets.ts"
+   ```
+
+   `rewrite` は書き直しが必要な件数(平文・v1・旧鍵で暗号化された値)、`unreadable` はどの鍵でも
+   読めず**触らない**件数。`unreadable` が 0 でないときは旧鍵の入れ忘れを疑う(警告が出るだけで、
+   CLI は異常終了しない)。
+4. 問題なければ `--apply` で書き換える。UPDATE は旧値との比較つきなので、実行中に管理画面から
+   保存し直された行は上書きせず `conflict` に数える(その場合はもう一度実行する):
+
+   ```sh
+   kubectl -n kizami exec deploy/kizami -c api -- sh -c "cd /app/apps/api && node_modules/.bin/tsx src/reencrypt-secrets.ts --apply"
+   ```
+5. もう一度 dry-run を実行し、全カラムで `rewrite=0` になったことを確認する。
+6. `previous` を外す。ただし**信頼済み端末の Cookie(`kizami_trusted_device`、30 日)は旧鍵で封印された
+   まま端末に残っている**。この Cookie は DB に無いので再暗号化できない。旧鍵を外した時点でまだ期限内の
+   端末は、2 段階認証をもう一度求められるだけで実害は無い。気にするなら発行から 30 日待ってから外す:
+
+   ```sh
+   kubectl -n kizami patch secret kizami-encryption --type=json -p='[{"op":"remove","path":"/data/previous"}]'
+   kubectl -n kizami rollout restart deployment/kizami
+   ```
+
+`reencrypt-secrets` は**ローテーションをしなくても**使える。`enc:v1:` の値の `enc:v2:` への一括移行や、
+平文のまま残っている値の暗号化に、現行鍵だけで実行してよい(何度実行しても安全。すでに現行鍵の
+`enc:v2:` の値と、読めない値には触らない)。手元(SQLite / PostgreSQL)では
+`pnpm --filter @kizami/api reencrypt-secrets [--apply]`(`DATABASE_URL` と鍵の環境変数が要る)。
+**Cloudflare Workers + D1 の配備ではこの CLI は使えない**(Node 用で D1 に接続しない。
+[docs/design/workers-d1.md](../../docs/design/workers-d1.md))。
 
 既存データの移行(この機能をまだ入れていない環境からのアップグレード時):
 `tenant_notification_settings` に平文で保存されている既存の webhookUrl / smtpPassword は、
 `KIZAMI_ENCRYPTION_KEY` を設定するだけでそのまま読める(`enc:` プレフィクスが無い値は平文と
-みなす後方互換)。明示的な一括移行バッチは不要で、各テナントが通知設定を次に保存したタイミング
-で自動的に暗号化される。
+みなす後方互換)。各テナントが通知設定を次に保存したタイミングで自動的に暗号化される。
+すぐ一括で暗号化したいときは上の `reencrypt-secrets` を使う。
 
 ## ブラウザプッシュ通知(Web Push / VAPID 鍵、任意)
 

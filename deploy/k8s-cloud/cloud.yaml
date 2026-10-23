@@ -107,6 +107,10 @@ spec:
             # hosted 専用に新規発行した鍵。自分用本番・デモと共有しない(saas.md「実行基盤」)
             - name: KIZAMI_ENCRYPTION_KEY
               valueFrom: {secretKeyRef: {name: kizami-cloud-encryption, key: key}}
+            # 鍵のローテーション中だけ使う復号専用の旧鍵(deploy/k8s-cloud/README.md「暗号化鍵のローテーション」)。
+            # Secret に previous が無くても Pod は起動する
+            - name: KIZAMI_ENCRYPTION_KEYS_PREVIOUS
+              valueFrom: {secretKeyRef: {name: kizami-cloud-encryption, key: previous, optional: true}}
             - {name: APP_BASE_URL, value: "https://app.kizami.dev"}
             - {name: CORS_ORIGIN, value: "https://app.kizami.dev"}
             # Closed Beta は招待コード制。Public Launch で "open" に切り替える
@@ -195,6 +199,8 @@ spec:
               valueFrom: {secretKeyRef: {name: kizami-cloud-database, key: url}}
             - name: KIZAMI_ENCRYPTION_KEY
               valueFrom: {secretKeyRef: {name: kizami-cloud-encryption, key: key}}
+            - name: KIZAMI_ENCRYPTION_KEYS_PREVIOUS
+              valueFrom: {secretKeyRef: {name: kizami-cloud-encryption, key: previous, optional: true}}
             # キューは同一 Pod 内のサイドカー(deploy/k8s と同じ理由: 起動トリガーでしかなく、
             # 正しさは DB の定期スキャンが担保する)
             - {name: REDIS_URL, value: "redis://127.0.0.1:6379"}

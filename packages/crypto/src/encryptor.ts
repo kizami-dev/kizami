@@ -15,6 +15,13 @@
  * - v1(読み取りのみ・後方互換): `"enc:v1:<ivBase64>:<ciphertextBase64>"`。マスター鍵を直接使い、
  *   AAD なし。既存の DB 値と発行済み Cookie を読むためだけに残す(新規の書き込みは常に v2)。
  *
+ * 鍵のローテーション:
+ * - 保存形式に鍵 ID は持たない。`createEncryptor(current, { previous: [...] })` は **書き込みを常に current で**
+ *   行い、復号は current → previous(渡した順)の順に試す。AES-GCM は認証タグで鍵の取り違えを検出するので、
+ *   試し復号で誤った平文が返ることはない(失敗は null)。v1・v2・Cookie のどれにも同じく効く。
+ * - 旧鍵は復号専用。旧鍵で読めた値は `decryptWithInfo` が `needsRewrite: true` を返す
+ *   (再暗号化 CLI = apps/api/src/reencrypt-secrets.ts が使う)。
+ *
  * 呼び出し側との契約(kizami の秘密情報カラム全般に適用する):
  * - encrypt / decrypt は必ず明示的な文脈(EncryptionContext)を渡す。省略時の既定値は無い。
  * - decrypt は例外を投げない。復号できない値(鍵不一致・文脈不一致・破損・未知バージョン)は null を返す。
@@ -64,6 +71,27 @@ export interface Encryptor {
   decrypt(stored: string, ctx: EncryptionContext): Promise<string | null>;
 }
 
+/** `decryptWithInfo` の結果。 */
+export interface DecryptInfo {
+  /** 復号した平文。復号できなければ null(`decrypt` と同じ条件)。 */
+  plain: string | null;
+  /**
+   * 現行の書き込み形式(現行鍵の v2)で保存し直すべきか。平文・v1・旧鍵で復号した値は true。
+   * `plain` が null のときは常に false(直しようがない)。
+   */
+  needsRewrite: boolean;
+}
+
+/** 通常の Encryptor に、再暗号化の要否を返す `decryptWithInfo` を足したもの(呼び出し側は Encryptor として使う)。 */
+export interface InspectableEncryptor extends Encryptor {
+  decryptWithInfo(stored: string, ctx: EncryptionContext): Promise<DecryptInfo>;
+}
+
+export interface CreateEncryptorOptions {
+  /** 復号専用の旧鍵(base64, 32バイト)。現行鍵で復号できなかったときに先頭から順に試す。 */
+  previous?: readonly string[];
+}
+
 function isValidBase64(value: string): boolean {
   return value.length > 0 && value.length % 4 === 0 && /^[A-Za-z0-9+/]*={0,2}$/.test(value);
 }
@@ -86,19 +114,27 @@ function encodeBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
+/** 1本のマスター鍵から作る復号・暗号の部品。 */
+interface KeyMaterial {
+  /** 現行形式(v2)で暗号化する。 */
+  encrypt(plain: string, ctx: EncryptionContext): Promise<string>;
+  /** 復号する。鍵不一致・文脈不一致・破損は null。 */
+  decrypt(version: "v1" | "v2", ivBase64: string, ciphertextBase64: string, ctx: EncryptionContext): Promise<string | null>;
+}
+
 /**
- * 32バイトを base64 で表現した鍵文字列から Encryptor を作る。
+ * 32バイトを base64 で表現した鍵文字列から KeyMaterial を作る。
  * 鍵の形式が不正(base64でない/32バイトでない)なら例外を投げる(同期的に検証する)。
  */
-export function createEncryptor(keyBase64: string): Encryptor {
+function createKeyMaterial(keyBase64: string, name: string): KeyMaterial {
   let keyBytes: Uint8Array;
   try {
     keyBytes = decodeBase64(keyBase64);
   } catch {
-    throw new Error("createEncryptor: key must be a valid base64 string");
+    throw new Error(`${name}: key must be a valid base64 string`);
   }
   if (keyBytes.length !== KEY_BYTES) {
-    throw new Error(`createEncryptor: key must decode to ${KEY_BYTES} bytes (AES-256), got ${keyBytes.length}`);
+    throw new Error(`${name}: key must decode to ${KEY_BYTES} bytes (AES-256), got ${keyBytes.length}`);
   }
 
   // importKey / deriveKey は非同期だが、成功が保証されている(鍵長は既に検証済み)ため
@@ -149,36 +185,70 @@ export function createEncryptor(keyBase64: string): Encryptor {
       return `${V2_PREFIX}${encodeBase64(iv)}:${encodeBase64(new Uint8Array(ciphertext))}`;
     },
 
-    async decrypt(stored: string, ctx: EncryptionContext): Promise<string | null> {
-      if (!stored.startsWith(ENC_MARKER)) {
-        // "enc:" プレフィクスが無い = 暗号化前の既存データ(平文)。そのまま読める。
-        return stored;
-      }
-      const isV1 = stored.startsWith(V1_PREFIX);
-      if (!isV1 && !stored.startsWith(V2_PREFIX)) {
-        // "enc:" だが v1/v2 ではない = 未知のバージョン。plaintext と誤認せず復号不可扱い。
-        return null;
-      }
-      const rest = stored.slice(isV1 ? V1_PREFIX.length : V2_PREFIX.length);
-      const sep = rest.indexOf(":");
-      if (sep === -1) return null;
-
+    async decrypt(version, ivBase64, ciphertextBase64, ctx): Promise<string | null> {
       try {
-        const iv = decodeBase64(rest.slice(0, sep));
-        const ciphertext = decodeBase64(rest.slice(sep + 1));
-        const plainBytes = isV1
-          ? // v1: マスター鍵・AAD なし(ctx は見ない)。既存データ/発行済み Cookie の読み取り専用。
-            await crypto.subtle.decrypt({ name: "AES-GCM", iv: iv as BufferSource }, await v1KeyPromise, ciphertext as BufferSource)
-          : await crypto.subtle.decrypt(
-              { name: "AES-GCM", iv: iv as BufferSource, additionalData: aad(ctx) },
-              await subKey(ctx.purpose),
-              ciphertext as BufferSource,
-            );
+        const iv = decodeBase64(ivBase64);
+        const ciphertext = decodeBase64(ciphertextBase64);
+        const plainBytes =
+          version === "v1"
+            ? // v1: マスター鍵・AAD なし(ctx は見ない)。既存データ/発行済み Cookie の読み取り専用。
+              await crypto.subtle.decrypt({ name: "AES-GCM", iv: iv as BufferSource }, await v1KeyPromise, ciphertext as BufferSource)
+            : await crypto.subtle.decrypt(
+                { name: "AES-GCM", iv: iv as BufferSource, additionalData: aad(ctx) },
+                await subKey(ctx.purpose),
+                ciphertext as BufferSource,
+              );
         return new TextDecoder().decode(plainBytes);
       } catch {
         // 鍵不一致・文脈不一致(認証タグ検証失敗)・破損した base64 など、復号に失敗した場合は例外を投げず null
         return null;
       }
     },
+  };
+}
+
+/**
+ * 32バイトを base64 で表現した鍵文字列から Encryptor を作る。
+ * 鍵の形式が不正(base64でない/32バイトでない)なら例外を投げる(同期的に検証する)。
+ * 旧鍵(`options.previous`)も同じ検証を通し、不正なものがあれば例外にする
+ * (環境変数から組み立てる側 = apps/api の buildEncryptorFromEnv が、不正な旧鍵を警告つきで除外する)。
+ */
+export function createEncryptor(keyBase64: string, options: CreateEncryptorOptions = {}): InspectableEncryptor {
+  const current = createKeyMaterial(keyBase64, "createEncryptor");
+  const previous = (options.previous ?? []).map((k, i) => createKeyMaterial(k, `createEncryptor: previous[${i}]`));
+
+  async function decryptWithInfo(stored: string, ctx: EncryptionContext): Promise<DecryptInfo> {
+    if (!stored.startsWith(ENC_MARKER)) {
+      // "enc:" プレフィクスが無い = 暗号化前の既存データ(平文)。そのまま読めるが、暗号化して保存し直したい。
+      return { plain: stored, needsRewrite: true };
+    }
+    const isV1 = stored.startsWith(V1_PREFIX);
+    if (!isV1 && !stored.startsWith(V2_PREFIX)) {
+      // "enc:" だが v1/v2 ではない = 未知のバージョン。plaintext と誤認せず復号不可扱い。
+      return { plain: null, needsRewrite: false };
+    }
+    const rest = stored.slice(isV1 ? V1_PREFIX.length : V2_PREFIX.length);
+    const sep = rest.indexOf(":");
+    if (sep === -1) return { plain: null, needsRewrite: false };
+    const version = isV1 ? "v1" : "v2";
+    const iv = rest.slice(0, sep);
+    const ciphertext = rest.slice(sep + 1);
+
+    // 現行鍵 → 旧鍵の順。認証タグが通った鍵だけが平文を返す(GCM なので誤復号は起きない)。
+    const viaCurrent = await current.decrypt(version, iv, ciphertext, ctx);
+    if (viaCurrent !== null) return { plain: viaCurrent, needsRewrite: isV1 };
+    for (const key of previous) {
+      const plain = await key.decrypt(version, iv, ciphertext, ctx);
+      if (plain !== null) return { plain, needsRewrite: true };
+    }
+    return { plain: null, needsRewrite: false };
+  }
+
+  return {
+    encrypt: (plain, ctx) => current.encrypt(plain, ctx),
+    async decrypt(stored: string, ctx: EncryptionContext): Promise<string | null> {
+      return (await decryptWithInfo(stored, ctx)).plain;
+    },
+    decryptWithInfo,
   };
 }

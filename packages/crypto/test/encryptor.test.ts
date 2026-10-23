@@ -121,3 +121,82 @@ describe("createEncryptor", () => {
     await expect(encryptor.decrypt("enc:", AT_REST)).resolves.toBeNull();
   });
 });
+
+describe("鍵のローテーション(previous)", () => {
+  it("旧鍵で暗号化した v2 を、現行鍵 + previous の Encryptor で読める。書き込みは現行鍵", async () => {
+    const oldKey = randomKeyBase64();
+    const newKey = randomKeyBase64();
+    const stored = await createEncryptor(oldKey).encrypt("secret", AT_REST);
+
+    const rotated = createEncryptor(newKey, { previous: [oldKey] });
+    await expect(rotated.decrypt(stored, AT_REST)).resolves.toBe("secret");
+
+    // 新しく書いた値は現行鍵だけで読める(旧鍵だけの Encryptor では読めない)
+    const fresh = await rotated.encrypt("secret2", AT_REST);
+    await expect(createEncryptor(newKey).decrypt(fresh, AT_REST)).resolves.toBe("secret2");
+    await expect(createEncryptor(oldKey).decrypt(fresh, AT_REST)).resolves.toBeNull();
+  });
+
+  it("v1 と Cookie(cookie 用サブ鍵)も旧鍵で読める", async () => {
+    const oldKey = randomKeyBase64();
+    const rotated = createEncryptor(randomKeyBase64(), { previous: [oldKey] });
+    await expect(rotated.decrypt(await legacyV1Encrypt(oldKey, "v1-secret"), AT_REST)).resolves.toBe("v1-secret");
+    const cookie = await createEncryptor(oldKey).encrypt("{}", COOKIE);
+    await expect(rotated.decrypt(cookie, COOKIE)).resolves.toBe("{}");
+  });
+
+  it("旧鍵でも文脈は検証される(別ラベル・別用途では読めない)", async () => {
+    const oldKey = randomKeyBase64();
+    const stored = await createEncryptor(oldKey).encrypt("x", AT_REST);
+    const rotated = createEncryptor(randomKeyBase64(), { previous: [oldKey] });
+    await expect(rotated.decrypt(stored, { ...AT_REST, label: "other" })).resolves.toBeNull();
+    await expect(rotated.decrypt(stored, COOKIE)).resolves.toBeNull();
+  });
+
+  it("previous は渡した順に試し、どれでも読めなければ null。現行鍵で読めた値は書き直し不要", async () => {
+    const k1 = randomKeyBase64();
+    const k2 = randomKeyBase64();
+    const current = randomKeyBase64();
+    const rotated = createEncryptor(current, { previous: [k1, k2] });
+    const viaK2 = await createEncryptor(k2).encrypt("from-k2", AT_REST);
+    await expect(rotated.decrypt(viaK2, AT_REST)).resolves.toBe("from-k2");
+    const unknown = await createEncryptor(randomKeyBase64()).encrypt("x", AT_REST);
+    await expect(rotated.decrypt(unknown, AT_REST)).resolves.toBeNull();
+
+    const viaCurrent = await createEncryptor(current).encrypt("c", AT_REST);
+    await expect(rotated.decryptWithInfo(viaCurrent, AT_REST)).resolves.toEqual({ plain: "c", needsRewrite: false });
+    await expect(rotated.decryptWithInfo(viaK2, AT_REST)).resolves.toEqual({ plain: "from-k2", needsRewrite: true });
+  });
+
+  it("同じ平文を現行鍵と旧鍵の両方で暗号化しても、それぞれ読める(現行鍵が先)", async () => {
+    const oldKey = randomKeyBase64();
+    const newKey = randomKeyBase64();
+    const rotated = createEncryptor(newKey, { previous: [oldKey] });
+    const a = await createEncryptor(newKey).encrypt("same", AT_REST);
+    const b = await createEncryptor(oldKey).encrypt("same", AT_REST);
+    await expect(rotated.decryptWithInfo(a, AT_REST)).resolves.toEqual({ plain: "same", needsRewrite: false });
+    await expect(rotated.decryptWithInfo(b, AT_REST)).resolves.toEqual({ plain: "same", needsRewrite: true });
+  });
+
+  it("decryptWithInfo: 平文・v1 は needsRewrite:true、読めない値は plain:null / needsRewrite:false", async () => {
+    const key = randomKeyBase64();
+    const encryptor = createEncryptor(key);
+    await expect(encryptor.decryptWithInfo("plain-text", AT_REST)).resolves.toEqual({ plain: "plain-text", needsRewrite: true });
+    await expect(encryptor.decryptWithInfo(await legacyV1Encrypt(key, "old"), AT_REST)).resolves.toEqual({ plain: "old", needsRewrite: true });
+    await expect(encryptor.decryptWithInfo("enc:v9:a:b", AT_REST)).resolves.toEqual({ plain: null, needsRewrite: false });
+    const foreign = await createEncryptor(randomKeyBase64()).encrypt("z", AT_REST);
+    await expect(encryptor.decryptWithInfo(foreign, AT_REST)).resolves.toEqual({ plain: null, needsRewrite: false });
+  });
+
+  it("不正な旧鍵は createEncryptor が例外にする(位置つき。鍵の値は含めない)", () => {
+    const bad = "not-valid-base64!!!";
+    let message = "";
+    try {
+      createEncryptor(randomKeyBase64(), { previous: [randomKeyBase64(), bad] });
+    } catch (err) {
+      message = String(err);
+    }
+    expect(message).toMatch(/previous\[1\]/);
+    expect(message).not.toContain(bad);
+  });
+});

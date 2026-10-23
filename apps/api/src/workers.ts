@@ -62,6 +62,8 @@ export interface WorkerEnv {
   OIDC_REDIRECT_URI?: string;
   /** 秘密情報の暗号化鍵(32バイトの base64)。secret として設定する。 */
   KIZAMI_ENCRYPTION_KEY?: string;
+  /** 鍵のローテーション中だけ設定する復号専用の旧鍵(base64 をカンマ区切り)。secret として設定する。 */
+  KIZAMI_ENCRYPTION_KEYS_PREVIOUS?: string;
   /** Web Push の VAPID 公開鍵。 */
   VAPID_PUBLIC_KEY?: string;
   /** Web Push の VAPID 秘密鍵。secret として設定する。 */

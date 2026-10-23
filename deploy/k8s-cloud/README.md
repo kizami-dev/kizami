@@ -52,6 +52,36 @@ kubectl -n kizami-cloud create secret generic kizami-cloud-sentry --from-literal
 送信元を Amazon SES に替える場合も `smtpUrl` を差し替えるだけでよい(アプリは汎用 SMTP として送る)。
 kizami.dev は SES 側でもドメイン検証(Easy DKIM)済みで、予備の経路として残してある。
 
+## 秘密情報の暗号化鍵のローテーション
+
+保存形式に鍵 ID は無く、書き込みは `key`(現行鍵)、読み取りは現行鍵 → `previous`(復号専用の旧鍵、
+カンマ区切り)の順に試す。**旧鍵を `previous` に入れずに `key` だけを替えると、保存済みの秘密
+(Webhook URL・SMTP パスワード・SSO の client secret・2FA の共有鍵)が読めなくなる**。手順は
+[deploy/k8s/README.md「鍵のローテーション」](../k8s/README.md)と同じで、この namespace 向けには次のとおり
+(鍵の値はコマンドに直書きしない):
+
+```sh
+# 1. 旧鍵を previous に、新鍵を key に(新旧ともクラスタ外にも控えを保管すること)
+OLD="$(kubectl -n kizami-cloud get secret kizami-cloud-encryption -o jsonpath='{.data.key}' | base64 -d)"
+kubectl -n kizami-cloud create secret generic kizami-cloud-encryption \
+  --from-literal=key="$(openssl rand -base64 32)" --from-literal=previous="$OLD" \
+  --dry-run=client -o yaml | kubectl -n kizami-cloud apply -f -
+unset OLD
+# 2. 反映(api と worker)
+kubectl -n kizami-cloud rollout restart deployment/kizami-cloud deployment/kizami-cloud-worker
+# 3. dry-run(何も書かない。件数だけ出る)→ 4. --apply → 5. 再度 dry-run で全カラム rewrite=0 を確認
+kubectl -n kizami-cloud exec deploy/kizami-cloud -c api -- sh -c "cd /app/apps/api && node_modules/.bin/tsx src/reencrypt-secrets.ts"
+kubectl -n kizami-cloud exec deploy/kizami-cloud -c api -- sh -c "cd /app/apps/api && node_modules/.bin/tsx src/reencrypt-secrets.ts --apply"
+# 6. previous を外して再起動(下記の注意のあとで)
+kubectl -n kizami-cloud patch secret kizami-cloud-encryption --type=json -p='[{"op":"remove","path":"/data/previous"}]'
+kubectl -n kizami-cloud rollout restart deployment/kizami-cloud deployment/kizami-cloud-worker
+```
+
+- `unreadable` が 0 でないときは旧鍵の入れ忘れを疑う(CLI は警告を出すだけで、その値には触らない)。
+- 信頼済み端末の Cookie(30 日)は DB に無いので再暗号化できない。`previous` を外した時点で期限内の端末は
+  2 段階認証をもう一度求められるだけ。気にするなら発行から 30 日待ってから外す。
+- ローテーションをしなくても、`enc:v1:` → `enc:v2:` の一括移行のために現行鍵だけで実行してよい。
+
 ## 環境変数(防御の強化)
 
 Secret ではない設定値は `cloud.yaml` の api / worker の `env` に直接書いてある(値の意味は同ファイルのコメント):

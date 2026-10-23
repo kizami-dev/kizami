@@ -9,6 +9,7 @@
     "seed": "tsx src/seed.ts",
     "create-tenant": "tsx src/create-tenant.ts",
     "operator": "tsx src/operator.ts",
+    "reencrypt-secrets": "tsx src/reencrypt-secrets.ts",
     "dev:seed-screenshots": "tsx src/dev-screenshot-seed.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
