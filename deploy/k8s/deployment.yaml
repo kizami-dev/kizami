@@ -62,6 +62,15 @@ spec:
                   name: kizami-encryption
                   key: key
                   optional: false
+            # 鍵のローテーション中だけ使う復号専用の旧鍵(base64 をカンマ区切り)。普段は Secret に
+            # `previous` が無く、optional: true なので Pod は問題なく起動する
+            # (手順は本 README の「鍵のローテーション」)。
+            - name: KIZAMI_ENCRYPTION_KEYS_PREVIOUS
+              valueFrom:
+                secretKeyRef:
+                  name: kizami-encryption
+                  key: previous
+                  optional: true
             # ブラウザプッシュ通知(Web Push、任意。docs/design/web-push.md)。
             # 3つ揃っている場合だけ有効になり、未設定なら購読 API が 404 を返し Web UI からも
             # プッシュ通知の項目が消える(optional: true — 使わない配備では Secret ごと不要)。
@@ -187,6 +196,13 @@ spec:
                   name: kizami-encryption
                   key: key
                   optional: false
+            # api コンテナと同じ旧鍵(ローテーション中だけ。optional: true)。
+            - name: KIZAMI_ENCRYPTION_KEYS_PREVIOUS
+              valueFrom:
+                secretKeyRef:
+                  name: kizami-encryption
+                  key: previous
+                  optional: true
             # ブラウザプッシュ通知(Web Push、任意。docs/design/web-push.md)。
             # api コンテナと同じ値を渡すこと(購読の受付は api、実際の送信はこの worker が行う)。
             # 未設定なら個人設定で ON になっていてもプッシュは送られない(optional: true)。

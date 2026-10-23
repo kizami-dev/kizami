@@ -1,23 +1,46 @@
 /**
- * 秘密情報(tenant_notification_settings の webhookUrl / smtpPassword)の暗号化に使う
- * Encryptor を環境変数から組み立てる。
+ * 秘密情報(DB の webhookUrl / smtpPassword / Slack・OIDC の secret / 2FA の共有鍵)と封印 Cookie の
+ * 暗号化に使う Encryptor を環境変数から組み立てる。
  *
- * 環境変数 KIZAMI_ENCRYPTION_KEY(32バイトを base64 で表現した鍵)が未設定、または
- * 形式が不正(base64でない/32バイトでない)な場合は例外を投げず null を返す
- * (node.ts / worker.ts の起動自体は止めない。鍵が無い状態での運用は「秘密情報を含む
- * 保存を拒否する」という形で routes/settings.ts 側が守る — 平文フォールバックはしない)。
+ * - KIZAMI_ENCRYPTION_KEY(32バイトを base64 で表現した鍵): 現行鍵。書き込みは常にこの鍵。
+ * - KIZAMI_ENCRYPTION_KEYS_PREVIOUS(任意。base64 の鍵をカンマ区切り): 復号専用の旧鍵。
+ *   現行鍵で読めなかった値を先頭から順に試す。鍵のローテーション中だけ設定する
+ *   (手順は deploy/k8s/README.md「鍵のローテーション」)。
+ *
+ * KIZAMI_ENCRYPTION_KEY が未設定、または形式が不正(base64でない/32バイトでない)な場合は例外を
+ * 投げず null を返す(node.ts / worker.ts の起動自体は止めない。鍵が無い状態での運用は「秘密情報を
+ * 含む保存を拒否する」という形で routes/settings.ts 側が守る — 平文フォールバックはしない)。
+ * 旧鍵が不正な場合は、その位置(1 始まり)だけを警告に出して無視する — 現行鍵は無効にしない
+ * (鍵の値はログに出さない)。
  */
 
-import { createEncryptor, type EncryptionContext, type Encryptor } from "@kizami/crypto";
+import { createEncryptor, type EncryptionContext, type Encryptor, type InspectableEncryptor } from "@kizami/crypto";
 
 const ENV_KEY = "KIZAMI_ENCRYPTION_KEY";
+const ENV_KEYS_PREVIOUS = "KIZAMI_ENCRYPTION_KEYS_PREVIOUS";
 
-export function buildEncryptorFromEnv(env: Record<string, string | undefined> = process.env): Encryptor | null {
+export function buildEncryptorFromEnv(env: Record<string, string | undefined> = process.env): InspectableEncryptor | null {
   const keyBase64 = env[ENV_KEY];
   if (!keyBase64) return null;
 
+  const previous: string[] = [];
+  const previousRaw = env[ENV_KEYS_PREVIOUS];
+  if (previousRaw) {
+    previousRaw.split(",").forEach((raw, i) => {
+      const candidate = raw.trim();
+      if (candidate === "") return; // 末尾カンマ・空要素は無視(位置の数え方は元の並びのまま)
+      try {
+        createEncryptor(candidate); // 形式の検証だけ(値は保持しない)
+        previous.push(candidate);
+      } catch {
+        // エラーオブジェクトは鍵の値を含みうるので出さない。位置だけ。
+        console.warn(`${ENV_KEYS_PREVIOUS}: entry #${i + 1} is invalid (not a base64 32-byte key); ignored`);
+      }
+    });
+  }
+
   try {
-    return createEncryptor(keyBase64);
+    return createEncryptor(keyBase64, { previous });
   } catch (err) {
     console.warn(`${ENV_KEY} is set but invalid; secret encryption stays disabled (plaintext fallback is NOT used):`, err);
     return null;
@@ -106,4 +129,4 @@ export async function decryptSealed(encryptor: Encryptor, value: string, ctx: En
   return encryptor.decrypt(value, ctx);
 }
 
-export type { EncryptionContext, Encryptor };
+export type { EncryptionContext, Encryptor, InspectableEncryptor };

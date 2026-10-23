@@ -324,6 +324,13 @@ pnpm --filter @kizami/api build:workers
    `SYSTEM_MAIL_FROM`(システムメールを使うなら。差出人のドメインを `npx wrangler email sending enable` で登録しておく)/
    `OUTBOUND_*`(任意)。
    名前と意味は `apps/api/src/node.ts` が読む環境変数と一対一に揃えてある。
+
+   **暗号化鍵のローテーション**: 旧鍵を `npx wrangler secret put KIZAMI_ENCRYPTION_KEYS_PREVIOUS`(base64、
+   カンマ区切り)で入れてから `KIZAMI_ENCRYPTION_KEY` を新しい鍵に替えると、旧鍵で暗号化した値も読める。
+   ただし保存済みの値を新しい鍵で書き直す CLI(`reencrypt-secrets`)は Node 用で **D1 には接続できない**
+   (`operator` と同じく `DATABASE_URL` で繋ぐ)。Workers 配備では、旧鍵を `previous` に残したまま運用し、
+   各テナントが設定画面で保存し直した値から新しい鍵になる。`rewrite` を数えて旧鍵を外せる時期を判断する手段は
+   今のところ無い(今後の課題)。
 4. **デプロイ**
    ```sh
    npx wrangler deploy

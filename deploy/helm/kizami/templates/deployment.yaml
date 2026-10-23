@@ -28,6 +28,12 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.encryptionSecret.name }}
                   key: {{ .Values.encryptionSecret.key }}
+            - name: KIZAMI_ENCRYPTION_KEYS_PREVIOUS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.encryptionSecret.name }}
+                  key: previous
+                  optional: true
             {{- if .Values.vapidSecret.name }}
             - name: VAPID_PUBLIC_KEY
               valueFrom:
@@ -91,6 +97,12 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.encryptionSecret.name }}
                   key: {{ .Values.encryptionSecret.key }}
+            - name: KIZAMI_ENCRYPTION_KEYS_PREVIOUS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.encryptionSecret.name }}
+                  key: previous
+                  optional: true
             {{- if .Values.notifySecret.name }}
             - name: WEBHOOK_URL
               valueFrom:
