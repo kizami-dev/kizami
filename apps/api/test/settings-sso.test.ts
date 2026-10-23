@@ -4,7 +4,7 @@
  * 重点:
  * - 権限 `tenant_settings.auth.manage`(tenant スコープ)でのガード
  * - client_secret は GET で平文が漏れない(clientSecretSet の boolean のみ)
- * - DB には暗号化("enc:v1:...")して保存され、復号すると元の値に戻る
+ * - DB には暗号化("enc:v2:...")して保存され、復号すると元の値に戻る
  */
 
 import { eq } from "drizzle-orm";
@@ -12,6 +12,7 @@ import { describe, expect, it } from "vitest";
 import { auditLogs, getTenantOidcSettings } from "@kizami/db";
 import { createApp } from "../src/app.js";
 import { grantPermission, loginAndGetCookie, setupTestDb, testEncryptor } from "./support/setup.js";
+import { secretContext } from "../src/lib/encryption.js";
 
 const SSO_PERMISSION = "tenant_settings.auth.manage";
 const ISSUER = "https://login.microsoftonline.com/tenant-guid/v2.0";
@@ -85,10 +86,10 @@ describe("GET/PUT /settings/sso", () => {
     expect(body.clientSecretSet).toBe(true);
     expect(JSON.stringify(body)).not.toContain("super-secret-value");
 
-    // DB には "enc:v1:..." で入り、復号すると元に戻る(往復)
+    // DB には "enc:v2:..." で入り、復号すると元に戻る(往復)
     const stored = await getTenantOidcSettings(seeded.db, seeded.tenantId);
-    expect(stored?.clientSecret?.startsWith("enc:v1:")).toBe(true);
-    expect(await testEncryptor().decrypt(stored?.clientSecret ?? "")).toBe("super-secret-value");
+    expect(stored?.clientSecret?.startsWith("enc:v2:")).toBe(true);
+    expect(await testEncryptor().decrypt(stored?.clientSecret ?? "", secretContext.oidcClientSecret(seeded.tenantId))).toBe("super-secret-value");
 
     const get = await app.request("/settings/sso", { headers: { cookie } });
     const getBody = (await get.json()) as Record<string, unknown>;
@@ -103,7 +104,7 @@ describe("GET/PUT /settings/sso", () => {
     // 省略 = 維持
     const keep = await put(app, cookie, { enabled: true, clientId: "client-xyz" });
     expect(keep.status).toBe(200);
-    expect(await testEncryptor().decrypt((await getTenantOidcSettings(seeded.db, seeded.tenantId))?.clientSecret ?? "")).toBe("s1");
+    expect(await testEncryptor().decrypt((await getTenantOidcSettings(seeded.db, seeded.tenantId))?.clientSecret ?? "", secretContext.oidcClientSecret(seeded.tenantId))).toBe("s1");
 
     // 空文字 = クリア。ただし enabled のままではクリアできない(壊れた設定を作らせない)
     const clearWhileEnabled = await put(app, cookie, { enabled: true, clientSecret: "" });

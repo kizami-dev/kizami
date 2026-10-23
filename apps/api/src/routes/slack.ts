@@ -45,7 +45,7 @@ import {
 import type { PunchKind } from "@kizami/engine";
 import { sha256Hex } from "../auth/api-key.js";
 import { MonthClosedError, assertMonthOpen } from "../lib/closing-guard.js";
-import { decryptSecret, type Encryptor } from "../lib/encryption.js";
+import { decryptSecret, secretContext, type Encryptor } from "../lib/encryption.js";
 import { periodFromDate, resolveAttendanceDate } from "../lib/attendance-date.js";
 import { TZ_OFFSET_MINUTES_JST } from "../lib/settings.js";
 import { verifySlackSignature } from "../lib/slack-signature.js";
@@ -179,7 +179,7 @@ export function createSlackRoutes(db: Database, deps: SlackRoutesDeps = {}) {
     const matched: typeof candidates = [];
     for (const row of candidates) {
       const verified = await verifySlackSignature({
-        signingSecret: row.signingSecret ? await decryptSecret(deps.encryptor, row.signingSecret) : null,
+        signingSecret: row.signingSecret ? await decryptSecret(deps.encryptor, row.signingSecret, secretContext.slackSigningSecret(row.tenantId)) : null,
         signatureHeader: c.req.header("x-slack-signature") ?? null,
         timestampHeader: c.req.header("x-slack-request-timestamp") ?? null,
         rawBody,

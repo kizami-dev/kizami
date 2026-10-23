@@ -48,7 +48,7 @@ import {
   type VapidKeys,
 } from "@kizami/notify";
 import { NotificationQuotaExceededError, type TenantQuotas } from "./tenant-quotas.js";
-import { decryptSecret, type Encryptor } from "./encryption.js";
+import { decryptSecret, secretContext, type Encryptor } from "./encryption.js";
 import { resolveEmailAddress, resolveNotificationCategory, resolveUserNotificationPrefs } from "./notification-preferences.js";
 
 export interface BuildNotificationChannelsOptions {
@@ -149,7 +149,7 @@ export async function buildTenantChannels(
 
   if (settings) {
     if (settings.webhookEnabled && settings.webhookUrl) {
-      const url = await decryptSecret(options.encryptor, settings.webhookUrl);
+      const url = await decryptSecret(options.encryptor, settings.webhookUrl, secretContext.tenantWebhookUrl(settings.tenantId));
       if (url) {
         channels.push(
           withOutboundQuota(webhookChannel(url, fetchOption(options.tenantFetchImpl ?? options.fetchImpl)), db, tenantId, options.quotas, options.triggeredByMember),
@@ -166,7 +166,7 @@ export async function buildTenantChannels(
       let smtpPasswordUnavailable = false;
       let password: string | undefined;
       if (settings.smtpPassword) {
-        const decrypted = await decryptSecret(options.encryptor, settings.smtpPassword);
+        const decrypted = await decryptSecret(options.encryptor, settings.smtpPassword, secretContext.tenantSmtpPassword(settings.tenantId));
         if (decrypted === null) {
           smtpPasswordUnavailable = true;
           console.warn(
@@ -255,7 +255,7 @@ export async function buildPersonalChannels(
     let smtpPasswordUnavailable = false;
     let password: string | undefined;
     if (tenantSettings.smtpPassword) {
-      const decrypted = await decryptSecret(options.encryptor, tenantSettings.smtpPassword);
+      const decrypted = await decryptSecret(options.encryptor, tenantSettings.smtpPassword, secretContext.tenantSmtpPassword(tenantSettings.tenantId));
       if (decrypted === null) {
         smtpPasswordUnavailable = true;
         console.warn(
@@ -288,7 +288,7 @@ export async function buildPersonalChannels(
   }
 
   if (categoryPrefs.webhook && prefsRow?.webhookUrl) {
-    const url = await decryptSecret(options.encryptor, prefsRow.webhookUrl);
+    const url = await decryptSecret(options.encryptor, prefsRow.webhookUrl, secretContext.userWebhookUrl(prefsRow.tenantId, prefsRow.userId));
     if (url) {
       channels.push(
         withOutboundQuota(webhookChannel(url, fetchOption(options.tenantFetchImpl ?? options.fetchImpl)), db, tenantId, options.quotas, options.triggeredByMember),

@@ -15,6 +15,7 @@ import { buildPersonalChannels, buildTenantChannels } from "../src/lib/notificat
 import { createTenantQuotas, MEMBER_TRIGGERED_SENDS_PER_DAY, NotificationQuotaExceededError, parseQuotaEnv, PERSONAL_TEST_SENDS_PER_DAY } from "../src/lib/tenant-quotas.js";
 import { createTestDatabase, grantPermission, jstMinutes, loginAndGetCookie, setupExtraUser, setupTestDb, testEncryptor } from "./support/setup.js";
 import { requestPunch } from "./support/punch.js";
+import { secretContext } from "../src/lib/encryption.js";
 
 const NOW = Date.UTC(2026, 5, 15, 3, 0) / 60_000;
 
@@ -152,7 +153,7 @@ describe("外向きの通知の1日の上限", () => {
     await upsertNotificationSettings(seeded.db, {
       tenantId: seeded.tenantId,
       webhookEnabled: true,
-      webhookUrl: await encryptor.encrypt("https://hooks.example.com/x"),
+      webhookUrl: await encryptor.encrypt("https://hooks.example.com/x", secretContext.tenantWebhookUrl(seeded.tenantId)),
       smtpEnabled: false,
       smtpHost: null,
       smtpPort: null,
@@ -264,7 +265,7 @@ describe("外向きの通知の1日の上限", () => {
       shiftVarianceWebhook: false,
       shiftVariancePush: false,
       emailAddress: null,
-      webhookUrl: await encryptor.encrypt("https://hooks.example.com/me"),
+      webhookUrl: await encryptor.encrypt("https://hooks.example.com/me", secretContext.userWebhookUrl(seeded.tenantId, seeded.userId)),
       updatedAt: 0,
     });
     const quotas = createTenantQuotas({ outboundNotificationsPerDay: 1 }, { nowMinutes: () => NOW });
@@ -353,7 +354,7 @@ describe("一般メンバーの操作がテナントの枠を使い切れない"
     await upsertNotificationSettings(seeded.db, {
       tenantId: seeded.tenantId,
       webhookEnabled: true,
-      webhookUrl: await encryptor.encrypt("https://hooks.example.com/tenant"),
+      webhookUrl: await encryptor.encrypt("https://hooks.example.com/tenant", secretContext.tenantWebhookUrl(seeded.tenantId)),
       smtpEnabled: false,
       smtpHost: null,
       smtpPort: null,
@@ -452,7 +453,7 @@ describe("一般メンバーの申請が起こす承認依頼の通知(本人ご
     await upsertNotificationSettings(db, {
       tenantId,
       webhookEnabled: true,
-      webhookUrl: await encryptor.encrypt("https://hooks.example.com/tenant"),
+      webhookUrl: await encryptor.encrypt("https://hooks.example.com/tenant", secretContext.tenantWebhookUrl(seeded.tenantId)),
       smtpEnabled: false,
       smtpHost: null,
       smtpPort: null,

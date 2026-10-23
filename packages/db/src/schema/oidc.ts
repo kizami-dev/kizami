@@ -2,7 +2,7 @@
  * OIDC(SSO ログイン)のテナント単位設定。docs/design/sso-oidc.md が仕様の正。
  *
  * - `tenant_oidc_settings`: 1テナント1行(tenant_slack_settings / tenant_notification_settings と
- *   同じ形)。client_secret は他の秘密情報と同じ "enc:v1:..." 形式で暗号化して保存する
+ *   同じ形)。client_secret は他の秘密情報と同じ "enc:v2:..." 形式で暗号化して保存する
  *   (apps/api/src/lib/encryption.ts)。DB 層は暗号文/平文を区別しない。
  * - **自動プロビジョニングは行わない**ため、IdP 側のユーザーIDを保持するテーブル
  *   (よくある `oidc_identities` のような外部IDの対応表)は持たない。ログイン時の突合は
@@ -26,7 +26,7 @@ export const tenantOidcSettings = sqliteTable("tenant_oidc_settings", {
   issuer: text("issuer"),
   /** IdP に登録したクライアントID。秘密情報ではないため平文で保存する。未設定は null */
   clientId: text("client_id"),
-  /** クライアントシークレット。"enc:v1:..." で暗号化して保存する。未設定は null */
+  /** クライアントシークレット。"enc:v2:..." で暗号化して保存する。未設定は null */
   clientSecret: text("client_secret"),
   enabled: integer("enabled", { mode: "boolean" }).notNull().default(false),
   /** email_verified が false(または欠落)の ID トークンでもログインを許すか。既定 false(安全側) */

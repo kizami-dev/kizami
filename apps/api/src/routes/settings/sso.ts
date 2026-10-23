@@ -18,7 +18,7 @@ import type { Hono } from "hono";
 import { getTenantOidcSettings, insertAuditLog, upsertTenantOidcSettings, type Database } from "@kizami/db";
 import type { AppEnv } from "../../auth/middleware.js";
 import { requirePermission } from "../../authz.js";
-import type { Encryptor } from "../../lib/encryption.js";
+import { secretContext, type Encryptor } from "../../lib/encryption.js";
 import { resolveStringField } from "../../lib/field-validation.js";
 import { nowMinutes } from "../../lib/time.js";
 import { SSO_SETTINGS_PERMISSION } from "./permissions.js";
@@ -101,7 +101,7 @@ export function registerSsoRoutes(app: Hono<AppEnv>, db: Database, deps: Setting
     }
 
     const clientSecretToStore = clientSecretNeedsEncryption
-      ? await (deps.encryptor as Encryptor).encrypt(clientSecretResult.value as string)
+      ? await (deps.encryptor as Encryptor).encrypt(clientSecretResult.value as string, secretContext.oidcClientSecret(user.tenantId))
       : clientSecretResult.value;
 
     const allowUnverifiedEmail =

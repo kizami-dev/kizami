@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { punchEvents, tenants, upsertTenantSlackSettings, users, uuidv7, type Database } from "@kizami/db";
 import { createApp } from "../src/app.js";
 import { grantPermission, loginAndGetCookie, setupTestDb, testEncryptor } from "./support/setup.js";
+import { secretContext } from "../src/lib/encryption.js";
 
 const FIXED_NOW = new Date("2026-06-15T03:00:00.000Z"); // JST 2026-06-15 12:00
 
@@ -219,7 +220,7 @@ describe("Slack slash command punching", () => {
       await upsertTenantSlackSettings(db, {
         tenantId: squatterTenantId,
         teamId,
-        signingSecret: await testEncryptor().encrypt(secret),
+        signingSecret: await testEncryptor().encrypt(secret, secretContext.slackSigningSecret(squatterTenantId)),
         enabled: true,
         updatedAt: 0,
         updatedBy: squatterUserId,

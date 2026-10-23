@@ -2,7 +2,7 @@
  * Slack スラッシュコマンド打刻(docs/external-api/slack.md)用のテーブル群。
  *
  * - `tenant_slack_settings`: テナント単位のSlack連携設定(1テナント1行)。Signing Secret は
- *   他の秘密情報(tenant_notification_settings.webhookUrl 等)と同じ "enc:v1:..." 形式で
+ *   他の秘密情報(tenant_notification_settings.webhookUrl 等)と同じ "enc:v2:..." 形式で
  *   暗号化して保存する(apps/api/src/lib/encryption.ts)。DB 層は暗号文/平文を区別しない。
  * - `team_id`(Slack ワークスペースID)は**検索の手掛かりにすぎず、UNIQUE にしない**(2026-10-22、
  *   セキュリティレビュー Low)。以前は UNIQUE だったため、別のテナントが他社のワークスペース ID を先に
@@ -31,7 +31,7 @@ export const tenantSlackSettings = sqliteTable(
       .references(() => tenants.id),
     /** Slack ワークスペースID(例 "T0123456")。UNIQUE にしない(冒頭コメント)。未設定はnull */
     teamId: text("team_id"),
-    /** Signing Secret。"enc:v1:..." で暗号化して保存(apps/api/src/lib/encryption.ts)。未設定はnull */
+    /** Signing Secret。"enc:v2:..." で暗号化して保存(apps/api/src/lib/encryption.ts)。未設定はnull */
     signingSecret: text("signing_secret"),
     enabled: integer("enabled", { mode: "boolean" }).notNull().default(false),
     /** UTC エポック分 */

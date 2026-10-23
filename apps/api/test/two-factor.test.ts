@@ -15,7 +15,7 @@
 
 import { and, eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { auditLogs, notifications } from "@kizami/db";
+import { auditLogs, notifications, userTotp } from "@kizami/db";
 import { generateTotp, TOTP_STEP_SECONDS } from "@kizami/crypto";
 import { createApp } from "../src/app.js";
 import { bootstrapTenant } from "../src/lib/tenant-bootstrap.js";
@@ -28,6 +28,7 @@ import {
   setupTestDb,
   testEncryptor,
 } from "./support/setup.js";
+import { cookieContext, secretContext } from "../src/lib/encryption.js";
 
 interface RequestLike {
   request: (path: string, init?: RequestInit) => Promise<Response> | Response;
@@ -400,6 +401,7 @@ describe("POST /auth/login → /auth/login/totp(2段階ログイン)", () => {
         userId: seeded.userId,
         issuedAt: Math.floor(currentMs / 60_000) + 60 * 24 * 365,
       }),
+      cookieContext("kizami_totp_tx"),
     );
     const res = await app.request(
       "/auth/login/totp",
@@ -407,6 +409,36 @@ describe("POST /auth/login → /auth/login/totp(2段階ログイン)", () => {
     );
     expect(res.status).toBe(401);
     expect(await res.json()).toEqual({ error: "totp_expired" });
+  });
+
+  // 暗号文は (tenantId, userId) に束ねてある。別ユーザーの文脈で暗号化した値を移植しても復号できない。
+  it("別ユーザー用に暗号化された共有鍵は、この行に移しても使えない(503)", async () => {
+    const { seeded, app, secret } = await scenario();
+    const moved = await testEncryptor().encrypt(secret, secretContext.totpSecret(seeded.tenantId, "another-user-id"));
+    await seeded.db.update(userTotp).set({ secretEncrypted: moved }).where(eq(userTotp.userId, seeded.userId));
+
+    const first = await login(app, seeded.email, seeded.password);
+    const tx = cookieNamed(first, "kizami_totp_tx") as string;
+    advanceSeconds(TOTP_STEP_SECONDS);
+    const res = await app.request("/auth/login/totp", jsonInit({ code: await generateTotp(secret, nowSeconds()) }, tx));
+    expect(res.status).toBe(503);
+    expect(cookieNamed(res, "kizami_session")).toBeNull();
+  });
+
+  it("旧形式(enc:v1:)で保存された共有鍵も、そのまま使える(後方互換)", async () => {
+    const { seeded, app, secret } = await scenario();
+    // 旧アルゴリズム(マスター鍵直・AAD なし)で作った値に差し替える。テスト用の固定鍵は 32 バイトの 7。
+    const key = await crypto.subtle.importKey("raw", new Uint8Array(32).fill(7), "AES-GCM", false, ["encrypt"]);
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const ct = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, new TextEncoder().encode(secret)));
+    const b64 = (u: Uint8Array) => btoa(String.fromCharCode(...u));
+    await seeded.db.update(userTotp).set({ secretEncrypted: `enc:v1:${b64(iv)}:${b64(ct)}` }).where(eq(userTotp.userId, seeded.userId));
+
+    const first = await login(app, seeded.email, seeded.password);
+    const tx = cookieNamed(first, "kizami_totp_tx") as string;
+    advanceSeconds(TOTP_STEP_SECONDS);
+    const res = await app.request("/auth/login/totp", jsonInit({ code: await generateTotp(secret, nowSeconds()) }, tx));
+    expect(res.status).toBe(200);
   });
 
   it("code と recoveryCode を同時に送ると 400(曖昧な挙動を作らない)", async () => {

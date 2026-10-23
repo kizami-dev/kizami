@@ -35,7 +35,7 @@ import { getNotificationSettings, insertAuditLog, upsertNotificationSettings, ty
 import { dispatch, type NotificationMessage } from "@kizami/notify";
 import type { AppEnv } from "../../auth/middleware.js";
 import { requirePermission } from "../../authz.js";
-import { decryptSecret, type Encryptor } from "../../lib/encryption.js";
+import { decryptSecret, secretContext, type Encryptor } from "../../lib/encryption.js";
 import { isValidHttpUrl, resolveStringField, webhookPreview } from "../../lib/field-validation.js";
 import { buildTenantChannels, isNotificationConfigUsable } from "../../lib/notification-channels.js";
 import { nowMinutes } from "../../lib/time.js";
@@ -66,7 +66,7 @@ async function serialize(settings: TenantNotificationSettings | null, encryptor:
   // configured: true のまま null にする。
   let webhookPreviewValue: string | null = null;
   if (settings.webhookUrl) {
-    const decrypted = await decryptSecret(encryptor, settings.webhookUrl);
+    const decrypted = await decryptSecret(encryptor, settings.webhookUrl, secretContext.tenantWebhookUrl(settings.tenantId));
     webhookPreviewValue = decrypted ? webhookPreview(decrypted) : null;
   }
 
@@ -187,10 +187,10 @@ export function registerNotificationsRoutes(app: Hono<AppEnv>, db: Database, dep
     }
 
     const webhookUrlToStore = webhookUrlNeedsEncryption
-      ? await (deps.encryptor as Encryptor).encrypt(webhookUrl as string)
+      ? await (deps.encryptor as Encryptor).encrypt(webhookUrl as string, secretContext.tenantWebhookUrl(user.tenantId))
       : webhookUrl;
     const smtpPasswordToStore = smtpPasswordNeedsEncryption
-      ? await (deps.encryptor as Encryptor).encrypt(smtpPasswordResult.value as string)
+      ? await (deps.encryptor as Encryptor).encrypt(smtpPasswordResult.value as string, secretContext.tenantSmtpPassword(user.tenantId))
       : smtpPasswordResult.value;
 
     const now = nowMinutes();

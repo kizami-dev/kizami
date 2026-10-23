@@ -17,7 +17,7 @@
  *
  * - `user_id` が主キー(1人1つ。複数の認証アプリを登録したい要望は、同じ QR を複数端末で
  *   読ませれば満たせるため、行を複数持つ必要がない)。
- * - `secret_encrypted`: 共有鍵(base32)を **保存時暗号化**する("enc:v1:..."、
+ * - `secret_encrypted`: 共有鍵(base32)を **保存時暗号化**する("enc:v2:..."、
  *   packages/crypto の Encryptor)。共有鍵は「それさえあれば誰でも正しいコードを作れる」
  *   値であり、パスワードハッシュのように一方向にはできない(検証に平文が要る)。よって
  *   DB 単体の流出で 2FA が無力化されないよう、鍵(KIZAMI_ENCRYPTION_KEY)を別に要求する。
@@ -55,7 +55,7 @@ export const userTotp = sqliteTable(
     tenantId: text("tenant_id")
       .notNull()
       .references(() => tenants.id),
-    /** 共有鍵(base32)。"enc:v1:..." で暗号化して保存する */
+    /** 共有鍵(base32)。"enc:v2:..." で暗号化して保存する */
     secretEncrypted: text("secret_encrypted").notNull(),
     /** null = セットアップ中(未確認)。UTC エポック分 */
     enabledAt: integer("enabled_at"),

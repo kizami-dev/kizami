@@ -23,7 +23,7 @@
 
 import type { Context } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
-import { decryptSealed, type Encryptor } from "../lib/encryption.js";
+import { cookieContext, decryptSealed, type Encryptor } from "../lib/encryption.js";
 
 export const TRUSTED_DEVICE_COOKIE_NAME = "kizami_trusted_device";
 
@@ -62,7 +62,7 @@ export async function setTrustedDeviceCookie(
   device: TrustedDevice,
   options: { secure: boolean },
 ): Promise<void> {
-  setCookie(c, TRUSTED_DEVICE_COOKIE_NAME, await encryptor.encrypt(JSON.stringify(device)), {
+  setCookie(c, TRUSTED_DEVICE_COOKIE_NAME, await encryptor.encrypt(JSON.stringify(device), cookieContext(TRUSTED_DEVICE_COOKIE_NAME)), {
     httpOnly: true,
     sameSite: "Lax",
     path: "/",
@@ -86,7 +86,7 @@ export async function readTrustedDevice(
 ): Promise<TrustedDevice | null> {
   const raw = getCookie(c, TRUSTED_DEVICE_COOKIE_NAME);
   if (!raw) return null;
-  const decrypted = await decryptSealed(encryptor, raw);
+  const decrypted = await decryptSealed(encryptor, raw, cookieContext(TRUSTED_DEVICE_COOKIE_NAME));
   if (decrypted === null) return null;
   let parsed: unknown;
   try {

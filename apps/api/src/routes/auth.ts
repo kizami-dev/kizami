@@ -48,7 +48,7 @@ import {
   type TrustedDevice,
 } from "../auth/trusted-device.js";
 import { getClientIp } from "../lib/client-ip.js";
-import { decryptSealed, decryptSecret, type Encryptor } from "../lib/encryption.js";
+import { cookieContext, decryptSealed, decryptSecret, secretContext, type Encryptor } from "../lib/encryption.js";
 import { rateLimitedResponse, type FailureLimiter, type FailureReservation, type RateLimiter } from "../lib/rate-limit.js";
 import { isLoginBlockedByWithdrawal, TENANT_WITHDRAWING_ERROR } from "../lib/tenant-withdrawal.js";
 import { nowMinutes } from "../lib/time.js";
@@ -287,7 +287,7 @@ export function createAuthRoutes(db: Database, options: AuthRoutesOptions) {
         userId: activeUser.id,
         issuedAt: nowMinutes(),
       };
-      setCookie(c, TOTP_TX_COOKIE_NAME, await encryptor.encrypt(JSON.stringify(tx)), {
+      setCookie(c, TOTP_TX_COOKIE_NAME, await encryptor.encrypt(JSON.stringify(tx), cookieContext(TOTP_TX_COOKIE_NAME)), {
         httpOnly: true,
         sameSite: "Lax",
         path: "/",
@@ -353,7 +353,7 @@ export function createAuthRoutes(db: Database, options: AuthRoutesOptions) {
 
     const cookieValue = getCookie(c, TOTP_TX_COOKIE_NAME);
     if (!cookieValue) return c.json({ error: "totp_expired" }, 401);
-    const decrypted = await decryptSealed(encryptor, cookieValue);
+    const decrypted = await decryptSealed(encryptor, cookieValue, cookieContext(TOTP_TX_COOKIE_NAME));
     if (decrypted === null) {
       deleteCookie(c, TOTP_TX_COOKIE_NAME, { path: "/" });
       return c.json({ error: "totp_expired" }, 401);
@@ -443,7 +443,7 @@ export function createAuthRoutes(db: Database, options: AuthRoutesOptions) {
     let method: "totp" | "recovery_code";
 
     if (hasCode) {
-      const secret = await decryptSecret(encryptor, row.secretEncrypted);
+      const secret = await decryptSecret(encryptor, row.secretEncrypted, secretContext.totpSecret(row.tenantId, row.userId));
       if (secret === null) {
         console.error(`login/totp: cannot decrypt secret for user ${tx.userId} (encryption key missing or mismatched)`);
         releaseReservations();

@@ -41,7 +41,7 @@ KIZAMI は自前認証(メール+パスワード)に加えて、**OIDC(OpenID Co
 | --- | --- |
 | `issuer` | IdP の発行者 URL。**https のみ**、クエリ・フラグメント不可(`{issuer}/.well-known/openid-configuration` を単純連結で作るため) |
 | `client_id` | IdP で発行されるクライアントID。秘密情報ではないので平文保存・画面表示 |
-| `client_secret` | クライアントシークレット。`enc:v1:...` 形式で暗号化して保存(通知の Webhook URL・SMTP パスワード・Slack の Signing Secret と同じ仕組み) |
+| `client_secret` | クライアントシークレット。`enc:v2:...` 形式(テナント ID に束縛)で暗号化して保存(通知の Webhook URL・SMTP パスワード・Slack の Signing Secret と同じ仕組み) |
 | `enabled` | SSO ログインを有効にするか。有効化には issuer・client_id・client_secret の3点が揃っている必要がある |
 | `allow_unverified_email` | `email_verified` が false でもログインを許すか。**既定 false**(§4 参照) |
 

@@ -11,7 +11,7 @@ import {
 import type { AppEnv } from "../../auth/middleware.js";
 import { sha256Hex } from "../../auth/api-key.js";
 import { requirePermission } from "../../authz.js";
-import type { Encryptor } from "../../lib/encryption.js";
+import { secretContext, type Encryptor } from "../../lib/encryption.js";
 import { resolveStringField } from "../../lib/field-validation.js";
 import { nowMinutes } from "../../lib/time.js";
 import { SLACK_SETTINGS_PERMISSION } from "./permissions.js";
@@ -67,7 +67,7 @@ export function registerSlackRoutes(app: Hono<AppEnv>, db: Database, deps: Setti
     }
 
     const signingSecretToStore = signingSecretNeedsEncryption
-      ? await (deps.encryptor as Encryptor).encrypt(signingSecretResult.value as string)
+      ? await (deps.encryptor as Encryptor).encrypt(signingSecretResult.value as string, secretContext.slackSigningSecret(user.tenantId))
       : signingSecretResult.value;
 
     const now = nowMinutes();

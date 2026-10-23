@@ -46,7 +46,7 @@ import type { AppEnv } from "../auth/middleware.js";
 import { verifyPassword } from "../auth/password.js";
 import { generateRecoveryCodes, normalizeTotpCode } from "../auth/totp.js";
 import { getClientIp } from "../lib/client-ip.js";
-import { decryptSecret, type Encryptor } from "../lib/encryption.js";
+import { decryptSecret, secretContext, type Encryptor } from "../lib/encryption.js";
 import { rateLimitedResponse, type RateLimiter } from "../lib/rate-limit.js";
 import { nowMinutes } from "../lib/time.js";
 
@@ -123,7 +123,7 @@ export function createTotpRoutes(db: Database, options: TotpRoutesOptions) {
     await upsertPendingUserTotp(db, {
       tenantId: user.tenantId,
       userId: user.id,
-      secretEncrypted: await encryptor.encrypt(secret),
+      secretEncrypted: await encryptor.encrypt(secret, secretContext.totpSecret(user.tenantId, user.id)),
       createdAt: nowMinutes(),
     });
 
@@ -157,7 +157,7 @@ export function createTotpRoutes(db: Database, options: TotpRoutesOptions) {
     if (!row) return c.json({ error: "setup_required" }, 409);
     if (row.enabledAt != null) return c.json({ error: "already_enabled" }, 409);
 
-    const secret = await decryptSecret(encryptor, row.secretEncrypted);
+    const secret = await decryptSecret(encryptor, row.secretEncrypted, secretContext.totpSecret(row.tenantId, row.userId));
     if (secret === null) {
       console.error(`totp: cannot decrypt secret for user ${user.id} (encryption key missing or mismatched)`);
       return c.json({ error: "encryption_unavailable" }, 503);
@@ -217,7 +217,7 @@ export function createTotpRoutes(db: Database, options: TotpRoutesOptions) {
       return c.json({ error: "invalid_password" }, 400);
     }
 
-    const secret = await decryptSecret(encryptor, row.secretEncrypted);
+    const secret = await decryptSecret(encryptor, row.secretEncrypted, secretContext.totpSecret(row.tenantId, row.userId));
     if (secret === null) {
       console.error(`totp: cannot decrypt secret for user ${user.id} (encryption key missing or mismatched)`);
       return c.json({ error: "encryption_unavailable" }, 503);
@@ -283,7 +283,7 @@ export function createTotpRoutes(db: Database, options: TotpRoutesOptions) {
       return c.json({ error: "invalid_password" }, 400);
     }
 
-    const secret = await decryptSecret(encryptor, row.secretEncrypted);
+    const secret = await decryptSecret(encryptor, row.secretEncrypted, secretContext.totpSecret(row.tenantId, row.userId));
     if (secret === null) {
       console.error(`totp: cannot decrypt secret for user ${user.id} (encryption key missing or mismatched)`);
       return c.json({ error: "encryption_unavailable" }, 503);
