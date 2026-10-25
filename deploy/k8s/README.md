@@ -383,7 +383,7 @@ VitePress サイト(`docs/`、`pnpm docs:build`)は、この `deploy/k8s/` 一�
 docker run --rm \
   -v "$(pwd)":/work -w /work \
   -v "$(pwd)/docs-local":/work/docs-local:ro \
-  node:22 sh -c "corepack enable && pnpm install --frozen-lockfile && pnpm docs:build"
+  node:26.12.1 sh -c "npm install -g pnpm@12.15.0 && pnpm install --frozen-lockfile && pnpm docs:build"
 ```
 
 生成された `docs/.vitepress/dist/` を任意の静的配信コンテナ(nginx 等)にコピーして配信する。
@@ -409,9 +409,9 @@ volumes:
     emptyDir: {}
 initContainers:
   - name: docs-build
-    image: node:22
+    image: node:26.12.1
     workingDir: /work
-    command: ["sh", "-c", "corepack enable && pnpm install --frozen-lockfile && pnpm docs:build && cp -r docs/.vitepress/dist/. /dist"]
+    command: ["sh", "-c", "npm install -g pnpm@12.15.0 && pnpm install --frozen-lockfile && pnpm docs:build && cp -r docs/.vitepress/dist/. /dist"]
     volumeMounts:
       - { name: docs-local, mountPath: /work/docs-local, readOnly: true }
       - { name: docs-dist, mountPath: /dist }
