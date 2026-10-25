@@ -3,11 +3,15 @@ packages:
   - packages/*
   - docs
 
-# workerd(Cloudflare Workers ランタイム)と esbuild はプラットフォーム別バイナリの配置を
-# postinstall で行うため、ビルドスクリプトの実行を明示的に許可する(pnpm 10 の既定は不許可)。
-onlyBuiltDependencies:
-  - esbuild
-  - workerd
+# ビルドスクリプト(postinstall 等)の実行可否。pnpm 11 で onlyBuiltDependencies から allowBuilds へ移行した。
+# 一覧に無いパッケージがビルドスクリプトを持つと install がエラーになる(strictDepBuilds が既定で true)。
+# - workerd(Cloudflare Workers ランタイム)と esbuild はプラットフォーム別バイナリの配置を postinstall で行うため許可する。
+# - msgpackr-extract(bullmq → msgpackr の任意の高速化ネイティブ拡張)は pnpm 10 時代も実行していなかったので、
+#   挙動を変えないよう明示的に不許可にする(プリビルド版は optionalDependencies で入り、無くても msgpackr は JS 実装で動く)。
+allowBuilds:
+  esbuild: true
+  workerd: true
+  msgpackr-extract: false
 
 # 推移的依存の脆弱性対策(2026-10 の pnpm audit)。親パッケージが固定している古い版を、修正版以上へ上げる。
 # 親側が追従したら外してよい。修正版が無い・メジャー更新が必要なもの(vitepress が内包する vite 5 系・esbuild 0.21 系)は開発用のみのため据え置き。
