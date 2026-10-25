@@ -23,7 +23,7 @@ WORKDIR /app
 
 # node:26-slim does not ship corepack pre-installed; install pnpm directly,
 # pinned to the version in package.json's "packageManager" field.
-RUN npm install -g pnpm@10.33.0
+RUN npm install -g pnpm@10.34.8
 
 COPY . .
 
